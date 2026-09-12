@@ -53,6 +53,9 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import DelayMessageRecallDialog from '../../components/DelayMessageRecallDialog';
+import { supportsApacheRuntime } from '../../api/instance';
+import { isMockMode } from '../../services/dataMode';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -316,13 +319,15 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
    MessagePage
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
+  recallSupported: boolean;
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -332,6 +337,9 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      recallSupported={
+        !!selectedInstance && supportsApacheRuntime(selectedInstance) && !isMockMode()
+      }
     />
   );
 };
@@ -340,6 +348,7 @@ const MessagePage = () => {
    MessagePageContent
    ═══════════════════════════════════════════ */
 const MessagePageContent = ({
+  recallSupported,
   selectedInstanceId,
   selectInstance,
   instanceOptions,
@@ -380,6 +389,7 @@ const MessagePageContent = ({
     };
   }, [loadTopicOptions]);
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
+  const [recallOpen, setRecallOpen] = useState(false);
   const queueBrowser = useQueueBrowser(selectedInstanceId);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
@@ -1018,7 +1028,22 @@ const MessagePageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
+      <PageHeader
+        title={t('message.title')}
+        subtitle="按 Topic、Key 或 Message ID 检索消息"
+        extra={
+          <Button disabled={!recallSupported} onClick={() => setRecallOpen(true)}>
+            Recall delayed message
+          </Button>
+        }
+      />
+      {recallOpen && selectedInstanceId && recallSupported && (
+        <DelayMessageRecallDialog
+          instanceId={selectedInstanceId}
+          initialTopic={selectedTopic}
+          onClose={() => setRecallOpen(false)}
+        />
+      )}
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>

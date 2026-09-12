@@ -42,6 +42,20 @@ import static org.mockito.Mockito.when;
 
 class AuthInterceptorTest {
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/messages/recall", "/api/messages/recall/preview"})
+    void delayedMessageRecallRequiresAdmin(String path) throws Exception {
+        TestSession reader = login(false);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        assertThat(reader.interceptor().preHandle(authenticatedRequest("POST", path, reader.token()),
+                response, new Object())).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+
+        TestSession admin = login(true);
+        assertThat(admin.interceptor().preHandle(authenticatedRequest("POST", path, admin.token()),
+                new MockHttpServletResponse(), new Object())).isTrue();
+    }
+
     @Test
     void shouldResolveAuthenticatedUserOnlyOncePerRequest() throws Exception {
         AuthProperties properties = new AuthProperties();
