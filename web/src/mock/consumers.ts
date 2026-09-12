@@ -35,6 +35,7 @@ export interface ConsumerGroup {
   consumeType: 'CLUSTERING' | 'BROADCASTING';
   onlineInstances: number;
   totalLag: number;
+  consumeTps: number;
   subscribedTopics: string[];
   subscriptionDataType: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION';
   deliveryOrderType?: 'PARTITON_ORDER' | 'MESSAGES_ORDER';
@@ -73,6 +74,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 6,
     totalLag: 2340,
+    consumeTps: 845.2,
     subscribedTopics: ['order-create', 'order-status-change', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
@@ -139,6 +141,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 4,
     totalLag: 128,
+    consumeTps: 96.4,
     subscribedTopics: ['payment-callback', 'refund-event'],
     subscriptionDataType: 'TRANSACTION',
     retryMaxTimes: 8,
@@ -189,6 +192,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'BROADCASTING',
     onlineInstances: 3,
     totalLag: 56700,
+    consumeTps: 0,
     subscribedTopics: ['user-activity-log', 'user-profile-change'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
@@ -231,6 +235,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 2,
     totalLag: 890,
+    consumeTps: 182.6,
     subscribedTopics: ['inventory-sync', 'stock-alert'],
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
@@ -266,6 +271,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 8,
     totalLag: 12400,
+    consumeTps: 410.5,
     subscribedTopics: ['app-log', 'access-log', 'error-log'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 5,
@@ -348,6 +354,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 3,
     totalLag: 45,
+    consumeTps: 72.3,
     subscribedTopics: ['notification-push', 'sms-gateway'],
     subscriptionDataType: 'DELAY',
     retryMaxTimes: 8,
@@ -390,6 +397,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 4,
     totalLag: 3200,
+    consumeTps: 0,
     subscribedTopics: ['ai-task-dispatch', 'model-inference-request'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 3,
@@ -440,6 +448,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 2,
     totalLag: 15800,
+    consumeTps: 0,
     subscribedTopics: ['metrics-raw', 'trace-span'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 16,
@@ -474,6 +483,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 5,
     totalLag: 4560,
+    consumeTps: 655.1,
     subscribedTopics: ['transaction-event', 'login-event', 'payment-callback'],
     subscriptionDataType: 'NORMAL',
     retryMaxTimes: 8,
@@ -532,6 +542,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     consumeType: 'CLUSTERING',
     onlineInstances: 3,
     totalLag: 18700,
+    consumeTps: 38.9,
     subscribedTopics: ['binlog-event', 'schema-change'],
     subscriptionDataType: 'FIFO',
     deliveryOrderType: 'PARTITON_ORDER',
