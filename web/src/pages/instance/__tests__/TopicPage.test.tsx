@@ -38,6 +38,7 @@ const topicServiceMocks = vi.hoisted(() => ({
   listTopics: vi.fn(),
   listTopicsPage: vi.fn(),
   sendTopicMessage: vi.fn(),
+  updateTopic: vi.fn(),
 }));
 
 const instanceServiceMocks = vi.hoisted(() => ({
@@ -262,6 +263,98 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).getByText('topic-b')).toBeInTheDocument();
     expect(within(getTableBody()).getByText('server page response')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('create response')).not.toBeInTheDocument();
+  });
+
+  it('updates topic config through the update service and reloads the page', async () => {
+    topicServiceMocks.updateTopic.mockResolvedValue({
+      ...buildTopics(1)[0],
+      writeQueues: 16,
+      perm: 'RO',
+      remark: 'updated remark',
+    });
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    const row = within(getTableBody()).getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配\s*置/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('编辑 Topic')).toBeInTheDocument();
+    const nameInput = within(dialog).getByLabelText('Topic 名称') as HTMLInputElement;
+    expect(nameInput).toBeDisabled();
+    expect(nameInput.value).toBe('topic-01');
+
+    const writeQueues = within(dialog).getByLabelText('写队列数') as HTMLInputElement;
+    expect(writeQueues.value).toBe('8');
+    await user.clear(writeQueues);
+    await user.type(writeQueues, '16');
+    await user.click(within(dialog).getByText('只读'));
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(topicServiceMocks.updateTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'topic-01',
+        writeQueues: 16,
+        perm: 'RO',
+        instanceId: 'instance-proxy-1',
+      }),
+    );
+    await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/更新成功/)).toBeInTheDocument();
+  });
+
+  it('edits cloud topics without the broker-only fields', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      { ...selectedInstance, vendor: 'ALIYUN' },
+    ]);
+    topicServiceMocks.updateTopic.mockResolvedValue(buildTopics(1)[0]);
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    const row = within(getTableBody()).getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配\s*置/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('编辑 Topic')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('写队列数')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('只读')).not.toBeInTheDocument();
+
+    const remarkBox = within(dialog).getByLabelText('备注') as HTMLInputElement;
+    await user.clear(remarkBox);
+    await user.type(remarkBox, 'aliyun remark');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(topicServiceMocks.updateTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'topic-01',
+        remark: 'aliyun remark',
+        instanceId: 'instance-proxy-1',
+      }),
+    );
+  });
+
+  it('opens a clean create dialog after a cancelled edit', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    const row = within(getTableBody()).getByText('topic-01').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配\s*置/ }));
+    const editDialog = await screen.findByRole('dialog');
+    await user.click(within(editDialog).getByRole('button', { name: /取\s*消/ }));
+
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('创建 Topic')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'topic-zz');
+    await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.updateTopic).not.toHaveBeenCalled();
   });
 
   it('ignores duplicate Topic creates while the first request is pending', async () => {
