@@ -828,7 +828,10 @@ const SystemAlertsPage = () => {
       <Modal
         title={t('sysAlerts.maintenanceWindows')}
         open={silencesVisible}
-        onCancel={() => setSilencesVisible(false)}
+        onCancel={() => {
+          setSilencesVisible(false);
+          silenceForm.resetFields();
+        }}
         onOk={() => void createSilence()}
         okText={t('sysAlerts.create')}
         okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}

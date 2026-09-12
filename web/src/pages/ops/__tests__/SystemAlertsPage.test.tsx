@@ -547,6 +547,49 @@ describe('SystemAlertsPage', () => {
     });
   });
 
+  it('resets the silence form after the dialog is dismissed without creating', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 10,
+    });
+    vi.mocked(createAlertSilence).mockResolvedValue({
+      id: 11,
+      domain: 'BUSINESS',
+      startsAt: '2026-08-12T01:00',
+      endsAt: '2026-08-12T02:00',
+      createdBy: 'admin',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.type(screen.getByLabelText('规则 ID'), '42');
+    await user.type(screen.getByLabelText('标签范围'), 'brokerName=broker-a');
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-08-11T01:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-11T02:00' } });
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+
+    expect(await screen.findByLabelText('规则 ID')).toHaveValue('');
+    expect(screen.getByLabelText('标签范围')).toHaveValue('');
+
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-08-12T01:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-12T02:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => {
+      expect(createAlertSilence).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ ruleId: 42 }),
+      );
+    });
+    const payload = vi.mocked(createAlertSilence).mock.lastCall?.[0] as Record<string, unknown>;
+    expect(payload.ruleId).toBeUndefined();
+    expect(payload.labels).toBeUndefined();
+  });
+
   it('loads maintenance windows by page and backs up after deleting the last page item', async () => {
     vi.mocked(listAlertSilencesPage)
       .mockResolvedValueOnce({
