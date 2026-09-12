@@ -48,6 +48,7 @@ import {
   SendOutlined,
   DeleteOutlined,
   EyeOutlined,
+  EditOutlined,
   ImportOutlined,
   ExportOutlined,
   SyncOutlined,
@@ -75,6 +76,7 @@ import {
   importTopics,
   listTopicsPage,
   sendTopicMessage,
+  updateTopic,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import type { Instance } from '../../api/instance';
@@ -371,6 +373,7 @@ const TopicPage = () => {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [form] = Form.useForm();
   const createTopicType = Form.useWatch('type', form);
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -629,6 +632,8 @@ const TopicPage = () => {
       void openDetail(topic);
     } else if (key === 'route') {
       void openDetail(topic);
+    } else if (key === 'config') {
+      openEditConfig(topic);
     } else if (key === 'send') {
       setSendTopic(topic);
       setPropsMode('form');
@@ -751,6 +756,14 @@ const TopicPage = () => {
             onClick={() => handleAction('detail', record)}
           >
             详情
+          </Button>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            style={{ borderColor: '#1677ff', color: '#1677ff' }}
+            onClick={() => handleAction('config', record)}
+          >
+            配置
           </Button>
           {!isCloudInstance && (
             <Button
@@ -1123,7 +1136,7 @@ const TopicPage = () => {
     );
   };
 
-  // ─── Create modal submit ──────────────────────────────────────
+  // ─── Create / edit modal submit ───────────────────────────────
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
@@ -1134,22 +1147,47 @@ const TopicPage = () => {
     setCreating(true);
     try {
       const values = await form.validateFields();
-      const created = await createTopic({
-        ...values,
-        instanceId: selectedInstanceId,
-      });
-      await reloadTopicPage();
-      message.success(`Topic「${created.name}」创建成功`);
+      if (editingTopic) {
+        const updated = await updateTopic({
+          ...values,
+          instanceId: selectedInstanceId,
+        });
+        await reloadTopicPage();
+        message.success(`Topic「${updated.name}」更新成功`);
+      } else {
+        const created = await createTopic({
+          ...values,
+          instanceId: selectedInstanceId,
+        });
+        await reloadTopicPage();
+        message.success(`Topic「${created.name}」创建成功`);
+      }
       setModalOpen(false);
+      setEditingTopic(null);
       form.resetFields();
     } catch (error) {
       if (!(error && typeof error === 'object' && 'errorFields' in error)) {
-        message.error('创建 Topic 失败，请稍后重试');
+        message.error(editingTopic ? '更新 Topic 失败，请稍后重试' : '创建 Topic 失败，请稍后重试');
       }
     } finally {
       createInFlightRef.current = false;
       setCreating(false);
     }
+  };
+
+  // Classic dashboard parity: the topic row's CONFIG action reuses the create
+  // dialog in update mode — name/type stay fixed, queue counts and perm change.
+  const openEditConfig = (topic: Topic) => {
+    setEditingTopic(topic);
+    form.setFieldsValue({
+      name: topic.name,
+      type: topic.type,
+      writeQueues: topic.writeQueues,
+      readQueues: topic.readQueues,
+      perm: topic.perm,
+      remark: topic.remark,
+    });
+    setModalOpen(true);
   };
 
   const handleImportFile = async (file: File) => {
@@ -1571,7 +1609,11 @@ const TopicPage = () => {
             type="primary"
             icon={<PlusOutlined />}
             disabled={!hasSelectedInstance}
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              setEditingTopic(null);
+              form.resetFields();
+              setModalOpen(true);
+            }}
           >
             创建 Topic
           </Button>
@@ -1671,17 +1713,18 @@ const TopicPage = () => {
         )}
       </Modal>
 
-      {/* ── Create Topic Modal ────────────────────────────────── */}
+      {/* ── Create / Edit Topic Modal ─────────────────────────── */}
       <Modal
-        title="创建 Topic"
+        title={editingTopic ? '编辑 Topic' : '创建 Topic'}
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
+          setEditingTopic(null);
           form.resetFields();
         }}
         onOk={handleCreate}
         confirmLoading={creating}
-        okText="创建"
+        okText={editingTopic ? '保存' : '创建'}
         cancelText="取消"
         width={560}
         destroyOnHidden
@@ -1712,7 +1755,7 @@ const TopicPage = () => {
               },
             ]}
           >
-            <Input placeholder="请输入 Topic 名称" />
+            <Input placeholder="请输入 Topic 名称" disabled={!!editingTopic} />
           </Form.Item>
 
           <Form.Item
@@ -1722,6 +1765,7 @@ const TopicPage = () => {
             extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
           >
             <Segmented
+              disabled={!!editingTopic}
               options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
                 ({ value, label }) => ({ value, label }),
               )}
