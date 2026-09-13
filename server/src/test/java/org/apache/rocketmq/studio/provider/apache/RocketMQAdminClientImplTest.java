@@ -185,6 +185,21 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void getConsumerGroupReturnsOfflineDetailForGroupWithoutRetryRouteTest() throws Exception {
+        // rocketmq-tools examineConsumerConnectionInfo locates the group through the
+        // %RETRY%<group> route, so a group created but never connected fails with
+        // TOPIC_NOT_EXIST for that retry topic before any broker is contacted.
+        when(adminExt.examineConsumerConnectionInfo("orders")).thenThrow(
+                new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: %RETRY%orders"));
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.getName()).isEqualTo("orders");
+        assertThat(group.getOnlineInstances()).isZero();
+    }
+
+    @Test
     void getConsumerGroupFillsProxySideConnectionsWhenBrokerReportsOfflineTest() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new MQClientException(
@@ -433,6 +448,45 @@ class RocketMQAdminClientImplTest {
         assertThat(preview.isAllowReset()).isFalse();
         assertThat(preview.getQueueCount()).isZero();
         assertThat(preview.getWarnings()).containsExactly("No consume offset data found for topic orders");
+        verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
+                anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetShouldReturnEmptyPreviewForGroupWithoutRetryRouteTest() throws Exception {
+        when(adminExt.examineConsumeStats("cg-orders")).thenThrow(
+                new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: %RETRY%cg-orders"));
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", 1784246400000L, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getQueueCount()).isZero();
+        assertThat(preview.getWarnings())
+                .containsExactly("Consumer group is not online and no consume offset data is available");
+        verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
+                anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetShouldReturnEmptyPreviewForBroadcastGroupTest() throws Exception {
+        // rocketmq-tools examineConsumeStats grades a broadcast group's empty offset table as
+        // MQClientException(BROADCAST_CONSUMPTION); the code only survives in the message text.
+        when(adminExt.examineConsumeStats("cg-orders")).thenThrow(
+                new MQClientException(ResponseCode.BROADCAST_CONSUMPTION,
+                        "Not found the consumer group consume stats, because return offset table is empty, "
+                                + "the consumer is under the broadcast mode"));
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", 1784246400000L, "orders");
+
+        assertThat(preview.isComplete()).isFalse();
+        assertThat(preview.isAllowReset()).isFalse();
+        assertThat(preview.getQueueCount()).isZero();
+        assertThat(preview.getWarnings())
+                .containsExactly("Consumer group is not online and no consume offset data is available");
         verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
                 anyLong(), anyBoolean());
     }

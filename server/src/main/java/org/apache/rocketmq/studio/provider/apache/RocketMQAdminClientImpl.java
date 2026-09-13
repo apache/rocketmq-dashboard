@@ -35,6 +35,7 @@ import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfi
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -239,7 +240,16 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 && brokerException.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
             return true;
         }
+        // rocketmq-tools locates a group through the %RETRY%<group> topic route before any
+        // broker call, so a group that never connected fails with TOPIC_NOT_EXIST for that
+        // retry topic, and a broadcast group with an empty offset table fails with
+        // BROADCAST_CONSUMPTION. Both mean "no live data", not a lookup failure.
         String message = exception.getMessage();
+        if (MqResponseCodes.hasResponseCode(exception, ResponseCode.BROADCAST_CONSUMPTION)
+                || MqResponseCodes.hasResponseCode(exception, ResponseCode.TOPIC_NOT_EXIST)
+                        && message != null && message.contains("%RETRY%")) {
+            return true;
+        }
         return message != null && (message.contains("not online") || message.contains("CODE: 206"));
     }
 
