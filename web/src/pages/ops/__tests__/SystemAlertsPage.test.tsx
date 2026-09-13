@@ -590,6 +590,29 @@ describe('SystemAlertsPage', () => {
     expect(payload.labels).toBeUndefined();
   });
 
+  it('surfaces the label validation message when the silence labels are invalid', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 10,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+
+    // a trailing comma leaves an empty pair and must fail validation with the
+    // dedicated message, not the generic "creation failed" toast
+    await user.type(screen.getByLabelText('标签范围'), 'brokerName=broker-a,');
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-08-11T01:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-11T02:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    expect(await screen.findByText('标签格式应为 key=value，并以逗号分隔')).toBeInTheDocument();
+    expect(createAlertSilence).not.toHaveBeenCalled();
+  });
+
   it('loads maintenance windows by page and backs up after deleting the last page item', async () => {
     vi.mocked(listAlertSilencesPage)
       .mockResolvedValueOnce({
