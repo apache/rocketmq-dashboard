@@ -388,6 +388,28 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listMessagesShouldCarryReconsumeTimes() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-msg-retry");
+        deadLetter.setTopic("orders");
+        deadLetter.setStoreTimestamp(1_700_000_000_000L);
+        deadLetter.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        deadLetter.setReconsumeTimes(3);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt())).thenReturn(pullResult);
+
+        PageResult<DLQMessageVO> page = provider.listMessages(
+                "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
+
+        assertThat(page.getItems()).hasSize(1);
+        assertThat(page.getItems().get(0).getReconsumeTimes()).isEqualTo(3);
+    }
+
+    @Test
     void resendSelectedMessagesResolvesInTopologyMsgIdNormally() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
