@@ -16,7 +16,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
@@ -26,7 +41,18 @@ import {
   listAlertRuleAssets,
 } from '../services/alertRuleAssetService';
 import type { AlertRuleAssetInfo } from '../api/alertRuleAssets';
-import { downloadBlob } from '../utils/download';
+import { downloadBlob, downloadCsv } from '../utils/download';
+import { tableScrollX } from '../utils/table';
+import {
+  buildAlertRuleAssetCatalogCsv,
+  buildAlertRuleAssetCatalogFilename,
+  buildAlertRuleAssetInsights,
+  formatAlertRuleAssetPercent,
+  type AlertRuleAssetDomain,
+  type AlertRuleAssetDomainInsight,
+  type AlertRuleAssetHealthLevel,
+  type AlertRuleAssetIssue,
+} from '../utils/alertRuleAssetInsights';
 
 const { Text } = Typography;
 
@@ -34,6 +60,47 @@ const SEVERITY_COLORS: Record<string, string> = {
   critical: 'red',
   warning: 'orange',
   info: 'blue',
+};
+
+const HEALTH_COLORS: Record<AlertRuleAssetHealthLevel, string> = {
+  healthy: 'success',
+  notice: 'processing',
+  warning: 'warning',
+  critical: 'error',
+};
+
+const DOMAIN_COLORS: Record<AlertRuleAssetDomain, string> = {
+  broker: 'blue',
+  consumer: 'cyan',
+  producer: 'geekblue',
+  topic: 'purple',
+  proxy: 'green',
+  client: 'gold',
+  dlq: 'volcano',
+  error: 'red',
+  runtime: 'magenta',
+  unknown: 'default',
+};
+
+const domainTextKey = (domain: AlertRuleAssetDomain) => `alertAssets.domain.${domain}`;
+
+const issueTextKey = (issue: AlertRuleAssetIssue) => {
+  switch (issue.code) {
+    case 'NO_ASSETS':
+      return 'alertAssets.issueNoAssets';
+    case 'DUPLICATE_ASSET_NAME':
+      return 'alertAssets.issueDuplicateName';
+    case 'EMPTY_RULE_ASSET':
+      return 'alertAssets.issueEmptyAsset';
+    case 'MISSING_SEVERITY':
+      return 'alertAssets.issueMissingSeverity';
+    case 'DOMAIN_UNCOVERED':
+      return 'alertAssets.issueDomainUncovered';
+    case 'DOMAIN_WITHOUT_CRITICAL':
+      return 'alertAssets.issueDomainWithoutCritical';
+    default:
+      return 'alertAssets.issueUnknown';
+  }
 };
 
 export const AlertRuleAssetList: React.FC = () => {
@@ -76,6 +143,15 @@ export const AlertRuleAssetList: React.FC = () => {
       return matchesSearch && matchesSeverity;
     });
   }, [assets, searchText, selectedSeverities]);
+
+  const catalogInsights = useMemo(() => buildAlertRuleAssetInsights(assets), [assets]);
+  const visibleIssueTexts = catalogInsights.issues.slice(0, 4).map((issue) =>
+    t(issueTextKey(issue), {
+      asset: issue.assetName || '-',
+      domain: issue.domain ? t(domainTextKey(issue.domain)) : '-',
+      value: issue.value ?? '-',
+    }),
+  );
 
   const loadAssets = useCallback(async () => {
     const requestId = ++listRequestId.current;
@@ -151,16 +227,38 @@ export const AlertRuleAssetList: React.FC = () => {
     }
   };
 
+  const handleExportCatalog = () => {
+    downloadCsv(
+      buildAlertRuleAssetCatalogFilename(),
+      buildAlertRuleAssetCatalogCsv(filteredAssets),
+    );
+    message.success(t('alertAssets.catalogExported'));
+  };
+
+  const renderSeverityTags = (severities: string[]) => (
+    <Space size={[0, 4]} wrap>
+      {(severities || []).map((severity) => (
+        <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
+          {severity.toUpperCase()}
+        </Tag>
+      ))}
+    </Space>
+  );
+
   const columns: ColumnsType<AlertRuleAssetInfo> = [
     {
       title: t('alertAssets.name'),
       dataIndex: 'name',
       key: 'name',
+      minWidth: 220,
+      ellipsis: true,
     },
     {
       title: t('alertAssets.group'),
       dataIndex: 'group',
       key: 'group',
+      width: 180,
+      ellipsis: true,
       render: (group: string) => <Tag color="blue">{group}</Tag>,
     },
     {
@@ -174,15 +272,7 @@ export const AlertRuleAssetList: React.FC = () => {
       dataIndex: 'severities',
       key: 'severities',
       width: 180,
-      render: (severities: string[]) => (
-        <Space size={[0, 4]} wrap>
-          {(severities || []).map((severity) => (
-            <Tag key={severity} color={SEVERITY_COLORS[severity] || 'default'}>
-              {severity.toUpperCase()}
-            </Tag>
-          ))}
-        </Space>
-      ),
+      render: renderSeverityTags,
     },
     {
       title: t('common.actions'),
@@ -206,6 +296,80 @@ export const AlertRuleAssetList: React.FC = () => {
     },
   ];
 
+  const domainColumns: ColumnsType<AlertRuleAssetDomainInsight> = [
+    {
+      title: t('alertAssets.domain'),
+      dataIndex: 'domain',
+      key: 'domain',
+      minWidth: 140,
+      render: (domain: AlertRuleAssetDomain) => (
+        <Tag color={DOMAIN_COLORS[domain]}>{t(domainTextKey(domain))}</Tag>
+      ),
+    },
+    {
+      title: t('alertAssets.assetCount'),
+      dataIndex: 'assetCount',
+      key: 'assetCount',
+      width: 110,
+    },
+    {
+      title: t('alertAssets.ruleCount'),
+      dataIndex: 'ruleCount',
+      key: 'ruleCount',
+      width: 110,
+    },
+    {
+      title: t('alertAssets.coverageShare'),
+      dataIndex: 'coveragePercent',
+      key: 'coveragePercent',
+      width: 120,
+      render: (value: number) => formatAlertRuleAssetPercent(value),
+    },
+    {
+      title: t('alertAssets.criticalAssets'),
+      dataIndex: 'criticalAssetCount',
+      key: 'criticalAssetCount',
+      width: 130,
+    },
+    {
+      title: t('alertAssets.groups'),
+      dataIndex: 'groups',
+      key: 'groups',
+      width: 220,
+      ellipsis: true,
+      render: (groups: string[]) => (groups.length === 0 ? '-' : groups.join(', ')),
+    },
+  ];
+
+  const summaryCards = [
+    {
+      key: 'assets',
+      title: t('alertAssets.assetCount'),
+      value: catalogInsights.totalAssets,
+      detail: t('alertAssets.visibleAssets', { n: filteredAssets.length }),
+    },
+    {
+      key: 'rules',
+      title: t('alertAssets.totalRules'),
+      value: catalogInsights.totalRules,
+      detail: t('alertAssets.groupCount', { n: catalogInsights.groupCount }),
+    },
+    {
+      key: 'domains',
+      title: t('alertAssets.domainCoverage'),
+      value: `${catalogInsights.coveredExpectedDomainCount}/${catalogInsights.expectedDomainCount}`,
+      detail: formatAlertRuleAssetPercent(catalogInsights.coveragePercent),
+    },
+    {
+      key: 'score',
+      title: t('alertAssets.readinessScore'),
+      value: catalogInsights.score,
+      suffix: '/100',
+      detail: t(`alertAssets.level.${catalogInsights.level}`),
+    },
+  ];
+  const showCatalogInsights = assets.length > 0 || (!loading && !loadError);
+
   return (
     <div>
       <Space style={{ marginBottom: 12 }}>
@@ -227,6 +391,13 @@ export const AlertRuleAssetList: React.FC = () => {
           onChange={setSelectedSeverities}
           style={{ minWidth: 220 }}
         />
+        <Button
+          icon={<DownloadSimple size={16} />}
+          disabled={loading || filteredAssets.length === 0}
+          onClick={handleExportCatalog}
+        >
+          {t('alertAssets.exportCatalog')}
+        </Button>
       </Space>
 
       {loadError && (
@@ -247,6 +418,65 @@ export const AlertRuleAssetList: React.FC = () => {
         />
       )}
 
+      {showCatalogInsights ? (
+        <Card
+          size="small"
+          title={t('alertAssets.catalogInsights')}
+          extra={
+            <Tag color={HEALTH_COLORS[catalogInsights.level]}>
+              {t(`alertAssets.level.${catalogInsights.level}`)}
+            </Tag>
+          }
+          style={{ marginBottom: 12 }}
+        >
+          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+            {summaryCards.map((card) => (
+              <Col xs={12} lg={6} key={card.key}>
+                <div
+                  style={{
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 6,
+                    padding: 12,
+                    minHeight: 92,
+                    background: '#fafafa',
+                  }}
+                >
+                  <Statistic title={card.title} value={card.value} suffix={card.suffix} />
+                  <Text type="secondary" ellipsis={{ tooltip: card.detail }}>
+                    {card.detail}
+                  </Text>
+                </div>
+              </Col>
+            ))}
+          </Row>
+
+          {visibleIssueTexts.length > 0 ? (
+            <Alert
+              showIcon
+              type={
+                catalogInsights.level === 'critical'
+                  ? 'error'
+                  : catalogInsights.level === 'warning'
+                    ? 'warning'
+                    : 'info'
+              }
+              message={`${t('alertAssets.findings')}: ${visibleIssueTexts.join('; ')}`}
+              style={{ marginBottom: 12 }}
+            />
+          ) : null}
+
+          <Table
+            columns={domainColumns}
+            dataSource={catalogInsights.domainRows}
+            rowKey="domain"
+            pagination={false}
+            size="small"
+            tableLayout="fixed"
+            scroll={{ x: tableScrollX(domainColumns) }}
+          />
+        </Card>
+      ) : null}
+
       <Table
         columns={columns}
         dataSource={filteredAssets}
@@ -254,6 +484,8 @@ export const AlertRuleAssetList: React.FC = () => {
         rowKey="name"
         pagination={false}
         size="small"
+        tableLayout="fixed"
+        scroll={{ x: tableScrollX(columns) }}
       />
 
       <Modal

@@ -105,6 +105,47 @@ describe('AlertRuleAssetList', () => {
       expect(screen.queryByText('rocketmq-consumer-lag-high')).not.toBeInTheDocument(),
     );
   }, 10_000);
+
+  it('renders catalog coverage insights for the loaded assets', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    expect(
+      await screen.findByText(/规则资产覆盖洞察|Rule Asset Coverage Insights/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('2/5')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Producer.*没有内置资产覆盖|Producer has no bundled asset coverage/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Broker')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Consumer')[0]).toBeInTheDocument();
+  });
+
+  it('exports the filtered catalog metadata as CSV', async () => {
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    const user = userEvent.setup();
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    expect(await screen.findByText('rocketmq-broker-down')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText(/Search alert|搜索告警/), 'consumer');
+    await user.click(screen.getByRole('button', { name: /导出目录|Export catalog/ }));
+
+    const exportedBlob = createObjectURLSpy.mock.calls[0][0] as Blob;
+    await expect(exportedBlob.text()).resolves.toContain('rocketmq-consumer-lag-high');
+    await expect(exportedBlob.text()).resolves.not.toContain('rocketmq-broker-down');
+    expect(clickSpy).toHaveBeenCalled();
+
+    createObjectURLSpy.mockRestore();
+    revokeSpy.mockRestore();
+    clickSpy.mockRestore();
+  });
+
   it('keeps a failed list request visible and recovers when retried', async () => {
     vi.mocked(alertRuleAssetService.listAlertRuleAssets)
       .mockRejectedValueOnce(new Error('temporary failure'))
@@ -175,7 +216,7 @@ describe('AlertRuleAssetList', () => {
     );
     renderWithProviders(<AlertRuleAssetList />);
 
-    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    const exportButtons = await screen.findAllByRole('button', { name: /^(导出|Export)$/ });
     fireEvent.click(exportButtons[0]);
     fireEvent.click(exportButtons[1]);
 
@@ -194,7 +235,7 @@ describe('AlertRuleAssetList', () => {
     );
     renderWithProviders(<AlertRuleAssetList />);
 
-    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    const exportButtons = await screen.findAllByRole('button', { name: /^(导出|Export)$/ });
     act(() => {
       exportButtons[0].click();
       exportButtons[0].click();
@@ -216,7 +257,7 @@ describe('AlertRuleAssetList', () => {
 
     renderWithProviders(<AlertRuleAssetList />);
 
-    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    const exportButtons = await screen.findAllByRole('button', { name: /^(导出|Export)$/ });
     fireEvent.click(exportButtons[0]);
 
     await waitFor(() =>
