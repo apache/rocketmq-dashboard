@@ -142,6 +142,21 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void listCertsShouldNotExposeTheStoredPrivateKey() {
+        sampleCert.setKeyPem("-----BEGIN PRIVATE KEY-----\nMIIEvQ\n-----END PRIVATE KEY-----\n");
+        when(k8sCertRepository.findAll()).thenReturn(List.of(sampleCert));
+
+        List<K8sCertVO> result = k8sCertService.listCerts();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getKeyPem()).isNull();
+        assertThat(result.get(0).getCertPem()).isNull();
+        assertThat(result.get(0).getK8sId()).isEqualTo("rocketmq-tls");
+        // the stored record keeps its key so the inventory stays complete
+        assertThat(sampleCert.getKeyPem()).isNotNull();
+    }
+
+    @Test
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("new-tls-cert")

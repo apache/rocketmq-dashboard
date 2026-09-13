@@ -64,6 +64,12 @@ public class K8sCertService {
         LocalDateTime now = LocalDateTime.now(clock);
         return k8sCertRepository.findAll().stream()
                 .map(cert -> refreshExpirationState(cert, now))
+                .map(cert -> {
+                    // The inventory is readable by reader-role users and the UI only ever
+                    // persists the private key, so the stored PEM must not leave the service.
+                    cert.setKeyPem(null);
+                    return cert;
+                })
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
