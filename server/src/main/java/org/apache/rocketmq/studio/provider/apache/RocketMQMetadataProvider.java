@@ -744,8 +744,20 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return brokerException.getResponseCode()
                     == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
         }
+        // rocketmq-tools grades these business states as MQClientException, so the typed code
+        // only survives in the message text: examineConsumerConnectionInfo throws
+        // CONSUMER_NOT_ONLINE for a group whose clients all disconnected, and
+        // examineConsumeStats throws BROADCAST_CONSUMPTION for a broadcast group with an
+        // empty offset table. Both mean "no live data", not a connectivity failure
+        // (same grading as RocketMQClientProvider.isGroupConnectionAbsent).
+        if (MqResponseCodes.hasResponseCode(e,
+                org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                org.apache.rocketmq.remoting.protocol.ResponseCode.BROADCAST_CONSUMPTION)) {
+            return true;
+        }
         String message = e.getMessage();
-        return message != null && message.contains("not online");
+        return message != null && (message.contains("not online")
+                || message.contains("Not found the consumer group connection"));
     }
 
     // ── Helper methods ──────────────────────────────────────────────────

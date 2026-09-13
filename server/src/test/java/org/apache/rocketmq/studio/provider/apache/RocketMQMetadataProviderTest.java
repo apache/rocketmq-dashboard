@@ -564,6 +564,21 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getGroupProgressShouldReturnEmptyForBroadcastGroupTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // rocketmq-tools examineConsumeStats throws MQClientException(BROADCAST_CONSUMPTION)
+        // for a broadcast group with an empty offset table; the code only survives in the
+        // message text ("CODE: 213  DESC: ... the consumer is under the broadcast mode").
+        when(admin.examineConsumeStats("group-broadcast")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQClientException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.BROADCAST_CONSUMPTION,
+                        "Not found the consumer group consume stats, because return offset table is empty, "
+                                + "the consumer is under the broadcast mode"));
+
+        assertThat(newLiveProvider(admin).getGroupProgress(null, "group-broadcast")).isEmpty();
+    }
+
+    @Test
     void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumerConnectionInfo("group-a"))
@@ -633,6 +648,20 @@ class RocketMQMetadataProviderTest {
                         "the consumer group[group-proxy] not online BROKER: 10.0.0.11:10911"));
 
         assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-proxy")).isEmpty();
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldReturnEmptyWhenClientReportsGroupOfflineTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // rocketmq-tools examineConsumerConnectionInfo throws MQClientException(CONSUMER_NOT_ONLINE)
+        // when the broker returns an empty connection set; the typed code only survives in the
+        // message text ("CODE: 206  DESC: Not found the consumer group connection ...").
+        when(admin.examineConsumerConnectionInfo("group-offline")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQClientException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+
+        assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-offline")).isEmpty();
     }
 
     @Test
