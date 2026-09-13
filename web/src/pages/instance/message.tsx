@@ -894,6 +894,9 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label="大小">{formatSize(selectedMsg.size)}</Descriptions.Item>
+            <Descriptions.Item label="重投次数">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
+            </Descriptions.Item>
             <Descriptions.Item label="Born Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.bornHost}</span>
             </Descriptions.Item>

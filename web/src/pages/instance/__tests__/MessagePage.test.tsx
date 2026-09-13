@@ -276,6 +276,30 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it('shows the redelivery count on the message detail panel', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-RETRY'), reconsumeTimes: 2 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-RETRY');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-RETRY')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    const retryItems = screen
+      .getAllByText(/^重投次数$/)
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(retryItems).toHaveLength(1);
+    expect(retryItems[0]).toHaveTextContent('2');
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,

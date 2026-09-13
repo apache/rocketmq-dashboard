@@ -13,6 +13,7 @@ export interface MessageRecord {
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
+  reconsumeTimes?: number;
   properties: Record<string, string>;
   size: number;
 }

@@ -656,6 +656,18 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void toRecordVOCarriesReconsumeTimes() {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-retry");
+        message.setTopic("TopicA");
+        message.setReconsumeTimes(4);
+
+        MessageRecordVO record = provider.toRecordVO(message);
+
+        assertThat(record.getReconsumeTimes()).isEqualTo(4);
+    }
+
+    @Test
     void toRecordVODoesNotSplitUtf8CharacterAtBodyLimit() {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-utf8");
