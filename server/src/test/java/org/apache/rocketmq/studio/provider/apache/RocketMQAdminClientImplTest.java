@@ -12,6 +12,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.client.exception.MQBrokerException;
@@ -702,6 +703,56 @@ class RocketMQAdminClientImplTest {
         assertThat(existing.getTopicType()).isEqualTo(TopicType.FIFO.name());
         assertThat(existing.getRemark()).isEqualTo("updated remark");
         verify(topicMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTopicClearsTheStoredRemarkWhenTheRequestSubmitsABlankRemark() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setTopicType(TopicType.NORMAL.name());
+        existing.setRemark("old remark");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        when(topicMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setRemark("");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(topicMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("remark");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+        assertThat(existing.getRemark()).isNull();
+        assertThat(updated.getRemark()).isNull();
+    }
+
+    @Test
+    void updateTopicKeepsTheStoredRemarkWhenTheRequestOmitsIt() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setTopicType(TopicType.NORMAL.name());
+        existing.setRemark("old remark");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        verify(topicMapper, never()).update(any(), any());
+        assertThat(existing.getRemark()).isEqualTo("old remark");
+        assertThat(updated.getRemark()).isEqualTo("old remark");
     }
 
     @Test
