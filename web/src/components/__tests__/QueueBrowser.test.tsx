@@ -215,4 +215,30 @@ describe('QueueBrowser request ownership', () => {
     expect(getQueueOffsets).toHaveBeenCalledTimes(1);
     await act(async () => queues.resolve([queue('broker-a')]));
   });
+
+  it('clears the pulling indicator when the queue list reloads mid-pull', async () => {
+    const pull = createDeferred<MessageRecord | null>();
+    const reloadedQueues = createDeferred<QueueOffset[]>();
+    vi.mocked(getQueueOffsets)
+      .mockResolvedValueOnce([queue('broker-a')])
+      .mockReturnValueOnce(reloadedQueues.promise);
+    vi.mocked(pullMessageAtOffset).mockReturnValue(pull.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(screen.getByLabelText('pulling')).toHaveTextContent('true'));
+
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await act(async () => {
+      pull.resolve(messageRecord('message-a'));
+      reloadedQueues.resolve([queue('broker-a')]);
+    });
+
+    expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+  });
 });

@@ -87,6 +87,10 @@ export const useQueueBrowser = (instanceId?: string) => {
     setQueues([]);
     setOffsets({});
     setEntries([]);
+    // A reload invalidates every in-flight pull (their stale requestIds make the
+    // finally-block skip the state sync), so the pulling indicators must be reset here.
+    pullingRef.current.clear();
+    setPulling(new Set());
     try {
       const result = await getQueueOffsets({ instanceId, topic });
       if (requestId !== requestSeqRef.current) return;
