@@ -265,7 +265,9 @@ const UserManagementPage = () => {
     setUserExporting(true);
     try {
       const exportedUsers = await exportStudioUsers({
-        search: search.trim() || undefined,
+        // The table only ever shows the debounced (committed) search; exporting the live
+        // input would produce a CSV for a query the user never saw displayed.
+        search: debouncedSearch || undefined,
         admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
         enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
       });
@@ -279,7 +281,7 @@ const UserManagementPage = () => {
       message.error('导出用户列表失败，请稍后重试');
     }
     setUserExporting(false);
-  }, [admin, roleFilter, search, statusFilter]);
+  }, [admin, debouncedSearch, roleFilter, statusFilter]);
   // Declared widths total 1116px, which stays inside the usable content width of a normal
   // 1440px viewport (220px Sider plus page and Card padding), so the table does not show a
   // horizontal scrollbar by default. Columns whose text can be longer than that truncate with

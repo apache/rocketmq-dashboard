@@ -184,6 +184,42 @@ describe('UserManagementPage', () => {
     expect(exportedCsv).toContain('"2"');
   });
 
+  it('exports users matching the committed search, not live input', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.type(screen.getByPlaceholderText('搜索用户名'), 'alpha');
+    await waitFor(() =>
+      expect(listStudioUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'alpha' }),
+      ),
+    );
+
+    // Refine the input and export within the same synchronous block so the 300 ms
+    // debounce cannot commit the new term in between: the CSV must match the query
+    // the displayed table was loaded with, not the uncommitted live input.
+    const searchInput = screen.getByPlaceholderText('搜索用户名');
+    act(() => {
+      fireEvent.change(searchInput, { target: { value: 'alpha-beta' } });
+      fireEvent.click(screen.getByRole('button', { name: '导出' }));
+    });
+
+    await waitFor(() =>
+      expect(downloadStudioUsers).toHaveBeenCalledWith({
+        search: 'alpha',
+        admin: undefined,
+        enabled: undefined,
+      }),
+    );
+    expect(downloadStudioUsers).not.toHaveBeenCalledWith({
+      search: 'alpha-beta',
+      admin: undefined,
+      enabled: undefined,
+    });
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+  });
+
   it('renders active session metadata and revokes sessions after confirmation', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
