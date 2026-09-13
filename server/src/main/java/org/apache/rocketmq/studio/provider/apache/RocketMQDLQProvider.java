@@ -406,6 +406,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .queueId(message.getQueueId())
                 .offset(message.getQueueOffset())
                 .storeTime(message.getStoreTimestamp())
+                .reconsumeTimes(message.getReconsumeTimes())
                 .keys(message.getKeys())
                 .body(toUtf8Text(message.getBody()))
                 .bodyBase64(message.getBody() == null ? null

@@ -114,6 +114,7 @@ export interface DLQMessage {
   queueId: number;
   offset: number;
   storeTime: number;
+  reconsumeTimes?: number;
   keys: string | null;
   body: string | null;
   bodyBase64: string | null;

@@ -39,6 +39,7 @@ public class DLQMessageVO {
     private int queueId;
     private long offset;
     private long storeTime;
+    private int reconsumeTimes;
     private String keys;
     private String body;
     private String bodyBase64;

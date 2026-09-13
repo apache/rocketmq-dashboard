@@ -295,6 +295,39 @@ describe('DLQ page', () => {
     expect(screen.getByText('cn-east-1')).toBeInTheDocument();
   });
 
+  it('shows the retry count in the DLQ message drawer', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-retry',
+          topic: 'orders',
+          queueId: 2,
+          offset: 9,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-retry',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+          reconsumeTimes: 3,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    expect((await screen.findAllByText('重投次数')).length).toBeGreaterThanOrEqual(1);
+    const keyCell = await screen.findByText('key-retry');
+    const row = keyCell.closest('tr') as HTMLElement;
+    expect(within(row).getByText('3')).toBeInTheDocument();
+  });
+
   it('exports the dead-letter messages of a group as Excel', async () => {
     vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
       blob: new Blob(['xlsx-bytes'], {
