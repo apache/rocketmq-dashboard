@@ -855,6 +855,30 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     appliedCustomPromql,
   ]);
 
+  // The dashboard keeps this explorer mounted and only swaps the instanceId prop. The
+  // reload effect re-runs the profile panels via loadAll, but nothing re-runs the custom
+  // query panel, so it would keep showing the previous instance's chart (or error) under
+  // the new instance. Re-run the committed custom query on the instance transition; when
+  // the selected data source drops out of the new instance's scope, the fallback effect
+  // above already re-runs both flows, so skip to avoid duplicating its request.
+  const lastInstanceIdRef = useRef(instanceId);
+  useEffect(() => {
+    if (lastInstanceIdRef.current === instanceId) return;
+    lastInstanceIdRef.current = instanceId;
+    if (!appliedCustomPromql) return;
+    if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
+      return;
+    }
+    void runCustomQuery(appliedCustomPromql, selectedRange);
+  }, [
+    instanceId,
+    appliedCustomPromql,
+    runCustomQuery,
+    selectedRange,
+    dataSourceKey,
+    availableDataSources,
+  ]);
+
   const pendingAuthMode = pendingDataSource
     ? getDataSourceAuthMode(pendingDataSource.auth)
     : 'none';
