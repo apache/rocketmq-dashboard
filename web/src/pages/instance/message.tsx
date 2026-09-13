@@ -903,6 +903,15 @@ const MessagePageContent = ({
             <Descriptions.Item label="存储时间" span={2}>
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
             </Descriptions.Item>
+            <Descriptions.Item label="Broker">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.brokerName ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue ID">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueId ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue Offset" span={2}>
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueOffset ?? '-'}</span>
+            </Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             消息体
