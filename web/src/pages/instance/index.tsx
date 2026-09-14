@@ -72,13 +72,31 @@ const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
   TENCENT: 'ap-chengdu',
 };
 
-/* ─── Helpers ─── */
-const typeLabel: Record<string, { text: string; color: string }> = {
-  CLOUD: { text: '云服务', color: 'blue' },
-  PROXY_LOCAL: { text: 'Proxy Local', color: 'cyan' },
-  PROXY_CLUSTER: { text: 'Proxy Cluster', color: 'blue' },
-  DIRECT: { text: 'Direct', color: 'orange' },
+const VENDOR_LABEL_KEYS: Record<InstanceVendor, string> = {
+  APACHE: 'instance.openSourceEdition',
+  ALIYUN: 'instance.aliyunEdition',
+  TENCENT: 'instance.tencentEdition',
 };
+
+const VENDOR_DESCRIPTION_KEYS: Record<InstanceVendor, string> = {
+  APACHE: 'instance.apacheDescription',
+  ALIYUN: 'instance.aliyunDescription',
+  TENCENT: 'instance.tencentDescription',
+};
+
+/* ─── Helpers ─── */
+const typeLabel: Record<string, { labelKey: string; color: string }> = {
+  CLOUD: { labelKey: 'instance.cloudType', color: 'blue' },
+  PROXY_LOCAL: { labelKey: 'instance.proxyLocalMode', color: 'cyan' },
+  PROXY_CLUSTER: { labelKey: 'instance.proxyClusterMode', color: 'blue' },
+  DIRECT: { labelKey: 'instance.directMode', color: 'orange' },
+};
+
+const APACHE_ACCESS_TYPE_OPTIONS = [
+  { value: 'PROXY_LOCAL', labelKey: 'instance.proxyLocalMode' },
+  { value: 'PROXY_CLUSTER', labelKey: 'instance.proxyClusterMode' },
+  { value: 'DIRECT', labelKey: 'instance.directMode' },
+] as const;
 
 function describeApiError(error: unknown, fallback: string): string {
   const serverMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
@@ -110,7 +128,7 @@ function compareResourceCounts(
    InstancePage
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,14 +178,14 @@ const InstancePage = () => {
       }
     } catch {
       if (requestId === requestIdRef.current) {
-        message.error('实例列表加载失败，请稍后重试');
+        message.error(t('instance.listLoadFailed'));
       }
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     listQueryRef.current = {
@@ -200,7 +218,7 @@ const InstancePage = () => {
         })
         .catch(() => {
           if (active) {
-            message.error('云凭据列表加载失败');
+            message.error(t('instance.cloudCredentialLoadFailed'));
           }
         })
         .finally(() => {
@@ -213,7 +231,7 @@ const InstancePage = () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [vendor, cloudVendor, addModalOpen]);
+  }, [vendor, cloudVendor, addModalOpen, t]);
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId) {
@@ -244,7 +262,7 @@ const InstancePage = () => {
         })
         .catch((error) => {
           if (active) {
-            message.error(describeApiError(error, '云地域列表加载失败'));
+            message.error(describeApiError(error, t('instance.cloudRegionLoadFailed')));
           }
         })
         .finally(() => {
@@ -257,7 +275,7 @@ const InstancePage = () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [vendor, cloudVendor, addCredentialId, addForm]);
+  }, [vendor, cloudVendor, addCredentialId, addForm, t]);
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId || !addRegionId) {
@@ -279,7 +297,7 @@ const InstancePage = () => {
         })
         .catch((error) => {
           if (active) {
-            message.error(describeApiError(error, '云实例列表加载失败'));
+            message.error(describeApiError(error, t('instance.cloudInstanceLoadFailed')));
           }
         })
         .finally(() => {
@@ -292,7 +310,7 @@ const InstancePage = () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [vendor, cloudVendor, addCredentialId, addRegionId]);
+  }, [vendor, cloudVendor, addCredentialId, addRegionId, t]);
 
   const handleVendorChange = (nextVendor: string) => {
     setVendor(nextVendor as InstanceVendor);
@@ -320,6 +338,24 @@ const InstancePage = () => {
     addForm.setFieldsValue({ cloudInstanceId: undefined });
   };
 
+  const getVendorLabel = (nextVendor: InstanceVendor) => {
+    return t(VENDOR_LABEL_KEYS[nextVendor]);
+  };
+
+  const getAccessTypeOptions = () =>
+    APACHE_ACCESS_TYPE_OPTIONS.map((option) => ({
+      value: option.value,
+      label: t(option.labelKey),
+    }));
+
+  const getEndpointExtra = (type?: Instance['type']) => {
+    if (type === 'DIRECT') return t('instance.directEndpointExtra');
+    if (type === 'PROXY_LOCAL') return t('instance.proxyLocalEndpointExtra');
+    if (type === 'PROXY_CLUSTER') return t('instance.proxyClusterEndpointExtra');
+    if (type === 'CLOUD') return t('instance.cloudEndpointExtra');
+    return t('instance.selectAccessTypeFirst');
+  };
+
   const handleCreate = async () => {
     if (mutationInFlightRef.current) return;
     mutationInFlightRef.current = true;
@@ -338,7 +374,7 @@ const InstancePage = () => {
         : values;
       const created = await createInstance(payload);
       await loadInstances();
-      message.success(`实例「${created.name}」添加成功`);
+      message.success(t('instance.added', { name: created.name }));
       setAddModalOpen(false);
       addForm.resetFields();
       setVendor(DEFAULT_VENDOR);
@@ -346,7 +382,7 @@ const InstancePage = () => {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('添加实例失败，请稍后重试');
+      message.error(t('instance.createFailed'));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
@@ -357,7 +393,7 @@ const InstancePage = () => {
     if (importing || vendor === 'APACHE') return;
     const credentialId = addForm.getFieldValue('credentialId') as number | undefined;
     if (!credentialId) {
-      message.warning('请先选择云凭据');
+      message.warning(t('instance.selectCloudCredentialFirst'));
       return;
     }
     setImporting(true);
@@ -367,16 +403,33 @@ const InstancePage = () => {
       const failedCount = result.failedCount ?? result.failed.length;
       const summary =
         result.imported > 0
-          ? `导入完成：共同步 ${result.imported + result.skipped} 个实例（新导入 ${result.imported}，已存在跳过 ${result.skipped}）`
+          ? t('instance.importSuccess', {
+              total: result.imported + result.skipped,
+              imported: result.imported,
+              skipped: result.skipped,
+            })
           : failedCount > 0
-            ? `导入未完成：新导入 ${result.imported} 个，已存在跳过 ${result.skipped} 个`
-            : `云上实例均已在 Studio 中（共 ${result.skipped} 个），无需重复导入`;
+            ? t('instance.importIncomplete', {
+                imported: result.imported,
+                skipped: result.skipped,
+              })
+            : t('instance.importAllSkipped', { skipped: result.skipped });
       if (failedCount > 0) {
-        const details = result.failed.length > 0 ? `：${result.failed.join('；')}` : '';
+        const details =
+          result.failed.length > 0
+            ? `${lang === 'zh' ? '：' : ': '}${result.failed.join(lang === 'zh' ? '；' : '; ')}`
+            : '';
         const omitted = result.failureDetailsTruncated
-          ? `（仅显示前 ${result.failed.length} 条）`
+          ? t('instance.importFailureDetailsTruncated', { count: result.failed.length })
           : '';
-        message.warning(`${summary}，失败 ${failedCount} 个${omitted}${details}`);
+        message.warning(
+          t('instance.importPartialFailure', {
+            summary,
+            count: failedCount,
+            omitted,
+            details,
+          }),
+        );
       } else {
         message.success(summary);
       }
@@ -386,7 +439,7 @@ const InstancePage = () => {
       setRegions([]);
       setCloudInstances([]);
     } catch (error) {
-      message.error(describeApiError(error, '一键导入失败，请稍后重试'));
+      message.error(describeApiError(error, t('instance.importFailed')));
     } finally {
       setImporting(false);
     }
@@ -406,14 +459,14 @@ const InstancePage = () => {
         adminCredentialRef: values.adminCredentialRef,
       });
       await loadInstances();
-      message.success(`实例「${updated.name}」已更新`);
+      message.success(t('instance.updated', { name: updated.name }));
       setEditModalOpen(false);
       editForm.resetFields();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
       }
-      message.error('更新实例失败，请稍后重试');
+      message.error(t('instance.updateFailed'));
     } finally {
       mutationInFlightRef.current = false;
       setSubmitting(false);
@@ -424,9 +477,9 @@ const InstancePage = () => {
     try {
       await deleteInstance(instance.name);
       await loadInstances();
-      message.success('已删除');
+      message.success(t('instance.deleted'));
     } catch (error) {
-      message.error(describeApiError(error, '删除实例失败，请稍后重试'));
+      message.error(describeApiError(error, t('instance.deleteFailed')));
     }
   };
 
@@ -442,28 +495,35 @@ const InstancePage = () => {
       (instance) => instance.vendor === 'ALIYUN' || instance.vendor === 'TENCENT',
     );
     const warning = hasCloud
-      ? '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。'
-      : '仍有 Topic/Group 的开源实例无法删除。';
+      ? t('instance.cloudBatchDeleteWarning')
+      : t('instance.batchDeleteWarning');
     Modal.confirm({
-      title: `确认删除选中的 ${names.length} 个实例？`,
-      content: `将删除：${names.join('、')}。${warning}`,
-      okText: '删除',
+      title: t('instance.confirmBatchDelete', { count: names.length }),
+      content: t('instance.batchDeleteContent', {
+        names: names.join(lang === 'zh' ? '、' : ', '),
+        warning,
+      }),
+      okText: t('common.delete'),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           const result = await deleteInstancesBatch(names);
           await loadInstances();
           setSelectedRowKeys([]);
-          const summary = `已删除 ${result.deleted} 个`;
+          const summary = t('instance.deletedCount', { count: result.deleted });
           if (result.failed.length > 0) {
             message.warning(
-              `${summary}，${result.failed.length} 个未能删除：${result.failed.join('；')}`,
+              t('instance.batchDeletePartialFailure', {
+                summary,
+                count: result.failed.length,
+                failed: result.failed.join(lang === 'zh' ? '；' : '; '),
+              }),
             );
           } else {
             message.success(summary);
           }
         } catch (error) {
-          message.error(describeApiError(error, '批量删除失败，请稍后重试'));
+          message.error(describeApiError(error, t('instance.batchDeleteFailed')));
         }
       },
     });
@@ -471,7 +531,7 @@ const InstancePage = () => {
 
   const columns: ColumnsType<Instance> = [
     {
-      title: '地域',
+      title: t('instance.region'),
       dataIndex: 'regionId',
       key: 'regionId',
       width: 130,
@@ -481,13 +541,13 @@ const InstancePage = () => {
       render: (regionId: string | undefined, record: Instance) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {!record.vendor || record.vendor === 'APACHE'
-            ? '开源版'
+            ? t('instance.openSourceEdition')
             : record.regionName || regionId || '-'}
         </Text>
       ),
     },
     {
-      title: '实例 ID',
+      title: t('instance.instanceName'),
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
@@ -504,7 +564,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '备注',
+      title: t('instance.remark'),
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: { showTitle: false },
@@ -524,7 +584,7 @@ const InstancePage = () => {
         ),
     },
     {
-      title: '厂商',
+      title: t('instance.vendor'),
       dataIndex: 'vendor',
       key: 'vendor',
       width: 100,
@@ -536,22 +596,22 @@ const InstancePage = () => {
         }
         return (
           <Space size={6}>
-            <img src={option.logo} alt={option.label} style={{ height: 16 }} />
-            <Text style={{ fontSize: 14 }}>{option.label}</Text>
+            <img src={option.logo} alt={getVendorLabel(option.key)} style={{ height: 16 }} />
+            <Text style={{ fontSize: 14 }}>{getVendorLabel(option.key)}</Text>
           </Space>
         );
       },
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 110,
       align: 'center' as const,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
-        const t = typeLabel[type] || { text: type, color: 'default' };
-        return <Tag color={t.color}>{t.text}</Tag>;
+        const config = typeLabel[type] || { labelKey: type, color: 'default' };
+        return <Tag color={config.color}>{typeLabel[type] ? t(config.labelKey) : type}</Tag>;
       },
     },
     {
@@ -562,7 +622,7 @@ const InstancePage = () => {
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
-        record.resourceCountsAvailable === false ? '不可用' : count,
+        record.resourceCountsAvailable === false ? t('common.unavailable') : count,
     },
     {
       title: 'Group',
@@ -572,10 +632,10 @@ const InstancePage = () => {
       align: 'center' as const,
       sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
-        record.resourceCountsAvailable === false ? '不可用' : count,
+        record.resourceCountsAvailable === false ? t('common.unavailable') : count,
     },
     {
-      title: '创建时间',
+      title: t('instance.createdAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 150,
@@ -587,7 +647,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '修改时间',
+      title: t('instance.updatedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 150,
@@ -599,7 +659,7 @@ const InstancePage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 150,
       render: (_: unknown, record: Instance) => (
@@ -619,7 +679,7 @@ const InstancePage = () => {
               setEditModalOpen(true);
             }}
           >
-            编辑
+            {t('common.edit')}
           </Button>
           <Button
             size="small"
@@ -628,17 +688,17 @@ const InstancePage = () => {
             onClick={() => {
               const isCloudInstance = record.vendor === 'ALIYUN' || record.vendor === 'TENCENT';
               Modal.confirm({
-                title: `确认删除 "${record.name}"？`,
+                title: t('instance.confirmDelete', { name: record.name }),
                 content: isCloudInstance
-                  ? '仅从 Studio 移除该实例记录，不会释放云上的 RocketMQ 实例。'
-                  : '此操作不可恢复。',
-                okText: '删除',
+                  ? t('instance.cloudDeleteWarning')
+                  : t('instance.deleteWarning'),
+                okText: t('common.delete'),
                 okButtonProps: { danger: true },
                 onOk: () => handleDelete(record),
               });
             }}
           >
-            删除
+            {t('common.delete')}
           </Button>
         </Flex>
       ),
@@ -651,7 +711,7 @@ const InstancePage = () => {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
         <div style={{ marginTop: 6, fontSize: 14, color: '#9CA3AF' }}>
-          接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
+          {t('instance.managementSubtitle', { count: instances.length })}
         </div>
       </div>
 
@@ -665,7 +725,7 @@ const InstancePage = () => {
       >
         <Space size={12} wrap>
           <Input
-            placeholder="搜索实例 ID 或地址"
+            placeholder={t('instance.searchPlaceholder')}
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -677,11 +737,11 @@ const InstancePage = () => {
             onChange={setTypeFilter}
             style={{ width: 140 }}
             options={[
-              { value: 'ALL', label: '全部架构' },
-              { value: 'CLOUD', label: '云服务' },
-              { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-              { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-              { value: 'DIRECT', label: 'Direct 模式' },
+              { value: 'ALL', label: t('instance.allTypes') },
+              { value: 'CLOUD', label: t('instance.cloudType') },
+              { value: 'PROXY_LOCAL', label: t('instance.proxyLocalMode') },
+              { value: 'PROXY_CLUSTER', label: t('instance.proxyClusterMode') },
+              { value: 'DIRECT', label: t('instance.directMode') },
             ]}
           />
         </Space>
@@ -695,14 +755,14 @@ const InstancePage = () => {
             disabled={selectedRowKeys.length === 0}
             onClick={handleBatchDelete}
           >
-            删除
+            {t('common.delete')}
           </Button>
           <Button
             type="primary"
             icon={<Plus size={14} weight="bold" />}
             onClick={() => setAddModalOpen(true)}
           >
-            添加实例
+            {t('instance.addInstance')}
           </Button>
         </Space>
       </Flex>
@@ -736,7 +796,7 @@ const InstancePage = () => {
 
       {/* Add Instance Modal */}
       <Modal
-        title="添加实例"
+        title={t('instance.addInstance')}
         open={addModalOpen}
         onCancel={() => {
           setAddModalOpen(false);
@@ -749,13 +809,13 @@ const InstancePage = () => {
         footer={
           <Flex justify="flex-end" gap={8}>
             {cloudVendor && (
-              <Tooltip title="遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例">
+              <Tooltip title={t('instance.importAllTooltip')}>
                 <Button
                   loading={importing}
                   disabled={!addCredentialId}
                   onClick={() => void handleImportAll()}
                 >
-                  一键导入
+                  {t('instance.importAll')}
                 </Button>
               </Tooltip>
             )}
@@ -768,10 +828,10 @@ const InstancePage = () => {
                 setCloudInstances([]);
               }}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button type="primary" loading={submitting} onClick={() => void handleCreate()}>
-              连接
+              {t('instance.connect')}
             </Button>
           </Flex>
         }
@@ -785,40 +845,46 @@ const InstancePage = () => {
             key: option.key,
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <img src={option.logo} alt={option.label} style={{ height: 18, maxWidth: 80 }} />
-                {option.label}
+                <img
+                  src={option.logo}
+                  alt={getVendorLabel(option.key)}
+                  style={{ height: 18, maxWidth: 80 }}
+                />
+                {getVendorLabel(option.key)}
               </span>
             ),
           }))}
         />
         <Text type="secondary" style={{ display: 'block', fontSize: 14, marginBottom: 12 }}>
-          {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
+          {t(VENDOR_DESCRIPTION_KEYS[vendor])}
         </Text>
         {cloudVendor ? (
           <>
             <Form form={addForm} layout="vertical">
               <Form.Item
-                label="云凭据"
+                label={t('instance.cloudCredential')}
                 name="credentialId"
-                rules={[{ required: true, message: '请选择云凭据' }]}
+                rules={[{ required: true, message: t('instance.cloudCredentialRequired') }]}
                 extra={
                   <span>
-                    凭据为{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，
-                    <Link to="/settings?tab=credential">前往「设置 - 云凭据管理」添加</Link>
+                    {t('instance.cloudCredentialExtraPrefix', { vendor: getVendorLabel(vendor) })}
+                    <Link to="/settings?tab=credential">
+                      {t('instance.cloudCredentialSettingsLink')}
+                    </Link>
                   </span>
                 }
               >
                 <Select
-                  placeholder="选择已录入的 AK/SK 凭据"
+                  placeholder={t('instance.selectStoredCredential')}
                   loading={credentialsLoading}
                   onChange={handleCredentialChange}
                   notFoundContent={
                     credentialsLoading ? (
-                      '加载中…'
+                      t('instance.loading')
                     ) : (
                       <span>
-                        暂无{vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}凭据，
-                        <Link to="/settings?tab=credential">去设置中添加</Link>
+                        {t('instance.noCloudCredential', { vendor: getVendorLabel(vendor) })}
+                        <Link to="/settings?tab=credential">{t('instance.addInSettings')}</Link>
                       </span>
                     )
                   }
@@ -829,12 +895,16 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="地域"
+                label={t('instance.region')}
                 name="regionId"
-                rules={[{ required: true, message: '请选择地域' }]}
+                rules={[{ required: true, message: t('instance.regionRequired') }]}
               >
                 <Select
-                  placeholder={addCredentialId ? '选择地域' : '请先选择云凭据'}
+                  placeholder={
+                    addCredentialId
+                      ? t('instance.selectRegion')
+                      : t('instance.selectCloudCredentialFirst')
+                  }
                   disabled={!addCredentialId}
                   loading={regionsLoading}
                   onChange={handleRegionChange}
@@ -845,15 +915,19 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="云上实例"
+                label={t('instance.cloudInstance')}
                 name="cloudInstanceId"
-                rules={[{ required: true, message: '请选择云上实例' }]}
-                extra="商业版实例来自云端目录，无法手工创建"
+                rules={[{ required: true, message: t('instance.cloudInstanceRequired') }]}
+                extra={t('instance.cloudInstanceExtra')}
               >
                 <Select
                   showSearch
                   optionFilterProp="label"
-                  placeholder={addRegionId ? '选择云上实例' : '请先选择地域'}
+                  placeholder={
+                    addRegionId
+                      ? t('instance.selectCloudInstance')
+                      : t('instance.selectRegionFirst')
+                  }
                   disabled={!addRegionId}
                   loading={cloudInstancesLoading}
                   options={cloudInstances.map((item) => ({
@@ -869,84 +943,72 @@ const InstancePage = () => {
                 />
               </Form.Item>
               <Form.Item
-                label="实例 ID"
+                label={t('instance.instanceName')}
                 name="name"
                 rules={[
-                  { required: true, message: '请输入实例 ID' },
-                  { max: 64, message: '实例 ID 不能超过 64 个字符' },
+                  { required: true, message: t('instance.nameRequired') },
+                  { max: 64, message: t('instance.nameMax') },
                 ]}
               >
-                <Input placeholder="默认取云上实例 ID" />
+                <Input placeholder={t('instance.cloudNamePlaceholder')} />
               </Form.Item>
-              <Form.Item label="备注" name="remark">
-                <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+              <Form.Item label={t('instance.remark')} name="remark">
+                <Input.TextArea rows={2} placeholder={t('instance.remarkPlaceholder')} />
               </Form.Item>
             </Form>
           </>
         ) : (
           <Form form={addForm} layout="vertical">
             <Form.Item
-              label="实例 ID"
+              label={t('instance.instanceName')}
               name="name"
               rules={[
-                { required: true, message: '请输入实例 ID' },
-                { max: 64, message: '实例 ID 不能超过 64 个字符' },
+                { required: true, message: t('instance.nameRequired') },
+                { max: 64, message: t('instance.nameMax') },
               ]}
             >
-              <Input placeholder="例：rocketmq-production" />
+              <Input placeholder={t('instance.namePlaceholder')} />
             </Form.Item>
             <Form.Item
-              label="接入方式"
+              label={t('instance.accessType')}
               name="type"
-              rules={[{ required: true, message: '请选择接入方式' }]}
+              rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
             >
               <Select
-                placeholder="选择接入方式"
-                options={[
-                  { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-                  { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-                  { value: 'DIRECT', label: 'Direct 模式' },
-                ]}
+                placeholder={t('instance.selectAccessType')}
+                options={getAccessTypeOptions()}
               />
             </Form.Item>
             <Form.Item
               label={
                 <span>
-                  接入地址{' '}
-                  <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                  {t('instance.endpoint')}{' '}
+                  <Tooltip title={t('instance.endpointHelp')}>
                     <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
                   </Tooltip>
                 </span>
               }
               name="endpoint"
-              rules={[{ required: true, message: '请输入接入地址' }]}
-              extra={
-                addInstanceType === 'DIRECT'
-                  ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                  : addInstanceType === 'PROXY_LOCAL'
-                    ? 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）'
-                    : addInstanceType === 'PROXY_CLUSTER'
-                      ? 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）'
-                      : '请先选择接入方式'
-              }
+              rules={[{ required: true, message: t('instance.endpointRequired') }]}
+              extra={getEndpointExtra(addInstanceType)}
             >
               <Input
                 placeholder={
                   addInstanceType === 'DIRECT'
-                    ? '例：namesrv.mq.svc.cluster.local:9876'
-                    : '例：proxy.mq.svc.cluster.local:8080'
+                    ? t('instance.directEndpointPlaceholder')
+                    : t('instance.proxyEndpointPlaceholder')
                 }
               />
             </Form.Item>
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.adminCredentialRef')}
               name="adminCredentialRef"
-              extra="可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。"
+              extra={t('instance.adminCredentialRefExtra')}
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.adminCredentialRefPlaceholder')} />
             </Form.Item>
-            <Form.Item label="备注" name="remark">
-              <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+            <Form.Item label={t('instance.remark')} name="remark">
+              <Input.TextArea rows={2} placeholder={t('instance.remarkPlaceholder')} />
             </Form.Item>
           </Form>
         )}
@@ -954,7 +1016,7 @@ const InstancePage = () => {
 
       {/* Edit Instance Modal */}
       <Modal
-        title={`编辑实例 — ${editingInstance?.name || ''}`}
+        title={t('instance.editInstanceTitle', { name: editingInstance?.name || '' })}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -962,69 +1024,59 @@ const InstancePage = () => {
         }}
         onOk={() => void handleUpdate()}
         confirmLoading={submitting}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={520}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="实例 ID">
+          <Form.Item label={t('instance.instanceName')}>
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
           <Form.Item
-            label="接入方式"
+            label={t('instance.accessType')}
             name="type"
-            rules={[{ required: true, message: '请选择接入方式' }]}
+            rules={[{ required: true, message: t('instance.accessTypeRequired') }]}
           >
             <Select
               options={
                 editingInstance?.vendor && editingInstance.vendor !== 'APACHE'
-                  ? [{ value: 'CLOUD', label: '云服务' }]
-                  : [
-                      { value: 'PROXY_LOCAL', label: 'Proxy Local 模式' },
-                      { value: 'PROXY_CLUSTER', label: 'Proxy Cluster 模式' },
-                      { value: 'DIRECT', label: 'Direct 模式' },
-                    ]
+                  ? [{ value: 'CLOUD', label: t('instance.cloudType') }]
+                  : getAccessTypeOptions()
               }
             />
           </Form.Item>
           <Form.Item
             label={
               <span>
-                接入地址{' '}
-                <Tooltip title="接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。">
+                {t('instance.endpoint')}{' '}
+                <Tooltip title={t('instance.endpointHelp')}>
                   <QuestionCircleOutlined style={{ color: '#9CA3AF', cursor: 'help' }} />
                 </Tooltip>
               </span>
             }
             name="endpoint"
-            rules={[{ required: true, message: '请输入接入地址' }]}
-            extra={
-              editInstanceType === 'DIRECT'
-                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                : editInstanceType === 'CLOUD'
-                  ? '云服务实例接入地址由云厂商目录解析，不支持手动修改'
-                  : '请先选择接入方式'
-            }
+            rules={[{ required: true, message: t('instance.endpointRequired') }]}
+            extra={getEndpointExtra(editInstanceType)}
           >
             <Input
               placeholder={
                 editInstanceType === 'DIRECT'
-                  ? '例：namesrv.mq.svc.cluster.local:9876'
-                  : '例：proxy.mq.svc.cluster.local:8080'
+                  ? t('instance.directEndpointPlaceholder')
+                  : t('instance.proxyEndpointPlaceholder')
               }
             />
           </Form.Item>
           {editingInstance?.vendor === 'APACHE' && (
             <Form.Item
-              label="管理凭据引用"
+              label={t('instance.adminCredentialRef')}
               name="adminCredentialRef"
-              extra="仅保存服务端配置中的引用，不会保存或传输 AK/SK。"
+              extra={t('instance.adminCredentialRefEditExtra')}
             >
-              <Input placeholder="例：production-admin" />
+              <Input placeholder={t('instance.adminCredentialRefPlaceholder')} />
             </Form.Item>
           )}
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} placeholder="描述实例用途" />
+          <Form.Item label={t('instance.remark')} name="remark">
+            <Input.TextArea rows={3} placeholder={t('instance.remarkEditPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

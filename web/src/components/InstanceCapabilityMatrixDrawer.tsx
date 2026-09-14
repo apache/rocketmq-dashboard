@@ -59,6 +59,7 @@ interface InstanceCapabilityMatrixDrawerProps {
   onClose: () => void;
 }
 
+// 每批最多四个实例，为交互请求保留连接余量，并限制能力发现对服务端的瞬时负载。
 const LOAD_BATCH_SIZE = 4;
 
 const CSV_COLUMNS: CsvColumn<InstanceCapabilityMatrixRow>[] = [
@@ -178,7 +179,10 @@ const InstanceCapabilityMatrixDrawer = ({
 
   const exportMatrix = () => {
     if (!matrix) return;
-    downloadCsv('rocketmq-instance-capability-matrix.csv', buildCsv(CSV_COLUMNS, visibleRows));
+    downloadCsv(
+      `rocketmq-instance-capability-matrix-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`,
+      buildCsv(CSV_COLUMNS, visibleRows),
+    );
     message.success(t('capabilityMatrix.exported', { count: visibleRows.length }));
   };
 

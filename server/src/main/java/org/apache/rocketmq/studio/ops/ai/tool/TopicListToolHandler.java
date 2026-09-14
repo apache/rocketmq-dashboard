@@ -44,7 +44,7 @@ public class TopicListToolHandler implements ToolHandler {
         String type = (String) input.get("type");
         String search = (String) input.get("search");
         PageResult<TopicVO> page = metadataService.listTopicsPage(
-                clusterId, null, type, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+                null, clusterId, type, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
         return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(TopicListToolHandler::safeProjection)
                 .toList());

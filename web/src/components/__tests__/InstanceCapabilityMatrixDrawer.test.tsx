@@ -151,7 +151,7 @@ describe('InstanceCapabilityMatrixDrawer', () => {
     await user.click(screen.getByRole('button', { name: '导出矩阵' }));
 
     const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
-    expect(filename).toBe('rocketmq-instance-capability-matrix.csv');
+    expect(filename).toMatch(/^rocketmq-instance-capability-matrix-\d{4}-.*Z\.csv$/);
     expect(csv).toContain('cloud-prod');
     expect(csv).not.toContain('apache-prod');
     expect(csv).toContain('DLQ_MANAGEMENT');

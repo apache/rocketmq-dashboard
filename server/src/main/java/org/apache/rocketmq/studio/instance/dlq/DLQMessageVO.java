@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import java.util.Map;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -40,4 +42,6 @@ public class DLQMessageVO {
     private String keys;
     private String body;
     private String bodyBase64;
+    private Map<String, String> properties;
+    private boolean propertiesTruncated;
 }

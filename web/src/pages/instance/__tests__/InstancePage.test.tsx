@@ -26,6 +26,7 @@ import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as instanceService from '../../../services/instanceService';
 import InstancePage from '../index';
 
@@ -116,6 +117,7 @@ const deferred = <T,>() => {
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(cloudCredentialPage([]));
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
@@ -158,6 +160,18 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
     );
+  });
+
+  it('renders instance management copy in English mode', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    expect(screen.getByText('Instance List')).toBeInTheDocument();
+    expect(screen.getByText(/Connect and manage RocketMQ instances/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search instance ID or endpoint')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Instance/ })).toBeInTheDocument();
+    expect(screen.queryByText('添加实例')).not.toBeInTheDocument();
   });
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {

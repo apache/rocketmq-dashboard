@@ -80,6 +80,17 @@ class AlertSilenceScheduleTest {
     }
 
     @Test
+    void weeklyWindowRemainsActiveThroughItsSeventhDayTest() {
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.WEEKLY, "UTC", Set.of(2),
+                "2026-09-01T10:00:00", "2026-09-08T10:00:00", "2026-10-01T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-14T12:00:00")))
+                .isEqualTo(at("2026-09-15T10:00:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-09-15T09:59:59")))
+                .isEqualTo(at("2026-09-15T10:00:00"));
+    }
+
+    @Test
     void recurrenceNeverStartsBeforeSeedWindowTest() {
         AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "UTC", Set.of(),
                 "2026-09-10T10:00:00", "2026-09-10T11:00:00", "2026-09-20T00:00:00");

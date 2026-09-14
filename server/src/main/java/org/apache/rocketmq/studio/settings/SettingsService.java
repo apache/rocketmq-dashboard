@@ -218,7 +218,7 @@ public class SettingsService {
         return settingsRepository.findAllDataSources();
     }
 
-    @Cacheable(value = "data-sources", key = "'page:' + #search + ':' + #type + ':' + #page + ':' + #pageSize")
+    @Cacheable("data-sources")
     public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");

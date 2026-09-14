@@ -47,7 +47,9 @@ final class AlertSilenceSchedule {
         ZonedDateTime seedStart = silence.getStartsAt().toInstant(ZoneOffset.UTC).atZone(zone);
         ZonedDateTime seedEnd = silence.getEndsAt().toInstant(ZoneOffset.UTC).atZone(zone);
         Duration wallDuration = Duration.between(seedStart.toLocalDateTime(), seedEnd.toLocalDateTime());
-        int daysToInspect = recurrence == AlertSilenceRecurrence.DAILY ? 1 : 6;
+        // A weekly window may span up to 7 days, so an occurrence anchored 7 days
+        // back can still be in its final hours; daily windows span at most 24 hours.
+        int daysToInspect = recurrence == AlertSilenceRecurrence.DAILY ? 1 : 7;
 
         for (int offset = 0; offset <= daysToInspect; offset++) {
             LocalDate candidateDate = localNow.toLocalDate().minusDays(offset);
