@@ -235,24 +235,6 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
   return clusterApi.updateK8sCert(data);
 }
 
-export async function renewK8sCert(id: number): Promise<K8sCertInfo> {
-  if (isMockMode()) {
-    const existing = mockCertStore.find((cert) => cert.id === id);
-    if (!existing) throw new Error(`Certificate not found: ${id}`);
-    const now = new Date();
-    const notAfter = new Date(now);
-    notAfter.setFullYear(notAfter.getFullYear() + 1);
-    Object.assign(existing, {
-      notBefore: now.toISOString(),
-      notAfter: notAfter.toISOString(),
-      status: 'valid',
-      daysRemaining: Math.round((notAfter.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
-    });
-    return { ...existing, san: existing.san ? [...existing.san] : existing.san };
-  }
-  return clusterApi.renewK8sCert(id);
-}
-
 export async function deleteK8sCert(id: number): Promise<void> {
   if (isMockMode()) {
     const index = mockCertStore.findIndex((cert) => cert.id === id);

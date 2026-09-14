@@ -23,6 +23,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -64,7 +66,7 @@ class AlertServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUpTest() {
         alertService = new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
-                operationAuditService);
+                operationAuditService, new MetricProfileService(new PrometheusProperties()));
     }
 
     @Test
@@ -424,6 +426,75 @@ class AlertServiceTest {
                 .contains("expr: rocketmq_consumer_lag_messages > 10")
                 .contains("for: 5m")
                 .doesNotContain("vector(1", "> 0 or", "5xyz");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldSkipNativeMetricsWithoutExporterEquivalentTest() {
+        AlertRuleVO dlqRule = AlertRuleVO.builder()
+                .name("DLQ Flood")
+                .metric("dlq.message.count")
+                .operator(">")
+                .threshold(100)
+                .duration("5m")
+                .enabled(true)
+                .build();
+        AlertRuleVO lagRule = AlertRuleVO.builder()
+                .name("High Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .duration("5m")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(dlqRule, lagRule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages > 2000")
+                .doesNotContain("expr: rocketmq_consumer_lag_messages > 100")
+                .doesNotContain("- alert: DLQFlood")
+                .contains("# Skipped \"DLQ Flood\": native metric 'dlq.message.count'");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldTranslateNativeConsumerLagMetricTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Native Lag Total")
+                .metric("consumer.lag.total")
+                .operator(">")
+                .threshold(5000)
+                .duration("3m")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages > 5000")
+                .contains("- alert: NativeLagTotal")
+                .contains("- name: rocketmq-consumer.rules");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldEmitEmptyGroupsWhenAllRulesUseUnexportableNativeMetricsTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Topic Backlog")
+                .metric("topic.backlog.total")
+                .operator(">")
+                .threshold(50000)
+                .duration("5m")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .startsWith("groups: []\n")
+                .doesNotContain("rocketmq_consumer_lag_messages")
+                .contains("# Skipped \"Topic Backlog\": native metric 'topic.backlog.total'");
     }
 
     @Test

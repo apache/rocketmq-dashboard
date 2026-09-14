@@ -484,7 +484,7 @@ const SystemAlertsPage = () => {
         <SystemAlertIncidentExplorerDrawer open onClose={() => setIncidentExplorerOpen(false)} />
       )}
 
-      <Flex gap={8} style={{ marginBottom: 16 }}>
+      <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
         {['all', 'error', 'warning', 'info'].map((level) => (
           <Button
             key={level}
@@ -527,7 +527,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.instanceFilter')}
           size="small"
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 150 }}
+          style={{ width: 150, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -538,7 +538,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.labelsFilter')}
           size="small"
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
@@ -549,7 +549,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.startTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={fromFilter}
           onChange={(event) => {
             setFromFilter(event.target.value);
@@ -560,7 +560,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.endTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={toFilter}
           onChange={(event) => {
             setToFilter(event.target.value);
@@ -596,7 +596,11 @@ const SystemAlertsPage = () => {
             { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
           ]}
         />
-        {collectorStatus && <Tag color="success">{t('sysAlerts.nativeCollectionEnabled')}</Tag>}
+        {collectorStatus && (
+          <Tag color="success" style={{ marginInlineEnd: 0 }}>
+            {t('sysAlerts.nativeCollectionEnabled')}
+          </Tag>
+        )}
       </Flex>
 
       <Flex vertical gap={12}>

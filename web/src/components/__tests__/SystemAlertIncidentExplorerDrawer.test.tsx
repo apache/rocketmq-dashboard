@@ -137,4 +137,29 @@ describe('SystemAlertIncidentExplorerDrawer', () => {
     expect(await screen.findByText('完整告警历史加载失败，请稍后重试')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '加载时间线' })).toBeEnabled();
   });
+
+  it('总数尚未满足时遇到空页也会停止请求', async () => {
+    serviceMocks.listSystemAlertsPage
+      .mockResolvedValueOnce({ items: [records[0]], total: 1000, page: 1, size: 100 })
+      .mockResolvedValue({ items: [], total: 1000, page: 2, size: 100 });
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(screen.getByRole('button', { name: '加载时间线' }));
+    await screen.findByText('最长持续时间');
+    expect(serviceMocks.listSystemAlertsPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('异常短页仍受 100 页请求预算约束', async () => {
+    serviceMocks.listSystemAlertsPage.mockResolvedValue({
+      items: [records[0]],
+      total: 10000,
+      page: 1,
+      size: 100,
+    });
+    const user = userEvent.setup();
+    renderDrawer();
+    await user.click(screen.getByRole('button', { name: '加载时间线' }));
+    await screen.findByText('最长持续时间');
+    expect(serviceMocks.listSystemAlertsPage).toHaveBeenCalledTimes(100);
+  });
 });

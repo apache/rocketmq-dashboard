@@ -19,10 +19,12 @@ package org.apache.rocketmq.studio.auth;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioSession;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqStudioSessionMapper;
@@ -44,7 +46,10 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,9 +72,13 @@ public class AuthService {
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
+    private static final Duration SESSION_EXPIRING_SOON_WINDOW = Duration.ofMinutes(5);
+    private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
     private static final String TOKEN_PREFIX = "Bearer ";
+    private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
+    private static final String STALE_CUTOFF_PARAM = "staleCutoff";
     private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
     private final AuthProperties authProperties;
@@ -186,6 +195,83 @@ public class AuthService {
                 .orderByAsc("id");
         Page<RmqStudioUser> result = userMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords(), result.getTotal(), page, pageSize);
+    }
+
+    public Map<Long, StudioUserSessionSummaryVO> listActiveSessionSummaries(
+            Collection<Long> userIds) {
+        requireDatabaseBacked();
+        Set<Long> normalizedUserIds = normalizeUserIds(userIds);
+        if (normalizedUserIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        LocalDateTime current = now();
+        QueryWrapper<RmqStudioSession> query = new QueryWrapper<RmqStudioSession>()
+                .select("user_id",
+                        "COUNT(*) AS active_session_count",
+                        "MAX(last_seen_at) AS last_session_seen_at",
+                        "MIN(expires_at) AS nearest_session_expires_at")
+                .in("user_id", normalizedUserIds)
+                .isNull("revoked_at")
+                .gt("expires_at", current)
+                .groupBy("user_id");
+        Map<Long, StudioUserSessionSummaryVO> summaries = new ConcurrentHashMap<>();
+        for (Map<String, Object> row : sessionMapper.selectMaps(query)) {
+            Long userId = JdbcRowValues.longValue(row, "user_id");
+            if (userId == null) {
+                continue;
+            }
+            summaries.put(userId, StudioUserSessionSummaryVO.builder()
+                    .userId(userId)
+                    .activeSessionCount(JdbcRowValues.intValueOrZero(row, "active_session_count"))
+                    .lastSessionSeenAt(JdbcRowValues.dateTimeValue(row, "last_session_seen_at"))
+                    .nearestSessionExpiresAt(
+                            JdbcRowValues.dateTimeValue(row, "nearest_session_expires_at"))
+                    .build());
+        }
+        return summaries;
+    }
+
+    /**
+     * Aggregates the session overview with a single database round trip.
+     *
+     * <p>The active total, the distinct active user count and both risk buckets come from one
+     * aggregate statement instead of four separate COUNT(*) queries, the same trade-off
+     * {@code MybatisPlusAuditRepository#summarize} documents for its result buckets. The aggregate
+     * returns exactly one row, so no session is materialized in the application to be counted
+     * here, and the bucket boundaries are bound as wrapper parameters instead of being inlined
+     * into the SQL text.</p>
+     */
+    public StudioUserSessionOverviewVO getSessionOverview() {
+        requireDatabaseBacked();
+        LocalDateTime current = now();
+        QueryWrapper<RmqStudioSession> query = activeSessionQuery(current)
+                .select("COUNT(*) AS active_session_count",
+                        "COUNT(DISTINCT user_id) AS active_user_count",
+                        "SUM(CASE WHEN expires_at <= " + wrapperParam(EXPIRING_SOON_CUTOFF_PARAM)
+                                + " THEN 1 ELSE 0 END) AS expiring_soon_session_count",
+                        "SUM(CASE WHEN last_seen_at < " + wrapperParam(STALE_CUTOFF_PARAM)
+                                + " THEN 1 ELSE 0 END) AS stale_session_count");
+        query.getParamNameValuePairs().put(EXPIRING_SOON_CUTOFF_PARAM,
+                current.plus(SESSION_EXPIRING_SOON_WINDOW));
+        query.getParamNameValuePairs().put(STALE_CUTOFF_PARAM, current.minus(STALE_SESSION_THRESHOLD));
+
+        List<Map<String, Object>> rows = sessionMapper.selectMaps(query);
+        Map<String, Object> row = rows.isEmpty() ? Collections.emptyMap() : rows.get(0);
+        return StudioUserSessionOverviewVO.builder()
+                .activeSessionCount(JdbcRowValues.longValueOrZero(row, "active_session_count"))
+                .activeUserCount(JdbcRowValues.longValueOrZero(row, "active_user_count"))
+                .expiringSoonSessionCount(
+                        JdbcRowValues.longValueOrZero(row, "expiring_soon_session_count"))
+                .staleSessionCount(JdbcRowValues.longValueOrZero(row, "stale_session_count"))
+                .expiringSoonWindowMinutes(SESSION_EXPIRING_SOON_WINDOW.toMinutes())
+                .staleSessionThresholdMinutes(STALE_SESSION_THRESHOLD.toMinutes())
+                .build();
+    }
+
+    public int revokeSessionsForUser(Long userId) {
+        requireDatabaseBacked();
+        getUser(userId);
+        return revokeUserSessions(userId);
     }
 
     public RmqStudioUser createUser(String username, String password, boolean admin) {
@@ -378,11 +464,41 @@ public class AuthService {
         return update;
     }
 
-    private void revokeUserSessions(Long userId) {
-        sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+    private int revokeUserSessions(Long userId) {
+        LocalDateTime current = now();
+        return sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                 .eq("user_id", userId)
                 .isNull("revoked_at")
-                .set("revoked_at", now()));
+                .gt("expires_at", current)
+                .set("revoked_at", current));
+    }
+
+    private Set<Long> normalizeUserIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<Long> normalized = new LinkedHashSet<>();
+        for (Long userId : userIds) {
+            if (userId != null) {
+                normalized.add(userId);
+            }
+        }
+        return normalized;
+    }
+
+    private QueryWrapper<RmqStudioSession> activeSessionQuery(LocalDateTime current) {
+        return new QueryWrapper<RmqStudioSession>()
+                .isNull("revoked_at")
+                .gt("expires_at", current);
+    }
+
+    /**
+     * Renders the bind-variable reference MyBatis-Plus resolves for a value registered in the
+     * wrapper's {@code paramNameValuePairs}, so an aggregate expression can be parameterized
+     * instead of having a literal inlined into the SQL text.
+     */
+    private static String wrapperParam(String name) {
+        return "#{" + Constants.WRAPPER + Constants.WRAPPER_PARAM_MIDDLE + name + "}";
     }
 
     private void validateLogin(LoginDTO request) {

@@ -133,11 +133,6 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
     color: 'cyan',
     category: 'certificate',
   },
-  RENEW_K8S_CERTIFICATE: {
-    label: 'Renew K8s Certificate',
-    color: 'green',
-    category: 'certificate',
-  },
   DELETE_K8S_CERTIFICATE: {
     label: 'Delete K8s Certificate',
     color: 'volcano',

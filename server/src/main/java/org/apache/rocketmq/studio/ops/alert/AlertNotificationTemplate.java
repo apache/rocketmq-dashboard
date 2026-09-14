@@ -62,7 +62,8 @@ final class AlertNotificationTemplate {
         if (alert.getCurrentValue() == null) {
             return "";
         }
-        if (rule != null && "%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(rule.getMetric())) {
+        if (rule != null && "%".equals(rule.getThresholdUnit())
+                && RATIO_METRICS.contains(rule.getMetric() == null ? "" : rule.getMetric().trim())) {
             return String.valueOf(alert.getCurrentValue() * 100);
         }
         return String.valueOf(alert.getCurrentValue());

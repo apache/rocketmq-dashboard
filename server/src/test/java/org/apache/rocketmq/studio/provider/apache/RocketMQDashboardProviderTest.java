@@ -485,6 +485,25 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldReadLegacy4xBrokerOutboundTpsKey() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        KVTable runtime = runtimeStats("2.0", "5.0");
+        runtime.getTable().remove("getTransferredTps");
+        runtime.getTable().put("getTransferedTps", "4.0 5.0 6.0");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(5);
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(ClusterOverviewVO::getTpsOut)
+                .isEqualTo(5L);
+    }
+
+    @Test
     void dashboardShouldIgnoreNonFiniteNegativeAndOverflowingTps() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());

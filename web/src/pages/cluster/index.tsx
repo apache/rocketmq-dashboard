@@ -170,6 +170,7 @@ const ClusterPage = () => {
   const registryClustersRequestRef = useRef(0);
   const k8sCertsRequestRef = useRef(0);
   const nsConfigDiffRequestRef = useRef(0);
+  const brokerConfigDiffRequestRef = useRef(0);
   const connectionTestRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
@@ -230,6 +231,7 @@ const ClusterPage = () => {
       registryClustersRequestRef.current += 1;
       k8sCertsRequestRef.current += 1;
       nsConfigDiffRequestRef.current += 1;
+      brokerConfigDiffRequestRef.current += 1;
       connectionTestRequestRef.current += 1;
     },
     [],
@@ -359,6 +361,7 @@ const ClusterPage = () => {
 
   const openBrokerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      const requestId = ++brokerConfigDiffRequestRef.current;
       setBrokerConfigDiffState({
         open: true,
         loading: true,
@@ -367,6 +370,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        if (requestId !== brokerConfigDiffRequestRef.current) return;
         setBrokerConfigDiffState({
           open: true,
           loading: false,
@@ -374,6 +378,7 @@ const ClusterPage = () => {
           result,
         });
       } catch {
+        if (requestId !== brokerConfigDiffRequestRef.current) return;
         setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
@@ -994,14 +999,26 @@ const ClusterPage = () => {
       <Modal
         title={t('cluster.brokerConfigDiffTitle', { name: titleName })}
         open={open}
-        onCancel={() =>
-          setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-        }
+        onCancel={() => {
+          brokerConfigDiffRequestRef.current += 1;
+          setBrokerConfigDiffState({
+            open: false,
+            loading: false,
+            cluster: null,
+            result: null,
+          });
+        }}
         footer={
           <Button
-            onClick={() =>
-              setBrokerConfigDiffState({ open: false, loading: false, cluster: null, result: null })
-            }
+            onClick={() => {
+              brokerConfigDiffRequestRef.current += 1;
+              setBrokerConfigDiffState({
+                open: false,
+                loading: false,
+                cluster: null,
+                result: null,
+              });
+            }}
           >
             {t('common.close')}
           </Button>
@@ -1181,6 +1198,42 @@ const ClusterPage = () => {
         render: (v: number) => v.toLocaleString(),
       },
       {
+        title: t('cluster.putMessagesToday'),
+        dataIndex: 'putMessagesToday',
+        key: 'putMessagesToday',
+        width: 90,
+        align: 'right',
+        sorter: (a, b) => (a.putMessagesToday ?? -1) - (b.putMessagesToday ?? -1),
+        render: (v?: number) => (v ?? 0).toLocaleString(),
+      },
+      {
+        title: t('cluster.putMessagesYesterday'),
+        dataIndex: 'putMessagesYesterday',
+        key: 'putMessagesYesterday',
+        width: 90,
+        align: 'right',
+        sorter: (a, b) => (a.putMessagesYesterday ?? -1) - (b.putMessagesYesterday ?? -1),
+        render: (v?: number) => (v ?? 0).toLocaleString(),
+      },
+      {
+        title: t('cluster.getMessagesToday'),
+        dataIndex: 'getMessagesToday',
+        key: 'getMessagesToday',
+        width: 90,
+        align: 'right',
+        sorter: (a, b) => (a.getMessagesToday ?? -1) - (b.getMessagesToday ?? -1),
+        render: (v?: number) => (v ?? 0).toLocaleString(),
+      },
+      {
+        title: t('cluster.getMessagesYesterday'),
+        dataIndex: 'getMessagesYesterday',
+        key: 'getMessagesYesterday',
+        width: 90,
+        align: 'right',
+        sorter: (a, b) => (a.getMessagesYesterday ?? -1) - (b.getMessagesYesterday ?? -1),
+        render: (v?: number) => (v ?? 0).toLocaleString(),
+      },
+      {
         title: t('common.actions'),
         key: 'action',
         width: 260,
@@ -1246,6 +1299,7 @@ const ClusterPage = () => {
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(brokerColumns) }}
           />
         </Card>
@@ -1465,6 +1519,7 @@ const ClusterPage = () => {
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(registryColumns) }}
           />
         </Card>
@@ -1499,7 +1554,7 @@ const ClusterPage = () => {
         title: t('cluster.brokerClusterName'),
         dataIndex: 'nsClusterName',
         key: 'nsClusterName',
-        width: 160,
+        minWidth: 160,
         sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
@@ -1511,7 +1566,8 @@ const ClusterPage = () => {
         title: t('cluster.proxyAddr'),
         dataIndex: 'addr',
         key: 'addr',
-        width: 200,
+        // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+        minWidth: 200,
         sorter: (a, b) => compareText(a.addr, b.addr),
         render: (addr: string | null) => <Text style={{ fontSize: 14 }}>{safeText(addr)}</Text>,
       },
@@ -1620,6 +1676,7 @@ const ClusterPage = () => {
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(proxyColumns) }}
           />
         </Card>

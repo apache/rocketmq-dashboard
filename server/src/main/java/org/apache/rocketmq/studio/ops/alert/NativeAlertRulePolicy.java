@@ -49,6 +49,10 @@ final class NativeAlertRulePolicy {
     private NativeAlertRulePolicy() {
     }
 
+    static boolean isNativeMetric(String metric) {
+        return StringUtils.hasText(metric) && NATIVE_METRICS.containsKey(metric.trim());
+    }
+
     static void validate(AlertRuleVO rule) {
         validateChannels(rule);
         if (!StringUtils.hasText(rule.getMetric())) {
