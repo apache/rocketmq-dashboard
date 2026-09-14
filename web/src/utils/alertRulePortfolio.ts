@@ -82,17 +82,22 @@ const normalizedText = (value?: string | null) => value?.trim() ?? '';
 
 const normalizedDurationMs = (value?: string | null): string => {
   const normalized = normalizedText(value).toLocaleLowerCase();
-  const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/.exec(normalized);
-  if (!match) return normalized;
-  const amount = Number(match[1]);
-  const unit = match[2] as 'ms' | 's' | 'm' | 'h';
-  const multiplier: Record<typeof unit, number> = {
-    ms: 1,
-    s: 1000,
-    m: 60_000,
-    h: 3_600_000,
+  // 与后端 AlertRuleDuration 的紧凑整数语法一致，未知格式保留原值而不猜测。
+  if (!/^(?:\d+(?:ms|s|m|h|d|w|y))+$/.test(normalized)) return `raw:${normalized}`;
+  const multiplier: Record<string, bigint> = {
+    ms: 1n,
+    s: 1000n,
+    m: 60000n,
+    h: 3600000n,
+    d: 86400000n,
+    w: 604800000n,
+    y: 31536000000n,
   };
-  return String(amount * multiplier[unit]);
+  let total = 0n;
+  for (const match of normalized.matchAll(/(\d+)(ms|s|m|h|d|w|y)/g)) {
+    total += BigInt(match[1]) * multiplier[match[2]];
+  }
+  return `ms:${total}`;
 };
 
 export const alertRuleScope = (rule: AlertRule): string =>
@@ -103,9 +108,17 @@ export const alertRuleScope = (rule: AlertRule): string =>
     normalizedText(rule.topic) || '*',
   ].join(' / ');
 
+// 展示用分隔符不能用作身份；JSON 数组保留字段边界并正确转义引号。
+const scopeIdentity = (rule: AlertRule) => [
+  normalizedText(rule.instanceId) || null,
+  normalizedText(rule.metric),
+  normalizedText(rule.consumerGroup) || null,
+  normalizedText(rule.topic) || null,
+];
+
 const evaluationSignature = (rule: AlertRule): string =>
   JSON.stringify([
-    alertRuleScope(rule),
+    scopeIdentity(rule),
     normalizedText(rule.operator).toLocaleUpperCase(),
     rule.threshold,
     normalizedText(rule.thresholdUnit).toLocaleLowerCase(),
@@ -211,7 +224,8 @@ export const analyzeAlertRulePortfolio = (
     }
   });
 
-  groupsBy(rules, alertRuleScope).forEach((group, scope) => {
+  groupsBy(rules, (rule) => JSON.stringify(scopeIdentity(rule))).forEach((group) => {
+    const scope = alertRuleScope(group[0]);
     if (group.length > 0 && group.every((rule) => !rule.enabled)) {
       issues.push(
         issue(

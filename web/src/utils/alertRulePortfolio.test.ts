@@ -134,4 +134,37 @@ describe('alertRulePortfolio', () => {
       filterAlertPortfolioRows(portfolio.rows, { ...base, search: 'consumer.lag' })[0].id,
     ).toBe(2);
   });
+
+  it('引号和展示分隔符不会合并不同的规则作用域', () => {
+    const result = analyzeAlertRulePortfolio(
+      [
+        rule({ id: 1, instanceId: 'a / b', metric: 'c"d' }),
+        rule({ id: 2, instanceId: 'a', metric: 'b / c"d' }),
+      ],
+      [],
+    );
+    expect(result.summary.exactDuplicateGroups).toBe(0);
+  });
+  it('按后端语法归一化复合时长与大整数', () => {
+    for (const [left, right] of [
+      ['1m30s', '90s'],
+      ['1h5m', '65m'],
+      ['1w1d', '8d'],
+      ['9007199254740993ms', '9007199254740993ms'],
+    ]) {
+      const result = analyzeAlertRulePortfolio(
+        [rule({ id: 1, duration: left }), rule({ id: 2, duration: right })],
+        [],
+      );
+      expect(result.summary.exactDuplicateGroups).toBe(1);
+    }
+    const different = analyzeAlertRulePortfolio(
+      [
+        rule({ id: 1, duration: '9007199254740993ms' }),
+        rule({ id: 2, duration: '9007199254740992ms' }),
+      ],
+      [],
+    );
+    expect(different.summary.exactDuplicateGroups).toBe(0);
+  });
 });

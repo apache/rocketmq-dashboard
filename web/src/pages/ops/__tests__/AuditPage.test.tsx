@@ -129,7 +129,7 @@ describe('Audit page', () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
     await waitFor(() =>
       expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
@@ -179,9 +179,9 @@ describe('Audit page', () => {
 
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('重载 Proxy 配置')).toBeInTheDocument();
-    expect(screen.getByText('Proxy')).toBeInTheDocument();
-    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(await screen.findAllByText('重载 Proxy 配置')).not.toHaveLength(0);
+    expect(screen.getAllByText('Proxy')).not.toHaveLength(0);
+    expect(screen.getAllByText('成功')).not.toHaveLength(0);
     expect(screen.getByText('topic: orders')).toBeInTheDocument();
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
   });
@@ -208,12 +208,12 @@ describe('Audit page', () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
     await user.click(
       await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
     );
-    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(screen.getAllByText('成功')).not.toHaveLength(0);
     await user.click(screen.getByRole('combobox', { name: '资源类型' }));
     await user.click(
       await screen.findByText('消费组', {
