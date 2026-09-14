@@ -51,6 +51,20 @@ class AlertRuleEvaluatorTest {
     }
 
     @Test
+    void appliesPercentageThresholdsToPaddedStoredMetricsTest() {
+        // The evaluator matches padded stored metrics via rule.getMetric().trim()
+        // (legacy rows); the % normalization must see the same trimmed value or a
+        // " broker.disk.usage_ratio > 85%" rule compares 0.9 >= 85 and never fires.
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric(" broker.disk.usage_ratio ")
+                .operator(">=").threshold(85).thresholdUnit("%").enabled(true).build();
+
+        AlertEvaluationResult result = evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.9));
+
+        assertThat(result.matches()).isTrue();
+        assertThat(result.conditionMet()).isTrue();
+    }
+
+    @Test
     void unavailableMetricDoesNotBehaveAsZeroTest() {
         AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
                 .operator("<").threshold(0.1).enabled(true).build();

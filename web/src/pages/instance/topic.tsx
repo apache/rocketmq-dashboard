@@ -453,7 +453,7 @@ const TopicPage = () => {
     [selectedInstanceId, typeFilter, searchText],
   );
 
-  const reloadTopicPageAfterDelete = useCallback(async () => {
+  const reloadTopicPage = useCallback(async () => {
     await loadTopicPage(tablePage, tablePageSize);
   }, [loadTopicPage, tablePage, tablePageSize]);
 
@@ -644,7 +644,7 @@ const TopicPage = () => {
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
-            await reloadTopicPageAfterDelete();
+            await reloadTopicPage();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
             message.error('删除 Topic 失败，请稍后重试');
@@ -678,7 +678,9 @@ const TopicPage = () => {
       title: 'Topic 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 220,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 220,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
         <Text strong style={{ fontSize: 14, display: 'block' }} ellipsis={{ tooltip: name }}>
@@ -690,7 +692,8 @@ const TopicPage = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      width: 200,
+      minWidth: 200,
+      ellipsis: true,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
         <Text
@@ -1076,6 +1079,7 @@ const TopicPage = () => {
           pagination={false}
           size="small"
           loading={detailLoading}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(routeColumns) }}
         />
       </>
@@ -1134,7 +1138,7 @@ const TopicPage = () => {
         ...values,
         instanceId: selectedInstanceId,
       });
-      setTopics((previous) => [created, ...previous]);
+      await reloadTopicPage();
       message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
       form.resetFields();
@@ -1462,7 +1466,9 @@ const TopicPage = () => {
             allowClear
             style={{ width: 260 }}
             onSearch={(value) => {
-              setSearchText(value);
+              // Store the trimmed term so the client-side row filter matches what the
+              // server query used; padded input would otherwise filter out every row.
+              setSearchText(value.trim());
               resetTablePage();
             }}
             onChange={(e) => {
@@ -1502,7 +1508,7 @@ const TopicPage = () => {
                         names,
                         selectedInstanceId || undefined,
                       );
-                      if (deleted.length > 0) await reloadTopicPageAfterDelete();
+                      if (deleted.length > 0) await reloadTopicPage();
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
@@ -1595,6 +1601,7 @@ const TopicPage = () => {
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
           onRow={(record) => ({
             onClick: () => void openDetail(record),

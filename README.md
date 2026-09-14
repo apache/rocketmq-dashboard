@@ -59,7 +59,7 @@ development.
 | **Dashboard** | Global statistics for clusters, brokers, topics, and consumer groups with TPS trends |
 | **Instances** | Multi-instance access (Proxy / Direct mode), instance CRUD |
 | **Clusters** | Cluster details, Broker / NameServer / Proxy node operations, hot config updates, NameServer configuration drift detection |
-| **K8s Certs** | TLS / mTLS / ServiceAccount certificate management and renewal |
+| **K8s Certs** | Studio-local TLS / mTLS / ServiceAccount certificate configuration |
 | **Topics** | Topic CRUD, route viewer, consumer list, multi-type support (Normal / FIFO / Delay / Transaction / Lite) |
 | **Consumer Groups** | Consumer group CRUD, consumption progress, subscription details, offset reset, config import/export |
 | **ACL** | ACL rules and user management, v1 / v2 dual version support |

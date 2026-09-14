@@ -25,16 +25,22 @@ describe('tableScrollX', () => {
   });
 
   it('reserves room for the selection and expand columns', () => {
-    expect(tableScrollX([{ width: 100 }], { selection: true })).toBe(140);
+    expect(tableScrollX([{ width: 100 }], { selection: true })).toBe(132);
     expect(tableScrollX([{ width: 100 }], { expandable: true })).toBe(148);
     expect(tableScrollX([{ width: 100 }], { selection: true, expandable: true, extra: 12 })).toBe(
-      200,
+      192,
     );
   });
 
   it('falls back to a default share for columns without a numeric width', () => {
     expect(tableScrollX([{ width: 100 }, {}, { width: '30%' }])).toBe(340);
     expect(tableScrollX([{ width: '80px' }])).toBe(80);
+  });
+
+  it('counts the minWidth floor of a flexible column that carries no width', () => {
+    expect(tableScrollX([{ width: 100 }, { minWidth: 190 }])).toBe(290);
+    // An explicit width still wins, so a column may declare both.
+    expect(tableScrollX([{ width: 100, minWidth: 190 }])).toBe(100);
   });
 
   it('adds up grouped children and skips hidden columns', () => {

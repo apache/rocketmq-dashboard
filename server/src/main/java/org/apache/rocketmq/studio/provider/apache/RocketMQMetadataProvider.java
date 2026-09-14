@@ -22,6 +22,7 @@ import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -40,6 +41,8 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
+import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.common.topic.TopicValidator;
@@ -329,18 +332,23 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 return;
             }
             long totalLag = 0;
+            boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
             for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
-                long diff = wrapper.getBrokerOffset() - wrapper.getConsumerOffset();
-                if (diff > 0) {
-                    totalLag += diff;
+                long queueDiff = resolveDiff(wrapper.getBrokerOffset(), wrapper.getConsumerOffset());
+                if (queueDiff == ConsumerLagResolver.UNKNOWN) {
+                    // a queue with the -1 sentinel (5.0 gRPC consumers) must not be summed
+                    // away as zero lag; report the whole total as unknown instead
+                    lagUnknown = true;
+                } else {
+                    totalLag += queueDiff;
                 }
                 long lastTimestamp = wrapper.getLastTimestamp();
                 if (lastTimestamp > newestConsumedTimestamp) {
                     newestConsumedTimestamp = lastTimestamp;
                 }
             }
-            vo.setTotalLag(totalLag);
+            vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
                 long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
@@ -441,6 +449,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return routes;
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // A record created in the metadata database without a broker route is a
+                // normal "not synced yet" state — surface an empty route list, not a 502.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
@@ -568,6 +582,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .pageSize(pageSize)
                     .build();
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // Same as routes: a metadata record without a broker route is a normal
+                // "not synced yet" state, so the consumer page comes back empty.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return TopicConsumerPageVO.builder()
+                        .items(List.of())
+                        .total(0)
+                        .page(page)
+                        .pageSize(pageSize)
+                        .build();
+            }
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
@@ -688,7 +713,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .topic(sd.getTopic())
                     .expression(sd.getSubString())
                     .type(sd.getExpressionType())
-                    .filterMode(filterMode(sd.getExpressionType()))
+                    .filterMode(SubscriptionFilterModes.fromExpressionType(sd.getExpressionType()))
                     // The broker/proxy expose the group's merged subscription set only; with at
                     // least one client connected that merged view is the consistent observable
                     // state. Without connections the consistency status stays unknown (null).
@@ -760,15 +785,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
      */
     private long resolveDiff(long brokerOffset, long consumerOffset) {
         return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, proxyStatsProvider);
-    }
-    private String filterMode(String expressionType) {
-        if ("SQL92".equals(expressionType)) {
-            return "SQL";
-        }
-        if ("CLASS_FILTER".equals(expressionType)) {
-            return "CLASS_FILTER";
-        }
-        return "TAG";
     }
 
     private boolean isSystemTopic(String topicName, Set<String> brokerNames) {

@@ -270,7 +270,8 @@ public class OpenAiCompatibleLlmClient {
             return true;
         }
         String token = parseDelta(data);
-        if (StringUtils.hasText(token)) {
+        // Whitespace-only deltas carry formatting and must reach the consumer.
+        if (StringUtils.hasLength(token)) {
             tokenConsumer.accept(token);
         }
         return false;
