@@ -17,13 +17,13 @@
 package org.apache.rocketmq.studio.ops.ai.auth;
 
 public record McpAuthentication(
-        String cluster,
+        String instanceId,
         String principal) {
 
     public static final String ATTRIBUTE = McpAuthentication.class.getName();
 
     public McpAuthentication {
-        requireText(cluster, "cluster");
+        requireText(instanceId, "instanceId");
         requireText(principal, "principal");
     }
 

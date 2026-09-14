@@ -45,7 +45,7 @@ public class ToolCapabilityFilter implements ToolExecutionFilter {
             return chain.proceed(invocation);
         }
 
-        Set<String> capabilities = capabilityResolver.resolve(context.cluster());
+        Set<String> capabilities = capabilityResolver.resolve(context.instanceId());
         if (!capabilities.containsAll(definition.requiredCapabilities())) {
             throw ToolError.TOOL_CAPABILITY_UNSUPPORTED.exception(definition.name());
         }

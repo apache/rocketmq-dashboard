@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.provider.apache.RocketMQDefaultClusterResolver;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -60,32 +61,33 @@ class ToolInstanceRoutingTest {
 
     @ParameterizedTest
     @CsvSource({"APACHE,false", "APACHE,true", "ALIYUN,false", "TENCENT,false"})
-    void bodyClusterRoutesCapabilitiesMetadataAndAuditToTheSameTarget(InstanceVendor vendor, boolean configured) {
-        String cluster = configured ? "DefaultCluster" : "prod-orders";
+    void bodyInstanceIdRoutesCapabilitiesMetadataAndAuditToTheSameTargetTest(InstanceVendor vendor, boolean configured) {
+        String target = configured ? "DefaultCluster" : "prod-orders";
         InstanceRepository instances = mock(InstanceRepository.class);
         RocketMQDefaultClusterResolver configuredClusters = mock(RocketMQDefaultClusterResolver.class);
         InstanceResolver targets = new InstanceResolver(instances, configuredClusters);
-        InstanceVO instance = InstanceVO.builder().name(cluster).vendor(vendor)
+        InstanceVO instance = InstanceVO.builder().name(target).vendor(vendor)
                 .type(vendor == InstanceVendor.APACHE ? InstanceType.PROXY_CLUSTER : InstanceType.CLOUD)
                 .endpoint("selected-ns:9876").cloudInstanceId("vendor-resource-id").build();
         if (configured) {
-            when(configuredClusters.find(cluster)).thenReturn(Optional.of(instance));
+            when(configuredClusters.find(target)).thenReturn(Optional.of(instance));
         } else {
             instance.setId(7L);
-            when(instances.findByName(cluster)).thenReturn(Optional.of(instance));
-            when(instances.findByIdentifier(cluster)).thenReturn(Optional.of(instance));
+            when(instances.findByName(target)).thenReturn(Optional.of(instance));
+            when(instances.findByIdentifier(target)).thenReturn(Optional.of(instance));
         }
         InstanceProvider selected = mock(InstanceProvider.class);
         when(selected.vendor()).thenReturn(vendor);
         when(selected.capabilities()).thenReturn(Set.of(InstanceCapability.TOPIC_MANAGEMENT));
-        when(selected.listTopics(cluster, null, null)).thenReturn(List.of());
+        when(selected.listTopics(target, null, null)).thenReturn(List.of());
         InstanceProviderRegistry registry = new InstanceProviderRegistry(List.of(selected),
                 List.of(),
                 targets);
         MetadataProvider globalMetadata = mock(MetadataProvider.class);
         AdminClient globalAdmin = mock(AdminClient.class);
         MetadataService metadata = new MetadataService(globalMetadata, globalAdmin, registry, targets,
-                mock(OperationAuditService.class), mock(MessageService.class));
+                mock(OperationAuditService.class), mock(MessageService.class),
+                mock(RuntimeAdminClientResolver.class));
         TopicListToolHandler handler = new TopicListToolHandler(metadata);
         ToolDefinition definition = new ToolCatalog(new DefaultResourceLoader()).getDefinition(handler.name());
         ToolCatalog catalog = mock(ToolCatalog.class);
@@ -101,11 +103,11 @@ class ToolInstanceRoutingTest {
                 filters,
                 targets);
 
-        executor.execute(handler.name(), Map.of("cluster", cluster));
+        executor.execute(handler.name(), Map.of(ToolCatalog.INSTANCE_ID_FIELD, target));
 
         verify(selected).capabilities();
-        verify(selected).listTopics(cluster, null, null);
-        verify(audit).record(anyString(), anyString(), eq(handler.name()), eq(cluster), isNull(), eq("SUCCESS"));
+        verify(selected).listTopics(target, null, null);
+        verify(audit).record(anyString(), anyString(), eq(handler.name()), eq(target), isNull(), eq("SUCCESS"));
         verifyNoInteractions(globalMetadata, globalAdmin);
     }
 }

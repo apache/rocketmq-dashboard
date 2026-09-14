@@ -43,8 +43,8 @@ import java.util.regex.Pattern;
 public class McpAuthenticator {
 
     static final String ALGORITHM = "RMQ-HMAC-SHA256";
-    static final String HEADER_CLUSTER = "X-RMQ-Cluster";
-    static final String HEADER_TIMESTAMP = "X-RMQ-Timestamp";
+    static final String HEADER_INSTANCE = "x-rmq-instance-id";
+    static final String HEADER_TIMESTAMP = "x-rmq-timestamp";
     static final String AUTHENTICATION_FAILED_MESSAGE = "MCP authentication failed.";
     static final Duration MAX_CLOCK_SKEW = Duration.ofMinutes(5);
     private static final Pattern AUTHORIZATION = Pattern.compile(
@@ -75,13 +75,13 @@ public class McpAuthenticator {
 
     public McpAuthentication authenticate(HttpServletRequest request) {
         Authorization authorization = authorization(request.getHeader(HttpHeaders.AUTHORIZATION));
-        String cluster = requiredHeader(request, HEADER_CLUSTER);
+        String instanceId = requiredHeader(request, HEADER_INSTANCE);
         String timestamp = requiredHeader(request, HEADER_TIMESTAMP);
         verifyTimestamp(timestamp);
-        InstanceVO instance = resolveInstance(cluster);
+        InstanceVO instance = resolveInstance(instanceId);
         Credential credential = resolveCredential(instance);
-        verifySignature(request, authorization, credential, cluster, timestamp);
-        return new McpAuthentication(cluster, authorization.accessKey());
+        verifySignature(request, authorization, credential, instanceId, timestamp);
+        return new McpAuthentication(instanceId, authorization.accessKey());
     }
 
     private Authorization authorization(String value) {
@@ -115,9 +115,9 @@ public class McpAuthenticator {
         return value;
     }
 
-    private InstanceVO resolveInstance(String cluster) {
+    private InstanceVO resolveInstance(String instanceId) {
         try {
-            return instanceResolver.findByName(cluster).orElseThrow(McpAuthenticator::authenticationFailed);
+            return instanceResolver.findByName(instanceId).orElseThrow(McpAuthenticator::authenticationFailed);
         } catch (BusinessException exception) {
             if (exception.getCode() == 422) {
                 throw authenticationFailed(exception);
@@ -150,12 +150,12 @@ public class McpAuthenticator {
     }
 
     private static void verifySignature(HttpServletRequest request, Authorization authorization, Credential credential,
-                                 String cluster, String timestamp) {
+                                        String instanceId, String timestamp) {
         if (!authorization.accessKey().equals(credential.accessKey())) {
             throw authenticationFailed();
         }
         byte[] expected = hmac(credential.secretKey(),
-                canonicalRequest(authorization.accessKey(), cluster, timestamp,
+                canonicalRequest(authorization.accessKey(), instanceId, timestamp,
                         request.getMethod(), requestTarget(request)));
         if (!MessageDigest.isEqual(expected, authorization.signature())) {
             throw authenticationFailed();
@@ -193,14 +193,14 @@ public class McpAuthenticator {
 
     static String canonicalRequest(
             String accessKey,
-            String cluster,
+            String instanceId,
             String timestamp,
             String method,
             String requestTarget) {
         return String.join("\n",
                 ALGORITHM,
                 accessKey,
-                cluster,
+                instanceId,
                 timestamp,
                 method,
                 requestTarget);

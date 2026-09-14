@@ -170,7 +170,7 @@ const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
   const input = Object.fromEntries(
     required.map((field) => [
       field,
-      field === 'cluster' && cluster ? cluster : defaultSchemaValue(properties[field]),
+      field === 'instanceId' && cluster ? cluster : defaultSchemaValue(properties[field]),
     ]),
   );
   return JSON.stringify(input, null, 2);
@@ -885,14 +885,14 @@ const AiPage = () => {
     setToolExecuting(true);
     setToolResult(undefined);
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput));
+      setToolResult(await executeTool(selectedToolName, parsedInput, selectedClusterId));
       message.success('工具执行成功');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '工具执行失败');
     } finally {
       setToolExecuting(false);
     }
-  }, [selectedToolName, toolExecuting, toolInput]);
+  }, [selectedClusterId, selectedToolName, toolExecuting, toolInput]);
 
   const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 

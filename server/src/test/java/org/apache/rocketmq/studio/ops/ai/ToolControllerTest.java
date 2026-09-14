@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import static org.mockito.Mockito.verifyNoInteractions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
@@ -32,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -66,7 +66,7 @@ class ToolControllerTest {
     }
 
     @Test
-    void listToolsReturnsCatalogEntries() throws Exception {
+    void listToolsReturnsCatalogEntriesTest() throws Exception {
         AiToolVO tool = AiToolVO.builder()
                 .name("rmq.cluster.list")
                 .version("1.0.0")
@@ -80,19 +80,19 @@ class ToolControllerTest {
                 .outputSchema(Map.of("type", "array"))
                 .viewHint("table")
                 .build();
-        when(toolDiscoveryService.listTools("cluster-001")).thenReturn(List.of(tool));
+        when(toolDiscoveryService.listTools("instance-id")).thenReturn(List.of(tool));
 
-        mockMvc.perform(get("/api/ai/tools").queryParam("cluster", "cluster-001"))
+        mockMvc.perform(get("/api/ai/tools").queryParam("instanceId", "instance-id"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("rmq.cluster.list"))
                 .andExpect(jsonPath("$.data[0].version").value("1.0.0"));
     }
 
     @Test
-    void listToolsDelegatesTheSelectedTarget() throws Exception {
+    void listToolsDelegatesTheSelectedTargetTest() throws Exception {
         when(toolDiscoveryService.listTools("cluster-001"))
                 .thenReturn(Collections.emptyList());
-        when(toolDiscoveryService.listTools("cluster-002"))
+        when(toolDiscoveryService.listTools("instance-id"))
                 .thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/ai/tools").queryParam("cluster", "cluster-001"))
@@ -103,38 +103,68 @@ class ToolControllerTest {
                 .andExpect(status().isOk());
 
         verify(toolDiscoveryService).listTools("cluster-001");
-        verify(toolDiscoveryService).listTools("cluster-002");
+        verify(toolDiscoveryService).listTools("instance-id");
+    }
+
+    /** The global-tool scope of the AI page lists platform tools without binding an Instance. */
+    @Test
+    void listToolsAcceptsAMissingTargetForPlatformToolsTest() throws Exception {
+        when(toolDiscoveryService.listTools(null)).thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/ai/tools"))
+                .andExpect(status().isOk());
+
+        verify(toolDiscoveryService).listTools(null);
     }
 
     @Test
-    void executeToolPreservesStructuredInputAndDottedName() throws Exception {
-        Map<String, Object> input = Map.of("cluster", "cluster-001");
+    void executeToolPreservesStructuredInputAndDottedNameTest() throws Exception {
+        Map<String, Object> input = Map.of("instanceId", "instance-id");
         Map<String, Object> output = Map.of(
-                "cluster", "cluster-001",
+                "instanceId", "instance-id",
                 "capabilities", List.of("REMOTING"));
-        when(toolExecutor.execute("rmq.capabilities", input))
+        when(toolExecutor.execute("rmq.instance.capabilities", input))
                 .thenReturn(output);
 
-        mockMvc.perform(post("/api/ai/tools/rmq.capabilities/execute")
+        mockMvc.perform(post("/api/ai/tools/rmq.instance.capabilities/execute")
+                        .queryParam("instanceId", "instance-id")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"cluster":"cluster-001"}
+                                {"instanceId":"instance-id"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cluster").value("cluster-001"))
+                .andExpect(jsonPath("$.data.instanceId").value("instance-id"))
                 .andExpect(jsonPath("$.data.capabilities[0]").value("REMOTING"));
 
-        verify(toolExecutor).execute("rmq.capabilities", input);
+        verify(toolExecutor).execute("rmq.instance.capabilities", input);
+    }
+
+    /** Platform tools are addressed by a physical clusterName, so the target stays out of their payload. */
+    @Test
+    void executeToolKeepsPlatformToolArgumentsUntouchedTest() throws Exception {
+        Map<String, Object> input = Map.of("clusterName", "DefaultCluster");
+        when(toolExecutor.execute("rmq.broker.list", input))
+                .thenReturn(Map.of("items", Collections.emptyList()));
+
+        mockMvc.perform(post("/api/ai/tools/rmq.broker.list/execute")
+                        .queryParam("instanceId", "")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"clusterName":"DefaultCluster"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isArray());
+
+        verify(toolExecutor).execute("rmq.broker.list", input);
     }
 
     @Test
-    void callToolDelegatesAuthenticatedInput() throws Exception {
+    void callToolDelegatesAuthenticatedInputTest() throws Exception {
         Map<String, Object> input = Map.of(
-                "cluster", "cluster-001",
+                "instanceId", "instance-id",
                 "topic", "order-topic",
                 "dry_run", true);
-        when(toolExecutor.execute(
-                "rmq.topic.create", input, authentication))
+        when(toolExecutor.execute("rmq.topic.create", input, authentication))
                 .thenReturn(Map.of("status", "PLANNED"));
 
         mockMvc.perform(post("/api/mcp/tools/call")
@@ -144,7 +174,7 @@ class ToolControllerTest {
                                 {
                                   "name": "rmq.topic.create",
                                   "arguments": {
-                                    "cluster": "cluster-001",
+                                    "instanceId": "instance-id",
                                     "topic": "order-topic",
                                     "dry_run": true
                                   }
@@ -154,15 +184,8 @@ class ToolControllerTest {
                 .andExpect(jsonPath("$.data.status").value("PLANNED"));
 
         verify(toolExecutor).execute(
-                eq("rmq.topic.create"), org.mockito.ArgumentMatchers.argThat(arguments ->
+                eq("rmq.topic.create"), argThat(arguments ->
                         Boolean.TRUE.equals(arguments.get("dry_run"))), eq(authentication));
-    }
-
-    @Test
-    void discoveryRequiresClusterEvenWhenLegacyInstanceIdIsProvided() throws Exception {
-        mockMvc.perform(get("/api/ai/tools").queryParam("instanceId", "instance-a"))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(toolDiscoveryService);
     }
 
 }

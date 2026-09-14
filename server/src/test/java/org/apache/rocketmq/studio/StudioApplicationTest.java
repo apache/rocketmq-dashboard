@@ -16,8 +16,6 @@
  */
 package org.apache.rocketmq.studio;
 
-import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -75,8 +73,7 @@ class StudioApplicationTest {
     @Test
     void applicationContextLoadsWithInitializedDevSchema() throws Exception {
         assertThat(toolCatalog.list()).isNotEmpty();
-        assertThatThrownBy(() -> toolDiscoveryService.listTools(null))
-                .isInstanceOf(ToolExecutionException.class);
+        assertThat(toolDiscoveryService.listTools(null)).isEmpty();
         assertThat(instanceMapper.selectList(null)).isEmpty();
 
         mockMvc.perform(get("/api/instances"))

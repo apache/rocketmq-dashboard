@@ -42,8 +42,8 @@ class ToolTokenServiceTest {
 
     private static final byte[] SECRET = "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8);
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-11T02:00:00Z"), ZoneOffset.UTC);
-    private static final Map<String, Object> INPUT = Map.of("cluster", "instance-dev", "topic", "orders", "writeQueues", 8);
-    private static final String TOKEN = "djEuMTc4OTA5MjYwMC5gRwUvzs+4BUqDX0svsV1C/jUjLzfv/GDPZpjcG9bvBg==";
+    private static final Map<String, Object> INPUT = Map.of("instanceId", "instance-dev", "topicName", "orders", "writeQueues", 8);
+    private static final String TOKEN = "djEuMTc4OTA5MjYwMC5BjvIrDnoYt1d8qKs67Cu8qBBPauIQJ6uJg6OUDD5IIg==";
     private final ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
     private final ToolTokenService tokens = new ToolTokenService(new ObjectMapper(), CLOCK, SECRET);
 
@@ -56,8 +56,8 @@ class ToolTokenServiceTest {
 
         Map<String, Object> apply = new LinkedHashMap<>();
         apply.put("writeQueues", 8);
-        apply.put("topic", "orders");
-        apply.put("cluster", "instance-dev");
+        apply.put("topicName", "orders");
+        apply.put("instanceId", "instance-dev");
         apply.put("dry_run", false);
         apply.put("break_glass", true);
         apply.put("reason", "reviewed");
@@ -72,9 +72,9 @@ class ToolTokenServiceTest {
     void bindsToolCallerInstanceAndBusinessInput() {
         List<ToolExecutionContext> changedRequests = List.of(
                 ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.delete"), INPUT, "alice"),
-                ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.create"), INPUT, "bob"),
-                ToolExecutionContext.of("other-instance", catalog.getDefinition("rmq.topic.create"), INPUT, "alice"),
-                context(Map.of("cluster", "instance-dev", "topic", "orders", "writeQueues", 16)));
+                ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.update"), INPUT, "bob"),
+                ToolExecutionContext.of("other-instance", catalog.getDefinition("rmq.topic.update"), INPUT, "alice"),
+                context(Map.of("instanceId", "instance-dev", "topicName", "orders", "writeQueues", 16)));
         changedRequests.forEach(request -> assertInvalid(tokens, withToken(request, TOKEN)));
     }
 
@@ -107,22 +107,22 @@ class ToolTokenServiceTest {
 
     @Test
     void acceptsRawSignatureContainingDotsAndNonUtf8Bytes() {
-        ToolExecutionContext request = context(Map.of("cluster", "instance-dev", "topic", "orders-6", "writeQueues", 8));
+        ToolExecutionContext request = context(Map.of("instanceId", "instance-dev", "topicName", "orders-20", "writeQueues", 8));
         String token = tokens.issue(request);
-        assertThat(token).isEqualTo("djEuMTc4OTA5MjYwMC7zC5yHz0AaCGORzV7ZLGn0TGM56j74zi5atWjYC9VlMA==");
+        assertThat(token).isEqualTo("djEuMTc4OTA5MjYwMC79LrkcIaZYjpm1r3pi9tpCPstorTcGDQuCw2FQFvMKwQ==");
         byte[] content = Base64.getDecoder().decode(token);
         assertThat(Arrays.copyOfRange(content, content.length - 32, content.length)).contains((byte) '.', (byte) 0xf3);
         assertThatCode(() -> tokens.verify(withToken(request, token))).doesNotThrowAnyException();
     }
 
     private ToolExecutionContext context(Map<String, Object> input) {
-        return ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.create"), input, "alice");
+        return ToolExecutionContext.of("instance-dev", catalog.getDefinition("rmq.topic.update"), input, "alice");
     }
 
     private static ToolExecutionContext withToken(ToolExecutionContext context, String token) {
         Map<String, Object> input = new LinkedHashMap<>(context.input());
         input.put("confirm_token", token);
-        return ToolExecutionContext.of(context.cluster(), context.definition(), input, context.principal());
+        return ToolExecutionContext.of(context.instanceId(), context.definition(), input, context.principal());
     }
 
     private static void assertInvalid(ToolTokenService service, ToolExecutionContext context) {

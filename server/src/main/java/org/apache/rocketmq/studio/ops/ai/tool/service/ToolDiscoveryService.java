@@ -44,12 +44,12 @@ public class ToolDiscoveryService {
         this.instanceResolver = instanceResolver;
     }
 
-    public List<AiToolVO> listTools(String cluster) {
-        if (cluster == null || cluster.isBlank()) {
-            throw ToolError.TOOL_CLUSTER_REQUIRED.exception();
+    public List<AiToolVO> listTools(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            return List.of();
         }
-        InstanceVO instance = instanceResolver.findByName(cluster)
-                .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(cluster));
+        InstanceVO instance = instanceResolver.findByName(instanceId)
+                .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(instanceId));
         Set<String> capabilities = capabilityResolver.resolve(instance);
 
         return catalog.list().stream()

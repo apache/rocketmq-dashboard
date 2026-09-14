@@ -258,10 +258,15 @@ export async function listTools(cluster?: string) {
   return res.data.data;
 }
 
-export async function executeTool(name: string, input: Record<string, unknown>) {
+export async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  instanceId: string,
+) {
   const res = await client.post<{ data: unknown }>(
     `/ai/tools/${encodeURIComponent(name)}/execute`,
     input,
+    { params: { instanceId } },
   );
   return res.data.data;
 }

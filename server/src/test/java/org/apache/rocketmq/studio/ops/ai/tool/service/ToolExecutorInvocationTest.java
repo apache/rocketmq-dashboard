@@ -79,22 +79,22 @@ class ToolExecutorInvocationTest {
     }
 
     @Test
-    void capturesConsoleUserBeforeEnteringChain() {
+    void capturesConsoleUserBeforeEnteringChainTest() {
         AuthenticatedUserContext.setUsername("alice");
         when(chain.execute(any(ToolInvocation.class))).thenAnswer(invocation -> {
             AuthenticatedUserContext.setUsername("bob");
             return null;
         });
-        executor.execute("rmq.topic.list", Map.of("cluster", "instance-a"));
+        executor.execute("rmq.topic.list", Map.of("instanceId", "instance-a"));
         ArgumentCaptor<ToolInvocation> invocation = ArgumentCaptor.forClass(ToolInvocation.class);
         verify(chain).execute(invocation.capture());
         assertThat(invocation.getValue().context().principal()).isEqualTo("alice");
     }
 
     @Test
-    void passesBoundInstancePrincipalAndHandlerToChain() {
+    void passesBoundInstancePrincipalAndHandlerToChainTest() {
         AuthenticatedUserContext.setUsername("console-user");
-        Map<String, Object> input = Map.of("cluster", "instance-a");
+        Map<String, Object> input = Map.of("instanceId", "instance-a");
         Map<String, Object> output = Map.of("items", List.of());
         when(chain.execute(any(ToolInvocation.class))).thenReturn(output);
 
@@ -105,16 +105,16 @@ class ToolExecutorInvocationTest {
         assertThat(invocation.getValue().handler()).isSameAs(handler);
         assertThat(invocation.getValue().context().definition()).isSameAs(definition);
         assertThat(invocation.getValue().context().input()).containsExactlyEntriesOf(input);
-        assertThat(invocation.getValue().context().cluster()).isEqualTo("instance-a");
+        assertThat(invocation.getValue().context().instanceId()).isEqualTo("instance-a");
         assertThat(invocation.getValue().context().principal()).isEqualTo("mcp-access-key");
         assertThat(result).isSameAs(output);
         verifyNoInteractions(instances);
     }
 
     @Test
-    void rejectsMissingBlankAndNonStringClusterBeforeFilters() {
+    void rejectsMissingBlankAndNonStringInstanceIdBeforeFiltersTest() {
         for (Map<String, Object> input : List.<Map<String, Object>>of(
-                Map.of(), Map.of("cluster", " "), Map.of("cluster", 1), Map.of("cluster", true))) {
+                Map.of(), Map.of("instanceId", " "), Map.of("instanceId", 1), Map.of("instanceId", true))) {
             assertThatThrownBy(() -> executor.execute("rmq.topic.list", input))
                     .isInstanceOfSatisfying(ToolExecutionException.class,
                             error -> assertThat(error.getCode()).isEqualTo(400));
@@ -126,8 +126,8 @@ class ToolExecutorInvocationTest {
     }
 
     @Test
-    void bodyClusterRequiresARegisteredNameAndNeverFallsBackToNumericId() {
-        assertThatThrownBy(() -> executor.execute("rmq.topic.list", Map.of("cluster", "1")))
+    void bodyInstanceIdRequiresARegisteredNameAndNeverFallsBackToNumericIdTest() {
+        assertThatThrownBy(() -> executor.execute("rmq.topic.list", Map.of("instanceId", "1")))
                 .isInstanceOfSatisfying(ToolExecutionException.class,
                         error -> assertThat(error.getCode()).isEqualTo(404));
         verify(instances).findByName("1");
@@ -136,39 +136,39 @@ class ToolExecutorInvocationTest {
     }
 
     @Test
-    void rejectsDifferentAuthenticatedInstanceBeforeFilters() {
+    void rejectsDifferentAuthenticatedInstanceBeforeFiltersTest() {
         InstanceVO other = InstanceVO.builder().name("instance-b").build();
         other.setId(2L);
         when(instances.findByName("instance-b")).thenReturn(Optional.of(other));
         assertThatThrownBy(() -> executor.execute("rmq.topic.list",
-                Map.of("cluster", "instance-a"), new McpAuthentication("instance-b", "shared-access-key")))
+                Map.of("instanceId", "instance-a"), new McpAuthentication("instance-b", "shared-access-key")))
                 .isInstanceOfSatisfying(ToolExecutionException.class,
                         error -> assertThat(error.getCode()).isEqualTo(403));
         verifyNoInteractions(chain);
     }
 
     @Test
-    void rejectsDifferentAuthenticatedClusterWithoutResolvingEitherName() {
+    void rejectsDifferentAuthenticatedTargetWithoutResolvingEitherNameTest() {
         assertThatThrownBy(() -> executor.execute("rmq.topic.list",
-                Map.of("cluster", "instance-a"), new McpAuthentication("1", "access-key")))
+                Map.of("instanceId", "instance-a"), new McpAuthentication("1", "access-key")))
                 .isInstanceOfSatisfying(ToolExecutionException.class,
                         error -> assertThat(error.getCode()).isEqualTo(403));
         verifyNoInteractions(instances, chain);
     }
 
     @Test
-    void acceptsAuthenticatedConfiguredClusterWithoutDatabaseIdentity() {
-        executor.execute("rmq.topic.list", Map.of("cluster", "DefaultCluster"),
+    void acceptsAuthenticatedConfiguredClusterWithoutDatabaseIdentityTest() {
+        executor.execute("rmq.topic.list", Map.of("instanceId", "DefaultCluster"),
                 new McpAuthentication("DefaultCluster", "access-key"));
         ArgumentCaptor<ToolInvocation> invocation = ArgumentCaptor.forClass(ToolInvocation.class);
         verify(chain).execute(invocation.capture());
-        assertThat(invocation.getValue().context().cluster()).isEqualTo("DefaultCluster");
+        assertThat(invocation.getValue().context().instanceId()).isEqualTo("DefaultCluster");
         verifyNoInteractions(instances);
     }
 
     @Test
-    void missingMcpAuthenticationDoesNotBecomeAConsoleCall() {
-        assertThatThrownBy(() -> executor.execute("rmq.topic.list", Map.of("cluster", "instance-a"), null))
+    void missingMcpAuthenticationDoesNotBecomeAConsoleCallTest() {
+        assertThatThrownBy(() -> executor.execute("rmq.topic.list", Map.of("instanceId", "instance-a"), null))
                 .isInstanceOf(ToolExecutionException.class);
         verifyNoInteractions(instances, chain);
     }

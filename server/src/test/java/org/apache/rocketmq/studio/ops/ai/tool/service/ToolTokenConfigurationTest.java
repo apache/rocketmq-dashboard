@@ -86,13 +86,13 @@ class ToolTokenConfigurationTest {
         runner.run(context -> {
             assertThat(context).hasNotFailed();
             ToolCatalog catalog = context.getBean(ToolCatalog.class);
-            ToolExecutionContext request = executionContext(catalog, "rmq.topic.create", Map.of("topic", "orders"));
+            ToolExecutionContext request = executionContext(catalog, "rmq.topic.update", Map.of("topic", "orders"));
             ToolTokenService tokens = context.getBean(ToolTokenService.class);
             assertThatThrownBy(() -> tokens.issue(request)).isInstanceOfSatisfying(ToolExecutionException.class,
                     failure -> assertThat(failure.getErrorCode()).isEqualTo("UNAVAILABLE"));
             assertThatThrownBy(() -> tokens.verify(request)).isInstanceOfSatisfying(ToolExecutionException.class,
                     failure -> assertThat(failure.getErrorCode()).isEqualTo("UNAVAILABLE"));
-            ToolExecutionContext read = executionContext(catalog, "rmq.topic.list", Map.of("cluster", "dev"));
+            ToolExecutionContext read = executionContext(catalog, "rmq.topic.list", Map.of("instanceId", "dev"));
             assertThat(context.getBean(ToolFilterChain.class).execute(
                     new ToolInvocation(read, previewHandler("rmq.topic.list")))).isEqualTo(read.input());
         });
@@ -105,14 +105,14 @@ class ToolTokenConfigurationTest {
                     assertThat(context).hasNotFailed();
                     ToolFilterChain chain = context.getBean(ToolFilterChain.class);
                     ToolCatalog catalog = context.getBean(ToolCatalog.class);
-                    MutationToolHandler<Map<String, Object>, Object> handler = previewHandler("rmq.topic.create");
-                    ToolExecutionContext preview = executionContext(catalog, "rmq.topic.create", Map.of(
-                            "cluster", "dev", "topic", "orders", "dry_run", true));
+                    MutationToolHandler<Map<String, Object>, Object> handler = previewHandler("rmq.topic.update");
+                    ToolExecutionContext preview = executionContext(catalog, "rmq.topic.update", Map.of(
+                            "instanceId", "dev", "topic", "orders", "dry_run", true));
                     MutationOutput<?> plan = (MutationOutput<?>) chain.execute(new ToolInvocation(preview, handler));
                     Map<?, ?> output = new ObjectMapper().convertValue(plan, Map.class);
                     assertThat(output.get("confirm_token")).isInstanceOf(String.class);
-                    ToolExecutionContext apply = executionContext(catalog, "rmq.topic.create", Map.of(
-                            "cluster", "dev", "topic", "orders", "confirm_token", output.get("confirm_token")));
+                    ToolExecutionContext apply = executionContext(catalog, "rmq.topic.update", Map.of(
+                            "instanceId", "dev", "topic", "orders", "confirm_token", output.get("confirm_token")));
                     AtomicBoolean executed = new AtomicBoolean();
                     MutationOutput<?> result = (MutationOutput<?>) chain.execute(new ToolInvocation(apply, executeHandler(executed)));
                     assertThat(executed).isTrue();
@@ -150,7 +150,7 @@ class ToolTokenConfigurationTest {
         return new MutationToolHandler<>((Class<Map<String, Object>>) (Class<?>) Map.class) {
             @Override
             public String name() {
-                return "rmq.topic.create";
+                return "rmq.topic.update";
             }
 
             @Override

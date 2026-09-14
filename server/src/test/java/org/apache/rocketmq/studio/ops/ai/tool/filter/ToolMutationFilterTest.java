@@ -116,7 +116,7 @@ class ToolMutationFilterTest {
     @Test
     void invalidTokenPreventsPlanGenerationAndExecution() {
         ToolExecutionContext context = context(ToolRiskLevel.L2, Map.of("topic", "orders", "confirm_token", "invalid"));
-        var failure = ToolError.CONFIRMATION_TOKEN_INVALID.exception("rmq.topic.create");
+        var failure = ToolError.CONFIRMATION_TOKEN_INVALID.exception("rmq.topic.update");
         doThrow(failure).when(tokens).verify(context);
 
         assertThatThrownBy(() -> chain.execute(new ToolInvocation(context, handler))).isSameAs(failure);
@@ -125,8 +125,8 @@ class ToolMutationFilterTest {
     }
 
     private static ToolExecutionContext context(ToolRiskLevel risk, Map<String, Object> input) {
-        ToolDefinition definition = new ToolDefinition("rmq.topic.create",
-                new ToolDefinition.Cli("topic", "create"), "Create topic", risk,
+        ToolDefinition definition = new ToolDefinition("rmq.topic.update",
+                new ToolDefinition.Cli("topic", "update"), "Create topic", risk,
                 "topic:write", List.of(), Map.of(), Map.of(), null, false, null);
         return ToolExecutionContext.of("instance-a", definition, input, "alice");
     }
@@ -145,7 +145,7 @@ class ToolMutationFilterTest {
 
         @Override
         public String name() {
-            return "rmq.topic.create";
+            return "rmq.topic.update";
         }
 
         @Override

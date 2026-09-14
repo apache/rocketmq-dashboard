@@ -73,7 +73,7 @@ class ToolDiscoveryServiceTest {
     }
 
     @Test
-    void discoveryWithInstanceExposesSupportedTools() {
+    void discoveryWithInstanceExposesSupportedToolsTest() {
         when(instanceRepository.findByIdentifier("instance-a"))
                 .thenReturn(Optional.of(InstanceVO.builder()
                         .name("instance-a")
@@ -85,16 +85,16 @@ class ToolDiscoveryServiceTest {
                 .extracting(AiToolVO::getName)
                 .contains(
                         "rmq.cluster.list",
-                        "rmq.capabilities",
+                        "rmq.instance.capabilities",
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
                         "rmq.topic.route",
-                        "rmq.topic.send",
+                        "rmq.message.send",
                         "rmq.group.list",
                         "rmq.group.reset_offset",
                         "rmq.alert.rule.list")
-                .contains("rmq.nameserver.config.diff")
-                .doesNotContain("rmq.proxy.config_update", "rmq.lite_topic.list", "rmq.lite_topic.create");
+                .contains("rmq.nameserver.config")
+                .doesNotContain("rmq.proxy.config_update");
     }
 
     @ParameterizedTest
@@ -114,17 +114,20 @@ class ToolDiscoveryServiceTest {
 
         var tools = discoveryService.listTools("instance-a").stream().map(AiToolVO::getName).toList();
         assertThat(tools)
-                .contains("rmq.capabilities", "rmq.topic.list", "rmq.topic.create", "rmq.group.list",
+                .contains("rmq.instance.capabilities", "rmq.topic.list", "rmq.topic.update", "rmq.group.list",
                         "rmq.acl.list", "rmq.user.list")
-                .doesNotContain("rmq.cluster.list", "rmq.broker.list", "rmq.nameserver.config.diff", "rmq.dlq.list",
-                        "rmq.topic.route", "rmq.topic.send", "rmq.group.reset_offset",
-                        "rmq.lite_topic.list", "rmq.lite_topic.create");
+                .doesNotContain("rmq.cluster.list", "rmq.broker.list", "rmq.nameserver.config", "rmq.group.dlq_list",
+                        "rmq.topic.route", "rmq.message.send", "rmq.group.reset_offset");
     }
+    /** The AI page lists platform tools without binding an Instance, so a missing target is not an error. */
     @Test
-    void discoveryRejectsMissingOrUnregisteredNames() {
-        assertThatThrownBy(() -> discoveryService.listTools(" "))
-                .isInstanceOfSatisfying(ToolExecutionException.class,
-                        error -> assertThat(error.getCode()).isEqualTo(400));
+    void discoveryWithoutATargetExposesNoToolsTest() {
+        assertThat(discoveryService.listTools(null)).isEmpty();
+        assertThat(discoveryService.listTools(" ")).isEmpty();
+    }
+
+    @Test
+    void discoveryRejectsAnUnregisteredInstanceTest() {
         assertThatThrownBy(() -> discoveryService.listTools("unknown"))
                 .isInstanceOfSatisfying(ToolExecutionException.class,
                         error -> assertThat(error.getCode()).isEqualTo(404));

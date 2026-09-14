@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolExecutionService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,20 +48,34 @@ public class ToolController {
 
     @GetMapping
     public Result<List<AiToolVO>> listTools(
-            @RequestParam String cluster) {
-        return Result.ok(toolDiscoveryService.listTools(cluster));
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String cluster) {
+        return Result.ok(toolDiscoveryService.listTools(instanceId != null ? instanceId : cluster));
     }
 
     @PostMapping("/{name}/execute")
     public Result<Object> executeTool(
             @PathVariable String name,
+            @RequestParam String instanceId,
             @RequestBody(required = false) Map<String, Object> input) {
-        Map<String, Object> normalizedInput = input == null
-                ? Collections.emptyMap()
-                : input;
+        Map<String, Object> normalizedInput = withTargetInstance(name, input, instanceId);
         AiPayloadGuard.validateToolInvocation(name, normalizedInput, objectMapper);
         log.info("Executing registered AI tool: {}", name);
         return Result.ok(toolExecutor.execute(name, normalizedInput));
+    }
+
+    /**
+     * The executor reads the Studio instance target from the tool arguments, so the REST query
+     * parameter is copied in. Platform-level tools are addressed by a physical {@code clusterName}
+     * and their input schemas reject unknown arguments, so their payload stays untouched.
+     */
+    private static Map<String, Object> withTargetInstance(
+            String name, Map<String, Object> input, String instanceId) {
+        Map<String, Object> normalized = new LinkedHashMap<>(input == null ? Map.of() : input);
+        if (!ToolCatalog.isInstanceIdExempt(name)) {
+            normalized.put(ToolCatalog.INSTANCE_ID_FIELD, instanceId);
+        }
+        return Collections.unmodifiableMap(normalized);
     }
 
 }
