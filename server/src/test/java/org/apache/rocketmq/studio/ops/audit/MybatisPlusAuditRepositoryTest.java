@@ -343,6 +343,55 @@ class MybatisPlusAuditRepositoryTest {
         }
     }
 
+    @Test
+    void findPageShouldTreatLikeWildcardsInTheSearchAsLiteralTextTest() {
+        Page<RmqOperationAudit> mapperPage = new Page<RmqOperationAudit>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findPage("100%_done", null, null, null, null, false, null, null, null, 1, 20);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(likePatterns(queryCaptor.getValue())).containsOnly("%100\\%\\_done%");
+    }
+
+    @Test
+    void summarizeShouldEscapeTheSearchPatternForEveryAggregateQueryTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.summarize("a_b%", null, null, null, null, null, null);
+
+        List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> mapsCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(4)).selectMaps(mapsCaptor.capture());
+        queries.addAll(mapsCaptor.getAllValues());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> listCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectList(listCaptor.capture());
+        queries.add(listCaptor.getValue());
+
+        for (Wrapper<RmqOperationAudit> query : queries) {
+            assertThat(likePatterns(query)).containsOnly("%a\\_b\\%%");
+        }
+    }
+
+    /**
+     * The LIKE parameter values MyBatis-Plus bound for the search columns. A nested
+     * {@code and(...)} group registers its parameters while the segment is rendered, so the
+     * segment has to be materialized before the values are readable.
+     */
+    private static List<String> likePatterns(Wrapper<RmqOperationAudit> query) {
+        query.getSqlSegment();
+        return ((QueryWrapper<RmqOperationAudit>) query).getParamNameValuePairs().values().stream()
+                .map(String::valueOf)
+                .toList();
+    }
+
     /** Builds a {@code Map<String, Object>} row so mocked result maps keep an explicit type. */
     private static Map<String, Object> row(Object... keyValues) {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
