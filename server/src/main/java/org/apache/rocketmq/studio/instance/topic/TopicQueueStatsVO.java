@@ -16,31 +16,20 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Map;
-
+/** Per-queue offset stats of one topic, as reported by broker-side topic statistics. */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SendMessageDTO {
-    private String instanceId;
-
-    @NotBlank(message = "topic is required")
-    private String topic;
-    private String tag;
-    private String key;
-    private String body;
-    private Map<String, String> properties;
-
-    /** FIFO sharding key; messages of the same group are sent to the same queue. */
-    private String messageGroup;
-
-    /** Absolute delivery time in epoch milliseconds for DELAY (timer) messages. */
-    private Long deliveryTimestamp;
+public class TopicQueueStatsVO {
+    private String brokerName;
+    private int queueId;
+    private long minOffset;
+    private long maxOffset;
+    private long lastUpdateTimestamp;
 }

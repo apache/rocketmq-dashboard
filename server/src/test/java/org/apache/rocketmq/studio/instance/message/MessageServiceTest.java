@@ -323,4 +323,35 @@ class MessageServiceTest {
         verify(fallback).getMessageTraceByKey("instance-a", "ORDER-1", "orders", "CUSTOM_TRACE");
         verifyNoInteractions(history);
     }
+
+    @Test
+    void rejectsBlankUniqueKeyQueryBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class));
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", null, "uniq-1", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required");
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", "TopicA", "  ", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("uniqueKey is required");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void delegatesUniqueKeyQueryToMessageProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L))
+                .thenReturn(List.of(record));
+
+        assertThat(service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L))
+                .containsExactly(record);
+
+        verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L);
+    }
 }

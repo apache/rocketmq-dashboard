@@ -16,10 +16,18 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.Operation;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.ResourceType;
 import org.apache.rocketmq.studio.audit.OperationAuditConstants.Result;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
@@ -49,7 +57,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -71,6 +81,7 @@ public class MetadataService {
     private final InstanceResolver instanceResolver;
     private final OperationAuditService operationAuditService;
     private final MessageService messageService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
@@ -157,9 +168,22 @@ public class MetadataService {
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
         topic.setInstanceId(instanceId);
+        guardImmutableType(instanceId, topic);
         InstanceProvider provider = resolve(instanceId);
         return executeWithAudit(provider, Operation.UPDATE_TOPIC, ResourceType.TOPIC, topic.getName(),
                 instanceId, topicDetail(topic), () -> provider.updateTopic(instanceId, topic));
+    }
+
+    /** The registered message type of an existing topic is immutable (creation-only attribute). */
+    private void guardImmutableType(String instanceId, TopicVO topic) {
+        if (topic.getType() == null) {
+            return;
+        }
+        findTopic(instanceId, null, topic.getName()).ifPresent(existing -> {
+            if (topic.getType() != existing.getType()) {
+                throw new BusinessException(400, "topic message type is immutable");
+            }
+        });
     }
 
     public void deleteTopic(String name) {
@@ -186,6 +210,48 @@ public class MetadataService {
             return List.of();
         }
         return metadataProvider.getTopicRoutes(instanceId, topicName);
+    }
+
+    /**
+     * Per-queue offset stats (≈ admin topicStatus) read through the pooled admin client.
+     * A missing topic route is an empty business state, not an RPC error; other failures
+     * surface as 502 so callers can decide whether to degrade.
+     */
+    public List<TopicQueueStatsVO> getTopicStats(String instanceId, String name) {
+        String target = normalizeInstanceId(instanceId);
+        String topicName = requireName(name, "topic name");
+        TopicStatsTable statsTable = runtimeAdminClientResolver.execute(target, admin -> {
+            try {
+                return admin.examineTopicStats(topicName);
+            } catch (Exception e) {
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                    log.info("Topic {} has no broker route yet; returning empty queue stats: {}",
+                            topicName, e.getMessage());
+                    return null;
+                }
+                throw e;
+            }
+        });
+        if (statsTable == null || statsTable.getOffsetTable() == null) {
+            return List.of();
+        }
+        return statsTable.getOffsetTable().entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .map(entry -> toQueueStats(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(TopicQueueStatsVO::getBrokerName,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparingInt(TopicQueueStatsVO::getQueueId))
+                .toList();
+    }
+
+    private static TopicQueueStatsVO toQueueStats(MessageQueue queue, TopicOffset offset) {
+        return TopicQueueStatsVO.builder()
+                .brokerName(queue.getBrokerName())
+                .queueId(queue.getQueueId())
+                .minOffset(offset.getMinOffset())
+                .maxOffset(offset.getMaxOffset())
+                .lastUpdateTimestamp(offset.getLastUpdateTimestamp())
+                .build();
     }
 
 
@@ -221,33 +287,62 @@ public class MetadataService {
     }
 
     /**
-     * Re-publishes one stored message to a target topic. The original broker message is read
-     * through the instance-aware message service and only the application payload/properties are
-     * copied; broker offsets and delivery metadata are never reused.
+     * Re-publishes one stored message towards a consumer group. By default the copy goes to
+     * {@code %RETRY%<groupName>} so only that group re-consumes it; an explicit targetTopic
+     * overrides the destination (visible to all its subscribers) while groupName still scopes
+     * audit and trace. System-reserved properties are never copied — tag/key travel as
+     * first-class DTO fields instead.
      */
-    public SendMessageVO resendMessage(String instanceId, String sourceTopic, String msgId, String targetTopic) {
-        MessageRecordVO original = findMessageForResend(instanceId, sourceTopic, msgId);
-        return resendMessage(instanceId, original, targetTopic);
+    public SendMessageVO redeliverMessage(String instanceId, String groupName, String sourceTopic,
+                                          String msgId, String targetTopic) {
+        String group = requireName(groupName, "group name");
+        MessageRecordVO original = findMessageForRedelivery(instanceId, sourceTopic, msgId);
+        return redeliverMessage(instanceId, group, original, targetTopic);
     }
 
-    public SendMessageVO resendMessage(String instanceId, MessageRecordVO original, String targetTopic) {
-        String destination = StringUtils.hasText(targetTopic) ? targetTopic.trim() : original.getTopic();
-        if (!StringUtils.hasText(destination)) {
-            throw new BusinessException(400, "target topic is required when the source message has no topic");
-        }
+    public SendMessageVO redeliverMessage(String instanceId, String groupName, MessageRecordVO original,
+                                          String targetTopic) {
+        String group = requireName(groupName, "group name");
+        String destination = StringUtils.hasText(targetTopic)
+                ? targetTopic.trim()
+                : MixAll.getRetryTopic(group);
         SendMessageDTO request = SendMessageDTO.builder()
                 .instanceId(normalizeInstanceId(instanceId))
                 .topic(destination)
                 .tag(original.getTag())
                 .key(original.getKey())
                 .body(original.getBody())
-                .properties(original.getProperties() == null ? null : Map.copyOf(original.getProperties()))
+                .properties(redeliveryProperties(original.getProperties()))
                 .build();
         return sendMessage(request);
     }
 
-    /** Loads the exact source message used by resend without exposing or publishing its body. */
-    public MessageRecordVO findMessageForResend(String instanceId, String sourceTopic, String msgId) {
+    /** Drops the system-reserved keys {@code Message.putUserProperty} would reject (§15.5.1 KEYS defect). */
+    private static Map<String, String> redeliveryProperties(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return null;
+        }
+        Map<String, String> filtered = new LinkedHashMap<>();
+        properties.forEach((key, value) -> {
+            if (!isSystemProperty(key)) {
+                filtered.put(key, value);
+            }
+        });
+        return filtered;
+    }
+
+    private static boolean isSystemProperty(String key) {
+        if (!StringUtils.hasText(key)) {
+            return true;
+        }
+        return MessageConst.STRING_HASH_SET.contains(key)
+                || key.startsWith("TIMER_")
+                || key.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || key.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX);
+    }
+
+    /** Loads the exact source message used by redelivery without exposing or publishing its body. */
+    public MessageRecordVO findMessageForRedelivery(String instanceId, String sourceTopic, String msgId) {
         String messageId = requireName(msgId, "message id");
         List<MessageRecordVO> matches = messageService.queryMessages(
                 instanceId, normalizeFilter(sourceTopic), messageId, null, null, null, null);
@@ -420,6 +515,19 @@ public class MetadataService {
         InstanceProvider provider = resolve(instanceId);
         executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
                 groupName, instanceId, null, () -> mutation.accept(provider, groupName));
+        cascadeDeleteDlqTopic(instanceId, groupName);
+    }
+
+    /** Best-effort DLQ cascade (decision 17): a missing or undeletable %DLQ% topic never blocks group deletion. */
+    private void cascadeDeleteDlqTopic(String instanceId, String groupName) {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        try {
+            deleteTopic(instanceId, dlqTopic);
+            log.info("Cascaded DLQ topic deletion for consumer group {}: {}", groupName, dlqTopic);
+        } catch (Exception e) {
+            log.warn("Failed to cascade delete DLQ topic {} for consumer group {}: {}",
+                    dlqTopic, groupName, e.getMessage());
+        }
     }
 
     public void resetOffset(String name, long timestamp, String topic) {

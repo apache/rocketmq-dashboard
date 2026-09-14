@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -472,6 +473,33 @@ class RocketMQDLQProviderTest {
                 isNull(),
                 contains("matched=0, resent=0, failed=0"),
                 eq("NO_MESSAGES"));
+    }
+
+    @Test
+    void listMessagesDegradesToEmptyWhenDlqTopicMissingTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getItems()).isEmpty();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesThrowsNotFoundWhenDlqTopicMissingTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
     @Test

@@ -17,7 +17,16 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -49,15 +58,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -90,11 +103,14 @@ class MetadataServiceTest {
     @Mock
     private MessageService messageService;
 
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
     @InjectMocks
     private MetadataService metadataService;
 
     @Test
-    void resendMessageShouldCopyApplicationPayloadWithoutExposingOriginalMetadata() {
+    void redeliverMessageShouldCopyApplicationPayloadWithoutExposingOriginalMetadata() {
         MessageRecordVO original = MessageRecordVO.builder()
                 .msgId("msg-original")
                 .topic("orders")
@@ -109,15 +125,85 @@ class MetadataServiceTest {
         when(adminClient.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
-        SendMessageVO result = metadataService.resendMessage(
-                "instance-a", "orders", "msg-original", "orders-retry");
+        SendMessageVO result = metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", "orders-retry");
 
         assertThat(result.getMsgId()).isEqualTo("msg-new");
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
         verify(adminClient).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("orders-retry");
+        assertThat(request.getValue().getTag()).isEqualTo("paid");
+        assertThat(request.getValue().getKey()).isEqualTo("order-1");
         assertThat(request.getValue().getBody()).isEqualTo("payload");
         assertThat(request.getValue().getProperties()).containsEntry("tenant", "alpha");
+    }
+
+    @Test
+    void redeliverMessageShouldDefaultToGroupRetryTopicTest() {
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(adminClient).sendMessage(request.capture());
+        assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+    }
+
+    @Test
+    void redeliverMessageShouldFilterSystemReservedPropertiesTest() {
+        // §15.5.1: copying KEYS/TAGS/UNIQ_KEY verbatim makes putUserProperty reject the send.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .tag("paid")
+                .key("order-1")
+                .body("payload")
+                .properties(Map.ofEntries(
+                        Map.entry(MessageConst.PROPERTY_KEYS, "order-1"),
+                        Map.entry(MessageConst.PROPERTY_TAGS, "paid"),
+                        Map.entry(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "uniq"),
+                        Map.entry(MessageConst.PROPERTY_WAIT_STORE_MSG_OK, "true"),
+                        Map.entry(MessageConst.PROPERTY_DELAY_TIME_LEVEL, "3"),
+                        Map.entry(MessageConst.PROPERTY_RETRY_TOPIC, "orders"),
+                        Map.entry(MessageConst.PROPERTY_TIMER_DELIVER_MS, "1700000000000"),
+                        Map.entry("%RETRY%group-a", "x"),
+                        Map.entry("%DLQ%group-a", "y"),
+                        Map.entry("tenant", "alpha")))
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", "orders-copy");
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(adminClient).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha"));
+        assertThat(request.getValue().getTag()).isEqualTo("paid");
+        assertThat(request.getValue().getKey()).isEqualTo("order-1");
+    }
+
+    @Test
+    void redeliverMessageShouldRejectBlankGroupNameTest() {
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", " ", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("group name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(messageService, adminClient);
     }
 
     @Test
@@ -251,6 +337,8 @@ class MetadataServiceTest {
         verify(apacheProvider).createConsumerGroup("instance-a", group);
         verify(apacheProvider).updateConsumerGroup("instance-a", group);
         verify(apacheProvider).deleteConsumerGroup("instance-a", "consumers");
+        // decision 17: group deletion cascades to the dead-letter topic
+        verify(apacheProvider).deleteTopic("instance-a", "%DLQ%consumers");
         verifyNoInteractions(operationAuditService);
     }
 
@@ -452,6 +540,115 @@ class MetadataServiceTest {
     }
 
     @Test
+    void updateTopicShouldRejectMessageTypeChangeTest() {
+        // Decision 9: the registered topic type is immutable.
+        TopicVO existing = topic("orders", null, TopicType.NORMAL);
+        when(apacheProvider.listTopics("instance-a", null, "orders")).thenReturn(List.of(existing));
+        TopicVO update = topic("orders", null, TopicType.FIFO);
+
+        assertThatThrownBy(() -> metadataService.updateTopic("instance-a", update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic message type is immutable")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(apacheProvider, never()).updateTopic(any(), any());
+    }
+
+    @Test
+    void updateTopicShouldAllowSameMessageTypeTest() {
+        TopicVO existing = topic("orders", null, TopicType.NORMAL);
+        when(apacheProvider.listTopics("instance-a", null, "orders")).thenReturn(List.of(existing));
+        TopicVO update = topic("orders", null, TopicType.NORMAL);
+        when(apacheProvider.updateTopic("instance-a", update)).thenReturn(update);
+
+        assertThat(metadataService.updateTopic("instance-a", update)).isSameAs(update);
+        verify(apacheProvider).updateTopic("instance-a", update);
+    }
+
+    @Test
+    void getTopicStatsShouldMapAndSortOffsetTableTest() throws Exception {
+        MQAdminExt admin = mock(MQAdminExt.class);
+        TopicStatsTable table = new TopicStatsTable();
+        Map<MessageQueue, TopicOffset> offsetTable = new HashMap<>();
+        offsetTable.put(queue("broker-b", 0), offset(30, 40, 1700000000003L));
+        offsetTable.put(queue("broker-a", 1), offset(10, 20, 1700000000002L));
+        offsetTable.put(queue("broker-a", 0), offset(1, 2, 1700000000001L));
+        table.setOffsetTable(offsetTable);
+        when(admin.examineTopicStats("orders")).thenReturn(table);
+        stubAdminAction(admin);
+
+        List<TopicQueueStatsVO> stats = metadataService.getTopicStats("instance-a", "orders");
+
+        assertThat(stats).containsExactly(
+                TopicQueueStatsVO.builder().brokerName("broker-a").queueId(0)
+                        .minOffset(1).maxOffset(2).lastUpdateTimestamp(1700000000001L).build(),
+                TopicQueueStatsVO.builder().brokerName("broker-a").queueId(1)
+                        .minOffset(10).maxOffset(20).lastUpdateTimestamp(1700000000002L).build(),
+                TopicQueueStatsVO.builder().brokerName("broker-b").queueId(0)
+                        .minOffset(30).maxOffset(40).lastUpdateTimestamp(1700000000003L).build());
+    }
+
+    @Test
+    void getTopicStatsShouldReturnEmptyWhenRouteMissingTest() throws Exception {
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineTopicStats("orders")).thenThrow(
+                new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: orders"));
+        stubAdminAction(admin);
+
+        assertThat(metadataService.getTopicStats("instance-a", "orders")).isEmpty();
+    }
+
+    @Test
+    void getTopicStatsShouldPropagateRpcFailureAsBadGatewayTest() throws Exception {
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineTopicStats("orders")).thenThrow(
+                new MQClientException(ResponseCode.SYSTEM_ERROR, "broker not available"));
+        stubAdminAction(admin);
+
+        assertThatThrownBy(() -> metadataService.getTopicStats("instance-a", "orders"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void deleteConsumerGroupShouldNotFailWhenDlqDeletionFailsTest() {
+        // Decision 17: DLQ cascade is best-effort — a missing/undeletable DLQ never blocks group deletion.
+        doThrow(new BusinessException(502, "no route for %DLQ%group-a"))
+                .when(apacheProvider).deleteTopic("instance-a", "%DLQ%group-a");
+
+        assertThatCode(() -> metadataService.deleteConsumerGroup("instance-a", "group-a"))
+                .doesNotThrowAnyException();
+
+        verify(apacheProvider).deleteConsumerGroup("instance-a", "group-a");
+        verify(apacheProvider).deleteTopic("instance-a", "%DLQ%group-a");
+    }
+
+    /** Runs the resolver action against the given admin mock, wrapping failures like MqAdminExtFactory does. */
+    private void stubAdminAction(MQAdminExt admin) {
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            try {
+                return action.apply(admin);
+            } catch (Exception e) {
+                throw new BusinessException(502, "RocketMQ admin call failed: " + e.getMessage());
+            }
+        });
+    }
+
+    private static MessageQueue queue(String brokerName, int queueId) {
+        return new MessageQueue("orders", brokerName, queueId);
+    }
+
+    private static TopicOffset offset(long min, long max, long lastUpdate) {
+        TopicOffset topicOffset = new TopicOffset();
+        topicOffset.setMinOffset(min);
+        topicOffset.setMaxOffset(max);
+        topicOffset.setLastUpdateTimestamp(lastUpdate);
+        return topicOffset;
+    }
+
+    @Test
     void topicRuntimeDiagnosticsShouldDelegateWithSelectedInstance() {
         BrokerRouteVO route = BrokerRouteVO.builder().brokerName("broker-a").build();
         TopicConsumerVO consumer = TopicConsumerVO.builder().group("cg-orders").build();
@@ -641,6 +838,8 @@ class MetadataServiceTest {
         verify(operationAuditService).record("UPDATE_GROUP", "GROUP", "cg-orders",
                 "cloud-instance", "consumeType=-, subscriptionMode=-, retryMaxTimes=16", "SUCCESS", null);
         verify(operationAuditService).record("DELETE_GROUP", "GROUP", "cg-orders",
+                "cloud-instance", null, "SUCCESS", null);
+        verify(operationAuditService).record("DELETE_TOPIC", "TOPIC", "%DLQ%cg-orders",
                 "cloud-instance", null, "SUCCESS", null);
         verify(operationAuditService).record("RESET_OFFSET", "GROUP", "cg-orders",
                 "cloud-instance", "topic=orders, timestamp=1784246400000", "SUCCESS", null);

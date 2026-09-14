@@ -19,9 +19,11 @@ import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -1349,5 +1351,101 @@ class RocketMQAdminClientImplTest {
 
         verify(auditService).record(eq("SEND_MESSAGE"), eq("MESSAGE"), eq("TopicA"),
                 eq(null), eq("Message send did not succeed: null"), eq("FAILED"));
+    }
+
+    @Test
+    void sendMessageFiltersSystemReservedPropertiesTest() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        // Source properties copied verbatim from a stored message used to fail the send with
+        // "The Property<KEYS> is used by system"; reserved keys must be dropped instead.
+        Map<String, String> properties = new HashMap<>();
+        properties.put(MessageConst.PROPERTY_KEYS, "injected-keys");
+        properties.put(MessageConst.PROPERTY_TAGS, "injected-tags");
+        properties.put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "injected-uniq");
+        properties.put(MessageConst.PROPERTY_WAIT_STORE_MSG_OK, "false");
+        properties.put(MessageConst.PROPERTY_TIMER_DELIVER_MS, "123");
+        properties.put(MessageConst.PROPERTY_RETRY_TOPIC, "orders");
+        properties.put("%RETRY%group-a", "x");
+        properties.put("%DLQ%group-a", "y");
+        properties.put("bizKey", "bizValue");
+
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setTag("tagA");
+        request.setKey("keyA");
+        request.setBody("hello");
+        request.setProperties(properties);
+
+        adminClient.sendMessage(request);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        Message sent = captor.getValue();
+        assertThat(sent.getTags()).isEqualTo("tagA");
+        assertThat(sent.getKeys()).isEqualTo("keyA");
+        assertThat(sent.getUserProperty("bizKey")).isEqualTo("bizValue");
+        assertThat(sent.getProperties())
+                .containsEntry(MessageConst.PROPERTY_KEYS, "keyA")
+                .containsEntry(MessageConst.PROPERTY_TAGS, "tagA")
+                .doesNotContainKeys(
+                        MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX,
+                        MessageConst.PROPERTY_RETRY_TOPIC,
+                        MessageConst.PROPERTY_TIMER_DELIVER_MS,
+                        "%RETRY%group-a",
+                        "%DLQ%group-a");
+    }
+
+    @Test
+    void sendMessageSelectsQueueByMessageGroupHashTest() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        when(sendProducer.send(any(Message.class), any(MessageQueueSelector.class), any()))
+                .thenReturn(sendResult);
+
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
+        request.setMessageGroup("group-x");
+
+        adminClient.sendMessage(request);
+
+        ArgumentCaptor<MessageQueueSelector> selectorCaptor =
+                ArgumentCaptor.forClass(MessageQueueSelector.class);
+        verify(sendProducer).send(any(Message.class), selectorCaptor.capture(), eq("group-x"));
+        verify(sendProducer, never()).send(any(Message.class));
+        List<MessageQueue> queues = List.of(
+                new MessageQueue("TopicA", "broker-a", 0),
+                new MessageQueue("TopicA", "broker-a", 1),
+                new MessageQueue("TopicA", "broker-a", 2));
+        MessageQueue selected = selectorCaptor.getValue().select(queues, null, "group-x");
+        assertThat(selected).isEqualTo(queues.get(Math.floorMod("group-x".hashCode(), queues.size())));
+        // The same group must always land on the same queue.
+        assertThat(selectorCaptor.getValue().select(queues, null, "group-x")).isEqualTo(selected);
+    }
+
+    @Test
+    void sendMessageSetsTimerDeliverMsForDeliveryTimestampTest() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
+        request.setDeliveryTimestamp(1_900_000_000_000L);
+
+        adminClient.sendMessage(request);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        assertThat(captor.getValue().getDeliverTimeMs()).isEqualTo(1_900_000_000_000L);
+        assertThat(captor.getValue().getProperty(MessageConst.PROPERTY_TIMER_DELIVER_MS))
+                .isEqualTo("1900000000000");
     }
 }
