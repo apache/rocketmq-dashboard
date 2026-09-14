@@ -59,6 +59,40 @@ class MessagePropertyDisplayTest {
     }
 
     @Test
+    void limitPropertiesShouldNotSplitASurrogatePairTest() {
+        String value = "a".repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS - 1)
+                + "\uD83D\uDE00" + "tail";
+        String abbreviated = MessagePropertyDisplay.limitProperties(Map.of("big", value)).get("big");
+        assertThat(hasUnpairedSurrogate(abbreviated)).isFalse();
+        assertThat(abbreviated).isEqualTo("a".repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS - 1) + "...");
+    }
+
+    @Test
+    void limitPropertiesShouldKeepASupplementaryCharacterThatFitsTheCapTest() {
+        String value = "a".repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS - 2)
+                + "\uD83D\uDE00" + "tail";
+        String abbreviated = MessagePropertyDisplay.limitProperties(Map.of("big", value)).get("big");
+        assertThat(abbreviated)
+                .isEqualTo("a".repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS - 2) + "\uD83D\uDE00" + "...");
+        assertThat(hasUnpairedSurrogate(abbreviated)).isFalse();
+    }
+
+    private static boolean hasUnpairedSurrogate(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isHighSurrogate(current)) {
+                if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+                    return true;
+                }
+                index++;
+            } else if (Character.isLowSurrogate(current)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
     void hasOversizedPropertyShouldDetectLongValuesTest() {
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("big", "x".repeat(1500)))).isTrue();
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("k", "short"))).isFalse();

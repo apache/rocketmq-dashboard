@@ -75,6 +75,13 @@ public final class MessagePropertyDisplay {
         if (value == null || value.length() <= MAX_PROPERTY_VALUE_CHARS) {
             return value;
         }
-        return value.substring(0, MAX_PROPERTY_VALUE_CHARS) + "...";
+        int end = MAX_PROPERTY_VALUE_CHARS;
+        // A supplementary character occupies two chars, so the cap can fall between a high and
+        // a low surrogate. Cutting there would emit a lone surrogate, which is not a code point
+        // and serializes to an invalid JSON escape, so back off by one char instead.
+        if (Character.isHighSurrogate(value.charAt(end - 1))) {
+            end--;
+        }
+        return value.substring(0, end) + "...";
     }
 }
