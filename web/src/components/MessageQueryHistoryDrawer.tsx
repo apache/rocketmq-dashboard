@@ -15,6 +15,7 @@ import {
   type QueryHistorySummary,
   type TraceQueryHistory,
 } from '../api/messageHistory';
+import { useLang } from '../i18n/LangContext';
 
 interface Props {
   open: boolean;
@@ -38,6 +39,7 @@ const MessageQueryHistoryDrawer = ({
   onSelectMessage,
   onSelectTrace,
 }: Props) => {
+  const { t } = useLang();
   const [tab, setTab] = useState<'messages' | 'traces'>('messages');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -82,12 +84,12 @@ const MessageQueryHistoryDrawer = ({
       else setTraceRows(result.items as TraceQueryHistory[]);
     } catch (loadError) {
       if (id === requestId.current) {
-        setError(loadError instanceof Error ? loadError.message : '查询历史加载失败');
+        setError(loadError instanceof Error ? loadError.message : t('messageHistory.loadFailed'));
       }
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [clusterId, open, page, search, tab]);
+  }, [clusterId, open, page, search, t, tab]);
 
   useEffect(() => {
     // Loading is asynchronous; state updates happen after the history API resolves.
@@ -99,38 +101,65 @@ const MessageQueryHistoryDrawer = ({
   }, [load]);
 
   const messageColumns: ColumnsType<MessageQueryHistory> = [
-    { title: '类型', dataIndex: 'queryType', width: 90, render: (value) => <Tag>{value}</Tag> },
+    {
+      title: t('common.type'),
+      dataIndex: 'queryType',
+      width: 90,
+      render: (value) => <Tag>{value}</Tag>,
+    },
     { title: 'Topic', dataIndex: 'topic', ellipsis: true },
     { title: 'Message ID / Key', render: (_, row) => row.msgId || row.messageKey || '-' },
-    { title: '结果数', dataIndex: 'resultCount', width: 80 },
-    { title: '操作者', dataIndex: 'queriedBy', width: 110 },
-    { title: '查询时间', dataIndex: 'queriedAt', width: 180, render: formatTime },
+    { title: t('messageHistory.resultCount'), dataIndex: 'resultCount', width: 80 },
+    { title: t('messageHistory.operator'), dataIndex: 'queriedBy', width: 110 },
+    {
+      title: t('messageHistory.queryTime'),
+      dataIndex: 'queriedAt',
+      width: 180,
+      render: formatTime,
+    },
   ];
   const traceColumns: ColumnsType<TraceQueryHistory> = [
     { title: 'Message ID', dataIndex: 'msgId', ellipsis: true },
     { title: 'Topic', dataIndex: 'topic', ellipsis: true },
     {
-      title: '轨迹 Topic',
+      title: t('messageHistory.traceTopic'),
       dataIndex: 'traceTopic',
       ellipsis: true,
-      render: (value?: string) => value?.trim() || '默认',
+      render: (value?: string) => value?.trim() || t('common.default'),
     },
-    { title: '轨迹节点', dataIndex: 'nodeCount', width: 90 },
-    { title: '消费者', dataIndex: 'consumerCount', width: 90 },
-    { title: '操作者', dataIndex: 'queriedBy', width: 110 },
-    { title: '查询时间', dataIndex: 'queriedAt', width: 180, render: formatTime },
+    { title: t('messageHistory.traceNodes'), dataIndex: 'nodeCount', width: 90 },
+    { title: t('messageHistory.consumers'), dataIndex: 'consumerCount', width: 90 },
+    { title: t('messageHistory.operator'), dataIndex: 'queriedBy', width: 110 },
+    {
+      title: t('messageHistory.queryTime'),
+      dataIndex: 'queriedAt',
+      width: 180,
+      render: formatTime,
+    },
   ];
 
   return (
-    <Drawer title="服务端查询历史" width={900} open={open} onClose={onClose} destroyOnHidden>
+    <Drawer
+      title={t('messageHistory.title')}
+      width={900}
+      open={open}
+      onClose={onClose}
+      destroyOnHidden
+    >
       <Flex gap={32} style={{ marginBottom: 16 }}>
-        <Statistic title="消息查询" value={summary?.messageQueries ?? 0} />
-        <Statistic title="轨迹查询" value={summary?.traceQueries ?? 0} />
-        <Statistic title="最近查询" value={formatTime(summary?.latestQueryAt)} />
+        <Statistic
+          title={t('messageHistory.messageQueries')}
+          value={summary?.messageQueries ?? 0}
+        />
+        <Statistic title={t('messageHistory.traceQueries')} value={summary?.traceQueries ?? 0} />
+        <Statistic
+          title={t('messageHistory.latestQuery')}
+          value={formatTime(summary?.latestQueryAt)}
+        />
       </Flex>
       <Input.Search
         allowClear
-        placeholder="搜索 Topic、轨迹 Topic、Message ID、Key 或操作者"
+        placeholder={t('messageHistory.searchPlaceholder')}
         onSearch={(value) => {
           setPage(1);
           setSearch(value.trim());
@@ -141,11 +170,11 @@ const MessageQueryHistoryDrawer = ({
         <Alert
           type="error"
           showIcon
-          message="查询历史加载失败"
+          message={t('messageHistory.loadFailed')}
           description={error}
           action={
             <Button size="small" onClick={() => void load()}>
-              重试
+              {t('common.retry')}
             </Button>
           }
           style={{ marginBottom: 12 }}
@@ -160,7 +189,7 @@ const MessageQueryHistoryDrawer = ({
         items={[
           {
             key: 'messages',
-            label: '消息查询',
+            label: t('messageHistory.messageQueries'),
             children: (
               <Table
                 rowKey="id"
@@ -181,7 +210,7 @@ const MessageQueryHistoryDrawer = ({
           },
           {
             key: 'traces',
-            label: '轨迹查询',
+            label: t('messageHistory.traceQueries'),
             children: (
               <Table
                 rowKey="id"

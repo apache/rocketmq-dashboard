@@ -238,16 +238,41 @@ class ConsumerGroupControllerTest {
     void consumerGroupSettingsUpdateShouldValidateAndDelegate() throws Exception {
         Map<String, Object> body = Map.of("instanceId", "instance-a", "name", "cg-orders",
                 "retryQueueNums", 2, "retryMaxTimes", 8);
-        when(metadataService.updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8))
+        when(metadataService.updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, null, null, null)))
                 .thenReturn(ConsumerGroupSettingsVO.builder().groupName("cg-orders").retryQueueNums(2)
-                        .retryMaxTimes(8).build());
+                        .retryMaxTimes(8).consumeEnable(true).consumeMessageOrderly(false)
+                        .consumeBroadcastEnable(true).build());
 
         mockMvc.perform(post("/api/groups/settings").contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.retryMaxTimes").value(8));
 
-        verify(metadataService).updateConsumerGroupSettings("instance-a", "cg-orders", 2, 8);
+        verify(metadataService).updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, null, null, null));
+    }
+
+    @Test
+    void consumerGroupSettingsUpdateShouldForwardConsumptionSwitches() throws Exception {
+        Map<String, Object> body = Map.of("instanceId", "instance-a", "name", "cg-orders",
+                "retryQueueNums", 2, "retryMaxTimes", 8, "consumeEnable", false,
+                "consumeMessageOrderly", true);
+        when(metadataService.updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, false, true, null)))
+                .thenReturn(ConsumerGroupSettingsVO.builder().groupName("cg-orders").retryQueueNums(2)
+                        .retryMaxTimes(8).consumeEnable(false).consumeMessageOrderly(true)
+                        .consumeBroadcastEnable(false).build());
+
+        mockMvc.perform(post("/api/groups/settings").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.consumeEnable").value(false))
+                .andExpect(jsonPath("$.data.consumeMessageOrderly").value(true))
+                .andExpect(jsonPath("$.data.consumeBroadcastEnable").value(false));
+
+        verify(metadataService).updateConsumerGroupSettings("instance-a", "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, false, true, null));
     }
 
     @Test

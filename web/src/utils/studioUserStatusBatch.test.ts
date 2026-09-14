@@ -8,6 +8,7 @@ const user = (id: number, enabled: boolean, username = `user-${id}`): StudioUser
   username,
   enabled,
   admin: false,
+  activeSessionCount: 0,
   passwordChangedAt: '',
   gmtCreate: '',
   gmtModified: '',
