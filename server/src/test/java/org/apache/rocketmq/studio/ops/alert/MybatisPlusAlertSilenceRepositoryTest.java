@@ -32,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -98,12 +99,61 @@ class MybatisPlusAlertSilenceRepositoryTest {
         QueryWrapper<RmqAlertSilence> query = (QueryWrapper<RmqAlertSilence>) queryCaptor.getValue();
         query.getCustomSqlSegment();
         assertThat(query.getSqlSegment())
-                .contains("starts_at", "ends_at", "domain IS NULL", "rule_id IS NULL", "instance_id IS NULL")
+                .contains("starts_at", "ends_at", "recurrence", "recurrence_until", "domain IS NULL",
+                        "rule_id IS NULL", "instance_id IS NULL")
                 .contains("ORDER BY ends_at DESC,id DESC");
         assertThat(query.getParamNameValuePairs())
                 .containsValue(now)
                 .containsValue(AlertDomain.CLUSTER.name())
                 .containsValue(5L)
                 .containsValue("local");
+    }
+
+    @Test
+    void saveShouldPersistRecurringScheduleFieldsTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        AlertSilenceVO silence = AlertSilenceVO.builder()
+                .domain(AlertDomain.BUSINESS).startsAt(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 1, 11, 0)).recurrence(AlertSilenceRecurrence.WEEKLY)
+                .timeZone("Asia/Shanghai").recurrenceDays(Set.of(5, 1))
+                .recurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0)).createdBy("admin").build();
+        when(mapper.insert(any(RmqAlertSilence.class))).thenAnswer(invocation -> {
+            RmqAlertSilence entity = invocation.getArgument(0);
+            entity.setId(31L);
+            return 1;
+        });
+
+        AlertSilenceVO saved = repository.save(silence);
+
+        ArgumentCaptor<RmqAlertSilence> captor = ArgumentCaptor.forClass(RmqAlertSilence.class);
+        verify(mapper).insert(captor.capture());
+        assertThat(saved.getId()).isEqualTo(31L);
+        assertThat(captor.getValue().getRecurrence()).isEqualTo("WEEKLY");
+        assertThat(captor.getValue().getTimeZone()).isEqualTo("Asia/Shanghai");
+        assertThat(captor.getValue().getRecurrenceDaysJson()).isEqualTo("[1,5]");
+        assertThat(captor.getValue().getRecurrenceUntil()).isEqualTo(LocalDateTime.of(2026, 10, 1, 0, 0));
+    }
+
+    @Test
+    void findAllShouldRestoreRecurringScheduleAndLegacyDefaultsTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        RmqAlertSilence recurring = new RmqAlertSilence();
+        recurring.setId(31L);
+        recurring.setRecurrence("WEEKLY");
+        recurring.setTimeZone("UTC");
+        recurring.setRecurrenceDaysJson("[1,3,5]");
+        recurring.setRecurrenceUntil(LocalDateTime.of(2026, 10, 1, 0, 0));
+        RmqAlertSilence legacy = new RmqAlertSilence();
+        legacy.setId(30L);
+        when(mapper.selectList(any())).thenReturn(List.of(recurring, legacy));
+
+        List<AlertSilenceVO> restored = repository.findAll();
+
+        assertThat(restored.get(0).getRecurrence()).isEqualTo(AlertSilenceRecurrence.WEEKLY);
+        assertThat(restored.get(0).getRecurrenceDays()).containsExactlyInAnyOrder(1, 3, 5);
+        assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
+        assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
     }
 }

@@ -187,8 +187,10 @@ export const GeneralSettingsTab = () => {
       if (!(await mergeAndSave(values))) return;
       await testNotification(channel);
       message.success(t('settings.testMessageSent'));
-    } catch (error: any) {
-      message.error(error?.response?.data?.message ?? t('settings.testMessageFailed'));
+    } catch (error) {
+      const apiMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+        ?.message;
+      message.error(typeof apiMessage === 'string' ? apiMessage : t('settings.testMessageFailed'));
     } finally {
       setTestingChannel(undefined);
     }
@@ -344,30 +346,30 @@ export const GeneralSettingsTab = () => {
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 0 }}>
-            <Space>
+            <Flex align="center" justify="space-between" gap={8} wrap>
+              <Space>
+                <Button
+                  onClick={() => void sendTest('dingtalk')}
+                  loading={testingChannel === 'dingtalk'}
+                >
+                  {t('settings.testDingtalk')}
+                </Button>
+                <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                  {t('settings.testEmail')}
+                </Button>
+                <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                  {t('settings.testSmsWebhook')}
+                </Button>
+              </Space>
               <Button
-                onClick={() => void sendTest('dingtalk')}
-                loading={testingChannel === 'dingtalk'}
+                type="primary"
+                htmlType="submit"
+                loading={savingNotification}
+                disabled={loading}
               >
-                {t('settings.testDingtalk')}
+                {t('settings.saveSettings')}
               </Button>
-              <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
-                {t('settings.testEmail')}
-              </Button>
-              <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
-                {t('settings.testSmsWebhook')}
-              </Button>
-            </Space>
-          </Form.Item>
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={savingNotification}
-              disabled={loading}
-            >
-              {t('settings.saveSettings')}
-            </Button>
+            </Flex>
           </Form.Item>
         </Form>
       </Card>

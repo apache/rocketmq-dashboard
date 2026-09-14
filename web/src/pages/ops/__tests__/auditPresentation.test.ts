@@ -116,6 +116,21 @@ describe('audit presentation helpers', () => {
     ]);
   });
 
+  it('preserves commas inside nested configuration and quoted values', () => {
+    expect(
+      parseAuditDetail(
+        'brokerAddr=10.0.0.1:10911, config={flushDiskType=SYNC_FLUSH, fileReservedTime=72}, note="primary, synchronous"',
+      ),
+    ).toEqual([
+      { label: 'brokerAddr', value: '10.0.0.1:10911' },
+      {
+        label: 'config',
+        value: '{flushDiskType=SYNC_FLUSH, fileReservedTime=72}',
+      },
+      { label: 'note', value: '"primary, synchronous"' },
+    ]);
+  });
+
   it('keeps free-form details intact when they are not key-value lists', () => {
     expect(parseAuditDetail('Removed stale Proxy address 10.0.30.9:8081')).toEqual([
       { label: '', value: 'Removed stale Proxy address 10.0.30.9:8081' },

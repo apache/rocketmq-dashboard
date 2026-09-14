@@ -149,10 +149,16 @@ public class QueryHistoryService {
         }
     }
 
-    public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
+    /**
+     * Records a message-id trace lookup together with the exact trace topic used by the
+     * provider. The topic is optional because older/default lookups use the provider default.
+     */
+    public void recordTraceQuery(String clusterId, String msgId, String topic, String traceTopic,
+                                 int nodeCount, int consumerCount) {
         RmqTraceQuery query = new RmqTraceQuery();
         query.setMsgId(msgId);
         query.setTopic(topic);
+        query.setTraceTopic(normalizeOptional(traceTopic));
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
         query.setClusterId(clusterId);
@@ -161,7 +167,12 @@ public class QueryHistoryService {
         query.setGmtCreate(now);
         query.setGmtModified(now);
         traceQueryMapper.insert(query);
-        log.debug("Trace query recorded: clusterId={} msgId={} topic={}", clusterId, msgId, topic);
+        log.debug("Trace query recorded: clusterId={} msgId={} topic={} traceTopic={}", clusterId, msgId,
+                topic, query.getTraceTopic());
+    }
+
+    public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
+        recordTraceQuery(clusterId, msgId, topic, null, nodeCount, consumerCount);
     }
 
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
@@ -194,6 +205,7 @@ public class QueryHistoryService {
                 .and(StringUtils.hasText(search), nested -> nested
                         .like("topic", pattern)
                         .or().like("msg_id", pattern)
+                        .or().like("trace_topic", pattern)
                         .or().like("queried_by", pattern))
                 .orderByDesc("gmt_create", "id");
         Page<RmqTraceQuery> result = traceQueryMapper.selectPage(new Page<>(page, pageSize), query);
@@ -320,6 +332,7 @@ public class QueryHistoryService {
     private static TraceQueryHistoryVO toTraceHistory(RmqTraceQuery query) {
         return TraceQueryHistoryVO.builder()
                 .id(query.getId()).msgId(query.getMsgId()).topic(query.getTopic())
+                .traceTopic(query.getTraceTopic())
                 .nodeCount(query.getNodeCount() == null ? 0 : query.getNodeCount())
                 .consumerCount(query.getConsumerCount() == null ? 0 : query.getConsumerCount())
                 .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
@@ -335,5 +348,9 @@ public class QueryHistoryService {
             return search;
         }
         return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    private static String normalizeOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }

@@ -19,11 +19,11 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.ops.alert.AlertRuleVO;
 import org.apache.rocketmq.studio.ops.alert.AlertService;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Component
@@ -43,29 +43,11 @@ public class AlertRuleListToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String search = (String) input.get("search");
         Boolean enabled = (Boolean) input.get("enabled");
-        return alertService.listRules().stream()
-                .filter(rule -> matchesEnabled(rule, enabled))
-                .filter(rule -> matchesSearch(rule, search))
+        PageResult<AlertRuleVO> page = alertService.listRules(
+                search, enabled, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+        return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(AlertRuleListToolHandler::safeProjection)
-                .toList();
-    }
-
-    private static boolean matchesEnabled(AlertRuleVO rule, Boolean enabled) {
-        return enabled == null || rule.isEnabled() == enabled;
-    }
-
-    private static boolean matchesSearch(AlertRuleVO rule, String search) {
-        if (search == null || search.isBlank()) {
-            return true;
-        }
-        String normalizedSearch = search.trim().toLowerCase(Locale.ROOT);
-        return contains(rule.getName(), normalizedSearch)
-                || contains(rule.getMetric(), normalizedSearch)
-                || contains(rule.getDescription(), normalizedSearch);
-    }
-
-    private static boolean contains(String value, String normalizedSearch) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedSearch);
+                .toList());
     }
 
     private static Map<String, Object> safeProjection(AlertRuleVO rule) {

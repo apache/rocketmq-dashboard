@@ -48,6 +48,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -59,6 +60,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -107,6 +109,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int MAX_QUEUE_NUM = 16;
     static final int DEFAULT_MAX_RETRY_TIMES = 16;
     static final int MESSAGE_LIMIT = 100;
+    static final int MESSAGE_QUERY_HARD_LIMIT = 2_000;
     private static final DateTimeFormatter TENCENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[,SSS][,SS]");
     private static final DateTimeFormatter[] TENCENT_TIME_FORMATTERS = {
         TENCENT_TIME_FORMATTER,
@@ -555,13 +558,21 @@ public class TencentInstanceProvider implements InstanceProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                                String tag, String key, Long startTime, Long endTime) {
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime).messages();
+    }
+
+    @Override
+    public MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                     String tag, String key, Long startTime, Long endTime) {
         Context context = resolve(instanceId);
         requireTopic(topic);
         // Querying by message ID returns the full detail (body, properties and tracks) via
         // DescribeMessage, mirroring the msgId path of the base provider.
         if (StringUtils.hasText(msgId)) {
             MessageRecordVO record = toRecordVO(describeMessage(context, topic, msgId));
-            return record == null ? Collections.emptyList() : Collections.singletonList(record);
+            return MessageQueryResult.complete(record == null
+                    ? Collections.emptyList()
+                    : Collections.singletonList(record));
         }
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
@@ -576,7 +587,8 @@ public class TencentInstanceProvider implements InstanceProvider {
         // is not server-paginated (pagination=false), so page through the whole result set here.
         String taskRequestId = UUID.randomUUID().toString();
         List<MessageRecordVO> result = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
+        boolean mayBeTruncated = false;
+        for (int page = 0; page < MAX_PAGES && result.size() < MESSAGE_QUERY_HARD_LIMIT; page++) {
             DescribeMessageListRequest request = new DescribeMessageListRequest();
             request.setInstanceId(context.cloudInstanceId());
             request.setTopic(topic);
@@ -617,8 +629,12 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (isLastPage(returned, total, result.size())) {
                 break;
             }
+            if (result.size() >= MESSAGE_QUERY_HARD_LIMIT) {
+                mayBeTruncated = true;
+                break;
+            }
         }
-        return result;
+        return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
     }
 
     @Override
@@ -929,6 +945,9 @@ public class TencentInstanceProvider implements InstanceProvider {
         group.setClusterId(item.getClusterIdV4());
         group.setNamespace(item.getNamespaceV4());
         group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));
+        // Tencent consumer groups are TCP push consumers; read paths (web detail,
+        // AI rmq.group.list) require a non-null subscriptionMode.
+        group.setSubscriptionMode(SubscriptionMode.Push);
         group.setDeliveryOrderType(item.getConsumeMessageOrderly() == null || !item.getConsumeMessageOrderly()
                 ? "Concurrently" : "Orderly");
         group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
@@ -1021,12 +1040,15 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private static TopicType toTopicType(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return null;
+            return TopicType.NORMAL;
         }
         try {
             return TopicType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ignored) {
-            return null;
+        } catch (IllegalArgumentException ex) {
+            // Unknown topic types fall back to NORMAL so read paths (web detail,
+            // AI rmq.topic.list) never see a null type, matching the Apache
+            // provider's parseTopicType fallback.
+            return TopicType.NORMAL;
         }
     }
 

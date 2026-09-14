@@ -4,7 +4,7 @@
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -55,6 +55,8 @@ const NotificationDeliveriesPage = () => {
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
+  const retryingIdsInFlight = useRef(new Set<number>());
+  const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = () => {
@@ -63,6 +65,8 @@ const NotificationDeliveriesPage = () => {
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
+    if (retryingVisibleInFlight.current || retryingIdsInFlight.current.has(record.id)) return;
+    retryingIdsInFlight.current.add(record.id);
     setRetryingIds((current) => new Set(current).add(record.id));
     try {
       await retryAlertDelivery(record.id);
@@ -76,6 +80,7 @@ const NotificationDeliveriesPage = () => {
     } catch {
       message.error(t('deliveries.retryFailed'));
     } finally {
+      retryingIdsInFlight.current.delete(record.id);
       setRetryingIds((current) => {
         const next = new Set(current);
         next.delete(record.id);
@@ -87,6 +92,9 @@ const NotificationDeliveriesPage = () => {
   const retryVisibleFailures = async () => {
     const ids = items.filter((item) => item.status === 'FAILED').map((item) => item.id);
     if (ids.length === 0) return;
+    if (retryingVisibleInFlight.current || ids.some((id) => retryingIdsInFlight.current.has(id)))
+      return;
+    retryingVisibleInFlight.current = true;
     setRetryingVisible(true);
     try {
       const result = await retryAlertDeliveries(ids);
@@ -101,6 +109,7 @@ const NotificationDeliveriesPage = () => {
     } catch {
       message.error(t('deliveries.bulkRetryFailed'));
     } finally {
+      retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
     }
   };
@@ -140,7 +149,8 @@ const NotificationDeliveriesPage = () => {
     {
       title: t('deliveries.alert'),
       dataIndex: 'alertTitle',
-      width: 300,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 300,
       render: (title, record) => (
         <Flex vertical gap={2}>
           <Typography.Text ellipsis={{ tooltip: title }}>{title}</Typography.Text>
@@ -266,6 +276,7 @@ const NotificationDeliveriesPage = () => {
             columns={columns}
             dataSource={items}
             loading={loading}
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
             pagination={{
               current: page,

@@ -34,6 +34,10 @@ public class RmqAlertSilence {
     private String labelsJson;
     private LocalDateTime startsAt;
     private LocalDateTime endsAt;
+    private String recurrence;
+    private String timeZone;
+    private String recurrenceDaysJson;
+    private LocalDateTime recurrenceUntil;
     private String reason;
     private String createdBy;
 }

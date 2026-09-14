@@ -497,6 +497,56 @@ describe('SystemAlertsPage', () => {
     });
   });
 
+  it('creates a bounded weekly maintenance schedule in an IANA time zone', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 10,
+    });
+    vi.mocked(createAlertSilence).mockResolvedValue({
+      id: 12,
+      startsAt: '2026-09-07T01:00:00Z',
+      endsAt: '2026-09-07T02:00:00Z',
+      recurrence: 'WEEKLY',
+      timeZone: 'Asia/Shanghai',
+      recurrenceDays: [1, 3, 5],
+      recurrenceUntil: '2026-10-01T00:00:00Z',
+      createdBy: 'admin',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    const recurrenceSelect = screen.getByLabelText('重复方式');
+    fireEvent.mouseDown(recurrenceSelect.parentElement!);
+    await user.click(await screen.findByText('每周'));
+
+    await user.clear(screen.getByLabelText('时区'));
+    await user.type(screen.getByLabelText('时区'), 'Asia/Shanghai');
+    const weekdaySelect = screen.getByLabelText('重复日期');
+    fireEvent.mouseDown(weekdaySelect.parentElement!);
+    await user.click(await screen.findByText('周一'));
+
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-07T09:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-09-07T10:00' } });
+    fireEvent.change(screen.getByLabelText('重复至'), { target: { value: '2026-10-01T08:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+
+    await waitFor(() => {
+      expect(createAlertSilence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1],
+          startsAt: '2026-09-07T01:00:00.000Z',
+          endsAt: '2026-09-07T02:00:00.000Z',
+          recurrenceUntil: '2026-10-01T00:00:00.000Z',
+        }),
+      );
+    });
+  });
+
   it('loads maintenance windows by page and backs up after deleting the last page item', async () => {
     vi.mocked(listAlertSilencesPage)
       .mockResolvedValueOnce({

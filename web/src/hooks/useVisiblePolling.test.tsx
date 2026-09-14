@@ -128,4 +128,38 @@ describe('useVisiblePolling', () => {
     });
     expect(poll).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the in-flight guard when the poll callback changes', async () => {
+    const first = deferred();
+    const oldPoll = vi.fn().mockReturnValue(first.promise);
+    const newPoll = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(({ poll }) => useVisiblePolling(true, 1_000, poll), {
+      initialProps: { poll: oldPoll },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    rerender({ poll: newPoll });
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(newPoll).not.toHaveBeenCalled();
+
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(newPoll).toHaveBeenCalledTimes(1);
+  });
 });

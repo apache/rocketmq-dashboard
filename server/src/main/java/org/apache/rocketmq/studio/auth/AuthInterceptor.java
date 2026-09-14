@@ -68,20 +68,18 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         String authorization = AuthCookie.authorization(request, authProperties);
-        if (!authService.isAuthenticated(authorization)) {
+        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
+        if (authenticatedUser == null) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;
         }
 
-        var authenticatedUser = authService.getAuthenticatedUser(authorization).orElse(null);
-        if (authenticatedUser != null) {
-            AuthenticatedUserContext.setUser(
-                    authenticatedUser.getUserId(),
-                    authenticatedUser.getUsername(),
-                    authenticatedUser.isAdmin());
-        }
+        AuthenticatedUserContext.setUser(
+                authenticatedUser.getUserId(),
+                authenticatedUser.getUsername(),
+                authenticatedUser.isAdmin());
         if (requiresAdmin(request, requestPath(request))
-                && (authenticatedUser == null || !authenticatedUser.isAdmin())) {
+                && !authenticatedUser.isAdmin()) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }
@@ -127,11 +125,15 @@ public class AuthInterceptor implements HandlerInterceptor {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/config".equals(normalizedPath)
                 || "/api/llm/models".equals(normalizedPath)
-                || "/api/studio-users".equals(normalizedPath)
+                || isStudioUserPath(normalizedPath)
                 || isCloudCatalogPath(normalizedPath)
                 || "/api/acl/remote/rules".equals(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
                 || isCredentialRevealPath(normalizedPath, "/api/cloud-credentials/");
+    }
+
+    private boolean isStudioUserPath(String path) {
+        return "/api/studio-users".equals(path) || path.startsWith("/api/studio-users/");
     }
 
     private boolean isCloudCatalogPath(String path) {

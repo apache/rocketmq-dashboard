@@ -28,6 +28,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -65,5 +67,16 @@ class OperationAuditServiceTest {
         verify(auditMapper).insert(captor.capture());
         assertThat(captor.getValue().getOperator())
                 .isEqualTo(AuthenticatedUserContext.SYSTEM_ACTOR);
+    }
+
+    @Test
+    void recordShouldNotPropagateAuditPersistenceFailures() {
+        OperationAuditService service = new OperationAuditService(auditMapper);
+        doThrow(new IllegalStateException("audit database unavailable"))
+                .when(auditMapper).insert(org.mockito.ArgumentMatchers.any(RmqOperationAudit.class));
+
+        assertThatCode(() -> service.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", "msg-1",
+                "cluster-a", "result=SUCCESS", "SUCCESS", null))
+                .doesNotThrowAnyException();
     }
 }

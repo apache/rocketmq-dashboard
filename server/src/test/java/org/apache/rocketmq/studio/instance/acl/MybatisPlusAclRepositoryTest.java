@@ -210,6 +210,78 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void replaceUserShouldExplicitlyClearClusterBindingsWhenListIsEmpty() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId(1L);
+        existing.setClusters("cluster-a,cluster-b");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById(1L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(userMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        AclUserVO replacement = AclUserVO.builder()
+                .id(1L)
+                .username("svc-a")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .clusters(List.of())
+                .build();
+
+        assertThat(repository.replaceUser(replacement)).isPresent();
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("clusters");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+    }
+
+    @Test
+    void replaceUserShouldKeepClusterBindingsWhenNoneProvided() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId(1L);
+        existing.setClusters("cluster-a");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById(1L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+
+        AclUserVO replacement = AclUserVO.builder()
+                .id(1L)
+                .username("renamed")
+                .build();
+
+        assertThat(repository.replaceUser(replacement)).isPresent();
+
+        verify(userMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void replaceRuleShouldExplicitlyClearActionsWhenListIsEmpty() {
+        RmqAclRule existing = new RmqAclRule();
+        existing.setId(1L);
+        existing.setActions("PUB,SUB");
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(ruleMapper.selectById(1L)).thenReturn(existing);
+        when(ruleMapper.updateById(any(RmqAclRule.class))).thenReturn(1);
+        when(ruleMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        AclRuleVO replacement = AclRuleVO.builder()
+                .id(1L)
+                .principal("svc-a")
+                .resource("orders")
+                .actions(List.of())
+                .build();
+
+        assertThat(repository.replaceRule(replacement)).isPresent();
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(ruleMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("actions");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+    }
+
+    @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
         when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
@@ -479,6 +551,28 @@ class MybatisPlusAclRepositoryTest {
         assertThat(captor.getValue().getClusters()).isEqualTo("cluster-a,cluster-b");
     }
 
+    @Test
+    void examineShouldNotAbsorbRulesOfAccountsWhoseAccessKeysOverlap() {
+        RmqAclUser user = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret-a-value"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(user));
+        RmqAclRule ownRule = plainRuleEntity("svc-a", "orders", "Topic", "PUB");
+        RmqAclRule otherAccountRule = plainRuleEntity("svc-a-v2", "payments", "Topic", "SUB");
+        // Simulate SQL semantics: a substring LIKE on the principal matches both
+        // accounts, an exact equality only the requested one.
+        when(ruleMapper.selectList(any(QueryWrapper.class))).thenAnswer(invocation -> {
+            QueryWrapper<RmqAclRule> query = invocation.getArgument(0);
+            return query.getSqlSegment().contains("LIKE")
+                    ? List.of(ownRule, otherAccountRule)
+                    : List.of(ownRule);
+        });
+
+        AclClusterConfigVO config = repository.examineBrokerClusterAclConfig("cluster-a");
+
+        assertThat(config.getAccounts()).hasSize(1);
+        PlainAccessConfigVO account = config.getAccounts().get(0);
+        assertThat(account.getTopicPerms()).containsExactly("orders=PUB");
+    }
+
     private static RmqAclUser userEntity(Long id, String accessKey, String encodedSecret) {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(id);
@@ -488,5 +582,20 @@ class MybatisPlusAclRepositoryTest {
         entity.setAdmin(false);
         entity.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
         return entity;
+    }
+
+    private static RmqAclRule plainRuleEntity(String principal, String resource,
+            String resourceType, String actions) {
+        RmqAclRule rule = new RmqAclRule();
+        rule.setPrincipal(principal);
+        rule.setResource(resource);
+        rule.setResourceType(resourceType);
+        rule.setResourcePattern("LITERAL");
+        rule.setActions(actions);
+        rule.setDecision("ALLOW");
+        rule.setScope("*");
+        rule.setAclVersion("2.0");
+        rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        return rule;
     }
 }

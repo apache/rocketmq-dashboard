@@ -61,6 +61,15 @@ public class MybatisPlusAlertCollectionLease implements AlertCollectionLease {
         }
     }
 
+    @Override
+    public boolean renew() {
+        Instant now = Instant.now();
+        Duration duration = parseDuration(properties.getCollectionLeaseDuration());
+        LocalDateTime renewedAt = LocalDateTime.ofInstant(now, ZoneOffset.UTC);
+        LocalDateTime expiresAt = LocalDateTime.ofInstant(now.plus(duration), ZoneOffset.UTC);
+        return mapper.renew(LEASE_NAME, holderId, renewedAt, expiresAt) > 0;
+    }
+
     private static Duration parseDuration(String configured) {
         try {
             Duration duration = Duration.parse(configured);

@@ -41,4 +41,22 @@ class NativeAlertMetricCatalogServiceTest {
                 .instanceId("aliyun").metric("broker.availability").build()))
                 .hasMessageContaining("not supported");
     }
+
+    @Test
+    void normalizesMetricKeysBeforeNativeAndCustomValidationTest() {
+        InstanceRepository repository = mock(InstanceRepository.class);
+        when(repository.findByIdentifier("apache")).thenReturn(Optional.of(InstanceVO.builder()
+                .name("apache").vendor(InstanceVendor.APACHE).build()));
+        NativeAlertMetricCatalogService service = new NativeAlertMetricCatalogService(repository);
+        AlertRuleVO nativeRule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER)
+                .instanceId("apache").metric(" broker.disk.usage_ratio ").build();
+        AlertRuleVO customRule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER)
+                .instanceId("apache").metric(" custom.metric ").build();
+
+        service.validate(nativeRule);
+        service.validate(customRule);
+
+        assertThat(nativeRule.getMetric()).isEqualTo("broker.disk.usage_ratio");
+        assertThat(customRule.getMetric()).isEqualTo("custom.metric");
+    }
 }

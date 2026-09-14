@@ -143,7 +143,7 @@ class BrokerConfigDiffServiceTest {
                         BrokerConfigDiffVO.BrokerStatusVO::getMessage)
                 .containsExactly(
                         tuple("10.0.0.1:10911", true, null),
-                        tuple("10.0.0.2:10911", false, null));
+                        tuple("10.0.0.2:10911", false, "broker unavailable"));
     }
 
     @Test

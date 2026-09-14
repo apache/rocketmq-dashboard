@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.apache.rocketmq.studio.common.util.BrokerRuntimeStats;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -342,9 +343,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
                         tpsIn += parseTps(table.get("putTps"));
-                        tpsOut += parseTps(table.get("getTransferredTps"));
+                        tpsOut += parseTps(BrokerRuntimeStats.outboundTps(table));
 
-                        messagesToday += parseMessagesToday(table);
+                        messagesToday += BrokerRuntimeStats.dailyCounterDelta(table,
+                                "msgPutTotalTodayMorning", "msgPutTotalTodayNow");
                     }
                 } catch (Exception e) {
                     log.warn("Failed to get runtime info from broker {}: {}", brokerAddr, e.getMessage());
@@ -374,7 +376,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
                             if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                                 clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
-                                clusterTpsOut += parseTps(runtimeInfo.getTable().get("getTransferredTps"));
+                                clusterTpsOut += parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable()));
                                 String value = runtimeInfo.getTable().get("brokerVersionDesc");
                                 if (value != null && "unknown".equals(version)) {
                                     String brokerVersion = value.trim();
@@ -505,26 +507,6 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             return 0;
         }
         return (long) parsed;
-    }
-
-    private long parseMessagesToday(Map<String, String> runtimeStats) {
-        String morningValue = runtimeStats.get("msgPutTotalTodayMorning");
-        String currentValue = runtimeStats.get("msgPutTotalTodayNow");
-        if (morningValue == null || currentValue == null) {
-            return 0;
-        }
-        try {
-            long morning = Long.parseLong(morningValue.trim());
-            long current = Long.parseLong(currentValue.trim());
-            if (morning < 0 || current < 0) {
-                return 0;
-            }
-            return Math.max(0, current - morning);
-        } catch (NumberFormatException exception) {
-            log.debug("Failed to parse today's message counters: morning={}, current={}",
-                    morningValue, currentValue);
-            return 0;
-        }
     }
 
     private boolean isSystemTopic(String topic) {

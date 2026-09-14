@@ -17,6 +17,7 @@ public class TraceQueryHistoryVO {
     private Long id;
     private String msgId;
     private String topic;
+    private String traceTopic;
     private int nodeCount;
     private int consumerCount;
     private String clusterId;

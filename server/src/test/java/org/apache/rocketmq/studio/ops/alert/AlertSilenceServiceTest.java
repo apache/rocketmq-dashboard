@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -160,5 +161,114 @@ class AlertSilenceServiceTest {
         assertThat(activeUntil).isEqualTo(now.plusMinutes(30));
         org.mockito.Mockito.verify(repository).findActiveCandidates(AlertDomain.CLUSTER, 9L, "local", now);
         org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).findAll();
+    }
+
+    @Test
+    void createsBoundedWeeklySilenceWithNormalizedScheduleTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = recurringRequest(AlertSilenceRecurrence.WEEKLY);
+        request.setTimeZone(" Asia/Shanghai ");
+        request.setRecurrenceDays(Set.of(5, 1, 3));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertSilenceVO created = service.create(request);
+
+        assertThat(created.getRecurrence()).isEqualTo(AlertSilenceRecurrence.WEEKLY);
+        assertThat(created.getTimeZone()).isEqualTo("Asia/Shanghai");
+        assertThat(created.getRecurrenceDays()).containsExactlyInAnyOrder(1, 3, 5);
+        assertThat(created.getRecurrenceUntil()).isEqualTo(LocalDateTime.of(2026, 9, 30, 0, 0));
+    }
+
+    @Test
+    void defaultsLegacyRequestsToOneTimeSilenceTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
+        request.setStartsAt(java.time.OffsetDateTime.parse("2026-09-01T10:00:00Z"));
+        request.setEndsAt(java.time.OffsetDateTime.parse("2026-09-01T11:00:00Z"));
+        request.setTimeZone("Asia/Shanghai");
+        request.setRecurrenceDays(Set.of(1));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertSilenceVO created = service.create(request);
+
+        assertThat(created.getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
+        assertThat(created.getTimeZone()).isNull();
+        assertThat(created.getRecurrenceDays()).isEmpty();
+        assertThat(created.getRecurrenceUntil()).isNull();
+    }
+
+    @Test
+    void rejectsRecurringSilenceWithoutValidTimeZoneTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO missing = recurringRequest(AlertSilenceRecurrence.DAILY);
+        missing.setTimeZone(null);
+        CreateAlertSilenceDTO unknown = recurringRequest(AlertSilenceRecurrence.DAILY);
+        unknown.setTimeZone("Mars/Olympus");
+
+        assertThatThrownBy(() -> service.create(missing))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Time zone is required for recurring silences");
+        assertThatThrownBy(() -> service.create(unknown))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Unknown silence time zone: Mars/Olympus");
+    }
+
+    @Test
+    void rejectsUnboundedOrPrematureRecurrenceEndTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO missing = recurringRequest(AlertSilenceRecurrence.DAILY);
+        missing.setTimeZone("UTC");
+        missing.setRecurrenceUntil(null);
+        CreateAlertSilenceDTO premature = recurringRequest(AlertSilenceRecurrence.DAILY);
+        premature.setRecurrenceUntil(java.time.OffsetDateTime.parse("2026-09-01T10:30:00Z"));
+
+        assertThatThrownBy(() -> service.create(missing))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Recurrence end time is required for recurring silences");
+        assertThatThrownBy(() -> service.create(premature))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Recurrence end time must not be before the first window ends");
+    }
+
+    @Test
+    void rejectsWeeklySilenceWithoutIsoWeekdaysTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO empty = recurringRequest(AlertSilenceRecurrence.WEEKLY);
+        CreateAlertSilenceDTO invalid = recurringRequest(AlertSilenceRecurrence.WEEKLY);
+        invalid.setRecurrenceDays(Set.of(0, 8));
+
+        assertThatThrownBy(() -> service.create(empty))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("At least one weekday is required for weekly silences");
+        assertThatThrownBy(() -> service.create(invalid))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Silence weekdays must use ISO values from 1 to 7");
+    }
+
+    @Test
+    void rejectsWindowsLongerThanTheirRecurrencePeriodTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        CreateAlertSilenceDTO daily = recurringRequest(AlertSilenceRecurrence.DAILY);
+        daily.setEndsAt(daily.getStartsAt().plusHours(25));
+        CreateAlertSilenceDTO weekly = recurringRequest(AlertSilenceRecurrence.WEEKLY);
+        weekly.setRecurrenceDays(Set.of(1));
+        weekly.setEndsAt(weekly.getStartsAt().plusDays(8));
+
+        assertThatThrownBy(() -> service.create(daily))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Daily silence windows must not exceed 24 hours");
+        assertThatThrownBy(() -> service.create(weekly))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Weekly silence windows must not exceed 7 days");
+    }
+
+    private static CreateAlertSilenceDTO recurringRequest(AlertSilenceRecurrence recurrence) {
+        CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
+        request.setStartsAt(java.time.OffsetDateTime.parse("2026-09-01T10:00:00Z"));
+        request.setEndsAt(java.time.OffsetDateTime.parse("2026-09-01T11:00:00Z"));
+        request.setRecurrence(recurrence);
+        request.setTimeZone("UTC");
+        request.setRecurrenceUntil(java.time.OffsetDateTime.parse("2026-09-30T00:00:00Z"));
+        return request;
     }
 }

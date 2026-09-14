@@ -14,12 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.ops.alert;
 
-package org.apache.rocketmq.studio.auth;
-
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class SecurityConfig {
-    // TODO: Add Spring Security configuration when Spring Security dependency is added
+public enum AlertSilenceRecurrence {
+    ONCE,
+    DAILY,
+    WEEKLY
 }

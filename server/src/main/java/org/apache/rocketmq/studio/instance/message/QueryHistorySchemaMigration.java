@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -20,13 +22,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
-/** Adds query-history indexes to Studio databases created before the index contract was added. */
+/** Adds query-history columns and indexes to Studio databases created before the current schema. */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class QueryHistorySchemaMigration implements ApplicationRunner {
     private static final List<Column> COLUMNS = List.of(
-            new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"));
+            new Column("rmq_instance_message", "result_snapshot", "MEDIUMTEXT"),
+            new Column("rmq_instance_trace", "trace_topic", "VARCHAR(255)"));
     private static final List<Index> INDEXES = List.of(
             new Index("rmq_instance_message", "idx_message_query_owner_lookup",
                     "queried_by, cluster_id, gmt_create, id"),
@@ -40,6 +43,9 @@ public class QueryHistorySchemaMigration implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            if (hasTable(connection.getMetaData(), connection.getCatalog(), "rmq_instance")) {
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/named-message-queries.sql"));
+            }
             DatabaseMetaData metadata = connection.getMetaData();
             String catalog = connection.getCatalog();
             for (Column column : COLUMNS) {

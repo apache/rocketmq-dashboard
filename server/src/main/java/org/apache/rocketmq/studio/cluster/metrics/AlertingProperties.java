@@ -32,6 +32,8 @@ public class AlertingProperties {
      * native samples and emitting duplicate alert events.
      */
     private String collectionLeaseDuration = "PT1M";
+    /** Maximum time between lease heartbeats; the scheduler clamps this below the lease duration. */
+    private String collectionLeaseRenewalInterval = "PT15S";
     /** Retain short-lived diagnostic samples without allowing the snapshot table to grow indefinitely. */
     private String snapshotRetention = "PT24H";
     /** Retain terminal notification deliveries before deleting them from the outbox. */

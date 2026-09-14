@@ -32,6 +32,8 @@ export interface TraceQueryHistory {
   id: number;
   msgId: string;
   topic?: string;
+  /** The custom trace topic used by the lookup; absent means the provider default. */
+  traceTopic?: string;
   nodeCount: number;
   consumerCount: number;
   clusterId?: string;

@@ -78,6 +78,7 @@ const ProxyPage: React.FC = () => {
   const [newProxyAddress, setNewProxyAddress] = useState('');
   const [nodeFilter, setNodeFilter] = useState('');
   const [addressMutationLoading, setAddressMutationLoading] = useState(false);
+  const addressMutationInFlight = useRef(false);
   const [removingProxyAddress, setRemovingProxyAddress] = useState<string | null>(null);
   const [clusterId, setClusterId] = useState<string>(
     readLocalStorage('clusterId') || 'DefaultCluster',
@@ -176,6 +177,7 @@ const ProxyPage: React.FC = () => {
   };
 
   const handleRefresh = async () => {
+    if (addressMutationInFlight.current) return;
     if (await loadProxyNodes()) {
       message.success(t('common.refreshSuccess'));
     }
@@ -189,11 +191,13 @@ const ProxyPage: React.FC = () => {
   };
 
   const handleAddProxyAddress = async () => {
+    if (addressMutationInFlight.current) return;
     const addr = newProxyAddress.trim();
     if (!addr) {
       message.warning(t('proxy.addressRequired'));
       return;
     }
+    addressMutationInFlight.current = true;
     const requestId = ++loadRequestId.current;
     setAddressMutationLoading(true);
     setLoading(true);
@@ -208,6 +212,7 @@ const ProxyPage: React.FC = () => {
         message.error(t('proxy.addAddressFailed'));
       }
     } finally {
+      addressMutationInFlight.current = false;
       if (requestId === loadRequestId.current) {
         setAddressMutationLoading(false);
         setLoading(false);
@@ -216,6 +221,8 @@ const ProxyPage: React.FC = () => {
   };
 
   const handleRemoveProxyAddress = async (addr: string) => {
+    if (addressMutationInFlight.current) return;
+    addressMutationInFlight.current = true;
     const requestId = ++loadRequestId.current;
     setRemovingProxyAddress(addr);
     setLoading(true);
@@ -233,6 +240,7 @@ const ProxyPage: React.FC = () => {
         message.error(t('proxy.removeAddressFailed'));
       }
     } finally {
+      addressMutationInFlight.current = false;
       if (requestId === loadRequestId.current) {
         setRemovingProxyAddress(null);
         setLoading(false);

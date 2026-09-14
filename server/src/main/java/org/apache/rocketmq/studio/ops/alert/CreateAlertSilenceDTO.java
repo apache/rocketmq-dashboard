@@ -21,6 +21,7 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 public class CreateAlertSilenceDTO {
@@ -33,5 +34,9 @@ public class CreateAlertSilenceDTO {
     private OffsetDateTime startsAt;
     @NotNull(message = "endsAt is required")
     private OffsetDateTime endsAt;
+    private AlertSilenceRecurrence recurrence;
+    private String timeZone;
+    private Set<Integer> recurrenceDays;
+    private OffsetDateTime recurrenceUntil;
     private String reason;
 }

@@ -42,6 +42,7 @@ import {
   Tooltip,
   Spin,
   Progress,
+  Switch,
   message,
 } from 'antd';
 import {
@@ -273,7 +274,13 @@ const ConsumerPageContent = ({
   const [settingsGroup, setSettingsGroup] = useState<ConsumerGroup | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
-  const [settingsForm] = Form.useForm<{ retryQueueNums: number; retryMaxTimes: number }>();
+  const [settingsForm] = Form.useForm<{
+    retryQueueNums: number;
+    retryMaxTimes: number;
+    consumeEnable?: boolean;
+    consumeMessageOrderly?: boolean;
+    consumeBroadcastEnable?: boolean;
+  }>();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
@@ -312,6 +319,12 @@ const ConsumerPageContent = ({
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
+  // Consumption switches as loaded from the broker, used to detect high-risk changes
+  // (disabling consumption / toggling ordered consumption) that need a confirm before saving.
+  const originalSettingsRef = useRef<{
+    consumeEnable?: boolean;
+    consumeMessageOrderly?: boolean;
+  } | null>(null);
 
   const [autoRefresh, setAutoRefresh] = useState(false);
   const silentRefreshRef = useRef(false);
@@ -326,6 +339,40 @@ const ConsumerPageContent = ({
     setResetPreviewError(null);
   }, []);
   const selectedGroupName = selectedGroup?.name;
+
+  const loadConsumerGroupPage = useCallback(
+    async (pageToLoad: number, pageSizeToLoad: number, silent = false) => {
+      if (!selectedInstanceId) return undefined;
+      const requestId = ++groupRequestIdRef.current;
+      if (!silent) setLoading(true);
+      try {
+        const result = await listConsumerGroupPage({
+          instanceId: selectedInstanceId,
+          search: search.trim() || undefined,
+          page: pageToLoad,
+          pageSize: pageSizeToLoad,
+        });
+        if (requestId === groupRequestIdRef.current) {
+          setGroups(result.items);
+          setTotalGroups(result.total);
+          if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
+            setPage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
+          }
+        }
+        return requestId === groupRequestIdRef.current ? result : undefined;
+      } catch {
+        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        return undefined;
+      } finally {
+        if (requestId === groupRequestIdRef.current) setLoading(false);
+      }
+    },
+    [t, selectedInstanceId, search],
+  );
+
+  const reloadConsumerGroupPageAfterDelete = useCallback(async () => {
+    await loadConsumerGroupPage(page, pageSize);
+  }, [loadConsumerGroupPage, page, pageSize]);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -342,35 +389,13 @@ const ConsumerPageContent = ({
     }
     const silent = silentRefreshRef.current;
     silentRefreshRef.current = false;
-    const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
-      if (!silent) setLoading(true);
-      void listConsumerGroupPage({
-        instanceId: selectedInstanceId,
-        search: search.trim() || undefined,
-        page,
-        pageSize,
-      })
-        .then((result) => {
-          if (requestId === groupRequestIdRef.current) {
-            setGroups(result.items);
-            setTotalGroups(result.total);
-            if (result.items.length === 0 && result.total > 0 && page > 1) {
-              setPage(Math.max(1, Math.ceil(result.total / pageSize)));
-            }
-          }
-        })
-        .catch(() => {
-          if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
-        })
-        .finally(() => {
-          if (requestId === groupRequestIdRef.current) setLoading(false);
-        });
+      void loadConsumerGroupPage(page, pageSize, silent);
     }, 0);
     return () => {
       window.clearTimeout(timer);
     };
-  }, [t, selectedInstanceId, search, page, pageSize, instancesLoading, refreshKey]);
+  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
@@ -484,6 +509,10 @@ const ConsumerPageContent = ({
       const settings = await getConsumerGroupSettings(group.name, selectedInstanceId);
       if (requestId === settingsRequestIdRef.current) {
         settingsForm.setFieldsValue(settings);
+        originalSettingsRef.current = {
+          consumeEnable: settings.consumeEnable,
+          consumeMessageOrderly: settings.consumeMessageOrderly,
+        };
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
@@ -510,6 +539,32 @@ const ConsumerPageContent = ({
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
     const values = await settingsForm.validateFields();
+    const original = originalSettingsRef.current;
+    const risks: string[] = [];
+    if (original && values.consumeEnable === false && original.consumeEnable !== false) {
+      risks.push('关闭「启用消费」会立即停止该消费组的消息消费，可能导致消息堆积');
+    }
+    if (
+      original &&
+      values.consumeMessageOrderly !== undefined &&
+      values.consumeMessageOrderly !== original.consumeMessageOrderly
+    ) {
+      risks.push('切换「顺序消费」会改变该消费组的消费语义，可能影响消息顺序与吞吐');
+    }
+    if (risks.length > 0) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '确认修改高危消费配置？',
+          content: `${risks.join('；')}。`,
+          okText: '确认修改',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
     setSettingsSubmitting(true);
     try {
       const saved = await updateConsumerGroupSettings({
@@ -819,10 +874,15 @@ const ConsumerPageContent = ({
       title: 'Group 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 190,
+      // `minWidth` rather than `width`: this is the one column allowed to grow, so a window
+      // wider than the table does not inflate every other column by the same proportion.
+      // 170 keeps the total at the container width of a 1560px window, so the table fits
+      // without a horizontal scrollbar there; on wider windows this column takes the surplus.
+      minWidth: 170,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title="点击复制名称">
+        <Tooltip title={`${name}（点击复制）`}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
@@ -911,6 +971,8 @@ const ConsumerPageContent = ({
       title: '创建时间',
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
+      // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
+      // anything narrower truncates the timestamp.
       width: 156,
       sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
@@ -934,7 +996,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 232,
+      width: 248,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6} justify="flex-end">
           <Button
@@ -978,7 +1040,7 @@ const ConsumerPageContent = ({
                 cancelText: '取消',
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  setGroups((prev) => prev.filter((group) => group.name !== record.name));
+                  await reloadConsumerGroupPageAfterDelete();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
@@ -1409,14 +1471,12 @@ const ConsumerPageContent = ({
                       names,
                       selectedInstanceId || undefined,
                     );
-                    setGroups((prev) => prev.filter((g) => !deleted.includes(g.name)));
+                    if (deleted.length > 0) await reloadConsumerGroupPageAfterDelete();
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
                       );
-                      setSelectedRowKeys((prev) =>
-                        prev.filter((key) => !deleted.includes(String(key))),
-                      );
+                      setSelectedRowKeys(failed);
                     } else {
                       message.success(`已删除 ${deleted.length} 个 Group`);
                       setSelectedRowKeys([]);
@@ -1499,6 +1559,7 @@ const ConsumerPageContent = ({
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true, expandable: true }) }}
           expandable={{
             onExpand: (expanded, record) => {
@@ -1672,10 +1733,16 @@ const ConsumerPageContent = ({
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间" span={2}>
+                      <Descriptions.Item label="创建时间">
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
+                        </Space>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="修改时间">
+                        <Space size={4}>
+                          <Clock size={13} color="#9CA3AF" />
+                          <Text type="secondary">{selectedGroup.gmtModified}</Text>
                         </Space>
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
@@ -1703,6 +1770,7 @@ const ConsumerPageContent = ({
                         rowKey="clientId"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(instanceColumns) }}
                       />
                     </div>
@@ -1905,6 +1973,7 @@ const ConsumerPageContent = ({
                         rowKey="id"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(healthIssueColumns) }}
                       />
                     ) : (
@@ -2004,6 +2073,7 @@ const ConsumerPageContent = ({
                       rowKey={(r) => `${r.topic}-${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
+                      tableLayout="fixed"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
                       locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
                     />
@@ -2039,6 +2109,23 @@ const ConsumerPageContent = ({
                         rules={[{ required: true, message: '请输入最大重试次数' }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item
+                        label="顺序消费"
+                        name="consumeMessageOrderly"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                      <Form.Item
+                        label="广播消费"
+                        name="consumeBroadcastEnable"
+                        valuePropName="checked"
+                      >
+                        <Switch />
                       </Form.Item>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
@@ -2458,6 +2545,15 @@ const ConsumerPageContent = ({
                 <Button
                   size="small"
                   onClick={() => {
+                    setResetTime(dayjs());
+                    clearResetPreview();
+                  }}
+                >
+                  跳过积压（重置到最新）
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
                     setResetTime(dayjs().subtract(1, 'hour'));
                     clearResetPreview();
                   }}
@@ -2574,6 +2670,7 @@ const ConsumerPageContent = ({
                   rowKey={(row) => `${row.topic}-${row.broker}-${row.queueId}`}
                   pagination={false}
                   size="small"
+                  tableLayout="fixed"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
                   locale={{ emptyText: '未找到可预览的 Queue 位点' }}
                 />

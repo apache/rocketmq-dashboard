@@ -58,4 +58,13 @@ class AlertRuleRequestDTOTest {
 
         assertThat(request.toAlertRuleVO().getChannels()).containsExactly("email", "sms");
     }
+
+    @Test
+    void toAlertRuleVOShouldNormalizeTheNativeMetricKeyTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("High Lag");
+        request.setMetric("  consumer.lag.total  ");
+
+        assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
+    }
 }

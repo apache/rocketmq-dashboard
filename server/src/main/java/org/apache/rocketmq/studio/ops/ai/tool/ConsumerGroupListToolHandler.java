@@ -18,6 +18,8 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -42,9 +44,11 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String clusterId = (String) input.get("cluster");
         String search = (String) input.get("search");
-        return metadataService.listConsumerGroups(clusterId, search).stream()
+        PageResult<ConsumerGroupVO> page = metadataService.listConsumerGroupsPage(
+                null, clusterId, search, ToolListPagination.page(input), ToolListPagination.pageSize(input));
+        return ToolListPagination.pagedResult(page, page.getItems().stream()
                 .map(ConsumerGroupListToolHandler::safeProjection)
-                .toList();
+                .toList());
     }
 
     private static Map<String, Object> safeProjection(ConsumerGroupVO group) {
@@ -57,7 +61,7 @@ public class ConsumerGroupListToolHandler implements ToolHandler {
         result.put("consumeType", requiredEnumName(
                 group.getConsumeType(), "consumeType", group.getName()));
         result.put("onlineInstances", group.getOnlineInstances());
-        result.put("totalLag", group.getTotalLag());
+        result.put("totalLag", group.getTotalLag() == ConsumerLagResolver.UNKNOWN ? null : group.getTotalLag());
         result.put("subscribedTopics", copyList(group.getSubscribedTopics()));
         result.put("retryMaxTimes", group.getRetryMaxTimes());
         return result;

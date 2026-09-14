@@ -543,6 +543,21 @@ class AclServiceTest {
     }
 
     @Test
+    void updateUserShouldKeepTheExistingWhiteRemoteAddress() {
+        existingUser.setWhiteRemoteAddress("10.0.1.0/24");
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("1");
+        input.setUsername("renamed");
+
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
+
+        AclUserVO result = aclService.updateUser(input, null);
+
+        assertThat(result.getWhiteRemoteAddress()).isEqualTo("10.0.1.0/24");
+    }
+
+    @Test
     void updateUserShouldPreserveAdminWhenNotProvided() {
         AclUserVO adminUser = AclUserVO.builder()
                 .id(1L)

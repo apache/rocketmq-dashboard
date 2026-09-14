@@ -66,7 +66,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     @Transactional
     public K8sCertVO save(K8sCertVO cert) {
         RmqK8sCertificate entity = toEntity(cert);
-        if (entity.getId() != null && certMapper.selectById(entity.getId()) != null) {
+        if (entity.getId() != null) {
             if (certMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Certificate update was not applied: " + entity.getId());

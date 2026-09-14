@@ -79,6 +79,23 @@ class AlertNotificationSuppressionServiceTest {
     }
 
     @Test
+    void doesNotSuppressAfterALegacyIncidentWithoutFingerprintsHasResolvedTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        SystemAlertVO firing = event(1L, AlertDomain.CLUSTER, "FIRING", "broker-1", now.minusMinutes(3));
+        firing.setTitle("Broker unavailable");
+        firing.setRuleId(7L);
+        SystemAlertVO resolved = event(2L, AlertDomain.CLUSTER, "RESOLVED", "broker-1", now.minusMinutes(1));
+        resolved.setTitle("Broker unavailable");
+        resolved.setRuleId(7L);
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(firing, resolved), 2, 1, 100));
+
+        assertThat(new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(3L, AlertDomain.BUSINESS, "FIRING", "broker-1", now)))
+                .isEmpty();
+    }
+
+    @Test
     void doesNotSuppressAcrossDifferentBrokerScopesTest() {
         AlertRepository repository = mock(AlertRepository.class);
         LocalDateTime now = LocalDateTime.now();
@@ -111,6 +128,22 @@ class AlertNotificationSuppressionServiceTest {
         assertThat(result).contains(cause);
         verify(repository, times(2)).findAlertsPage(any());
         verify(repository).findAlertsPage(org.mockito.ArgumentMatchers.argThat(query -> query.page() == 2));
+    }
+
+    @Test
+    void suppressesWhileTheSameClusterIncidentOnlyReminderRemainsTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        // The original FIRING fell out of the 30-minute correlation window; only the
+        // REMINDER the state machine emits while the incident stays FIRING is visible.
+        SystemAlertVO reminder = event(2L, AlertDomain.CLUSTER, "REMINDER", "broker-1", now.minusMinutes(5));
+        reminder.setFingerprint("broker-1-availability");
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(reminder), 1, 1, 100));
+
+        Optional<SystemAlertVO> result = new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(3L, AlertDomain.BUSINESS, "FIRING", "broker-1", now));
+
+        assertThat(result).contains(reminder);
     }
 
     private static SystemAlertVO event(Long id, AlertDomain domain, String transition, String brokerName,

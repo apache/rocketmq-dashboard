@@ -36,6 +36,9 @@ public class AlertRuleTransferService {
             AlertRuleVO candidate = request.toAlertRuleVO();
             candidate.setId(null);
             candidate.setDomain(domain);
+            if (candidate.getMetric() != null) {
+                candidate.setMetric(candidate.getMetric().trim());
+            }
             metricCatalogService.validate(candidate);
             return candidate;
         }).toList();

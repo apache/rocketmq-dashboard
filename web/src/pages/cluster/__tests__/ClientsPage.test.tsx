@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -139,6 +139,17 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+const selectOption = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+  const option = await waitFor(() => {
+    const match = [
+      ...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content'),
+    ].find((element) => element.textContent === label);
+    if (!match) throw new Error(`Select option not found: ${label}`);
+    return match;
+  });
+  await user.click(option);
+};
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -178,6 +189,34 @@ describe('Clients page', () => {
     });
   });
 
+  it('sends cluster and type filters to the backend', async () => {
+    const mixedConnections = [
+      { ...connection, clusterName: 'ns-prod', type: 'Producer' },
+      { ...connection, clusterName: 'ns-prod', type: 'Consumer' },
+    ];
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(mixedConnections);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('order-svc-0@10.0.1.12:49152');
+
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    const typeSelect = screen.getAllByLabelText('类型')[0];
+    fireEvent.mouseDown(typeSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'Consumer');
+
+    await waitFor(() => {
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+        type: 'Consumer',
+      });
+    });
+  });
+
   it('summarizes connection types, protocols, and language versions', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
     renderWithProviders(<ClientsPage />);
@@ -198,16 +237,78 @@ describe('Clients page', () => {
     expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
   });
 
-  it('updates statistics when the selected cluster filter changes', async () => {
-    const user = userEvent.setup();
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+  it('renders client connection diagnostics for risky inventories', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: 'shared-client',
+        groupOrTopic: 'order-create',
+        address: '10.0.1.12:49152',
+      },
+      {
+        ...connection,
+        clientId: 'shared-client',
+        groupOrTopic: 'order-create',
+        address: '10.0.1.13:49152',
+      },
+      {
+        ...connection,
+        clientId: 'consumer-a',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.2.10:49152',
+        protocol: 'gRPC',
+        version: '5.0.7',
+      },
+      {
+        ...connection,
+        clientId: 'consumer-b',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.2.11:49152',
+        protocol: 'Remoting',
+        version: '4.9.8',
+      },
+    ]);
     renderWithProviders(<ClientsPage />);
 
-    await screen.findByText('audit-svc-0@10.0.2.10:49154');
-    await user.click(screen.getByRole('combobox', { name: '所属集群' }));
-    await user.click(
-      await screen.findByText('ns-prod', { selector: '.ant-select-item-option-content' }),
+    const diagnostics = await screen.findByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).getByText('客户端连接诊断')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端连接存在高风险')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('Client ID 连接到多个地址')).toBeInTheDocument();
+    expect(within(diagnostics).getByText('同一资源存在多协议连接')).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText(
+        '确认该资源是否处于协议迁移期，并分别检查 Proxy 与 Broker 侧连接状态。',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('updates statistics when the selected cluster filter changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      Promise.resolve(
+        query?.clusterId === 'ns-prod'
+          ? connections.filter((item) => item.clusterName === 'ns-prod')
+          : connections,
+      ),
     );
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('audit-svc-0@10.0.2.10:49154');
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(within(screen.getByTestId('connection-total')).getByText('2')).toBeInTheDocument();
@@ -247,6 +348,46 @@ describe('Clients page', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
     expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).toBeNull();
+  });
+
+  it('keeps incomplete client metadata searchable by address', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: null,
+        address: '10.0.1.99:49152',
+        partial: true,
+      } as ClientConnection,
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('10.0.1.99:49152');
+    await user.type(screen.getByPlaceholderText('搜索 Client ID 或地址'), '10.0.1.99');
+
+    expect(screen.getByText('10.0.1.99:49152')).toBeInTheDocument();
+  });
+
+  it('opens details for connections without client id or address', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: undefined,
+        address: null,
+        groupOrTopic: 'legacy-topic',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    const rows = await screen.findAllByRole('row', { name: /legacy-topic/ });
+    const row = rows.find((candidate) => within(candidate).queryByRole('button', { name: /详情/ }));
+    expect(row).toBeDefined();
+    await user.click(within(row!).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: /客户端详情 - -/ });
+    expect(within(dialog).getByText('legacy-topic')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('-')).toHaveLength(2);
   });
 
   it('exports the currently filtered client connections as CSV', async () => {
@@ -447,9 +588,7 @@ describe('Clients page', () => {
 
     expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /重\s*试/ }));
-    await waitFor(() =>
-      expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2),
-    );
+    await waitFor(() => expect(clusterService.listRegistryClusters).toHaveBeenNthCalledWith(2));
 
     await act(async () => {
       stale.resolve([]);
