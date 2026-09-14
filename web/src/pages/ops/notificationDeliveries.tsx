@@ -151,7 +151,8 @@ const NotificationDeliveriesPage = () => {
     {
       title: t('deliveries.alert'),
       dataIndex: 'alertTitle',
-      width: 300,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 300,
       render: (title, record) => (
         <Flex vertical gap={2}>
           <Typography.Text ellipsis={{ tooltip: title }}>{title}</Typography.Text>
@@ -283,6 +284,7 @@ const NotificationDeliveriesPage = () => {
             columns={columns}
             dataSource={items}
             loading={loading}
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
             pagination={{
               current: page,

@@ -21,8 +21,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  getStudioUserSessionOverview,
   listAllStudioUsers as downloadStudioUsers,
   listStudioUsers,
+  revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
 } from '../../../api/studioUsers';
@@ -32,9 +34,11 @@ import UserManagementPage from '../UserManagement';
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
+  getStudioUserSessionOverview: vi.fn(),
   listAllStudioUsers: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
+  revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
 }));
 
@@ -58,6 +62,9 @@ const studioUserPage = {
       username: 'operator',
       admin: false,
       enabled: true,
+      activeSessionCount: 2,
+      lastSessionSeenAt: '2026-08-22T09:30:00',
+      nearestSessionExpiresAt: '2026-08-22T10:00:00',
       passwordChangedAt: '2026-08-22T08:00:00',
       gmtCreate: '2026-08-22T08:00:00',
       gmtModified: '2026-08-22T08:00:00',
@@ -109,7 +116,19 @@ describe('UserManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listStudioUsers).mockResolvedValue(studioUserPage);
+    vi.mocked(getStudioUserSessionOverview).mockResolvedValue({
+      activeSessionCount: 5,
+      activeUserCount: 3,
+      expiringSoonSessionCount: 1,
+      staleSessionCount: 2,
+      expiringSoonWindowMinutes: 5,
+      staleSessionThresholdMinutes: 15,
+    });
     vi.mocked(downloadStudioUsers).mockResolvedValue(studioUserPage.items);
+    vi.mocked(revokeStudioUserSessions).mockResolvedValue({
+      userId: 7,
+      revokedSessionCount: 2,
+    });
   });
 
   it('loads a bounded first page and renders the server total', async () => {
@@ -124,6 +143,9 @@ describe('UserManagementPage', () => {
       pageSize: 20,
     });
     expect(screen.getByText('共 21 个用户')).toBeInTheDocument();
+    expect(getStudioUserSessionOverview).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText('活跃会话').length).toBeGreaterThan(0);
+    expect(screen.getByText('未来 5 分钟过期')).toBeInTheDocument();
   });
 
   it('debounces username search and sends role and status filters', async () => {
@@ -158,6 +180,52 @@ describe('UserManagementPage', () => {
     expect(exportedCsv).toContain('"operator"');
     expect(exportedCsv).toContain('"User"');
     expect(exportedCsv).toContain('"Enabled"');
+    expect(exportedCsv).toContain('Active Sessions');
+    expect(exportedCsv).toContain('"2"');
+  });
+
+  it('renders active session metadata and revokes sessions after confirmation', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+    expect(screen.getByText(new Date('2026-08-22T09:30:00').toLocaleString())).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    await screen.findByText('注销 operator 的活跃会话？');
+    await user.click(screen.getByRole('button', { name: /注\s*销/ }));
+
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+    expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks the row status switch while the same user revocation is in flight', async () => {
+    let resolveRevoke!: () => void;
+    vi.mocked(revokeStudioUserSessions).mockImplementationOnce(
+      () =>
+        new Promise<{ userId: number; revokedSessionCount: number }>((resolve) => {
+          resolveRevoke = () => resolve({ userId: 7, revokedSessionCount: 2 });
+        }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    await screen.findByText('注销 operator 的活跃会话？');
+    await user.click(screen.getByRole('button', { name: /注\s*销/ }));
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+
+    // Revocation and status updates share one in-flight guard, so the row is blocked meanwhile.
+    const toggle = screen.getByRole('switch');
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(setStudioUserEnabled).not.toHaveBeenCalled();
+
+    await act(async () => resolveRevoke());
+    await waitFor(() => expect(screen.getByRole('switch')).not.toBeDisabled());
+    expect(setStudioUserEnabled).not.toHaveBeenCalled();
   });
 
   it('does not overlap status updates for the same user', async () => {

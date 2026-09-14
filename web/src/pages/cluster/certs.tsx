@@ -170,7 +170,9 @@ const K8sCertsPage = () => {
       title: '签发者',
       dataIndex: 'issuer',
       key: 'issuer',
-      width: 180,
+      // 唯一可伸展列：余量集中在此，其余列保持声明宽度。选签发者而非集群名，
+      // 是因为它的内容是 CN=...,OU=...,O=... 这种长 DN，真正需要额外宽度。
+      minWidth: 180,
       sorter: (a, b) => (a.issuer ?? '').localeCompare(b.issuer ?? ''),
       render: (issuer: string | null) => issuer || '-',
       ellipsis: true,
@@ -216,7 +218,7 @@ const K8sCertsPage = () => {
           expiring: { color: 'orange', label: '即将过期' },
           expired: { color: 'red', label: '已过期' },
         };
-        const cfg = status ? map[status] ?? { color: 'default', label: status } : null;
+        const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';
       },
     },
@@ -234,10 +236,9 @@ const K8sCertsPage = () => {
           okButtonProps={{ danger: true }}
         >
           <Button
-            type="link"
             size="small"
-            danger
             icon={<DeleteOutlined />}
+            style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             loading={deletingId === cert.id}
           >
             删除
@@ -249,11 +250,11 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader title="K8s 证书配置" subtitle={`共 ${filteredCerts.length} 个证书`} />
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
-        title="当前证书记录仅保存为 Studio 本地元数据"
-        description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
+        title="当前证书记录仅保存为 Studio 本地配置"
+        description="这些操作不会连接 Kubernetes 集群或修改集群中的证书资源。请在集群侧管理实际证书。"
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
@@ -288,6 +289,7 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(certColumns) }}
         />
       </Card>

@@ -85,7 +85,8 @@ const loadCompleteInventory = async () => {
   const first = await listAlertDeliveriesPage({ page: 1, pageSize: PAGE_SIZE });
   const records = [...first.items];
   const target = Math.min(first.total, MAX_RECORDS);
-  for (let page = 2; records.length < target; page += 1) {
+  // 同时限制页数与记录数，防止异常短页把一次加载放大成上万次请求。
+  for (let page = 2; records.length < target && page <= MAX_RECORDS / PAGE_SIZE; page += 1) {
     const result = await listAlertDeliveriesPage({ page, pageSize: PAGE_SIZE });
     records.push(...result.items);
     if (result.items.length === 0) break;
