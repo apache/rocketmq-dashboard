@@ -1,0 +1,38 @@
+[
+  {
+    "name": "get_tools_list",
+    "accessKey": "AKEXAMPLE",
+    "secretKey": "SKEXAMPLESECRET",
+    "instanceId": "open-source-local",
+    "timestamp": "1757600000000",
+    "method": "GET",
+    "path": "/api/mcp/tools/list",
+    "body": "",
+    "canonicalRequest": "RMQ-HMAC-SHA256\nAKEXAMPLE\nopen-source-local\n1757600000000\nGET\n/api/mcp/tools/list",
+    "signature": "29501e8c88ee8f20a520ba62f51942177c87dd8eff234cd0e9fa637321957786"
+  },
+  {
+    "name": "post_tool_call",
+    "accessKey": "AKEXAMPLE2",
+    "secretKey": "SKEXAMPLE2SECRET",
+    "instanceId": "rmq-cluster",
+    "timestamp": "1757600001234",
+    "method": "POST",
+    "path": "/api/mcp/tools/call",
+    "body": "{\"tool\":\"rmq.topic.list\",\"args\":{}}",
+    "canonicalRequest": "RMQ-HMAC-SHA256\nAKEXAMPLE2\nrmq-cluster\n1757600001234\nPOST\n/api/mcp/tools/call",
+    "signature": "adfae00b6d7c482d5589df19d97b06ee1625a98fac84fc113482d9d0b1fe0ae8"
+  },
+  {
+    "name": "post_tool_call_unicode_instance_id",
+    "accessKey": "AK~EXAMPLE.3",
+    "secretKey": "SKEXAMPLE3SECRET",
+    "instanceId": "instance with space",
+    "timestamp": "1757699999999",
+    "method": "POST",
+    "path": "/api/mcp/tools/call",
+    "body": "{\"tool\":\"rmq.group.list\"}",
+    "canonicalRequest": "RMQ-HMAC-SHA256\nAK~EXAMPLE.3\ninstance with space\n1757699999999\nPOST\n/api/mcp/tools/call",
+    "signature": "531af609282d32154f5a6f6962aec5cddf867c659a8c334c4bb5e16002f9dc9d"
+  }
+]

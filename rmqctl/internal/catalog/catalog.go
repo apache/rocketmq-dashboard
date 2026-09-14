@@ -29,6 +29,43 @@ const (
 	ObjectField      FieldKind = "object"
 )
 
+// ClientDefaultNow marks a field whose value rmqctl fills with the current
+// Unix epoch milliseconds when the user did not pass the corresponding flag
+// (catalog extension key x-client-default: NOW). The fill happens before
+// required validation so a schema-required field with a client default is
+// self-consistent.
+const ClientDefaultNow = "NOW"
+
+// InstanceIDGlobalFlag is the global CLI flag that supplies the Studio
+// Instance identifier. The catalog field it feeds is never registered as a
+// per-tool flag; see InstanceFieldName.
+const InstanceIDGlobalFlag = "instance-id"
+
+// platformToolNames lists the platform-level tools whose input schemas do not
+// declare an instance identifier (design decisions 25/26). rmqctl still signs
+// requests and sends the x-rmq-instance-id header for them, but the explicit
+// --instance-id value is not added to their tool call arguments.
+var platformToolNames = map[string]struct{}{
+	"rmq.cluster.list":      {},
+	"rmq.dashboard.summary": {},
+	"rmq.audit.list":        {},
+	"rmq.alert.rule.list":   {},
+	"rmq.nameserver.list":   {},
+	"rmq.nameserver.config": {},
+	"rmq.broker.list":       {},
+	"rmq.broker.describe":   {},
+	"rmq.broker.config":     {},
+	"rmq.proxy.list":        {},
+	"rmq.proxy.config":      {},
+}
+
+// IsPlatformTool reports whether the named tool is exempt from carrying an
+// instanceId argument.
+func IsPlatformTool(name string) bool {
+	_, ok := platformToolNames[name]
+	return ok
+}
+
 type Document struct {
 	Version              string
 	MinimumClientVersion string
@@ -74,6 +111,10 @@ type Field struct {
 	Minimum     float64
 	HasMinimum  bool
 	MinLength   int
+	// ClientDefault records the x-client-default catalog extension. The only
+	// supported value today is ClientDefaultNow ("NOW"): rmqctl fills the
+	// current Unix epoch milliseconds when the user did not pass the flag.
+	ClientDefault string
 	// Object retains the JSON nesting; only its leaf fields have CLI flags.
 	Object *InputSchema
 }
@@ -86,6 +127,26 @@ type Field struct {
 // the slices and object schemas before mutation.
 func Default() Document {
 	return defaultDocument
+}
+
+// LookupTool returns the catalog tool registered under the given MCP tool name.
+func LookupTool(name string) (Tool, bool) {
+	for _, tool := range defaultDocument.Tools {
+		if tool.Name == name {
+			return tool, true
+		}
+	}
+	return Tool{}, false
+}
+
+// InstanceFieldName returns the top-level input property that carries the
+// Studio instance identifier, which rmqctl feeds from the global --instance-id
+// flag instead of a per-tool flag. The canonical property name is instanceId.
+func InstanceFieldName(schema InputSchema) (string, bool) {
+	if field, ok := schema.Field("instanceId"); ok && field.Kind == StringField {
+		return "instanceId", true
+	}
+	return "", false
 }
 
 func (tool Tool) CommandPath() string {

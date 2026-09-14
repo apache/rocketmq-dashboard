@@ -129,7 +129,7 @@ func httpErrorDetails(statusCode int) (string, string) {
 	case 403:
 		return code, "Check the current credential and required permission."
 	case 404:
-		return code, "Verify the resource name and selected cluster."
+		return code, "Verify the resource name and the --instance-id value."
 	case 409:
 		return code, "Refresh the resource state and retry."
 	case 429:

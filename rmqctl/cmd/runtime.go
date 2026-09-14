@@ -17,6 +17,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/studio"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/types"
@@ -30,6 +32,16 @@ type commandRuntime struct {
 }
 
 func (r commandRuntime) resolveTarget() (studio.Target, error) {
+	// The instance identifier must be supplied explicitly on every invocation
+	// (decision 7: no default injection from the context or any other config).
+	instanceID := strings.TrimSpace(r.options.instanceID)
+	if instanceID == "" {
+		return studio.Target{}, types.NewCLIError(
+			types.CodeInvalidArgument,
+			"--instance-id is required",
+			"Pass the Studio Instance identifier explicitly, e.g. --instance-id my-instance; "+
+				"rmqctl never defaults it from the context.")
+	}
 	cfg, err := r.loadConfig()
 	if err != nil {
 		return studio.Target{}, err
@@ -48,7 +60,7 @@ func (r commandRuntime) resolveTarget() (studio.Target, error) {
 	}
 	return studio.Target{
 		Server:     contextConfig.Server,
-		Cluster:    contextConfig.Cluster,
+		InstanceID: instanceID,
 		Credential: studio.Credential{AccessKey: credential.AccessKey, SecretKey: credential.SecretKey},
 		Timeout:    r.options.timeout,
 	}, nil

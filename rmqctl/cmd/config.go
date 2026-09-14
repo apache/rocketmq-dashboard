@@ -28,7 +28,6 @@ func newConfigCommand(runtime commandRuntime) *cobra.Command {
 
 func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 	var server string
-	var cluster string
 	var accessKeyEnv string
 	var secretKeyEnv string
 	cmd := &cobra.Command{
@@ -53,9 +52,6 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 			if cmd.Flags().Changed("server") {
 				contextValue.Server = server
 			}
-		if cmd.Flags().Changed("cluster") {
-			contextValue.Cluster = cluster
-		}
 			if cmd.Flags().Changed("access-key-env") {
 				contextValue.Credential.AccessKeyRef = "env:" + accessKeyEnv
 			}
@@ -75,7 +71,6 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&server, "server", "", "Studio Server URL")
-	cmd.Flags().StringVar(&cluster, "cluster", "", "Studio Instance identifier")
 	cmd.Flags().StringVar(&accessKeyEnv, "access-key-env", "", "environment variable containing the RocketMQ access key")
 	cmd.Flags().StringVar(&secretKeyEnv, "secret-key-env", "", "environment variable containing the RocketMQ secret key")
 	return cmd
@@ -186,7 +181,7 @@ func newConfigCurrentContextCommand(runtime commandRuntime) *cobra.Command {
 // newContextRequiredFlags lists flags that must all be set when creating a
 // brand-new context. Updates to an existing context may set any subset.
 var newContextRequiredFlags = []string{
-	"server", "cluster", "access-key-env", "secret-key-env",
+	"server", "access-key-env", "secret-key-env",
 }
 
 func missingFlags(flags *pflag.FlagSet, required []string) []string {

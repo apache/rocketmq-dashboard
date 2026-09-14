@@ -86,15 +86,15 @@ func RequireFormat(format string) error {
 
 func ConfigTable(w io.Writer, cfg config.Config) error {
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "CURRENT\tCONTEXT\tSERVER\tCLUSTER\tACCESS KEY REF\tSECRET KEY REF")
+	fmt.Fprintln(table, "CURRENT\tCONTEXT\tSERVER\tACCESS KEY REF\tSECRET KEY REF")
 	for _, name := range slices.Sorted(maps.Keys(cfg.Contexts)) {
 		current := ""
 		if name == cfg.CurrentContext {
 			current = "*"
 		}
 		context := cfg.Contexts[name]
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			current, name, context.Server, context.Cluster,
+		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
+			current, name, context.Server,
 			context.Credential.AccessKeyRef, context.Credential.SecretKeyRef)
 	}
 	return table.Flush()
@@ -106,9 +106,9 @@ func ToolCallSummary(w io.Writer, result any) error {
 		return err
 	}
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "CLUSTER\tSTATUS\tCONFIRM TOKEN")
+	fmt.Fprintln(table, "INSTANCE\tSTATUS\tCONFIRM TOKEN")
 	fmt.Fprintf(table, "%s\t%s\t%s\n",
-		mutation.Cluster, mutation.Status, mutation.ConfirmToken)
+		mutation.InstanceID, mutation.Status, mutation.ConfirmToken)
 	if err := table.Flush(); err != nil {
 		return err
 	}

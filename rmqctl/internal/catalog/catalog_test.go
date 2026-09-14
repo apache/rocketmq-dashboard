@@ -81,9 +81,13 @@ func assertToolFields(t *testing.T, tool Tool) {
 		}
 	}
 	assertSchema(tool.InputSchema)
-	cluster, ok := tool.InputSchema.Field("cluster")
-	if !ok || !cluster.Required || cluster.Kind != StringField {
-		t.Errorf("tool %q must require a string cluster field", tool.Name)
+	if instanceField, ok := InstanceFieldName(tool.InputSchema); ok {
+		field, _ := tool.InputSchema.Field(instanceField)
+		if !field.Required || field.Kind != StringField {
+			t.Errorf("tool %q instance field %q must be a required string", tool.Name, instanceField)
+		}
+	} else if !IsPlatformTool(tool.Name) {
+		t.Errorf("tool %q must declare a required instanceId field or be platform-level exempt", tool.Name)
 	}
 }
 

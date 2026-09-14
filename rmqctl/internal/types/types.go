@@ -30,7 +30,7 @@ type ResultEnvelope struct {
 // MutationOutput is the result payload returned by L2/L3 tools.
 type MutationOutput struct {
 	Status       MutationStatus `json:"status"`
-	Cluster      string         `json:"cluster"`
+	InstanceID   string         `json:"instanceId"`
 	Plan         any            `json:"plan"`
 	ConfirmToken string         `json:"confirm_token,omitempty"`
 	Result       any            `json:"result,omitempty"`

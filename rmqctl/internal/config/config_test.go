@@ -34,8 +34,7 @@ func TestSave(t *testing.T) {
 			CurrentContext: "prod",
 			Contexts: map[string]Context{
 				"prod": {
-					Server:  "https://studio.example.com",
-					Cluster: "instance-prod",
+					Server: "https://studio.example.com",
 					Credential: CredentialRef{
 						AccessKeyRef: "env:RMQ_PROD_AK",
 						SecretKeyRef: "env:RMQ_PROD_SK",

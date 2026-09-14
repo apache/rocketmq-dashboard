@@ -92,7 +92,7 @@ func TestSessionStreamsPostSSEWithoutContinuousGet(t *testing.T) {
 		}
 	})})
 	session := newMCPTestSession(t, client, Target{
-		Server: "http://localhost", Cluster: "instance-dev",
+		Server: "http://localhost", InstanceID: "instance-dev",
 		Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: time.Second,
 	})
 	ctx, cancel := context.WithCancel(context.Background())

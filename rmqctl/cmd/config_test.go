@@ -33,7 +33,7 @@ func TestConfigSetContextStoresOnlyEnvironmentReferences(t *testing.T) {
 	configPath := newTestConfigPath(t)
 	exitCode := app.Execute([]string{
 		"--config", configPath, "config", "set-context", "prod",
-		"--server", "https://studio.example.com", "--cluster", "instance-prod",
+		"--server", "https://studio.example.com",
 		"--access-key-env", "RMQ_PROD_AK", "--secret-key-env", "RMQ_PROD_SK",
 	})
 	if exitCode != 0 {
@@ -47,6 +47,9 @@ func TestConfigSetContextStoresOnlyEnvironmentReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	contextValue := cfg.Contexts["prod"]
+	if contextValue.Server != "https://studio.example.com" {
+		t.Fatalf("server = %q, want the configured URL", contextValue.Server)
+	}
 	if contextValue.Credential.AccessKeyRef != "env:RMQ_PROD_AK" ||
 		contextValue.Credential.SecretKeyRef != "env:RMQ_PROD_SK" {
 		t.Fatalf("credential refs = %#v", contextValue.Credential)
@@ -55,8 +58,32 @@ func TestConfigSetContextStoresOnlyEnvironmentReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if strings.Contains(string(raw), "cluster") {
+		t.Fatalf("config still stores a cluster key: %s", raw)
+	}
 	if strings.Contains(string(raw), "token-from-env") || strings.Contains(string(raw), "secret-value") {
 		t.Fatalf("config contains credential material: %s", raw)
+	}
+}
+
+// TestConfigSetContextRejectsRemovedClusterFlag verifies the context no longer
+// accepts --cluster: the instance identifier is a per-invocation global flag.
+func TestConfigSetContextRejectsRemovedClusterFlag(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = emptyEnv
+	configPath := newTestConfigPath(t)
+	exitCode := app.Execute([]string{
+		"--config", configPath, "config", "set-context", "prod",
+		"--server", "https://studio.example.com", "--cluster", "instance-prod",
+		"--access-key-env", "RMQ_PROD_AK", "--secret-key-env", "RMQ_PROD_SK",
+	})
+	if exitCode == 0 {
+		t.Fatal("set-context must reject the removed --cluster flag")
+	}
+	if !strings.Contains(stderr.String(), "unknown flag") {
+		t.Fatalf("stderr = %q, want an unknown flag error", stderr.String())
 	}
 }
 
@@ -70,11 +97,11 @@ func TestConfigDeleteContextRemovesContextAndClearsCurrent(t *testing.T) {
 		CurrentContext: "prod",
 		Contexts: map[string]config.Context{
 			"prod": {
-				Server: "https://studio.example.com", Cluster: "instance-prod",
+				Server:     "https://studio.example.com",
 				Credential: config.CredentialRef{AccessKeyRef: "env:RMQ_PROD_AK", SecretKeyRef: "env:RMQ_PROD_SK"},
 			},
 			"dev": {
-				Server: "https://studio.dev.example.com", Cluster: "instance-dev",
+				Server:     "https://studio.dev.example.com",
 				Credential: config.CredentialRef{AccessKeyRef: "env:RMQ_DEV_AK", SecretKeyRef: "env:RMQ_DEV_SK"},
 			},
 		},
@@ -115,11 +142,11 @@ func TestConfigGetContextsListsAllContexts(t *testing.T) {
 		CurrentContext: "prod",
 		Contexts: map[string]config.Context{
 			"prod": {
-				Server: "https://studio.example.com", Cluster: "instance-prod",
+				Server:     "https://studio.example.com",
 				Credential: config.CredentialRef{AccessKeyRef: "env:RMQ_PROD_AK", SecretKeyRef: "env:RMQ_PROD_SK"},
 			},
 			"dev": {
-				Server: "https://studio.dev.example.com", Cluster: "instance-dev",
+				Server:     "https://studio.dev.example.com",
 				Credential: config.CredentialRef{AccessKeyRef: "env:RMQ_DEV_AK", SecretKeyRef: "env:RMQ_DEV_SK"},
 			},
 		},
@@ -135,6 +162,9 @@ func TestConfigGetContextsListsAllContexts(t *testing.T) {
 	if !strings.Contains(output, "prod") || !strings.Contains(output, "dev") {
 		t.Fatalf("stdout = %q, want both prod and dev contexts listed", output)
 	}
+	if strings.Contains(output, "CLUSTER") || strings.Contains(output, "instance-prod") {
+		t.Fatalf("stdout = %q, get-contexts must not render a CLUSTER column", output)
+	}
 }
 
 func TestConfigCurrentContextJSONOutput(t *testing.T) {
@@ -146,7 +176,7 @@ func TestConfigCurrentContextJSONOutput(t *testing.T) {
 	if err := app.Store.Save(configPath, config.Config{
 		CurrentContext: "prod",
 		Contexts: map[string]config.Context{"prod": {
-			Server: "https://studio.example.com", Cluster: "instance-prod",
+			Server:     "https://studio.example.com",
 			Credential: config.CredentialRef{AccessKeyRef: "env:RMQ_PROD_AK", SecretKeyRef: "env:RMQ_PROD_SK"},
 		}},
 	}); err != nil {

@@ -31,6 +31,7 @@ import (
 	"text/template"
 	"unicode"
 
+	toolcatalog "github.com/apache/rocketmq-dashboard/rmqctl/internal/catalog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -67,8 +68,8 @@ type requiredGroup struct {
 }
 
 type property struct {
-	TargetMode           string              `yaml:"x-target-mode,omitempty" json:"x-target-mode,omitempty"`
 	CLIFlag              string              `yaml:"x-cli-flag,omitempty" json:"x-cli-flag,omitempty"`
+	ClientDefault        string              `yaml:"x-client-default,omitempty" json:"x-client-default,omitempty"`
 	Type                 string              `yaml:"type" json:"type,omitempty"`
 	Description          string              `yaml:"description" json:"description,omitempty"`
 	Enum                 []string            `yaml:"enum" json:"enum,omitempty"`
@@ -121,15 +122,16 @@ type goRequiredGroup struct {
 }
 
 type goField struct {
-	Name        string
-	Flag        string
-	Description string
-	Kind        string
-	Required    bool
-	Enum        []string
-	Minimum     *float64
-	MinLength   int
-	Object      *goInputSchema
+	Name          string
+	Flag          string
+	Description   string
+	Kind          string
+	Required      bool
+	Enum          []string
+	Minimum       *float64
+	MinLength     int
+	ClientDefault string
+	Object        *goInputSchema
 }
 
 const goCatalogTemplate = `/*
@@ -195,7 +197,7 @@ var defaultDocument = Document{
 {{- end }}
 	},
 }
-{{ define "field" }}{Name: {{ quote .Name }}{{ if .Flag }}, Flag: {{ quote .Flag }}{{ end }}{{ if .Description }}, Description: {{ quote .Description }}{{ end }}, Kind: {{ .Kind }}{{ if .Required }}, Required: true{{ end }}{{ if .Enum }}, Enum: {{ stringSlice .Enum }}{{ end }}{{ if .Minimum }}, Minimum: {{ number .Minimum }}, HasMinimum: true{{ end }}{{ if .MinLength }}, MinLength: {{ .MinLength }}{{ end }}{{ with .Object }}, Object: &InputSchema{
+{{ define "field" }}{Name: {{ quote .Name }}{{ if .Flag }}, Flag: {{ quote .Flag }}{{ end }}{{ if .Description }}, Description: {{ quote .Description }}{{ end }}, Kind: {{ .Kind }}{{ if .Required }}, Required: true{{ end }}{{ if .Enum }}, Enum: {{ stringSlice .Enum }}{{ end }}{{ if .Minimum }}, Minimum: {{ number .Minimum }}, HasMinimum: true{{ end }}{{ if .MinLength }}, MinLength: {{ .MinLength }}{{ end }}{{ if .ClientDefault }}, ClientDefault: {{ quote .ClientDefault }}{{ end }}{{ with .Object }}, Object: &InputSchema{
 	Fields: []Field{
 	{{ range .Fields }}{{ template "field" . }},
 	{{ end }}},
@@ -234,7 +236,8 @@ func (schema *property) UnmarshalYAML(node *yaml.Node) error {
 	for index := 0; index+1 < len(node.Content); index += 2 {
 		switch key := node.Content[index].Value; key {
 		case "type", "description", "enum", "minimum", "minLength", "items",
-			"required", "properties", "additionalProperties", "anyOf", "x-target-mode", "x-cli-flag":
+			"required", "properties", "additionalProperties", "anyOf", "x-cli-flag",
+			"x-client-default":
 		default:
 			return fmt.Errorf("unsupported input schema keyword %q at line %d", key, node.Content[index].Line)
 		}
@@ -503,10 +506,24 @@ func validate(document catalogDocument) error {
 		if tool.InputSchema.Type != "object" {
 			return fmt.Errorf("tool %q input schema must be an object", tool.Name)
 		}
-		if !slices.Contains(tool.InputSchema.Required, "cluster") {
-			return fmt.Errorf("tool %q must require cluster", tool.Name)
+		// Decisions 7/25/26: instanceId is a formal required input for every
+		// tool except the platform-level exemption list, which must not
+		// declare it at all. rmqctl feeds the value from the global
+		// --instance-id flag instead of a generated per-tool flag.
+		_, declaresInstance := tool.InputSchema.Properties["instanceId"]
+		if toolcatalog.IsPlatformTool(tool.Name) {
+			if declaresInstance {
+				return fmt.Errorf("platform-level tool %q must not declare instanceId", tool.Name)
+			}
+		} else {
+			if !declaresInstance {
+				return fmt.Errorf("tool %q must declare instanceId", tool.Name)
+			}
+			if !slices.Contains(tool.InputSchema.Required, "instanceId") {
+				return fmt.Errorf("tool %q must require instanceId", tool.Name)
+			}
 		}
-		if err := validateSchema(tool.InputSchema, make(map[string]struct{})); err != nil {
+		if err := validateSchema(tool.InputSchema, make(map[string]struct{}), 0); err != nil {
 			return fmt.Errorf("tool %q: %w", tool.Name, err)
 		}
 		if err := validateRisk(tool); err != nil {
@@ -518,11 +535,14 @@ func validate(document catalogDocument) error {
 
 // Flags retain their leaf names at every depth for CLI compatibility. Reject
 // collisions across the entire command before Cobra can register them.
-func validateSchema(schema inputSchema, flags map[string]struct{}) error {
+func validateSchema(schema inputSchema, flags map[string]struct{}, depth int) error {
 	if len(schema.PropertyOrder) != len(schema.Properties) {
 		return fmt.Errorf("invalid input property ordering")
 	}
-	if len(schema.Properties) == 0 {
+	// A top-level schema without properties is a zero-flag tool (e.g.
+	// rmq.dashboard.summary, a platform-level aggregate with no inputs).
+	// Nested objects must still define leaves so ObjectField binds flags.
+	if len(schema.Properties) == 0 && depth > 0 {
 		return fmt.Errorf("object must define properties for CLI flags")
 	}
 	for _, name := range schema.PropertyOrder {
@@ -530,24 +550,33 @@ func validateSchema(schema inputSchema, flags map[string]struct{}) error {
 		if !exists {
 			return fmt.Errorf("input property %q is undefined", name)
 		}
+		if field.ClientDefault != "" {
+			if depth != 0 {
+				return fmt.Errorf("property %q: x-client-default is only supported on top-level properties", name)
+			}
+			if field.ClientDefault != "NOW" {
+				return fmt.Errorf("property %q has unsupported x-client-default %q; only NOW is supported", name, field.ClientDefault)
+			}
+		}
 		kind, err := fieldKind(field)
 		if err != nil {
 			return fmt.Errorf("property %q: %w", name, err)
 		}
 		if kind == "ObjectField" {
-			if err := validateSchema(field, flags); err != nil {
+			if err := validateSchema(field, flags, depth+1); err != nil {
 				return fmt.Errorf("property %q: %w", name, err)
 			}
 			continue
 		}
 		flagName := schemaFlagName(name, field)
-		if field.CLIFlag != "" {
-			if !validCLIFlag(field.CLIFlag) {
-				return fmt.Errorf("property %q has invalid x-cli-flag %q", name, field.CLIFlag)
-			}
-			if _, reserved := reservedCLIFlags[field.CLIFlag]; reserved {
-				return fmt.Errorf("property %q uses reserved CLI flag --%s", name, field.CLIFlag)
-			}
+		if field.CLIFlag != "" && !validCLIFlag(field.CLIFlag) {
+			return fmt.Errorf("property %q has invalid x-cli-flag %q", name, field.CLIFlag)
+		}
+		// Global persistent flags own their names. The only exception is the
+		// top-level instanceId property: the runtime feeds it from the global
+		// --instance-id flag and never registers a per-tool flag for it.
+		if _, reserved := reservedCLIFlags[flagName]; reserved && !(depth == 0 && name == "instanceId") {
+			return fmt.Errorf("property %q uses reserved CLI flag --%s", name, flagName)
 		}
 		if _, exists := flags[flagName]; exists {
 			return fmt.Errorf("contains duplicate flag --%s", flagName)
@@ -673,7 +702,7 @@ func compileSchema(schema inputSchema) (goInputSchema, error) {
 		compiledField := goField{
 			Name: name, Flag: schemaFlagName(name, field), Description: field.Description,
 			Kind: kind, Required: required[name], Enum: slices.Clone(field.Enum),
-			MinLength: field.MinLength,
+			MinLength: field.MinLength, ClientDefault: field.ClientDefault,
 		}
 		if field.Minimum != nil {
 			compiledField.Minimum = new(*field.Minimum)
@@ -839,6 +868,9 @@ func stringSet(values []string) map[string]bool {
 
 var reservedCLIFlags = map[string]struct{}{
 	"help": {}, "version": {}, "context": {}, "config": {}, "output": {}, "timeout": {}, "yes": {},
+	// instance-id is the global persistent flag feeding the catalog's
+	// instanceId property; per-tool flags must not claim it.
+	"instance-id": {},
 }
 
 func validCLIFlag(value string) bool {

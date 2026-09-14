@@ -88,14 +88,17 @@ type actionExplanation struct {
 }
 
 type fieldExplanation struct {
-	Name        string   `json:"name"                  yaml:"name"`
-	Flag        string   `json:"flag"                  yaml:"flag"`
-	Type        string   `json:"type"                  yaml:"type"`
-	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
-	Required    bool     `json:"required"              yaml:"required"`
-	Enum        []string `json:"enum,omitempty"         yaml:"enum,omitempty"`
-	Minimum     *float64 `json:"minimum,omitempty"      yaml:"minimum,omitempty"`
-	MinLength   int      `json:"minLength,omitempty"    yaml:"minLength,omitempty"`
+	Name        string `json:"name"                  yaml:"name"`
+	Flag        string `json:"flag"                  yaml:"flag"`
+	Type        string `json:"type"                  yaml:"type"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	Required    bool   `json:"required"              yaml:"required"`
+	// Global marks fields fed by a global persistent flag (--instance-id)
+	// instead of a per-tool flag.
+	Global    bool     `json:"global,omitempty"     yaml:"global,omitempty"`
+	Enum      []string `json:"enum,omitempty"       yaml:"enum,omitempty"`
+	Minimum   *float64 `json:"minimum,omitempty"    yaml:"minimum,omitempty"`
+	MinLength int      `json:"minLength,omitempty"  yaml:"minLength,omitempty"`
 }
 
 func explainResource(resource string) (resourceExplanation, error) {
@@ -138,6 +141,7 @@ func explainResource(resource string) (resourceExplanation, error) {
 // Explanations list usable flags with their complete JSON property paths.
 func explainSchemaFields(schema toolcatalog.InputSchema, prefix string) []fieldExplanation {
 	fields := make([]fieldExplanation, 0, len(schema.Fields))
+	instanceField, hasInstanceField := toolcatalog.InstanceFieldName(schema)
 	for _, field := range schema.Fields {
 		name := prefix + field.Name
 		if field.Object != nil {
@@ -148,6 +152,12 @@ func explainSchemaFields(schema toolcatalog.InputSchema, prefix string) []fieldE
 			Name: name, Flag: "--" + field.Flag, Type: explainFieldType(field.Kind),
 			Description: field.Description, Required: field.Required,
 			Enum: field.Enum, MinLength: field.MinLength,
+		}
+		// The instance identifier is fed by the global persistent --instance-id
+		// flag, not by a per-tool flag; keep it visible with the global flag.
+		if prefix == "" && hasInstanceField && field.Name == instanceField {
+			explained.Flag = "--" + toolcatalog.InstanceIDGlobalFlag
+			explained.Global = true
 		}
 		if field.HasMinimum {
 			explained.Minimum = new(field.Minimum)
@@ -185,7 +195,10 @@ func renderResourceExplanation(out interface{ Write([]byte) (int, error) }, expl
 			"description":  action.Description,
 		})
 		for _, field := range action.Fields {
-			constraints := make([]string, 0, 3)
+			constraints := make([]string, 0, 4)
+			if field.Global {
+				constraints = append(constraints, "global flag")
+			}
 			if len(field.Enum) > 0 {
 				constraints = append(constraints, "enum="+strings.Join(field.Enum, "|"))
 			}

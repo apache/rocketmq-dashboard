@@ -42,11 +42,27 @@ func TestCatalogRegistersEveryToolAndSchemaFlag(t *testing.T) {
 		if command.Short != tool.Description {
 			t.Errorf("tool %q help = %q, want %q", tool.Name, command.Short, tool.Description)
 		}
-		var assertSchemaFlags func(toolcatalog.InputSchema)
-		assertSchemaFlags = func(schema toolcatalog.InputSchema) {
+		var assertSchemaFlags func(toolcatalog.InputSchema, int)
+		assertSchemaFlags = func(schema toolcatalog.InputSchema, depth int) {
+			instanceField := ""
+			if depth == 0 {
+				if name, ok := toolcatalog.InstanceFieldName(schema); ok {
+					instanceField = name
+				}
+			}
 			for _, field := range schema.Fields {
 				if field.Object != nil {
-					assertSchemaFlags(*field.Object)
+					assertSchemaFlags(*field.Object, depth+1)
+					continue
+				}
+				// The instance identifier is fed exclusively by the global
+				// persistent --instance-id flag and must never be registered
+				// as a per-tool flag.
+				if field.Name == instanceField {
+					if flag := command.Flags().Lookup(field.Flag); flag != nil {
+						t.Errorf("tool %q must not register per-tool flag --%s for the instance identifier",
+							tool.Name, field.Flag)
+					}
 					continue
 				}
 				flag := command.Flags().Lookup(field.Flag)
@@ -57,12 +73,12 @@ func TestCatalogRegistersEveryToolAndSchemaFlag(t *testing.T) {
 				if actual, expected := flag.Value.Type(), cobraFlagType(field.Kind); actual != expected {
 					t.Errorf("tool %q --%s type = %q, want %q", tool.Name, field.Flag, actual, expected)
 				}
-				if field.Required && field.Name != "cluster" && !strings.Contains(flag.Usage, "(required)") {
+				if field.Required && !strings.Contains(flag.Usage, "(required)") {
 					t.Errorf("tool %q --%s help does not mark the flag as required", tool.Name, field.Flag)
 				}
 			}
 		}
-		assertSchemaFlags(tool.InputSchema)
+		assertSchemaFlags(tool.InputSchema, 0)
 	}
 	if command := childCommand(root, "message", "query-by-group"); command != nil {
 		t.Fatal("removed message query-by-group command is still registered")

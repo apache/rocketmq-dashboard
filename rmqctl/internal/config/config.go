@@ -27,9 +27,12 @@ type Config struct {
 	Contexts       map[string]Context `yaml:"contexts,omitempty" json:"contexts,omitempty"`
 }
 
+// Context stores only the Studio Server endpoint and credential references.
+// The Studio Instance identifier is deliberately not part of the context: it
+// must be passed explicitly via the global --instance-id flag on every
+// invocation (no default injection).
 type Context struct {
 	Server     string        `yaml:"server" json:"server"`
-	Cluster    string        `yaml:"cluster" json:"cluster"`
 	Credential CredentialRef `yaml:"credential" json:"credential"`
 }
 
@@ -169,7 +172,6 @@ func ValidateContext(context Context) error {
 		value string
 	}{
 		{"server", context.Server},
-		{"cluster", context.Cluster},
 		{"credential.accessKeyRef", context.Credential.AccessKeyRef},
 		{"credential.secretKeyRef", context.Credential.SecretKeyRef},
 	}
