@@ -16,5 +16,5 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.common;
 
-public record ResourceDeleteInput(String cluster, String id) {
+public record ResourceDeleteInput(String instanceId, String id) {
 }

@@ -16,5 +16,10 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.group;
 
-public record GroupResetOffsetInput(String cluster, String group, String topic, long timestamp) {
+/**
+ * {@code timestamp} is required (decision 13): epoch milliseconds supplied by the caller;
+ * rmqctl fills in the current time client-side when the flag is absent. The Long component
+ * is kept so the handler can reject a missing value with an explicit 400.
+ */
+public record GroupResetOffsetInput(String instanceId, String groupName, String topicName, Long timestamp) {
 }

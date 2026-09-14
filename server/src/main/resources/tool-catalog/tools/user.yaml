@@ -11,11 +11,12 @@ tools:
     inputSchema:
       type: object
       required:
-        - cluster
+        - instanceId
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
           minLength: 1
     outputSchema:
       type: object
@@ -46,6 +47,48 @@ tools:
                   type: string
     viewHint: table
     deprecated: false
+  - name: rmq.user.get
+    cli:
+      resource: user
+      verb: get
+    description: Get one RocketMQ ACL user by id without exposing credentials.
+    riskLevel: L1
+    permission: acl:read
+    requiredCapabilities: [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - id
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        id:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - id
+        - username
+        - admin
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        admin:
+          type: boolean
+        clusters:
+          type: array
+          items:
+            type: string
+    viewHint: object
+    deprecated: false
   - name: rmq.user.create
     cli:
       resource: user
@@ -53,16 +96,17 @@ tools:
     description: Create a RocketMQ ACL user while keeping generated credentials out of tool output.
     riskLevel: L3
     permission: acl:write
-    requiredCapabilities: [ACL_MANAGEMENT]
+    requiredCapabilities: [ACL_MANAGEMENT, REMOTING]
     inputSchema:
       type: object
       required:
-        - cluster
+        - instanceId
         - username
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
           minLength: 1
         username:
           type: string
@@ -88,7 +132,7 @@ tools:
       type: object
       required:
         - status
-        - cluster
+        - instanceId
         - plan
       additionalProperties: false
       properties:
@@ -96,7 +140,7 @@ tools:
           enum:
             - PLANNED
             - EXECUTED
-        cluster:
+        instanceId:
           type: string
         confirm_token:
           type: string
@@ -130,7 +174,6 @@ tools:
             - id
             - username
             - admin
-            - clusters
           additionalProperties: false
           properties:
             id:
@@ -152,16 +195,17 @@ tools:
     description: Delete a RocketMQ ACL user by identifier.
     riskLevel: L3
     permission: acl:write
-    requiredCapabilities: [ACL_MANAGEMENT]
+    requiredCapabilities: [ACL_MANAGEMENT, REMOTING]
     inputSchema:
       type: object
       required:
-        - cluster
+        - instanceId
         - id
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
           minLength: 1
         id:
           type: string
@@ -181,7 +225,7 @@ tools:
       type: object
       required:
         - status
-        - cluster
+        - instanceId
         - plan
       additionalProperties: false
       properties:
@@ -189,7 +233,7 @@ tools:
           enum:
             - PLANNED
             - EXECUTED
-        cluster:
+        instanceId:
           type: string
         confirm_token:
           type: string

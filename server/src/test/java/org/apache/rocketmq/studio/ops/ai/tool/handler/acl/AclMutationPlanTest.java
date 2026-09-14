@@ -39,7 +39,7 @@ class AclMutationPlanTest {
         when(aclService.getRule("7", "cluster-a")).thenReturn(current);
 
         var updateInput2 = Map.<String, Object>of(
-                "cluster", "cluster-a",
+                "instanceId", "cluster-a",
                 "id", "7",
                 "principal", "user-a",
                 "resource", "orders",
@@ -54,11 +54,11 @@ class AclMutationPlanTest {
         assertThat(plan.before())
                 .containsEntry("id", "7")
                 .containsEntry("actions", List.of("SUB"))
-                .doesNotContainKeys("cluster", "gmtCreate");
+                .doesNotContainKeys("instanceId", "gmtCreate");
         assertThat(plan.after())
                 .containsEntry("id", "7")
                 .containsEntry("actions", List.of("PUB", "SUB"))
-                .doesNotContainKeys("cluster", "gmtCreate");
+                .doesNotContainKeys("instanceId", "gmtCreate");
         assertThat(plan.warnings()).containsExactly(
                 "The updated ACL rule changes permissions for subsequent broker requests.");
     }

@@ -33,7 +33,7 @@ import java.util.List;
 public class TopicUpdateToolHandler extends MutationToolHandler<TopicUpdateInput, TopicOutput> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "update topic '%s' in cluster '%s'.",
+            "update topic '%s' in instance '%s'.",
             List.of("Updates topic routing and queue configuration on reachable master brokers."),
             List.of());
 
@@ -51,24 +51,27 @@ public class TopicUpdateToolHandler extends MutationToolHandler<TopicUpdateInput
 
     @Override
     public ToolPlan preview(TopicUpdateInput input, ToolExecutionContext context) {
-        TopicVO current = metadataService.getTopic(
-                context.cluster(), null, input.topic());
-        TopicInput before = TopicInput.from(current);
-        TopicInput after = TopicInput.from(input.mergeWith(current));
-        return PLAN_DESCRIPTION.builder(input.topic(), context.cluster())
+        TopicVO current = metadataService.findTopic(
+                context.instanceId(), null, input.topicName()).orElse(null);
+        TopicInput before = current == null ? null : TopicInput.from(current);
+        TopicVO target = current == null ? input.toTopicVO() : input.mergeWith(current);
+        TopicInput after = TopicInput.from(target);
+        return PLAN_DESCRIPTION.builder(input.topicName(), context.instanceId())
                 .before(before)
                 .after(after)
-                .warningIf(before.equals(after),
+                .warningIf(before != null && before.equals(after),
                         "The requested topic configuration already matches the current state.")
                 .build();
     }
 
     @Override
     public TopicOutput execute(TopicUpdateInput input, ToolExecutionContext context) {
-        TopicVO current = metadataService.getTopic(
-                context.cluster(), null, input.topic());
-        TopicVO topic = input.mergeWith(current);
-        return TopicOutput.from(metadataService.updateTopic(context.cluster(), topic));
+        TopicVO current = metadataService.findTopic(
+                context.instanceId(), null, input.topicName()).orElse(null);
+        if (current == null) {
+            return TopicOutput.from(metadataService.createTopic(context.instanceId(), input.toTopicVO()));
+        }
+        return TopicOutput.from(metadataService.updateTopic(context.instanceId(), input.mergeWith(current)));
     }
 
 }

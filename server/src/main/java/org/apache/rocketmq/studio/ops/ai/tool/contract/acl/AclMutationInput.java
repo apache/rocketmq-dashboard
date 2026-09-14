@@ -21,7 +21,7 @@ import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
 import java.util.List;
 
 public record AclMutationInput(
-        String cluster,
+        String instanceId,
         String id,
         String principal,
         String resource,
@@ -29,8 +29,7 @@ public record AclMutationInput(
         String resourcePattern,
         List<String> actions,
         String decision,
-        String scope,
-        String aclVersion) {
+        String scope) {
 
     public AclRuleVO toRule(Long ruleId) {
         return AclRuleVO.builder()
@@ -42,7 +41,6 @@ public record AclMutationInput(
                 .actions(actions)
                 .decision(decision)
                 .scope(scope)
-                .aclVersion(aclVersion)
                 .build();
     }
 
@@ -56,7 +54,6 @@ public record AclMutationInput(
                 rule.getResourcePattern(),
                 rule.getActions(),
                 rule.getDecision(),
-                rule.getScope(),
-                rule.getAclVersion());
+                rule.getScope());
     }
 }

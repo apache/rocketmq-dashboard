@@ -56,7 +56,7 @@ class AclUpdateToolHandlerTest {
 
         Object result = handler.execute(new AclMutationInput(
                 "cluster-1", "1", "user-1", "TopicB", null, null,
-                null, "DENY", null, null), context("cluster-1"));
+                null, "DENY", null), context("cluster-1"));
 
         assertThat(result).isInstanceOf(AclRuleVO.class);
         AclRuleVO rule = (AclRuleVO) result;

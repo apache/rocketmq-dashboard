@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.Set;
 
 public record ToolExecutionContext(
-        String cluster,
+        String instanceId,
         ToolDefinition definition,
         Map<String, Object> input,
         String principal) {
@@ -46,16 +46,16 @@ public record ToolExecutionContext(
                 : Collections.unmodifiableMap(new LinkedHashMap<>(input));
     }
 
-    public static ToolExecutionContext of(String cluster, ToolDefinition definition, Map<String, Object> input) {
-        return new ToolExecutionContext(cluster, definition, input, null);
+    public static ToolExecutionContext of(String instanceId, ToolDefinition definition, Map<String, Object> input) {
+        return new ToolExecutionContext(instanceId, definition, input, null);
     }
 
     public static ToolExecutionContext of(
-            String cluster,
+            String instanceId,
             ToolDefinition definition,
             Map<String, Object> input,
             String principal) {
-        return new ToolExecutionContext(cluster, definition, input, principal);
+        return new ToolExecutionContext(instanceId, definition, input, principal);
     }
 
     public String operationType() {
@@ -118,12 +118,12 @@ public record ToolExecutionContext(
     }
 
     /**
-     * Returns the cluster name, or throws when it is missing or blank.
+     * Returns the instance identifier, or throws when it is missing or blank.
      */
-    public String requireCluster() {
-        if (cluster == null || cluster.isBlank()) {
-            throw ToolError.TOOL_CLUSTER_REQUIRED.exception();
+    public String requireInstance() {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw ToolError.TOOL_INSTANCE_REQUIRED.exception(definition.name());
         }
-        return cluster;
+        return instanceId;
     }
 }

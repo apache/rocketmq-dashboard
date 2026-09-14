@@ -36,9 +36,9 @@ spring:
         type: SYNC
         instructions: >-
           RocketMQ Studio exposes RocketMQ operational tools through MCP.
-          Call rmq.capabilities for the selected cluster before choosing tools.
+          Call rmq.instance.capabilities for the selected Instance before choosing tools.
           Only call a tool when the returned capabilities include all capabilities
-          required by its description. Recheck capabilities when switching clusters.
+          required by its description. Recheck capabilities when switching Instances.
         streamable-http:
           mcp-endpoint: /api/mcp
         capabilities:

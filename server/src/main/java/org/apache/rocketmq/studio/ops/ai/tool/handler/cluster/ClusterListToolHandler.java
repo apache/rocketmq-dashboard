@@ -16,23 +16,29 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.cluster;
 
-import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedBroker;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedCluster;
 
-import org.apache.rocketmq.studio.cluster.broker.ClusterService;
-import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * Platform-level physical cluster/broker overview (decision 25): aggregates every Apache
+ * instance through the resolver, deduplicates by physical cluster name, and flattens to one
+ * row per broker replica. No instanceId.
+ */
 @Component
 @RequiredArgsConstructor
 public class ClusterListToolHandler
         implements ToolHandler<ClusterListInput, ListOutput<ClusterListItem>> {
 
-    private final ClusterService clusterService;
+    private final PlatformClusterResolver clusterResolver;
 
     @Override
     public String name() {
@@ -47,15 +53,25 @@ public class ClusterListToolHandler
     @Override
     public ListOutput<ClusterListItem> execute(
             ClusterListInput input, ToolExecutionContext context) {
-        return new ListOutput<>(clusterService.listClusters(context.cluster()).stream()
+        return new ListOutput<>(clusterResolver.scanWithBrokerVersions().stream()
                 .filter(cluster -> matchesStatus(cluster, input.status()))
-                .map(ClusterListItem::from)
+                .flatMap(cluster -> cluster.brokers().stream()
+                        .map(broker -> toItem(cluster, broker)))
                 .toList());
     }
 
-    private static boolean matchesStatus(ClusterVO cluster, String status) {
+    private static ClusterListItem toItem(ManagedCluster cluster, ManagedBroker broker) {
+        return new ClusterListItem(
+                cluster.clusterName(),
+                broker.address(),
+                broker.brokerName(),
+                broker.brokerId(),
+                broker.version());
+    }
+
+    private static boolean matchesStatus(ManagedCluster cluster, String status) {
         return status == null
-                || cluster.getStatus() != null
-                && cluster.getStatus().name().equalsIgnoreCase(status.trim());
+                || cluster.status() != null
+                && cluster.status().name().equalsIgnoreCase(status.trim());
     }
 }

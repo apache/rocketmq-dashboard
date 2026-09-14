@@ -22,7 +22,6 @@ public record AuditListInput(
         String search,
         String operationType,
         String resourceType,
-        String cluster,
         String startDate,
         String endDate,
         String result,

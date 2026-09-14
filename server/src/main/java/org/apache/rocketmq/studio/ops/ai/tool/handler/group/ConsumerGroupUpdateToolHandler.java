@@ -32,7 +32,7 @@ import java.util.List;
 public class ConsumerGroupUpdateToolHandler extends MutationToolHandler<GroupInput, GroupListItem> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "update consumer group '%s' in cluster '%s'.",
+            "update consumer group '%s' in instance '%s'.",
             List.of("Updates broker-side retry and subscription behavior for the consumer group."),
             List.of());
 
@@ -50,23 +50,33 @@ public class ConsumerGroupUpdateToolHandler extends MutationToolHandler<GroupInp
 
     @Override
     public ToolPlan preview(GroupInput input, ToolExecutionContext context) {
-        ConsumerGroupVO current = metadataService.requireConsumerGroup(
-                context.cluster(), input.group());
-        GroupInput before = GroupInput.from(current);
-        GroupInput after = GroupInput.from(input.mergeWith(current));
-        return PLAN_DESCRIPTION.builder(input.group(), context.cluster())
+        // Idempotent upsert: merge with the current config when present, otherwise build from input.
+        ConsumerGroupVO current = metadataService.findConsumerGroup(
+                context.instanceId(), input.groupName()).orElse(null);
+        GroupInput before = current == null ? null : GroupInput.from(current);
+        GroupInput after = current == null
+                ? GroupInput.from(input.toConsumerGroupVO())
+                : GroupInput.from(input.mergeWith(current));
+        return PLAN_DESCRIPTION.builder(input.groupName(), context.instanceId())
                 .before(before)
                 .after(after)
-                .warningIf(before.equals(after),
+                .warningIf(current != null && before.equals(after),
                         "The requested consumer group configuration already matches the current state.")
                 .build();
     }
 
     @Override
     public GroupListItem execute(GroupInput input, ToolExecutionContext context) {
-        ConsumerGroupVO group = input.mergeWith(metadataService.requireConsumerGroup(context.cluster(), input.group()));
-        group.setInstanceId(context.cluster());
-        return GroupListItem.from(metadataService.updateConsumerGroup(group));
+        // Update when present, create when absent; both persist idempotently.
+        ConsumerGroupVO current = metadataService.findConsumerGroup(
+                context.instanceId(), input.groupName()).orElse(null);
+        ConsumerGroupVO group = current == null
+                ? input.toConsumerGroupVO()
+                : input.mergeWith(current);
+        group.setInstanceId(context.instanceId());
+        return GroupListItem.from(current == null
+                ? metadataService.createConsumerGroup(group)
+                : metadataService.updateConsumerGroup(group));
     }
 
 }

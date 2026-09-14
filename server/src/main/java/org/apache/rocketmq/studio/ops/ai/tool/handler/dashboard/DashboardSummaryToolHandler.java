@@ -20,7 +20,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardService;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.ops.DashboardSummaryInput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class DashboardSummaryToolHandler
-        implements ToolHandler<ClusterInput, DashboardSummaryToolHandler.Output> {
+        implements ToolHandler<DashboardSummaryInput, DashboardSummaryToolHandler.Output> {
 
     private final DashboardService dashboardService;
 
@@ -41,14 +41,19 @@ public class DashboardSummaryToolHandler
     }
 
     @Override
-    public Class<ClusterInput> inputType() {
-        return ClusterInput.class;
+    public Class<DashboardSummaryInput> inputType() {
+        return DashboardSummaryInput.class;
     }
 
+    /**
+     * Platform-level summary: spans every registered Instance. The provider aggregates them
+     * best-effort, so an unreachable Instance degrades to a warning cluster row instead of
+     * failing the whole summary.
+     */
     @Override
-    public Output execute(ClusterInput input, ToolExecutionContext context) {
-        DashboardDataVO dashboard = dashboardService.getDashboard(context.cluster());
-        return new Output(context.cluster(), clusters(dashboard).stream().map(DashboardSummaryToolHandler::clusterProjection).toList(),
+    public Output execute(DashboardSummaryInput input, ToolExecutionContext context) {
+        DashboardDataVO dashboard = dashboardService.getDashboard();
+        return new Output(clusters(dashboard).stream().map(DashboardSummaryToolHandler::clusterProjection).toList(),
                 statsProjection(dashboard == null ? null : dashboard.getStats()));
     }
 
@@ -91,7 +96,7 @@ public class DashboardSummaryToolHandler
                 safeStats.getTpsOut());
     }
 
-    public record Output(String cluster, List<Cluster> clusters, Stats stats) {
+    public record Output(List<Cluster> clusters, Stats stats) {
     }
 
     public record Cluster(

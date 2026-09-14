@@ -4,46 +4,39 @@ tools:
     cli:
       resource: dashboard
       verb: summary
-    description: "Summarize the selected Instance, including all its physical Broker cluster overviews."
+    description: "Summarize the whole Studio deployment (platform-level, aggregated across Instances), including all physical Broker cluster overviews."
     riskLevel: L1
     permission: dashboard:read
     requiredCapabilities: [CLUSTER_TOPOLOGY]
     inputSchema:
       type: object
-      required:
-        - cluster
+      required: []
       additionalProperties: false
-      properties:
-        cluster:
-          type: string
-          minLength: 1
+      properties: {}
     outputSchema:
       type: object
       required:
-      - cluster
-      - clusters
-      - stats
+        - clusters
+        - stats
       additionalProperties: false
       properties:
-        cluster:
-          type: string
         clusters:
           type: array
           items:
             type: object
             required:
-            - id
-            - name
-            - type
-            - status
-            - brokers
-            - proxies
-            - topics
-            - groups
-            - tpsIn
-            - tpsOut
-            - version
-            - throughput
+              - id
+              - name
+              - type
+              - status
+              - brokers
+              - proxies
+              - topics
+              - groups
+              - tpsIn
+              - tpsOut
+              - version
+              - throughput
             additionalProperties: false
             properties:
               id:
@@ -52,18 +45,18 @@ tools:
                 type: string
               type:
                 type:
-                - string
-                - 'null'
+                  - string
+                  - 'null'
               status:
                 type:
-                - string
-                - 'null'
+                  - string
+                  - 'null'
               brokers:
                 type: integer
               proxies:
                 type:
-                - integer
-                - 'null'
+                  - integer
+                  - 'null'
               topics:
                 type: integer
               groups:
@@ -74,8 +67,8 @@ tools:
                 type: integer
               version:
                 type:
-                - string
-                - 'null'
+                  - string
+                  - 'null'
               throughput:
                 type: array
                 items:
@@ -83,17 +76,17 @@ tools:
         stats:
           type: object
           required:
-          - totalClusters
-          - healthyClusters
-          - totalBrokers
-          - totalProxies
-          - totalNameServers
-          - totalTopics
-          - totalConsumerGroups
-          - totalMessagesToday
-          - messagesPerSecond
-          - tpsIn
-          - tpsOut
+            - totalClusters
+            - healthyClusters
+            - totalBrokers
+            - totalProxies
+            - totalNameServers
+            - totalTopics
+            - totalConsumerGroups
+            - totalMessagesToday
+            - messagesPerSecond
+            - tpsIn
+            - tpsOut
           additionalProperties: false
           properties:
             totalClusters:
@@ -104,12 +97,12 @@ tools:
               type: integer
             totalProxies:
               type:
-              - integer
-              - 'null'
+                - integer
+                - 'null'
             totalNameServers:
               type:
-              - integer
-              - 'null'
+                - integer
+                - 'null'
             totalTopics:
               type: integer
             totalConsumerGroups:

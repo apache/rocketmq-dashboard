@@ -16,5 +16,6 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.cluster;
 
-public record ClusterListInput(String cluster, String status) {
+/** Platform-level (decision 25): no instanceId; optional cluster status filter. */
+public record ClusterListInput(String status) {
 }

@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.group;
 
 import java.util.Map;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupResetOffsetInput;
@@ -19,8 +20,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class GroupResetOffsetToolHandlerTest {
@@ -37,7 +40,7 @@ class GroupResetOffsetToolHandlerTest {
         GroupResetOffsetInput input = new GroupResetOffsetInput(
                 "untrusted-instance", "group-1", "TopicA", 1700000000000L);
         ToolExecutionContext execution = ToolExecutionContext.of(
-                "instance-a", null, Map.of("cluster", "untrusted-instance"));
+                "instance-a", null, Map.of("instanceId", "untrusted-instance"));
 
         ResetOffsetOutput output = handler.execute(input, execution);
 
@@ -46,5 +49,20 @@ class GroupResetOffsetToolHandlerTest {
         assertThat(output.timestamp()).isEqualTo(1700000000000L);
         verify(metadataService).resetOffset(eq("instance-a"), eq("group-1"),
                 eq(1700000000000L), eq("TopicA"));
+    }
+
+    @Test
+    void applyShouldRejectMissingTimestampTest() {
+        // Decision 13: the server no longer defaults to the current time.
+        GroupResetOffsetInput input = new GroupResetOffsetInput(
+                "untrusted-instance", "group-1", "TopicA", null);
+        ToolExecutionContext execution = ToolExecutionContext.of(
+                "instance-a", null, Map.of("instanceId", "untrusted-instance"));
+
+        assertThatThrownBy(() -> handler.execute(input, execution))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(metadataService);
     }
 }

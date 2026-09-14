@@ -18,20 +18,28 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.broker;
 
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
+/**
+ * Single-broker full view addressed by the clusterName + brokerName pair (decision 20/26):
+ * the resolver pins the physical cluster's owning instance, cluster membership is verified, and
+ * the replica-group detail is merged with its runtime statistics (absorbing the former
+ * rmq.broker.runtime_info). No instanceId.
+ */
 @Component
 @RequiredArgsConstructor
 public class BrokerDescribeToolHandler
-        implements ToolHandler<BrokerDescribeInput, ClusterListOutput<BrokerVO>> {
+        implements ToolHandler<BrokerDescribeInput, BrokerDescribeOutput> {
 
+    private final PlatformClusterResolver clusterResolver;
     private final ClusterProvider clusterProvider;
 
     @Override
@@ -45,9 +53,17 @@ public class BrokerDescribeToolHandler
     }
 
     @Override
-    public ClusterListOutput<BrokerVO> execute(
-            BrokerDescribeInput input, ToolExecutionContext context) {
-        List<BrokerVO> matched = clusterProvider.discoverBrokers(context.cluster(), input.broker());
-        return new ClusterListOutput<>(context.cluster(), matched);
+    public BrokerDescribeOutput execute(BrokerDescribeInput input, ToolExecutionContext context) {
+        PlatformClusterResolver.ManagedCluster cluster = clusterResolver.require(input.clusterName());
+        String brokerName = input.brokerName();
+        if (!cluster.brokerNames().contains(brokerName)) {
+            throw new BusinessException(404,
+                    "Broker not found in cluster " + cluster.clusterName() + ": " + brokerName);
+        }
+        BrokerVO broker = clusterProvider.discoverBrokers(cluster.instanceId(), brokerName).stream()
+                .filter(candidate -> brokerName.equals(candidate.getName()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "Broker not found: " + brokerName));
+        return BrokerDescribeOutput.from(broker);
     }
 }

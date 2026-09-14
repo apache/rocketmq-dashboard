@@ -37,14 +37,14 @@ class CapabilityResolverTest {
     @Mock
     private InstanceProvider provider;
     @Mock
-    private InstanceResolver instanceRepository;
+    private InstanceResolver instanceResolver;
 
     private CapabilityResolver resolver;
 
     @BeforeEach
     void setUp() {
         resolver = new CapabilityResolver(providerRegistry,
-                instanceRepository);
+                instanceResolver);
     }
 
     @ParameterizedTest
@@ -54,7 +54,7 @@ class CapabilityResolverTest {
         "PROXY_CLUSTER|PROXY_DISCOVERY BROKER_ADMIN CLUSTER_TOPOLOGY NAMESERVER_ADMIN REMOTING"
     }, delimiter = '|')
     void resolvesCapabilitiesForEveryApacheInstanceTypeTest(InstanceType type, String accessCapabilities) {
-        when(instanceRepository.findByName("instance-a"))
+        when(instanceResolver.findByName("instance-a"))
                 .thenReturn(Optional.of(instance(type, InstanceVendor.APACHE)));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(provider);
         when(provider.capabilities()).thenReturn(Set.of(
@@ -68,8 +68,8 @@ class CapabilityResolverTest {
 
     @ParameterizedTest
     @EnumSource(value = InstanceVendor.class, names = {"ALIYUN", "TENCENT"})
-    void cloudTargetUsesCloudProtocolAndProviderCapabilities(InstanceVendor vendor) {
-        when(instanceRepository.findByName("instance-a"))
+    void cloudTargetUsesCloudProtocolAndProviderCapabilitiesTest(InstanceVendor vendor) {
+        when(instanceResolver.findByName("instance-a"))
                 .thenReturn(Optional.of(instance(InstanceType.CLOUD, vendor)));
         when(providerRegistry.forVendor(vendor)).thenReturn(provider);
         when(provider.capabilities()).thenReturn(Set.of(

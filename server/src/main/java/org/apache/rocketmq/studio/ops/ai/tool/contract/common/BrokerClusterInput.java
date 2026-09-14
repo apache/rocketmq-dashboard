@@ -16,5 +16,6 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.common;
 
-public record BrokerClusterInput(String cluster) {
+/** Platform-level infrastructure addressing by physical cluster name (decision 26). */
+public record BrokerClusterInput(String clusterName) {
 }

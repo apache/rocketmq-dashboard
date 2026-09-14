@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.group;
 
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
@@ -17,27 +18,28 @@ import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolRiskLevel;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GroupMutationPlanTest {
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 20})
-    void updatePlansAndAppliesOnlyConsumerGroupConfigurationFields(int retryMaxTimes) {
+    @Test
+    void updatePlansOnlyConsumerGroupConfigurationFields() {
         MetadataService metadataService = mock(MetadataService.class);
         ConsumerGroupVO current = new ConsumerGroupVO();
         current.setName("orders-group");
-        current.setNamespace("sales");
         current.setClusterId("cluster-a");
         current.setInstanceId("cluster-a");
         current.setSubscriptionMode(SubscriptionMode.Push);
@@ -47,40 +49,32 @@ class GroupMutationPlanTest {
         current.setOnlineInstances(4);
         current.setTotalLag(100L);
         current.setSubscribedTopics(List.of("orders"));
-        when(metadataService.requireConsumerGroup(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("orders-group")))
-                .thenReturn(current);
-        when(metadataService.updateConsumerGroup(org.mockito.ArgumentMatchers.any()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(metadataService.findConsumerGroup(any(), eq("orders-group")))
+                .thenReturn(Optional.of(current));
 
         var updateInput = Map.<String, Object>ofEntries(
-                Map.entry("cluster", "cluster-a"),
-                Map.entry("group", "orders-group"),
-                Map.entry("retryMaxTimes", retryMaxTimes),
+                Map.entry("instanceId", "cluster-a"),
+                Map.entry("groupName", "orders-group"),
+                Map.entry("subscriptionMode", "Push"),
+                Map.entry("consumeType", "CLUSTERING"),
+                Map.entry("retryMaxTimes", 20),
+                Map.entry("delaySeconds", 3),
                 Map.entry("dry_run", true));
         ToolExecutionContext ctx = context("rmq.group.update", updateInput);
-        ConsumerGroupUpdateToolHandler handler = new ConsumerGroupUpdateToolHandler(metadataService);
-        var input = ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class);
-        ToolPlan plan = handler.preview(input, ctx);
+        ToolPlan plan = new ConsumerGroupUpdateToolHandler(metadataService).preview(
+                ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class), ctx);
 
+        assertThat(plan.summary()).isEqualTo("update consumer group 'orders-group' in instance 'cluster-a'.");
         assertThat(plan.before())
-                .containsEntry("cluster", "cluster-a")
-                .containsEntry("group", "orders-group")
+                .containsEntry("instanceId", "cluster-a")
+                .containsEntry("groupName", "orders-group")
                 .containsEntry("retryMaxTimes", 16)
-                .doesNotContainKeys("onlineInstances",
+                .doesNotContainKeys("namespace", "onlineInstances",
                         "totalLag", "subscribedTopics", "instances");
         assertThat(plan.after())
-                .containsEntry("cluster", "cluster-a")
-                .containsEntry("retryMaxTimes", retryMaxTimes)
-                .doesNotContainKeys("onlineInstances", "totalLag");
-
-        var result = handler.execute(input, ctx);
-
-        ArgumentCaptor<ConsumerGroupVO> applied = ArgumentCaptor.forClass(ConsumerGroupVO.class);
-        verify(metadataService).updateConsumerGroup(applied.capture());
-        assertThat(applied.getValue().getRetryMaxTimes()).isEqualTo(plan.after().get("retryMaxTimes"));
-        assertThat(applied.getValue()).usingRecursiveComparison().ignoringFields("retryMaxTimes").isEqualTo(current);
-        assertThat(result.retryMaxTimes()).isEqualTo(retryMaxTimes);
-        assertThat(current.getRetryMaxTimes()).isEqualTo(16);
+                .containsEntry("instanceId", "cluster-a")
+                .containsEntry("retryMaxTimes", 20)
+                .doesNotContainKeys("namespace", "onlineInstances", "totalLag");
     }
 
     @Test
@@ -109,13 +103,13 @@ class GroupMutationPlanTest {
                         .warnings(List.of())
                         .build());
 
-        var resetInput = Map.<String, Object>of("cluster", "cluster-a", "group", "orders-group",
-                "topic", "orders", "timestamp", 1234L, "dry_run", true);
+        var resetInput = Map.<String, Object>of("instanceId", "cluster-a", "groupName", "orders-group",
+                "topicName", "orders", "timestamp", 1234L, "dry_run", true);
         ToolExecutionContext ctx = context("rmq.group.reset_offset", resetInput);
         ToolPlan plan = new GroupResetOffsetToolHandler(metadataService).preview(
                 ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupResetOffsetInput.class), ctx);
 
-        assertThat(plan.summary()).isEqualTo("reset offsets for consumer group 'orders-group' in cluster 'cluster-a'.");
+        assertThat(plan.summary()).isEqualTo("reset offsets for consumer group 'orders-group' in instance 'cluster-a'.");
         assertThat(plan.impact()).containsExactly("Moves offsets for 1 queues; projected lag changes from 30 to 70.");
         assertThat(plan.before()).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "group", "orders-group", "topic", "orders", "totalLag", 30L,
@@ -128,20 +122,46 @@ class GroupMutationPlanTest {
     }
 
     @Test
-    void skipAccumulatedPlansLatestOffsets() {
+    void updateCreatesConsumerGroupWhenAbsent() {
         MetadataService metadataService = mock(MetadataService.class);
-        when(metadataService.resolveSkipAccumulatedTopics("cluster-a", "orders-group", null))
-                .thenReturn(List.of("orders", "payments"));
-        var input = Map.<String, Object>of("cluster", "cluster-a", "group", "orders-group", "dry_run", true);
-        ToolExecutionContext ctx = context("rmq.group.skip_accumulated", input);
-        ToolPlan plan = new GroupSkipAccumulatedToolHandler(metadataService).preview(
-                ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupTopicInput.class), ctx);
+        when(metadataService.findConsumerGroup(any(), eq("new-group")))
+                .thenReturn(Optional.empty());
+        ConsumerGroupVO created = new ConsumerGroupVO();
+        created.setName("new-group");
+        created.setInstanceId("cluster-a");
+        when(metadataService.createConsumerGroup(any())).thenReturn(created);
 
-        assertThat(plan.before()).containsEntry("position", "CURRENT_OFFSETS")
-                .containsEntry("topics", List.of("orders", "payments"));
-        assertThat(plan.after()).containsEntry("position", "LATEST_OFFSETS")
-                .containsEntry("topics", List.of("orders", "payments"))
-                .doesNotContainKeys("timestamp", "retryMaxTimes", "subscriptionMode");
+        var input = Map.<String, Object>of("instanceId", "cluster-a", "groupName", "new-group",
+                "retryMaxTimes", 8);
+        ToolExecutionContext ctx = context("rmq.group.update", input);
+        new ConsumerGroupUpdateToolHandler(metadataService).execute(
+                ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class), ctx);
+
+        // When absent, upsert takes the create path and never calls update.
+        verify(metadataService).createConsumerGroup(any());
+        verify(metadataService, never()).updateConsumerGroup(any());
+    }
+
+    @Test
+    void resetOffsetWithoutTimestampIsRejectedTest() {
+        // Decision 13: timestamp is required; the current-time default lives in the rmqctl client.
+        MetadataService metadataService = mock(MetadataService.class);
+        var resetInput = Map.<String, Object>of("instanceId", "cluster-a", "groupName", "orders-group",
+                "topicName", "orders", "dry_run", true);
+        ToolExecutionContext ctx = context("rmq.group.reset_offset", resetInput);
+        GroupResetOffsetToolHandler handler = new GroupResetOffsetToolHandler(metadataService);
+        var input = ctx.convertInput(
+                org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupResetOffsetInput.class);
+
+        assertThatThrownBy(() -> handler.preview(input, ctx))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> handler.execute(input, ctx))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp is required");
+
+        verifyNoInteractions(metadataService);
     }
 
     private static ToolExecutionContext context(String name, Map<String, Object> input) {

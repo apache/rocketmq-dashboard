@@ -16,5 +16,5 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.alert;
 
-public record AlertRuleListInput(String cluster, String search, Boolean enabled) {
+public record AlertRuleListInput(String search, Boolean enabled) {
 }

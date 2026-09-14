@@ -21,9 +21,8 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 public record TopicInput(
-        String cluster,
-        String topic,
-        String namespace,
+        String instanceId,
+        String topicName,
         TopicType type,
         Integer writeQueues,
         Integer readQueues,
@@ -36,9 +35,8 @@ public record TopicInput(
 
     public TopicVO toTopicVO() {
         TopicVO vo = new TopicVO();
-        vo.setName(topic);
-        vo.setInstanceId(cluster);
-        vo.setNamespace(namespace);
+        vo.setName(topicName);
+        vo.setInstanceId(instanceId);
         vo.setRemark(remark);
         vo.setWriteQueues(writeQueues != null ? writeQueues : DEFAULT_QUEUE_COUNT);
         vo.setReadQueues(readQueues != null ? readQueues : DEFAULT_QUEUE_COUNT);
@@ -51,7 +49,6 @@ public record TopicInput(
         return new TopicInput(
                 topic.getInstanceId(),
                 topic.getName(),
-                topic.getNamespace(),
                 topic.getType(),
                 topic.getWriteQueues(),
                 topic.getReadQueues(),

@@ -17,8 +17,8 @@
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
 public record MessageQueryByTopicInput(
-        String cluster,
-        String topic,
+        String instanceId,
+        String topicName,
         String tag,
         Long startTime,
         Long endTime) {

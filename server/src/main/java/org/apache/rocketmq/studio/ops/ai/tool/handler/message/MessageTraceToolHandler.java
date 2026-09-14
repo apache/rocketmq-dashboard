@@ -21,7 +21,7 @@ import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import lombok.RequiredArgsConstructor;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryByIdInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class MessageTraceToolHandler
-        implements ToolHandler<MessageQueryByIdInput, MessageTraceOutput> {
+        implements ToolHandler<MessageTraceInput, MessageTraceOutput> {
 
     private final MessageService messageService;
 
@@ -40,16 +40,16 @@ public class MessageTraceToolHandler
     }
 
     @Override
-    public Class<MessageQueryByIdInput> inputType() {
-        return MessageQueryByIdInput.class;
+    public Class<MessageTraceInput> inputType() {
+        return MessageTraceInput.class;
     }
 
     @Override
     public MessageTraceOutput execute(
-            MessageQueryByIdInput input,
+            MessageTraceInput input,
             ToolExecutionContext context) {
         TraceRecordVO trace = messageService.getMessageTrace(
-                context.cluster(), input.msgId(), input.topic());
+                context.instanceId(), input.msgId(), input.topicName());
         return project(input.msgId(), trace);
     }
 

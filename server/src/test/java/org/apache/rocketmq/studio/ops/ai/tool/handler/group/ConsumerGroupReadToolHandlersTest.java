@@ -24,12 +24,9 @@ import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupTopicInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupClientsOutput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDescribeInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDescribeOutput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupProgressOutput;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +59,6 @@ class ConsumerGroupReadToolHandlersTest {
                 .build();
         group = new ConsumerGroupVO();
         group.setName("group-a");
-        group.setNamespace("ns-a");
         group.setInstanceId("instance-a");
         group.setSubscriptionMode(SubscriptionMode.Push);
         group.setConsumeType(ConsumeType.CLUSTERING);
@@ -76,7 +72,9 @@ class ConsumerGroupReadToolHandlersTest {
     }
 
     @Test
-    void describeUsesBoundInstanceAndReturnsHealthAndSubscriptions() {
+    void detailAggregatesDescribeProgressAndClientsBlocks() {
+        GroupDetailToolHandler handler = new GroupDetailToolHandler(metadataService);
+        assertThat(handler.name()).isEqualTo("rmq.group.detail");
         SubscriptionEntryVO subscription = SubscriptionEntryVO.builder()
                 .topic("TopicA")
                 .expression("*")
@@ -88,25 +86,10 @@ class ConsumerGroupReadToolHandlersTest {
         when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
         when(metadataService.getGroupSubscriptions("instance-a", "group-a"))
                 .thenReturn(List.of(subscription));
-
-        GroupDescribeOutput output = new GroupDescribeToolHandler(metadataService)
-                .execute(
-                        new GroupDescribeInput("cluster-a", "group-a", null),
-                        context());
-
-        assertThat(output.cluster()).isEqualTo("instance-a");
-        assertThat(output.group()).isEqualTo("group-a");
-        assertThat(output.subscriptions()).extracting(GroupDescribeOutput.Subscription::topic)
-                .containsExactly("TopicA");
-        assertThat(output.health().status()).isEqualTo("WARNING");
-        verify(metadataService).consumerGroupRuntimeView("instance-a", "group-a");
-    }
-
-    @Test
-    void progressUsesBoundInstanceAndCalculatesTotalLag() {
         when(metadataService.getGroupProgress("instance-a", "group-a"))
                 .thenReturn(List.of(
                         QueueProgressVO.builder()
+                                .topic("TopicA")
                                 .broker("broker-a")
                                 .queueId(0)
                                 .brokerOffset(20)
@@ -114,34 +97,92 @@ class ConsumerGroupReadToolHandlersTest {
                                 .diffTotal(12)
                                 .build()));
 
-        GroupProgressOutput output = new GroupProgressToolHandler(metadataService)
-                .execute(new GroupTopicInput("cluster-a", "group-a", null), context());
+        GroupDetailOutput output = handler.execute(
+                new GroupDetailInput("untrusted-instance", "group-a", null), context());
 
-        assertThat(output.totalLag()).isEqualTo(12L);
-        assertThat(output.queues()).singleElement()
-                .extracting(GroupProgressOutput.QueueProgress::broker)
+        assertThat(output.instanceId()).isEqualTo("instance-a");
+        assertThat(output.group()).isEqualTo("group-a");
+        assertThat(output.health().status()).isEqualTo("WARNING");
+        assertThat(output.subscriptions()).extracting(GroupDetailOutput.Subscription::topic)
+                .containsExactly("TopicA");
+        assertThat(output.instances()).extracting(GroupDetailOutput.Instance::clientId)
+                .containsExactly("client-1");
+        assertThat(output.configurations()).extracting(item -> item.name())
+                .containsExactly("group-a");
+        assertThat(output.progress().totalLag()).isEqualTo(12L);
+        assertThat(output.progress().queues()).singleElement()
+                .extracting(GroupDetailOutput.QueueProgress::broker)
                 .isEqualTo("broker-a");
+        assertThat(output.clients().totalClients()).isEqualTo(1);
+        assertThat(output.clients().clients()).singleElement()
+                .extracting(GroupDetailOutput.Client::clientId)
+                .isEqualTo("client-1");
+        verify(metadataService).consumerGroupRuntimeView("instance-a", "group-a");
         verify(metadataService).getGroupProgress("instance-a", "group-a");
     }
 
     @Test
-    void clientsUsesBoundInstanceAndFiltersByTopic() {
+    void detailFiltersProgressAndClientsByTopicName() {
         when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a"))
+                .thenReturn(List.of(
+                        QueueProgressVO.builder()
+                                .topic("TopicA")
+                                .broker("broker-a")
+                                .queueId(0)
+                                .brokerOffset(20)
+                                .consumerOffset(8)
+                                .diffTotal(12)
+                                .build(),
+                        QueueProgressVO.builder()
+                                .topic("TopicB")
+                                .broker("broker-a")
+                                .queueId(1)
+                                .brokerOffset(30)
+                                .consumerOffset(25)
+                                .diffTotal(5)
+                                .build()));
 
-        GroupClientsOutput output = new GroupClientsToolHandler(metadataService)
-                .execute(
-                        new GroupTopicInput("cluster-a", "group-a", "TopicA"),
-                        context());
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("untrusted-instance", "group-a", "TopicA"), context());
 
-        assertThat(output.totalClients()).isEqualTo(1);
-        assertThat(output.clients()).singleElement()
-                .extracting(client -> client.clientId())
-                .isEqualTo("client-1");
-        verify(metadataService).consumerGroupRuntimeView("instance-a", "group-a");
+        assertThat(output.progress().queues()).singleElement()
+                .extracting(GroupDetailOutput.QueueProgress::queueId)
+                .isEqualTo(0);
+        assertThat(output.progress().totalLag()).isEqualTo(12L);
+        assertThat(output.clients().totalClients()).isEqualTo(1);
+    }
+
+    @Test
+    void detailWithoutOnlineConsumersKeepsProgressAndClientsEmpty() {
+        ConsumerGroupVO offline = new ConsumerGroupVO();
+        offline.setName("group-a");
+        offline.setInstanceId("instance-a");
+        offline.setOnlineInstances(0);
+        offline.setTotalLag(0L);
+        offline.setSubscribedTopics(List.of());
+        offline.setConsumeStatsAvailable(false);
+        offline.setInstances(List.of());
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(offline);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(offline));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a")).thenReturn(List.of());
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("untrusted-instance", "group-a", null), context());
+
+        assertThat(output.health().status()).isEqualTo("UNKNOWN");
+        assertThat(output.progress().queues()).isEmpty();
+        assertThat(output.progress().totalLag()).isZero();
+        assertThat(output.clients().clients()).isEmpty();
+        assertThat(output.clients().totalClients()).isZero();
+        assertThat(output.instances()).isEmpty();
     }
 
     private static ToolExecutionContext context() {
         return ToolExecutionContext.of(
-                "instance-a", null, Map.of("cluster", "cluster-a"));
+                "instance-a", null, Map.of("instanceId", "instance-a"));
     }
 }

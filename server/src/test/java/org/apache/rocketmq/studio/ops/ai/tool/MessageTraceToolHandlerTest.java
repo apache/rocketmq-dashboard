@@ -23,7 +23,7 @@ import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryByIdInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -69,7 +69,7 @@ class MessageTraceToolHandlerTest {
                 .thenReturn(trace);
 
         MessageTraceOutput result = handler.execute(
-                new MessageQueryByIdInput("instance-a", "msg-1", "TopicA"),
+                new MessageTraceInput("instance-a", "TopicA", "msg-1"),
                 context("instance-a"));
 
         assertThat(result.msgId()).isEqualTo("msg-1");

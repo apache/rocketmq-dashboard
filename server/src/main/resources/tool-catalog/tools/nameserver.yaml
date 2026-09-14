@@ -1,113 +1,22 @@
 version: 2.0.0
 tools:
-  - name: rmq.nameserver.config.diff
-    cli:
-      resource: nameserver-config
-      verb: diff
-    description: "Compare configuration of the selected Instance management NameServer endpoints."
-    riskLevel: L1
-    permission: cluster:read
-    requiredCapabilities:
-      - NAMESERVER_ADMIN
-    inputSchema:
-      type: object
-      required:
-        - cluster
-      additionalProperties: false
-      properties:
-        cluster:
-          type: string
-          minLength: 1
-    outputSchema:
-      type: object
-      required:
-        - cluster
-        - complete
-        - driftDetected
-        - nodeCount
-        - reachableNodeCount
-        - comparedKeys
-        - nodes
-        - differences
-      additionalProperties: false
-      properties:
-        cluster:
-          type: string
-        complete:
-          type: boolean
-        driftDetected:
-          type: boolean
-        nodeCount:
-          type: integer
-          minimum: 1
-        reachableNodeCount:
-          type: integer
-          minimum: 0
-        comparedKeys:
-          type: array
-          items:
-            type: string
-        nodes:
-          type: array
-          items:
-            type: object
-            required:
-              - address
-              - reachable
-            additionalProperties: false
-            properties:
-              address:
-                type: string
-              reachable:
-                type: boolean
-        differences:
-          type: array
-          items:
-            type: object
-            required:
-              - key
-              - values
-            additionalProperties: false
-            properties:
-              key:
-                type: string
-              values:
-                type: array
-                items:
-                  type: object
-                  required:
-                    - address
-                    - configured
-                    - value
-                  additionalProperties: false
-                  properties:
-                    address:
-                      type: string
-                    configured:
-                      type: boolean
-                    value:
-                      type:
-                        - string
-                        - 'null'
-    viewHint: object
-    deprecated: false
   - name: rmq.nameserver.list
     cli:
       resource: nameserver
       verb: list
-    description: "List the management NameServer endpoints configured for the selected Instance."
+    description: "List the management NameServer endpoints, optionally filtered by physical cluster name."
     riskLevel: L1
     permission: nameserver:read
     requiredCapabilities:
       - NAMESERVER_ADMIN
     inputSchema:
       type: object
-      required:
-        - cluster
+      required: []
       additionalProperties: false
       properties:
-        cluster:
+        clusterName:
           type: string
+          description: Physical RocketMQ cluster name.
           minLength: 1
     outputSchema:
       type: object
@@ -115,8 +24,6 @@ tools:
         - items
       additionalProperties: false
       properties:
-        cluster:
-          type: string
         items:
           type: array
           items:
@@ -152,4 +59,47 @@ tools:
                   - string
                   - 'null'
     viewHint: table
+    deprecated: false
+  - name: rmq.nameserver.config
+    cli:
+      resource: nameserver
+      verb: config
+    description: "Read the configuration of each management NameServer endpoint for one physical cluster (read-only; no diff comparison and no mutation)."
+    riskLevel: L1
+    permission: nameserver:read
+    requiredCapabilities:
+      - NAMESERVER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - clusterName
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - addr
+            additionalProperties: false
+            properties:
+              addr:
+                type: string
+              config:
+                type: object
+                additionalProperties:
+                  type:
+                    - string
+                    - 'null'
+    viewHint: object
     deprecated: false

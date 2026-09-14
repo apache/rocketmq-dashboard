@@ -47,7 +47,7 @@ public class AclListToolHandler implements ToolHandler<AclListInput, PageOutput<
     public PageOutput<AclRuleItem> execute(AclListInput input, ToolExecutionContext context) {
         PageResult<AclRuleVO> result = aclService.listRules(
                 input.principal(), input.resource(), input.scope(),
-                input.decision(), input.aclVersion(), context.cluster(),
+                input.decision(), context.instanceId(),
                 input.page().page(), input.page().pageSize());
         return PageOutput.from(result, AclRuleItem::from);
     }

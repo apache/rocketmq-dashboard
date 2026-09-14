@@ -19,7 +19,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.contract.acl;
 import java.util.List;
 
 public record UserCreateInput(
-        String cluster,
+        String instanceId,
         String username,
         Boolean admin,
         List<String> clusters) {

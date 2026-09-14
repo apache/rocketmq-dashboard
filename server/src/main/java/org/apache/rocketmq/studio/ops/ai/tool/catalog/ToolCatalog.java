@@ -43,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class ToolCatalog {
@@ -50,6 +51,27 @@ public class ToolCatalog {
     static final String MANIFEST_RESOURCE = "classpath:tool-catalog/manifest.yaml";
     static final String SHARD_PATTERN = "classpath*:tool-catalog/tools/*.yaml";
     static final String SCHEMA_RESOURCE = "classpath:tool-catalog/rmq-tools.schema.json";
+
+    /** Tool argument that addresses a Studio instance; {@code cluster*} names stay physical-cluster only. */
+    public static final String INSTANCE_ID_FIELD = "instanceId";
+
+    /**
+     * Platform-level tools that are not addressed by a Studio instance: the four global tools
+     * (cluster/dashboard/audit/alert) plus the seven physical-infrastructure tools
+     * (nameserver/broker/proxy). They are exempt from the mandatory {@code instanceId} argument.
+     */
+    static final Set<String> INSTANCE_ID_EXEMPT_TOOLS = Set.of(
+            "rmq.cluster.list",
+            "rmq.dashboard.summary",
+            "rmq.audit.list",
+            "rmq.alert.rule.list",
+            "rmq.nameserver.list",
+            "rmq.nameserver.config",
+            "rmq.broker.list",
+            "rmq.broker.describe",
+            "rmq.broker.config",
+            "rmq.proxy.list",
+            "rmq.proxy.config");
 
     private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
@@ -134,7 +156,7 @@ public class ToolCatalog {
                 throw new IllegalStateException(
                         "Tool catalog contains duplicate tool name: " + definition.name());
             }
-            validateClusterConvention(definition);
+            validateInstanceConvention(definition);
         }
 
         List<ToolDefinition> immutableDefinitions = List.copyOf(byName.values());
@@ -144,11 +166,14 @@ public class ToolCatalog {
                 Map.copyOf(byName));
     }
 
-    private static void validateClusterConvention(ToolDefinition definition) {
+    private static void validateInstanceConvention(ToolDefinition definition) {
+        if (isInstanceIdExempt(definition.name())) {
+            return;
+        }
         Object required = definition.inputSchema().get("required");
-        if (!(required instanceof List<?> requiredFields) || !requiredFields.contains("cluster")) {
+        if (!(required instanceof List<?> requiredFields) || !requiredFields.contains(INSTANCE_ID_FIELD)) {
             throw new IllegalStateException(
-                    "Tool must require cluster: " + definition.name());
+                    "Tool must require " + INSTANCE_ID_FIELD + ": " + definition.name());
         }
     }
 
@@ -169,6 +194,11 @@ public class ToolCatalog {
             throw ToolError.TOOL_NOT_FOUND.exception(name);
         }
         return definition;
+    }
+
+    /** Platform-level tools carry no Studio instance, so {@code instanceId} stays optional for them. */
+    public static boolean isInstanceIdExempt(String toolName) {
+        return INSTANCE_ID_EXEMPT_TOOLS.contains(toolName);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

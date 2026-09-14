@@ -16,7 +16,7 @@ public final class TestToolExecutionContexts {
     }
 
     public static ToolExecutionContext context(String instanceId) {
-        return context(instanceId, Map.of("cluster", instanceId));
+        return context(instanceId, Map.of("instanceId", instanceId));
     }
 
     public static ToolExecutionContext context(

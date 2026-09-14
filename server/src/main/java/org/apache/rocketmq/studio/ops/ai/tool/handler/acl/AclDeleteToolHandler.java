@@ -31,7 +31,7 @@ import java.util.List;
 public class AclDeleteToolHandler extends MutationToolHandler<ResourceDeleteInput, Void> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "delete ACL rule '%s' in cluster '%s'.",
+            "delete ACL rule '%s' in instance '%s'.",
             List.of("Permanently removes the selected ACL rule."),
             List.of("Removing this rule changes permissions for subsequent broker requests."));
 
@@ -50,15 +50,15 @@ public class AclDeleteToolHandler extends MutationToolHandler<ResourceDeleteInpu
     @Override
     public ToolPlan preview(ResourceDeleteInput input, ToolExecutionContext context) {
         AclMutationInput before = AclMutationInput.from(
-                aclService.getRule(input.id(), context.cluster()));
-        return PLAN_DESCRIPTION.builder(input.id(), context.cluster())
+                aclService.getRule(input.id(), context.instanceId()));
+        return PLAN_DESCRIPTION.builder(input.id(), context.instanceId())
                 .before(before)
                 .build();
     }
 
     @Override
     public Void execute(ResourceDeleteInput input, ToolExecutionContext context) {
-        aclService.deleteRule(input.id(), context.cluster());
+        aclService.deleteRule(input.id(), context.instanceId());
         return null;
     }
 }

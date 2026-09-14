@@ -24,7 +24,6 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TopicListItem(
         String name,
-        String namespace,
         String clusterId,
         TopicType type,
         int writeQueues,
@@ -37,7 +36,6 @@ public record TopicListItem(
     public static TopicListItem from(TopicVO topic) {
         return new TopicListItem(
                 topic.getName(),
-                topic.getNamespace(),
                 topic.getClusterId(),
                 topic.getType(),
                 topic.getWriteQueues(),

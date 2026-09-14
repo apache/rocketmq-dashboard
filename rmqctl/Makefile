@@ -38,9 +38,9 @@ catalog-generate:
 	$(GO) run $(CATALOG_GENERATOR) -input-dir $(CATALOG_SOURCE) -output $(CATALOG_GENERATED) \
 		-markdown $(CATALOG_MARKDOWN) -sdk $(CATALOG_SDK)
 
+# Only the committed Go catalog is verified; the generated docs are local artifacts.
 catalog-verify:
-	$(GO) run $(CATALOG_GENERATOR) -input-dir $(CATALOG_SOURCE) -output $(CATALOG_GENERATED) \
-		-markdown $(CATALOG_MARKDOWN) -sdk $(CATALOG_SDK) -check
+	$(GO) run $(CATALOG_GENERATOR) -input-dir $(CATALOG_SOURCE) -output $(CATALOG_GENERATED) -check
 
 # Catalog sources live outside the Go module; do not reuse cached freshness results.
 test:

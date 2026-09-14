@@ -60,25 +60,25 @@ public enum ToolError {
             "Cluster type is unavailable: %s",
             "Refresh the cluster metadata or select a cluster with a known type."),
 
-    CAPABILITY_CLUSTER_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
-            "Capability lookup requires a cluster",
-            "Select a cluster and retry the tool call."),
+    CAPABILITY_INSTANCE_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
+            "Capability lookup requires a bound Instance",
+            "Select an Instance and retry the tool call."),
 
     INSTANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND",
             "Instance not found: %s",
             "List the configured Instances and select an existing Instance."),
 
-    TOOL_CLUSTER_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
-            "cluster must be a non-empty target name",
-            "Set cluster to a registered instance name or a configured physical cluster name."),
+    TOOL_INSTANCE_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
+            "Tool requires an instanceId. Provide instanceId and retry: %s",
+            "Provide instanceId for the selected Instance and retry the tool call."),
 
     TOOL_TARGET_MISMATCH(HttpStatus.FORBIDDEN, "PERMISSION_DENIED",
-            "cluster does not match the authenticated cluster",
-            "Use the same cluster for authentication and tool arguments."),
+            "instanceId does not match the authenticated Instance",
+            "Use the same instanceId for authentication and tool arguments."),
 
     TOOL_CAPABILITY_UNSUPPORTED(HttpStatus.BAD_REQUEST, "TOOL_CAPABILITY_UNSUPPORTED",
-            "Instance target does not support tool: %s. Call rmq.capabilities or select another target.",
-            "Call rmq.capabilities for the selected Instance or select another target."),
+            "Instance target does not support tool: %s. Call rmq.instance.capabilities or select another target.",
+            "Call rmq.instance.capabilities for the selected Instance or select another target."),
 
     ADMIN_REQUIRED(HttpStatus.FORBIDDEN, "PERMISSION_DENIED",
             "Admin permission required for tool: %s",
@@ -100,25 +100,18 @@ public enum ToolError {
             "Role not found: %s",
             "List the roles for the selected Instance and choose an existing role."),
 
-    DLQ_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND",
-            "DLQ group not found: %s",
-            "Call rmq.dlq.list and select a group with retained dead-letter messages."),
-
-    DLQ_STATISTICS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "UNAVAILABLE",
-            "DLQ statistics are unavailable for group: %s",
-            "Restore broker connectivity and preview again before clearing the DLQ."),
-
     OFFSET_RESET_PREVIEW_UNSAFE(HttpStatus.CONFLICT, "CONFLICT",
             "Consumer offset reset preview is incomplete or unsafe for group: %s",
             "Inspect the preview warnings and target, correct them, then preview again."),
 
-    RESEND_TARGET_TOPIC_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
-            "target topic is required when the source message has no topic",
-            "Provide targetTopic explicitly and retry the preview."),
-
     PROXY_NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND",
             "Proxy not found in cluster %s: %s",
             "Call rmq.proxy.list and select an address returned for this cluster."),
+
+    DLQ_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND",
+            "No dead-letter queue found for consumer group: %s",
+            "The group has no %DLQ% topic yet because no message has exceeded its max retry count. "
+                    + "Verify the group name, or retry once dead-letter messages exist."),
 
     MESSAGE_PROPERTIES_INVALID(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
             "properties must be a JSON object string of string key-value pairs",

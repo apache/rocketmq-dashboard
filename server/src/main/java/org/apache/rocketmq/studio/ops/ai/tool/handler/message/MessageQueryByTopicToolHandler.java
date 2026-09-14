@@ -50,7 +50,7 @@ public class MessageQueryByTopicToolHandler
     public ListOutput<MessageItem> execute(
             MessageQueryByTopicInput input, ToolExecutionContext context) {
         return new ListOutput<>(messageService.queryMessages(
-                        context.cluster(), input.topic(), null, input.tag(), null,
+                        context.instanceId(), input.topicName(), null, input.tag(), null,
                         input.startTime(), input.endTime())
                 .stream()
                 .map(MessageItem::from)

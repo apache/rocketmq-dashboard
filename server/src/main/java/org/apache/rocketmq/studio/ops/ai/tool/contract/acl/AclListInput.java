@@ -19,12 +19,11 @@ package org.apache.rocketmq.studio.ops.ai.tool.contract.acl;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 
 public record AclListInput(
-        String cluster,
+        String instanceId,
         String principal,
         String resource,
         String scope,
         String decision,
-        String aclVersion,
         PageRequest page) {
 
     public AclListInput {

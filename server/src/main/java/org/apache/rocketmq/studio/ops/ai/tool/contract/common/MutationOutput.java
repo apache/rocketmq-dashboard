@@ -23,7 +23,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MutationOutput<R>(
         Status status,
-        String cluster,
+        String instanceId,
         ToolPlan plan,
         @JsonProperty("confirm_token") String confirmToken,
         R result) {
