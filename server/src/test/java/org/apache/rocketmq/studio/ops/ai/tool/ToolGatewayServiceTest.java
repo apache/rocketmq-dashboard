@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardService;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -340,6 +343,48 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void executesDashboardSummaryWhenTopologyCountsAreUnavailable() {
+        // Mirrors the V5/degraded provider paths (RocketMQDashboardProvider) and
+        // DashboardControllerTest.getDashboardShouldPreserveUnavailableTopologyCounts:
+        // proxy/name-server counts are deliberately null when the topology is unavailable.
+        when(dashboardService.getDashboard()).thenReturn(DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder()
+                        .totalClusters(1)
+                        .healthyClusters(1)
+                        .totalBrokers(2)
+                        .totalProxies(null)
+                        .totalNameServers(null)
+                        .totalTopics(3)
+                        .totalConsumerGroups(4)
+                        .build())
+                .clusters(List.of(ClusterOverviewVO.builder()
+                        .id("cluster-v5")
+                        .name("test")
+                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .status(ClusterStatus.healthy)
+                        .brokers(2)
+                        .proxies(null)
+                        .topics(3)
+                        .groups(4)
+                        .tpsIn(7)
+                        .tpsOut(8)
+                        .version("5.2.0")
+                        .build()))
+                .build());
+
+        Object output = gateway.execute(
+                "rmq.dashboard.summary", Map.of("cluster", "cluster-v5"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        Map<String, Object> cluster = (Map<String, Object>) result.get("cluster");
+        assertThat(cluster).containsEntry("proxies", null);
+        Map<String, Object> stats = (Map<String, Object>) result.get("stats");
+        assertThat(stats).containsEntry("totalProxies", null);
+        assertThat(stats).containsEntry("totalNameServers", null);
+    }
+
+    @Test
     void rejectsDashboardSummaryWithoutRequiredClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.dashboard.summary", Map.of()))
                 .isInstanceOf(BusinessException.class)
@@ -391,7 +436,7 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         TopicVO topic = topic();
         topic.setRemark("do-not-expose");
-        when(metadataService.listTopicsPage("cluster-v5", null, "NORMAL", "order", 2, 20))
+        when(metadataService.listTopicsPage(null, "cluster-v5", "NORMAL", "order", 2, 20))
                 .thenReturn(PageResult.of(List.of(topic), 101, 2, 20));
 
         Object output = gateway.execute("rmq.topic.list", Map.of(
@@ -432,7 +477,7 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         ConsumerGroupVO group = consumerGroup();
         group.setDelaySeconds(30);
-        when(metadataService.listConsumerGroupsPage("cluster-v5", null, "order", 2, 20))
+        when(metadataService.listConsumerGroupsPage(null, "cluster-v5", "order", 2, 20))
                 .thenReturn(PageResult.of(List.of(group), 101, 2, 20));
 
         Object output = gateway.execute("rmq.group.list", Map.of(
@@ -456,6 +501,24 @@ class ToolGatewayServiceTest {
                 "page", 2,
                 "size", 20));
         assertThat(output.toString()).doesNotContain("delaySeconds");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void executesConsumerGroupListWhenLagIsUnknown() {
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
+        ConsumerGroupVO group = consumerGroup();
+        group.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        when(metadataService.listConsumerGroupsPage(any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(PageResult.of(List.of(group), 1, 1, 20));
+
+        Object output = gateway.execute("rmq.group.list", Map.of(
+                "cluster", "cluster-v5", "search", "order", "page", 1, "pageSize", 20));
+
+        Map<String, Object> page = (Map<String, Object>) output;
+        List<Map<String, Object>> items = (List<Map<String, Object>>) page.get("items");
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0)).containsEntry("totalLag", null);
     }
 
     @Test

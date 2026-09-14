@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
@@ -27,10 +28,13 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -40,6 +44,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -208,6 +213,18 @@ class RocketMQMessageProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query messages by key: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryByKeyReturnsEmptyListWhenClientReportsNoMessage() throws Exception {
+        // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
+        // returning an empty QueryResult when the key matches nothing.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L)).isEmpty();
     }
 
     @Test
@@ -629,6 +646,32 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceReturnsEmptyTraceWhenClientReportsNoMessage() throws Exception {
+        // A message without trace data (trace disabled on the producer or expired) is a
+        // completed query with no records, not a remote failure.
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).isEmpty();
+        assertThat(record.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceByKeyReturnsEmptyTraceWhenClientReportsNoMessage() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        TraceRecordVO record = provider.getMessageTraceByKey("instance-a", "key-1", "orders", null);
+
+        assertThat(record.getNodes()).isEmpty();
+        assertThat(record.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
     void getMessageTraceQueriesCustomTraceTopicWhenProvided() throws Exception {
         String pub = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-custom",
                 "tag1", "key1", "broker:10911", "15", "50", "0", "offset-1", "true");
@@ -776,6 +819,44 @@ class RocketMQMessageProviderTest {
         assertThat(pulledOffsets).allMatch(offset -> offset >= expectedFirstOffset);
     }
 
+    @Test
+    void getQueueOffsetsListsReadQueuesWhenReadCountExceedsWriteCount() throws Exception {
+        // Shrinking first lowers writeQueueNums while reads keep draining the tail
+        // queues, so queues in [writeQueueNums, readQueueNums) still hold browsable
+        // messages and must appear in the browser (fetchSubscribeMessageQueues, used
+        // by queryByTopic, enumerates the same read queues).
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenReturn(routeWithQueueCounts("broker-a", 2, 4));
+        when(adminExt.minOffset(any(MessageQueue.class))).thenAnswer(invocation ->
+                invocation.<MessageQueue>getArgument(0).getQueueId() * 10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenAnswer(invocation ->
+                invocation.<MessageQueue>getArgument(0).getQueueId() * 10L + 5L);
+
+        List<QueueOffsetVO> offsets = provider.getQueueOffsets("instance-a", "TopicA");
+
+        assertThat(offsets).extracting(QueueOffsetVO::getBrokerName)
+                .containsOnly("broker-a");
+        assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
+                .containsExactly(0, 1, 2, 3);
+        assertThat(offsets).extracting(QueueOffsetVO::getMinOffset)
+                .containsExactly(0L, 10L, 20L, 30L);
+        assertThat(offsets).extracting(QueueOffsetVO::getMaxOffset)
+                .containsExactly(5L, 15L, 25L, 35L);
+    }
+
+    @Test
+    void getQueueOffsetsSkipsWriteOnlyQueuesWhenWriteCountExceedsReadCount() throws Exception {
+        // The broker's PullMessageProcessor rejects queueId >= readQueueNums with
+        // SYSTEM_ERROR, so write-only queues cannot be browsed and must not be listed.
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenReturn(routeWithQueueCounts("broker-a", 4, 2));
+
+        List<QueueOffsetVO> offsets = provider.getQueueOffsets("instance-a", "TopicA");
+
+        assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
+                .containsExactly(0, 1);
+    }
+
     private MQClientAPIImpl mockOffsetLookupClient() {
         DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
         MQClientInstance clientInstance = mock(MQClientInstance.class);
@@ -786,6 +867,17 @@ class RocketMQMessageProviderTest {
         return clientApi;
     }
 
+
+    private static TopicRouteData routeWithQueueCounts(
+            String brokerName, int writeQueueNums, int readQueueNums) {
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName(brokerName);
+        queueData.setWriteQueueNums(writeQueueNums);
+        queueData.setReadQueueNums(readQueueNums);
+        TopicRouteData route = new TopicRouteData();
+        route.setQueueDatas(List.of(queueData));
+        return route;
+    }
 
     private static ClusterInfo clusterInfoWithBrokerAddresses(String... brokerAddresses) {
         ClusterInfo clusterInfo = new ClusterInfo();

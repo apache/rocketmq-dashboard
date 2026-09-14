@@ -208,7 +208,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
     }
 
     private void emitEnhanceChunk(LlmSseSession session, String chunk) {
-        if (!StringUtils.hasText(chunk)) {
+        // Preserve whitespace in the streamed prompt preview.
+        if (!StringUtils.hasLength(chunk)) {
             return;
         }
         try {

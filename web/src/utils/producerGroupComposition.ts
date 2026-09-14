@@ -77,10 +77,11 @@ const distribution = (values: string[]): ProducerDistributionItem[] => {
 const duplicateValues = (values: string[]) => {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
-  values.filter(Boolean).forEach((value) => {
+  for (const value of values) {
+    if (!value) continue;
     if (seen.has(value)) duplicates.add(value);
     seen.add(value);
-  });
+  }
   return duplicates;
 };
 
