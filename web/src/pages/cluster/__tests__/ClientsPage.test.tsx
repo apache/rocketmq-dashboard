@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -139,6 +139,17 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+const selectOption = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+  const option = await waitFor(() => {
+    const match = [
+      ...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content'),
+    ].find((element) => element.textContent === label);
+    if (!match) throw new Error(`Select option not found: ${label}`);
+    return match;
+  });
+  await user.click(option);
+};
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -175,6 +186,34 @@ describe('Clients page', () => {
     await screen.findByText('order-svc-0@10.0.1.12:49152');
     expect(connectionsService.listConnections).toHaveBeenCalledWith({
       namesrvAddr: 'namesrv-1:9876',
+    });
+  });
+
+  it('sends cluster and type filters to the backend', async () => {
+    const mixedConnections = [
+      { ...connection, clusterName: 'ns-prod', type: 'Producer' },
+      { ...connection, clusterName: 'ns-prod', type: 'Consumer' },
+    ];
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(mixedConnections);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('order-svc-0@10.0.1.12:49152');
+
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    const typeSelect = screen.getAllByLabelText('类型')[0];
+    fireEvent.mouseDown(typeSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'Consumer');
+
+    await waitFor(() => {
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+        type: 'Consumer',
+      });
     });
   });
 
@@ -247,14 +286,29 @@ describe('Clients page', () => {
 
   it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup();
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      Promise.resolve(
+        query?.clusterId === 'ns-prod'
+          ? connections.filter((item) => item.clusterName === 'ns-prod')
+          : connections,
+      ),
+    );
     renderWithProviders(<ClientsPage />);
 
-    await screen.findByText('audit-svc-0@10.0.2.10:49154');
-    await user.click(screen.getByRole('combobox', { name: '所属集群' }));
-    await user.click(
-      await screen.findByText('ns-prod', { selector: '.ant-select-item-option-content' }),
+    await screen.findAllByText('audit-svc-0@10.0.2.10:49154');
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+      }),
     );
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(within(screen.getByTestId('connection-total')).getByText('2')).toBeInTheDocument();

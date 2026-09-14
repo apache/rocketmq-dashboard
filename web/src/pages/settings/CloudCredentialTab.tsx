@@ -30,7 +30,13 @@ import {
   Tag,
   message,
 } from 'antd';
-import { ApartmentOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -38,12 +44,14 @@ import { useLang } from '../../i18n/LangContext';
 import {
   createCloudCredential,
   deleteCloudCredential,
+  exportCloudCredentials,
   listCloudCredentials,
   updateCloudCredential,
 } from '../../api/cloudCredential';
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
 import CloudCredentialUsageDrawer from './CloudCredentialUsageDrawer';
+import { downloadBlob } from '../../utils/download';
 
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
@@ -75,6 +83,7 @@ export const CloudCredentialTab = () => {
   const [form] = Form.useForm<CredentialFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const submitInFlightRef = useRef(false);
 
@@ -135,6 +144,21 @@ export const CloudCredentialTab = () => {
     setSearch(value);
     setPage(1);
   };
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const csv = await exportCloudCredentials(vendorFilter, debouncedSearch);
+      downloadBlob(
+        new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+        `rocketmq-cloud-credentials-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+    } catch {
+      message.error(t('settings.credentialExportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [debouncedSearch, t, vendorFilter]);
 
   const resetModal = () => {
     setModalOpen(false);
@@ -287,9 +311,16 @@ export const CloudCredentialTab = () => {
             ]}
           />
         </Flex>
-        <Space>
+        <Flex gap={8}>
           <Button icon={<ApartmentOutlined />} onClick={() => setUsageDrawerOpen(true)}>
             {t('settings.credentialUsageAction')}
+          </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            {t('common.export')}
           </Button>
           <Button
             type="primary"
@@ -299,7 +330,7 @@ export const CloudCredentialTab = () => {
           >
             {t('settings.addCredential')}
           </Button>
-        </Space>
+        </Flex>
       </Flex>
 
       <Table<CloudCredential>

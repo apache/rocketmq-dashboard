@@ -27,6 +27,7 @@ import {
   Modal,
   Drawer,
   DatePicker,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -415,21 +416,28 @@ const DLQPage = () => {
       title: 'Group 名称',
       dataIndex: 'groupName',
       key: 'groupName',
-      width: 200,
+      minWidth: 200,
+      ellipsis: true,
       sorter: (a, b) => a.groupName.localeCompare(b.groupName),
       render: (name: string) => (
-        <Text strong style={{ fontSize: 14 }}>
-          {name}
-        </Text>
+        <Tooltip title={name}>
+          <Text strong style={{ fontSize: 14 }}>
+            {name}
+          </Text>
+        </Tooltip>
       ),
     },
     {
       title: 'DLQ Topic',
       dataIndex: 'dlqTopic',
       key: 'dlqTopic',
-      width: 240,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 240,
+      ellipsis: true,
       render: (topic: string) => (
-        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        <Tooltip title={topic}>
+          <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        </Tooltip>
       ),
     },
     {
@@ -672,6 +680,7 @@ const DLQPage = () => {
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
@@ -858,6 +867,48 @@ const DLQPage = () => {
               size="small"
               loading={detailLoading}
               dataSource={detailMessages}
+              expandable={{
+                expandedRowRender: (record) =>
+                  record.properties && Object.keys(record.properties).length > 0 ? (
+                    <div style={{ padding: '4px 0' }}>
+                      {record.propertiesTruncated && (
+                        <Text
+                          type="warning"
+                          style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
+                        >
+                          属性过多或单值过长，服务端已截断展示
+                        </Text>
+                      )}
+                      <Table
+                        size="small"
+                        pagination={false}
+                        rowKey={(p) => p.key}
+                        dataSource={Object.entries(record.properties).map(([key, value]) => ({
+                          key,
+                          value,
+                        }))}
+                        columns={[
+                          {
+                            title: '属性',
+                            dataIndex: 'key',
+                            key: 'key',
+                            width: 200,
+                            ellipsis: true,
+                          },
+                          { title: '值', dataIndex: 'value', key: 'value', ellipsis: true },
+                        ]}
+                        locale={{ emptyText: '无属性' }}
+                      />
+                    </div>
+                  ) : (
+                    <Text
+                      type="secondary"
+                      style={{ padding: '4px 0', display: 'block', fontSize: 14 }}
+                    >
+                      该消息无用户属性
+                    </Text>
+                  ),
+              }}
               rowSelection={{
                 selectedRowKeys: detailSelectedMsgIds,
                 onChange: (keys) => setDetailSelectedMsgIds(keys.map(String)),
@@ -878,6 +929,7 @@ const DLQPage = () => {
                   }
                 },
               }}
+              tableLayout="fixed"
               scroll={{ x: tableScrollX(detailColumns, { selection: true }) }}
               columns={detailColumns}
             />

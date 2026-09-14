@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,7 @@ import {
   Empty,
   Flex,
   Input,
+  Progress,
   Row,
   Select,
   Space,
@@ -52,16 +53,24 @@ interface Props {
   onClose: () => void;
 }
 
-const loadAllCredentials = async () => {
+const loadAllCredentials = async (
+  onProgress: (loaded: number, total: number) => void,
+  active: () => boolean,
+) => {
   const credentials: CloudCredential[] = [];
   for (let page = 1; page <= MAX_CREDENTIAL_PAGES; page += 1) {
+    if (!active()) throw new Error('cancelled');
     const result = await listCloudCredentials(undefined, undefined, page, CREDENTIAL_PAGE_SIZE);
+    if (!active()) throw new Error('cancelled');
     credentials.push(...result.items);
+    onProgress(credentials.length, result.total);
+    if (result.total > CREDENTIAL_PAGE_SIZE * MAX_CREDENTIAL_PAGES)
+      throw new Error('credentialLimit');
     if (credentials.length >= result.total || result.items.length < CREDENTIAL_PAGE_SIZE) {
       return credentials;
     }
   }
-  throw new Error('credential page limit exceeded');
+  throw new Error('credentialLimit');
 };
 
 export const CloudCredentialUsageDrawer = ({ open, onClose }: Props) => {
@@ -71,6 +80,16 @@ export const CloudCredentialUsageDrawer = ({ open, onClose }: Props) => {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
+  useEffect(
+    () => () => {
+      requestId.current += 1;
+    },
+    [open],
+  );
   const [vendor, setVendor] = useState<InstanceVendor>();
   const [status, setStatus] = useState<CredentialUsageStatus>();
 
@@ -79,24 +98,37 @@ export const CloudCredentialUsageDrawer = ({ open, onClose }: Props) => {
     [credentials, instances],
   );
   const filteredRows = useMemo(
-    () => filterCredentialUsageRows(report.rows, { search, vendor, status }),
-    [report.rows, search, status, vendor],
+    () => filterCredentialUsageRows(report.rows, { search: deferredSearch, vendor, status }),
+    [report.rows, deferredSearch, status, vendor],
   );
 
   const loadReport = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
+    setLoadError('');
+    setProgress({ loaded: 0, total: 0 });
     try {
       const [nextCredentials, nextInstances] = await Promise.all([
-        loadAllCredentials(),
+        loadAllCredentials(
+          (loaded, total) => setProgress({ loaded, total }),
+          () => id === requestId.current,
+        ),
         listInstances(),
       ]);
+      if (id !== requestId.current) return;
       setCredentials(nextCredentials);
       setInstances(nextInstances);
       setLoaded(true);
-    } catch {
-      message.error(t('settings.credentialUsageLoadFailed'));
+    } catch (error) {
+      if (id !== requestId.current) return;
+      const key =
+        error instanceof Error && error.message === 'credentialLimit'
+          ? 'settings.credentialUsageLimit'
+          : 'settings.credentialUsageLoadFailed';
+      setLoadError(t(key));
+      message.error(t(key));
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, [t]);
 
@@ -229,7 +261,7 @@ export const CloudCredentialUsageDrawer = ({ open, onClose }: Props) => {
         <Space>
           <Button
             icon={<DownloadOutlined />}
-            disabled={!loaded || filteredRows.length === 0}
+            disabled={loading || !loaded || filteredRows.length === 0}
             onClick={exportReport}
           >
             {t('settings.credentialUsageExport')}
@@ -248,6 +280,22 @@ export const CloudCredentialUsageDrawer = ({ open, onClose }: Props) => {
         style={{ marginBottom: 16 }}
       />
 
+      {loading && (
+        <div role="status" style={{ marginBottom: 16 }}>
+          <Typography.Text>{t('settings.credentialUsageProgress', progress)}</Typography.Text>
+          <Progress
+            percent={
+              progress.total
+                ? Math.min(99, Math.round((progress.loaded / progress.total) * 100))
+                : 0
+            }
+            status="active"
+          />
+        </div>
+      )}
+      {loadError && (
+        <Alert type="error" showIcon message={loadError} style={{ marginBottom: 16 }} />
+      )}
       {!loaded ? (
         <Empty description={t('settings.credentialUsageEmpty')}>
           <Button type="primary" loading={loading} onClick={loadReport}>
