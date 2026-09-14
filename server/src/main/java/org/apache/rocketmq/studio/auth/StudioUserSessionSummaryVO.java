@@ -14,19 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.k8s;
+package org.apache.rocketmq.studio.auth;
 
-import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 @Data
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class RenewCertDTO {
-    @NotNull(message = "id is required")
-    private Long id;
+public class StudioUserSessionSummaryVO {
+
+    private Long userId;
+    private int activeSessionCount;
+    private LocalDateTime lastSessionSeenAt;
+    private LocalDateTime nearestSessionExpiresAt;
 }

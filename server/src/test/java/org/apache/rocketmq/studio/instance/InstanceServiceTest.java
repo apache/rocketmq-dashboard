@@ -34,6 +34,8 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -50,6 +52,8 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -854,6 +858,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "missing"));
 
@@ -876,6 +881,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("2")).thenReturn(0);
         when(instanceProvider.countGroups("2")).thenReturn(0);
         when(instanceRepository.deleteById(2L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", "inst-b"));
 
@@ -897,6 +903,7 @@ class InstanceServiceTest {
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
 
@@ -923,6 +930,7 @@ class InstanceServiceTest {
         when(instanceProvider.countTopics("1")).thenReturn(0);
         when(instanceProvider.countGroups("1")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a", " inst-a ", "inst-a"));
 
@@ -995,6 +1003,36 @@ class InstanceServiceTest {
 
         verify(instanceRepository).deleteById(1L);
         verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldDeferEndpointReleaseUntilAfterCommitTest() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            instanceService.deleteInstance(1L);
+
+            verify(adminFactory, never()).release(any());
+            verify(clientPool, never()).release(any());
+
+            for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
+                sync.afterCommit();
+            }
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(adminFactory).release("namesrv:9876");
+        verify(clientPool).release("namesrv:9876");
     }
 
     @Test

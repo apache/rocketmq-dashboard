@@ -29,4 +29,7 @@ public class ConsumerGroupSettingsVO {
     private String groupName;
     private int retryQueueNums;
     private int retryMaxTimes;
+    private boolean consumeEnable;
+    private boolean consumeMessageOrderly;
+    private boolean consumeBroadcastEnable;
 }

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.DlqExportHeaders;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -48,9 +49,9 @@ import java.util.List;
 @Validated
 public class DLQController {
 
-    private static final String HEADER_EXPORT_TRUNCATED = "X-DLQ-Export-Truncated";
-    private static final String HEADER_EXPORT_FAILED_QUEUES = "X-DLQ-Export-FailedQueues";
-    private static final String HEADER_EXPORT_LIMIT = "X-DLQ-Export-Limit";
+    private static final String HEADER_EXPORT_TRUNCATED = DlqExportHeaders.TRUNCATED;
+    private static final String HEADER_EXPORT_FAILED_QUEUES = DlqExportHeaders.FAILED_QUEUES;
+    private static final String HEADER_EXPORT_LIMIT = DlqExportHeaders.LIMIT;
     private static final String EXCEL_MEDIA_TYPE =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private static final int MAX_SELECTED_MESSAGES = 100;
