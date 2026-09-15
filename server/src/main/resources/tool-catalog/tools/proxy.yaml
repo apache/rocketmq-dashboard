@@ -1,0 +1,198 @@
+version: 2.0.0
+tools:
+  - name: rmq.proxy.config_update
+    cli:
+      resource: proxy
+      verb: config-update
+    description: "Reload a Proxy configuration through an Instance management adapter; unsupported when no adapter is configured."
+    riskLevel: L3
+    permission: proxy:write
+    requiredCapabilities:
+      - PROXY_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - addr
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        addr:
+          type: string
+          minLength: 1
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - reloaded
+            - addr
+          additionalProperties: false
+          properties:
+            reloaded:
+              type: boolean
+            addr:
+              type: string
+    viewHint: object
+    deprecated: false
+  - name: rmq.proxy.describe
+    cli:
+      resource: proxy
+      verb: describe
+    description: "Inspect discovered Proxy data endpoints within the selected Instance."
+    riskLevel: L1
+    permission: proxy:read
+    requiredCapabilities:
+      - PROXY_DISCOVERY
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - proxyAddr
+              - status
+              - grpcPort
+              - remotingPort
+              - grpcReachable
+              - remotingReachable
+              - latencyMs
+            additionalProperties: false
+            properties:
+              proxyAddr:
+                type: string
+              status:
+                type: string
+              grpcPort:
+                type: integer
+              remotingPort:
+                type:
+                  - integer
+                  - 'null'
+              grpcReachable:
+                type: boolean
+              remotingReachable:
+                type: boolean
+              latencyMs:
+                type:
+                  - integer
+                  - 'null'
+    viewHint: table
+    deprecated: false
+  - name: rmq.proxy.list
+    cli:
+      resource: proxy
+      verb: list
+    description: "Discover Proxy data endpoints from the selected Instance. Discovery does not establish Broker cluster membership or management capability."
+    riskLevel: L1
+    permission: proxy:read
+    requiredCapabilities:
+      - PROXY_DISCOVERY
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - addr
+              - status
+              - connections
+              - grpcPort
+              - remotingPort
+            additionalProperties: false
+            properties:
+              addr:
+                type: string
+              status:
+                type:
+                  - string
+                  - 'null'
+              connections:
+                type: integer
+              grpcPort:
+                type: integer
+              remotingPort:
+                type: integer
+    viewHint: table
+    deprecated: false

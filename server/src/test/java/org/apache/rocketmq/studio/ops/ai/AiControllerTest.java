@@ -16,113 +16,40 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AiControllerTest {
 
-    private static final String DIGEST = "a".repeat(64);
+    @Test
+    void chatDelegatesToAiService() {
+        AiService aiService = mock(AiService.class);
+        ChatDTO request = ChatDTO.builder().message("List topics").build();
+        SseEmitter emitter = new SseEmitter();
+        when(aiService.chat(request)).thenReturn(emitter);
 
-    private AiService aiService;
-    private MockMvc mockMvc;
+        SseEmitter result = new AiController(aiService).chat(request);
 
-    @BeforeEach
-    void setUp() {
-        aiService = mock(AiService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService)).build();
-
-        when(aiService.catalogVersion()).thenReturn("1.0.0");
-        when(aiService.catalogDigest()).thenReturn(DIGEST);
-        when(aiService.minimumClientVersion()).thenReturn("1.0.0");
+        assertThat(result).isSameAs(emitter);
+        verify(aiService).chat(request);
     }
 
     @Test
-    void listToolsKeepsTheExistingBodyAndAddsCatalogHeaders() throws Exception {
-        AiToolVO tool = AiToolVO.builder()
-                .name("rmq.cluster.list")
-                .description("List clusters")
-                .parameters(Map.of("type", "object"))
-                .riskLevel("L1")
-                .permission("cluster:read")
-                .requiredCapabilities(Collections.emptyList())
-                .outputSchema(Map.of("type", "array"))
-                .viewHint("table")
-                .deprecated(false)
+    void executeDelegatesToAiService() {
+        AiService aiService = mock(AiService.class);
+        AiCommandDTO command = AiCommandDTO.builder().command("list_topics").build();
+        AiExecuteResultVO output = AiExecuteResultVO.builder()
+                .success(true)
+                .result("done")
                 .build();
-        when(aiService.listTools()).thenReturn(List.of(tool));
+        when(aiService.execute(command)).thenReturn(output);
 
-        mockMvc.perform(get("/api/ai/tools"))
-                .andExpect(status().isOk())
-                .andExpect(header().string("X-RMQ-Catalog-Version", "1.0.0"))
-                .andExpect(header().string("X-RMQ-Catalog-Digest", DIGEST))
-                .andExpect(header().string("X-RMQ-Minimum-Client-Version", "1.0.0"))
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
-                .andExpect(jsonPath("$.data[0].name").value("rmq.cluster.list"))
-                .andExpect(jsonPath("$.data[0].parameters.type").value("object"))
-                .andExpect(jsonPath("$.data[0].riskLevel").value("L1"))
-                .andExpect(jsonPath("$.data[0].permission").value("cluster:read"))
-                .andExpect(jsonPath("$.data[0].viewHint").value("table"));
-    }
-
-    @Test
-    void listToolsDelegatesTheSelectedCluster() throws Exception {
-        when(aiService.listTools("cluster-001")).thenReturn(Collections.emptyList());
-
-        mockMvc.perform(get("/api/ai/tools").queryParam("cluster", "cluster-001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
-
-        verify(aiService).listTools("cluster-001");
-    }
-
-    @Test
-    void executeToolPreservesStructuredInputAndDottedName() throws Exception {
-        Map<String, Object> input = Map.of("cluster", "cluster-001");
-        Map<String, Object> output = Map.of(
-                "cluster", "cluster-001",
-                "capabilities", List.of("GRPC"));
-        when(aiService.executeTool("rmq.capabilities", input)).thenReturn(output);
-
-        mockMvc.perform(post("/api/ai/tools/rmq.capabilities/execute")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"cluster":"cluster-001"}
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.cluster").value("cluster-001"))
-                .andExpect(jsonPath("$.data.capabilities[0]").value("GRPC"));
-
-        verify(aiService).executeTool("rmq.capabilities", input);
-    }
-
-    @Test
-    void executeClusterListNormalizesAnAbsentBody() throws Exception {
-        when(aiService.executeTool("rmq.cluster.list", Collections.emptyMap()))
-                .thenReturn(Collections.emptyList());
-
-        mockMvc.perform(post("/api/ai/tools/rmq.cluster.list/execute")
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
-
-        verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
+        assertThat(new AiController(aiService).execute(command).getData()).isSameAs(output);
+        verify(aiService).execute(command);
     }
 }

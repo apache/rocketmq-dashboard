@@ -75,6 +75,14 @@ public class NameServerConfigDiffService {
     private final MqAdminExtFactory adminFactory;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    public NameServerConfigDiffVO compareForInstance(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "Instance is required for NameServer config comparison");
+        }
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        return compare(instanceId, ClusterVO.builder().endpoint(endpoint).build(), instanceId);
+    }
+
     public NameServerConfigDiffVO compare(String clusterId) {
         String normalizedClusterId = requireClusterId(clusterId);
         return compare(normalizedClusterId, clusterService.getCluster(normalizedClusterId), null);

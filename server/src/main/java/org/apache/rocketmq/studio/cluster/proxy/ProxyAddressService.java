@@ -168,6 +168,10 @@ public class ProxyAddressService {
         synchronized (this) {
             addrs = new ArrayList<>(proxyAddrs);
         }
+        return buildTopology(addrs);
+    }
+
+    private List<ProxyTopologyVO> buildTopology(List<String> addrs) {
         List<ProbeTask> tasks = new ArrayList<>();
         for (String addr : addrs) {
             Matcher matcher = PROXY_ADDR_PATTERN.matcher(addr);
@@ -302,6 +306,40 @@ public class ProxyAddressService {
         String normalizedClusterId = normalizeClusterId(clusterId);
         String normalized = normalizeProxyAddr(addr, "addr");
         clusterService.requireProxy(normalizedClusterId, normalized);
+        reloadValidatedProxy(normalizedClusterId, normalized);
+    }
+
+    public ProxyTopologyVO previewReloadForInstance(String instanceId, String addr) {
+        ProxyVO proxy = requireInstanceProxy(instanceId, addr);
+        String normalized = normalizeProxyAddr(proxy.getAddr(), "addr");
+        Matcher matcher = PROXY_ADDR_PATTERN.matcher(normalized);
+        matcher.matches();
+        String host = matcher.group(1);
+        int grpcPort = proxy.getGrpcPort() > 0 ? proxy.getGrpcPort() : Integer.parseInt(matcher.group(2));
+        Integer remotingPort = proxy.getRemotingPort() > 0
+                ? Integer.valueOf(proxy.getRemotingPort()) : deriveRemotingPort(grpcPort);
+        ProbeTask task = new ProbeTask(normalized, grpcPort, remotingPort,
+                probeAsync(host, grpcPort), remotingPort != null ? probeAsync(host, remotingPort) : null);
+        awaitProbes(List.of(task));
+        return toTopologyVO(task);
+    }
+
+    public void reloadConfigForInstance(String instanceId, String addr) {
+        ProxyVO proxy = requireInstanceProxy(instanceId, addr);
+        reloadValidatedProxy(instanceId, normalizeProxyAddr(proxy.getAddr(), "addr"));
+    }
+
+    private ProxyVO requireInstanceProxy(String instanceId, String addr) {
+        String normalized = normalizeProxyAddr(addr, "addr");
+        List<ProxyVO> proxies = clusterService.listProxiesForInstance(instanceId);
+        return (proxies == null ? List.<ProxyVO>of() : proxies).stream()
+                .filter(proxy -> normalized.equals(proxy.getAddr()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404,
+                        "Proxy not found in instance " + instanceId + ": " + normalized));
+    }
+
+    private void reloadValidatedProxy(String normalizedClusterId, String normalized) {
         String url = "http://" + normalized + RELOAD_PATH;
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);

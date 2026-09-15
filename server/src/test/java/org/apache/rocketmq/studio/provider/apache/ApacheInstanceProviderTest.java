@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +54,24 @@ class ApacheInstanceProviderTest {
 
     @InjectMocks
     private ApacheInstanceProvider provider;
+
+    @Test
+    void topicWritesPassExplicitInstanceToAdminClient() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setInstanceId("other-instance");
+        when(adminClient.createTopic("inst-1", topic)).thenReturn(topic);
+        when(adminClient.updateTopic("inst-1", topic)).thenReturn(topic);
+
+        assertThat(provider.createTopic("inst-1", topic)).isSameAs(topic);
+        assertThat(provider.updateTopic("inst-1", topic)).isSameAs(topic);
+        provider.deleteTopic("inst-1", "orders");
+
+        verify(adminClient).createTopic("inst-1", topic);
+        verify(adminClient).updateTopic("inst-1", topic);
+        verify(adminClient).deleteTopic("inst-1", "orders");
+        verifyNoMoreInteractions(adminClient);
+    }
 
     @Test
     void capabilitiesShouldIncludeApacheOnlyOperationsTest() {

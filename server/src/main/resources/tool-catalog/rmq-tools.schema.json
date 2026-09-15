@@ -6,14 +6,10 @@
   "additionalProperties": false,
   "required": [
     "version",
-    "minimumClientVersion",
     "tools"
   ],
   "properties": {
     "version": {
-      "$ref": "#/$defs/semanticVersion"
-    },
-    "minimumClientVersion": {
       "$ref": "#/$defs/semanticVersion"
     },
     "tools": {
@@ -31,7 +27,7 @@
     },
     "toolName": {
       "type": "string",
-      "pattern": "^rmq\\.[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"
+      "pattern": "^rmq\\.[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
     },
     "cli": {
       "type": "object",
@@ -86,7 +82,7 @@
         },
         "permission": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+          "pattern": "^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$"
         },
         "requiredCapabilities": {
           "type": "array",

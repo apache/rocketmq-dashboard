@@ -23,16 +23,12 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.List;
-import java.util.Map;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiService {
 
     private final LlmGateway llmGateway;
-    private final McpServerRegistry mcpServerRegistry;
     private final ObjectMapper objectMapper;
 
 
@@ -73,34 +69,5 @@ public class AiService {
                     .result("Error: " + e.getMessage())
                     .build();
         }
-    }
-
-
-    public List<AiToolVO> listTools() {
-        log.debug("Listing available AI tools");
-        return mcpServerRegistry.listTools();
-    }
-
-    public List<AiToolVO> listTools(String clusterId) {
-        log.debug("Listing available AI tools for cluster: {}", clusterId);
-        return mcpServerRegistry.listTools(clusterId);
-    }
-
-    public Object executeTool(String name, Map<String, Object> input) {
-        AiPayloadGuard.validateToolInvocation(name, input, objectMapper);
-        log.info("Executing registered AI tool: {}", name);
-        return mcpServerRegistry.execute(name, input);
-    }
-
-    public String catalogVersion() {
-        return mcpServerRegistry.catalogVersion();
-    }
-
-    public String catalogDigest() {
-        return mcpServerRegistry.catalogDigest();
-    }
-
-    public String minimumClientVersion() {
-        return mcpServerRegistry.minimumClientVersion();
     }
 }

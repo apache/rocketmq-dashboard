@@ -23,7 +23,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +66,7 @@ class AclServiceTest {
     private OperationAuditService operationAuditService;
 
     @Mock
-    private InstanceRepository instanceRepository;
+    private InstanceResolver instanceResolver;
 
     @Mock
     private TencentAclService tencentAclService;
@@ -114,7 +114,7 @@ class AclServiceTest {
                 .type(InstanceType.DIRECT)
                 .build();
         instance.setId(1L);
-        when(instanceRepository.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
+        when(instanceResolver.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
 
         AclCapabilitiesVO capabilities = aclService.capabilities("instance-1");
 
@@ -128,7 +128,7 @@ class AclServiceTest {
 
     @Test
     void capabilitiesShouldRejectUnknownInstance() {
-        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
+        when(instanceResolver.findByIdentifier("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> aclService.capabilities("missing"))
                 .isInstanceOf(BusinessException.class)
@@ -183,7 +183,7 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
 
-        verifyNoInteractions(instanceRepository);
+        verifyNoInteractions(instanceResolver);
         verifyNoInteractions(tencentAclService);
     }
 
@@ -211,7 +211,7 @@ class AclServiceTest {
         assertThat(result.getTotal()).isEqualTo(21);
         verify(aclRepository).findUserPage("orders", 2, 20);
         verify(aclRepository, never()).findUsers();
-        verifyNoInteractions(instanceRepository, tencentAclService);
+        verifyNoInteractions(instanceResolver, tencentAclService);
     }
 
     @Test
@@ -221,7 +221,7 @@ class AclServiceTest {
                 .vendor(InstanceVendor.TENCENT)
                 .type(InstanceType.CLOUD)
                 .build();
-        when(instanceRepository.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
         when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
                 AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
 
@@ -753,7 +753,6 @@ class AclServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
     }
-
 
     @ParameterizedTest
     @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})

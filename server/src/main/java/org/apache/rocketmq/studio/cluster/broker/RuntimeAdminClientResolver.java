@@ -14,7 +14,7 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,17 +22,34 @@ import org.springframework.util.StringUtils;
 @Component
 @RequiredArgsConstructor
 public class RuntimeAdminClientResolver {
-
-    private final InstanceRepository instanceRepository;
+    private final InstanceResolver instanceResolver;
     private final MqAdminExtFactory adminFactory;
     private final MqAdminProperties adminProperties;
     private final MqClientPool clientPool;
+
+    public String configuredClusterName(String identifier) {
+        return instanceResolver.resolveClusterName(identifier);
+    }
+
+    public MqAdminProperties.Credential resolveCredential(InstanceVO instance) {
+        String credentialRef = credentialRef(instance);
+        if (!StringUtils.hasText(credentialRef)) {
+            throw new BusinessException(422, "Instance has no admin credential reference: " + instance.getName());
+        }
+        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(credentialRef);
+        if (credential == null || !StringUtils.hasText(credential.getAccessKey())
+                || !StringUtils.hasText(credential.getSecretKey())) {
+            throw new BusinessException(422,
+                    "Admin credential reference is not configured: " + credentialRef);
+        }
+        return credential;
+    }
 
     public InstanceVO resolveInstance(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        return instanceRepository.findByIdentifier(instanceId)
+        return instanceResolver.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
     }
 
@@ -42,15 +59,6 @@ public class RuntimeAdminClientResolver {
             throw new BusinessException(400, "Instance has no endpoint: " + instanceId);
         }
         return instance.getEndpoint().trim();
-    }
-
-    /**
-     * Resolves the ACL hook for short-lived runtime clients that cannot be created by
-     * {@link MqAdminExtFactory}, such as a {@code DefaultMQPullConsumer}.
-     */
-    public RPCHook resolveCredentialHook(String instanceId) {
-        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
-        return resolveCredential(credentialRef(instance));
     }
 
     public <T> T execute(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
@@ -63,7 +71,7 @@ public class RuntimeAdminClientResolver {
             throw new BusinessException(400, "Instance endpoint is required");
         }
         String credentialRef = credentialRef(instance);
-        return adminFactory.execute(instance.getEndpoint().trim(), resolveCredential(credentialRef),
+        return adminFactory.execute(instance.getEndpoint().trim(), createCredentialHook(credentialRef),
                 credentialRef, action);
     }
 
@@ -72,7 +80,7 @@ public class RuntimeAdminClientResolver {
                                      MqClientPool.ClientAction<DefaultMQPullConsumer, T> action) {
         InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
         String credentialRef = credentialRef(instance);
-        return clientPool.withPullConsumer(requireEndpoint(instance), resolveCredential(credentialRef),
+        return clientPool.withPullConsumer(requireEndpoint(instance), createCredentialHook(credentialRef),
                 credentialRef, action);
     }
 
@@ -81,7 +89,7 @@ public class RuntimeAdminClientResolver {
                                  MqClientPool.ClientAction<DefaultMQProducer, T> action) {
         InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
         String credentialRef = credentialRef(instance);
-        return clientPool.withProducer(requireEndpoint(instance), resolveCredential(credentialRef),
+        return clientPool.withProducer(requireEndpoint(instance), createCredentialHook(credentialRef),
                 credentialRef, action);
     }
 
@@ -97,7 +105,7 @@ public class RuntimeAdminClientResolver {
                 ? instance.getAdminCredentialRef().trim() : null;
     }
 
-    private RPCHook resolveCredential(String credentialRef) {
+    private RPCHook createCredentialHook(String credentialRef) {
         if (!StringUtils.hasText(credentialRef)) {
             return null;
         }

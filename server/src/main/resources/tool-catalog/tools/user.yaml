@@ -1,0 +1,229 @@
+version: 2.0.0
+tools:
+  - name: rmq.user.list
+    cli:
+      resource: user
+      verb: list
+    description: List RocketMQ ACL users without exposing access or secret keys.
+    riskLevel: L1
+    permission: acl:read
+    requiredCapabilities: [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - username
+              - admin
+              - clusters
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              username:
+                type: string
+              admin:
+                type: boolean
+              clusters:
+                type: array
+                items:
+                  type: string
+    viewHint: table
+    deprecated: false
+  - name: rmq.user.create
+    cli:
+      resource: user
+      verb: create
+    description: Create a RocketMQ ACL user while keeping generated credentials out of tool output.
+    riskLevel: L3
+    permission: acl:write
+    requiredCapabilities: [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - username
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        username:
+          type: string
+          minLength: 1
+        admin:
+          type: boolean
+        clusters:
+          type: array
+          items:
+            type: string
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - id
+            - username
+            - admin
+            - clusters
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            username:
+              type: string
+            admin:
+              type: boolean
+            clusters:
+              type: array
+              items:
+                type: string
+    viewHint: object
+    deprecated: false
+  - name: rmq.user.delete
+    cli:
+      resource: user
+      verb: delete
+    description: Delete a RocketMQ ACL user by identifier.
+    riskLevel: L3
+    permission: acl:write
+    requiredCapabilities: [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - id
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        id:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - deleted
+          additionalProperties: false
+          properties:
+            deleted:
+              type: boolean
+    viewHint: object
+    deprecated: false

@@ -95,12 +95,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
-        return adminClient.createTopic(topic);
+        return adminClient.createTopic(instanceId, topic);
     }
 
     @Override
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
-        return adminClient.updateTopic(topic);
+        return adminClient.updateTopic(instanceId, topic);
     }
 
     @Override
@@ -132,6 +132,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
         return adminClient.createConsumerGroup(group);
+    }
+
+    @Override
+    public ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        return adminClient.updateConsumerGroup(group);
     }
 
     @Override

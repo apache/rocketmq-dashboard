@@ -68,6 +68,12 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    public Optional<AclRuleVO> findRuleById(Long id) {
+        return Optional.ofNullable(ruleMapper.selectById(id))
+                .map(MybatisPlusAclRepository::toRuleVO);
+    }
+
+    @Override
     public AclRuleVO saveRule(AclRuleVO rule) {
         RmqAclRule entity = toRuleEntity(rule);
         if (entity.getId() != null && ruleMapper.selectById(entity.getId()) != null) {

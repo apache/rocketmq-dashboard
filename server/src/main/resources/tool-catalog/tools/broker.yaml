@@ -1,0 +1,396 @@
+version: 2.0.0
+tools:
+  - name: rmq.broker.config
+    cli:
+      resource: broker-config
+      verb: diff
+    description: "Compare configuration across master Brokers in one resolved physical Broker cluster."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+      - cluster
+      - complete
+      - driftDetected
+      - brokerCount
+      - reachableBrokerCount
+      - comparedFields
+      - brokers
+      - differences
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        complete:
+          type: boolean
+        driftDetected:
+          type: boolean
+        brokerCount:
+          type: integer
+        reachableBrokerCount:
+          type: integer
+        comparedFields:
+          type: array
+          items:
+            type: string
+        brokers:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - address
+            - reachable
+            - message
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              address:
+                type: string
+              reachable:
+                type: boolean
+              message:
+                type:
+                - string
+                - 'null'
+        differences:
+          type: array
+          items:
+            type: object
+            required:
+            - field
+            - brokerProperty
+            - values
+            additionalProperties: false
+            properties:
+              field:
+                type: string
+              brokerProperty:
+                type: string
+              values:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - brokerName
+                  - address
+                  - configured
+                  - value
+                  additionalProperties: false
+                  properties:
+                    brokerName:
+                      type: string
+                    address:
+                      type: string
+                    configured:
+                      type: boolean
+                    value:
+                      type:
+                      - string
+                      - 'null'
+    viewHint: object
+    deprecated: false
+  - name: rmq.broker.config_update
+    cli:
+      resource: broker-config
+      verb: update
+    description: Update broker configuration for all brokers in one cluster.
+    riskLevel: L3
+    permission: broker:write
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        flushDiskType:
+          type: string
+        autoCreateTopicEnable:
+          type: boolean
+        autoCreateSubscriptionGroup:
+          type: boolean
+        maxMessageSize:
+          type: integer
+        fileReservedTime:
+          type: integer
+        writeQueueNums:
+          type: integer
+        readQueueNums:
+          type: integer
+        brokerPermission:
+          type: integer
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.broker.describe
+    cli:
+      resource: broker
+      verb: describe
+    description: "Describe the Broker replica group identified by brokerName within the Instance; read its master or lowest available brokerId."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - broker
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        broker:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+      - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - addr
+            - version
+            - status
+            - diskUsage
+            - tpsIn
+            - tpsOut
+            - runtimeStatsAvailable
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              addr:
+                type: string
+              version:
+                type:
+                - string
+                - 'null'
+              status:
+                type:
+                - string
+                - 'null'
+              diskUsage:
+                type: number
+              tpsIn:
+                type: number
+              tpsOut:
+                type: number
+              runtimeStatsAvailable:
+                type: boolean
+    viewHint: table
+    deprecated: false
+  - name: rmq.broker.list
+    cli:
+      resource: broker
+      verb: list
+    description: "List Broker replica groups across the selected Instance, including each physical Broker cluster name."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+      - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - addr
+            - version
+            - status
+            - diskUsage
+            - tpsIn
+            - tpsOut
+            - runtimeStatsAvailable
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              addr:
+                type: string
+              version:
+                type:
+                - string
+                - 'null'
+              status:
+                type:
+                - string
+                - 'null'
+              diskUsage:
+                type: number
+              tpsIn:
+                type: number
+              tpsOut:
+                type: number
+              putMessagesToday:
+                type: integer
+              putMessagesYesterday:
+                type: integer
+              getMessagesToday:
+                type: integer
+              getMessagesYesterday:
+                type: integer
+              runtimeStatsAvailable:
+                type: boolean
+    viewHint: table
+    deprecated: false
+  - name: rmq.broker.runtime_info
+    cli:
+      resource: broker
+      verb: runtime-info
+    description: "Read Broker runtime information across the selected Instance."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+      - cluster
+      - brokers
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        brokers:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - addr
+            - version
+            - status
+            - diskUsage
+            - tpsIn
+            - tpsOut
+            - runtimeStatsAvailable
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              addr:
+                type: string
+              version:
+                type:
+                - string
+                - 'null'
+              status:
+                type:
+                - string
+                - 'null'
+              diskUsage:
+                type: number
+              tpsIn:
+                type: number
+              tpsOut:
+                type: number
+              runtimeStatsAvailable:
+                type: boolean
+    viewHint: object
+    deprecated: false

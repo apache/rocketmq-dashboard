@@ -1,0 +1,287 @@
+version: 2.0.0
+tools:
+  - name: rmq.dlq.list
+    cli:
+      resource: dlq
+      verb: list
+    description: List dead-letter groups or dead-letter messages for a group in one cluster.
+    riskLevel: L1
+    permission: dlq:read
+    requiredCapabilities:
+      - DLQ_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+        search:
+          type: string
+        time:
+          type: object
+          additionalProperties: false
+          properties:
+            startTime:
+              type: integer
+            endTime:
+              type: integer
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        group:
+          type: string
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              groupName:
+                type: string
+              dlqTopic:
+                type: string
+              messageCount:
+                type: integer
+              retryCount:
+                type: integer
+              status:
+                type: string
+              statsAvailable:
+                type: boolean
+              lastEnqueueTime:
+                type:
+                  - string
+                  - 'null'
+              msgId:
+                type: string
+              topic:
+                type: string
+              queueId:
+                type: integer
+              offset:
+                type: integer
+              storeTime:
+                type: integer
+              keys:
+                type: string
+              body:
+                type: string
+    viewHint: table
+    deprecated: false
+  - name: rmq.dlq.resend
+    cli:
+      resource: dlq
+      verb: resend
+    description: Resend dead-letter messages for a consumer group back to the target topic.
+    riskLevel: L2
+    permission: dlq:write
+    requiredCapabilities:
+      - DLQ_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        time:
+          type: object
+          additionalProperties: false
+          properties:
+            startTime:
+              type: integer
+            endTime:
+              type: integer
+        targetTopic:
+          type: string
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - matched
+            - resent
+            - failed
+            - outcome
+            - scanIncomplete
+            - failedQueueCount
+          additionalProperties: false
+          properties:
+            matched:
+              type: integer
+            resent:
+              type: integer
+            failed:
+              type: integer
+            outcome:
+              type: string
+            scanIncomplete:
+              type: boolean
+            failedQueueCount:
+              type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.dlq.clear
+    cli:
+      resource: dlq
+      verb: clear
+    description: Permanently delete the dead-letter topic for a consumer group.
+    riskLevel: L3
+    permission: dlq:write
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - group
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - deleted
+          additionalProperties: false
+          properties:
+            deleted:
+              type: boolean
+    viewHint: object
+    deprecated: false

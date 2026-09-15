@@ -1,0 +1,351 @@
+version: 2.0.0
+tools:
+  - name: rmq.acl.create
+    cli:
+      resource: acl
+      verb: create
+    description: Create a RocketMQ ACL rule for a principal on a resource.
+    riskLevel: L2
+    permission: acl:write
+    requiredCapabilities:
+      [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - principal
+        - resource
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        principal:
+          type: string
+          minLength: 1
+        resource:
+          type: string
+          minLength: 1
+        resourceType:
+          type: string
+        resourcePattern:
+          type: string
+        actions:
+          type: array
+          items:
+            type: string
+        decision:
+          type: string
+        scope:
+          type: string
+        aclVersion:
+          type: string
+        confirm_token:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.acl.delete
+    cli:
+      resource: acl
+      verb: delete
+    description: Delete a RocketMQ ACL rule by id.
+    riskLevel: L3
+    permission: acl:delete
+    requiredCapabilities:
+      [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - id
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        id:
+          type: string
+          minLength: 1
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.acl.list
+    cli:
+      resource: acl
+      verb: list
+    description: List RocketMQ ACL rules in one Studio cluster with optional filters.
+    riskLevel: L1
+    permission: acl:read
+    requiredCapabilities:
+      [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        principal:
+          type: string
+        resource:
+          type: string
+        scope:
+          type: string
+        decision:
+          type: string
+        aclVersion:
+          type: string
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - principal
+              - resource
+              - resourceType
+              - resourcePattern
+              - actions
+              - decision
+              - scope
+              - aclVersion
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              principal:
+                type: string
+              resource:
+                type: string
+              resourceType:
+                type: string
+              resourcePattern:
+                type: string
+              actions:
+                type: array
+                items:
+                  type: string
+              decision:
+                type: string
+              scope:
+                type: string
+              aclVersion:
+                type: string
+              gmtCreate:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false
+  - name: rmq.acl.update
+    cli:
+      resource: acl
+      verb: update
+    description: Update an existing RocketMQ ACL rule by id.
+    riskLevel: L2
+    permission: acl:write
+    requiredCapabilities:
+      [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - id
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        id:
+          type: string
+          minLength: 1
+        principal:
+          type: string
+        resource:
+          type: string
+        resourceType:
+          type: string
+        resourcePattern:
+          type: string
+        actions:
+          type: array
+          items:
+            type: string
+        decision:
+          type: string
+        scope:
+          type: string
+        aclVersion:
+          type: string
+        confirm_token:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+    outputSchema:
+      type: object
+      required:
+        - status
+        - cluster
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        cluster:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false

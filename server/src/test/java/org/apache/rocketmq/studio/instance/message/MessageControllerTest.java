@@ -17,11 +17,16 @@
 
 package org.apache.rocketmq.studio.instance.message;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -37,12 +42,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(MessageController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class MessageControllerTest {
+@Import(LegacyJackson2Config.class)
+class MessageControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private MessageService messageService;
 
     @Test
