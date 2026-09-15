@@ -415,6 +415,85 @@ describe('Cluster page', () => {
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
   });
 
+  it('discards a superseded broker config preview that resolves late', async () => {
+    const user = userEvent.setup();
+    let releaseFirstPreview: (value: unknown) => void = () => {};
+    const firstPreview = new Promise((resolve) => {
+      releaseFirstPreview = resolve;
+    });
+    clusterServiceMocks.previewClusterConfig
+      .mockReset()
+      .mockImplementationOnce(() => firstPreview)
+      .mockImplementation(async (request) => {
+        const cluster = buildCluster();
+        return {
+          cluster,
+          currentConfig: cluster.config,
+          proposedConfig: { ...cluster.config, ...request },
+          targetBrokers: cluster.brokers.map((broker) => ({
+            name: broker.name,
+            address: broker.addr,
+          })),
+          brokerProperties: { defaultTopicQueueNums: String(request.writeQueueNums) },
+          changes: [
+            {
+              field: 'writeQueueNums',
+              currentValue: String(cluster.config.writeQueueNums),
+              proposedValue: String(request.writeQueueNums),
+              brokerProperty: 'defaultTopicQueueNums',
+            },
+          ],
+          changed: true,
+        };
+      });
+
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '16');
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1));
+
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '32');
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('32'),
+    );
+
+    const staleCluster = buildCluster();
+    releaseFirstPreview({
+      cluster: staleCluster,
+      currentConfig: staleCluster.config,
+      proposedConfig: { ...staleCluster.config, writeQueueNums: 16 },
+      targetBrokers: staleCluster.brokers.map((broker) => ({
+        name: broker.name,
+        address: broker.addr,
+      })),
+      brokerProperties: { defaultTopicQueueNums: '16' },
+      changes: [
+        {
+          field: 'writeQueueNums',
+          currentValue: String(staleCluster.config.writeQueueNums),
+          proposedValue: '16',
+          brokerProperty: 'defaultTopicQueueNums',
+        },
+      ],
+      changed: true,
+    });
+
+    await waitFor(() => {
+      expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('32');
+    });
+    expect(within(dialog).getByRole('row', { name: /写队列数/ })).not.toHaveTextContent('16');
+  });
+
   it('renders per-broker daily message counters in the broker tab', async () => {
     renderWithProviders(<ClusterPage />);
 

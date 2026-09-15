@@ -171,6 +171,7 @@ const ClusterPage = () => {
   const k8sCertsRequestRef = useRef(0);
   const nsConfigDiffRequestRef = useRef(0);
   const brokerConfigDiffRequestRef = useRef(0);
+  const configPreviewRequestRef = useRef(0);
   const connectionTestRequestRef = useRef(0);
 
   const loadRegistryClusters = useCallback(async () => {
@@ -613,6 +614,7 @@ const ClusterPage = () => {
   const handleConfigOpen = (cluster: ClusterInfo) => {
     const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
     setSelectedCluster(cluster);
+    configPreviewRequestRef.current += 1;
     setConfigPreview(null);
     setConfigPreviewLoading(false);
     setConfigSubmitting(false);
@@ -653,16 +655,22 @@ const ClusterPage = () => {
     const request = buildConfigUpdateRequest(values);
     if (!request) return;
 
+    // A slower earlier preview must not overwrite a newer one (or reopen after cancel).
+    const requestId = ++configPreviewRequestRef.current;
     setConfigPreviewLoading(true);
     try {
       const preview = await previewClusterConfig(request);
+      if (requestId !== configPreviewRequestRef.current) return;
       setConfigPreview(preview);
       message.success(t('cluster.configPreviewGenerated'));
     } catch {
+      if (requestId !== configPreviewRequestRef.current) return;
       setConfigPreview(null);
       message.error(t('cluster.configPreviewFailed'));
     } finally {
-      setConfigPreviewLoading(false);
+      if (requestId === configPreviewRequestRef.current) {
+        setConfigPreviewLoading(false);
+      }
     }
   };
 
@@ -682,8 +690,10 @@ const ClusterPage = () => {
       if (result.status === 'SUCCESS') {
         await requestRefresh('operation');
         message.success(t('cluster.configUpdated'));
+        configPreviewRequestRef.current += 1;
         setConfigModalOpen(false);
         setConfigPreview(null);
+        setConfigPreviewLoading(false);
         return;
       }
 
@@ -1309,8 +1319,10 @@ const ClusterPage = () => {
             title={t('cluster.configTitle', { name: selectedCluster.name })}
             open={configModalOpen}
             onCancel={() => {
+              configPreviewRequestRef.current += 1;
               setConfigModalOpen(false);
               setConfigPreview(null);
+              setConfigPreviewLoading(false);
             }}
             onOk={() => void handleConfigSubmit()}
             confirmLoading={configSubmitting}
@@ -1325,7 +1337,15 @@ const ClusterPage = () => {
                 {t('cluster.configPreview')}
               </Button>
             </Space>
-            <Form form={configForm} layout="vertical" onValuesChange={() => setConfigPreview(null)}>
+            <Form
+              form={configForm}
+              layout="vertical"
+              onValuesChange={() => {
+                configPreviewRequestRef.current += 1;
+                setConfigPreview(null);
+                setConfigPreviewLoading(false);
+              }}
+            >
               <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
                 <Radio.Group>
                   <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
