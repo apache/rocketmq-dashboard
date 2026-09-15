@@ -278,6 +278,10 @@ public class RocketMQMessageProvider implements MessageProvider {
                 result.sort(Comparator.comparing(QueueOffsetVO::getBrokerName)
                         .thenComparingInt(QueueOffsetVO::getQueueId));
             } catch (Exception e) {
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                    log.info("getQueueOffsets(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
+                    return Collections.emptyList();
+                }
                 log.warn("getQueueOffsets(topic={}) failed: {}", topic, e.getMessage());
                 throw new BusinessException(502, "Failed to get queue offsets: " + e.getMessage());
             }
@@ -394,6 +398,10 @@ public class RocketMQMessageProvider implements MessageProvider {
                     // rebalance, stalling queues. Degrade to an empty result instead of failing.
                     log.warn("queryByTopic(topic={}) skipped: reading a %RETRY% topic requires a "
                             + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
+                    return Collections.emptyList();
+                }
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                    log.info("queryByTopic(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
                     return Collections.emptyList();
                 }
                 log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
