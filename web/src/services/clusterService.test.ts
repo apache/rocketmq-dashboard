@@ -235,6 +235,72 @@ describe('clusterService mock clusters', () => {
     }
   });
 
+  it('returns a lifecycle result and records pending health when creating a mock NameServer', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const addr = '10.101.2.99:9876';
+
+    try {
+      const createResult = await createNameServer({
+        clusterId: cluster.id,
+        addr,
+        version: '5.4.0',
+      });
+
+      expect(createResult).toMatchObject({
+        operation: 'NAMESERVER_CREATE',
+        clusterId: cluster.id,
+        target: addr,
+        accepted: true,
+      });
+      expect(createResult.requestId).toMatch(/^mock-/);
+      expect(createResult.message).toContain(addr);
+      const updated = await getCluster(cluster.id);
+      expect(updated.nameServers.find((item) => item.addr === addr)).toMatchObject({
+        addr,
+        status: 'warning',
+      });
+    } finally {
+      const current = await getCluster(cluster.id);
+      if (current.nameServers.some((item) => item.addr === addr)) {
+        await deleteNameServer({ clusterId: cluster.id, addr });
+      }
+    }
+  });
+
+  it('returns a lifecycle result when updating a mock NameServer address', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const originalAddr = cluster.nameServers[0].addr;
+    const newAddr = '10.101.2.98:9876';
+
+    try {
+      const updateResult = await updateNameServer({
+        clusterId: cluster.id,
+        addr: originalAddr,
+        newAddr,
+        version: '5.4.0',
+      });
+
+      expect(updateResult).toMatchObject({
+        operation: 'NAMESERVER_UPDATE',
+        clusterId: cluster.id,
+        target: originalAddr,
+        accepted: true,
+      });
+      expect(updateResult.requestId).toMatch(/^mock-/);
+      const updated = await getCluster(cluster.id);
+      expect(updated.nameServers.some((item) => item.addr === originalAddr)).toBe(false);
+      expect(updated.nameServers.find((item) => item.addr === newAddr)).toMatchObject({
+        addr: newAddr,
+        status: cluster.nameServers[0].status,
+      });
+    } finally {
+      const current = await getCluster(cluster.id);
+      if (current.nameServers.some((item) => item.addr === newAddr)) {
+        await updateNameServer({ clusterId: cluster.id, addr: newAddr, newAddr: originalAddr });
+      }
+    }
+  });
+
   it('returns a lifecycle result when restarting a mock Proxy', async () => {
     const cluster = await getCluster('cluster-prod');
     const proxy = cluster.proxies[0];

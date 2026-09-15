@@ -176,6 +176,19 @@ export interface LifecycleOperationResult {
   message: string;
 }
 
+export interface NameServerCreateRequest {
+  clusterId: string;
+  addr: string;
+  version?: string;
+}
+
+export interface NameServerUpdateRequest {
+  clusterId: string;
+  addr: string;
+  newAddr: string;
+  version?: string;
+}
+
 export interface K8sCertInfo {
   id: number;
   k8sId: string;
@@ -337,16 +350,14 @@ export async function deleteNameServer(data: { clusterId: string; addr: string }
   return res.data.data;
 }
 
-export async function createNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/create', data);
+export async function createNameServer(data: NameServerCreateRequest) {
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/create', data);
+  return res.data.data;
 }
 
-export async function updateNameServer(data: {
-  clusterId: string;
-  addr: string;
-  newAddr?: string;
-}) {
-  await client.post('/nameservers/update', data);
+export async function updateNameServer(data: NameServerUpdateRequest) {
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/update', data);
+  return res.data.data;
 }
 
 export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {

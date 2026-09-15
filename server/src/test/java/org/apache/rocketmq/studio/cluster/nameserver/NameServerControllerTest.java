@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
 import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -233,10 +232,8 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
                 .addr("127.0.0.1:9876")
                 .version("5.3.2")
                 .build();
-        NameServerVO created = NameServerVO.builder()
-                .addr("127.0.0.1:9876")
-                .status(ClusterStatus.healthy)
-                .build();
+        LifecycleOperationResult created = new LifecycleOperationResult(LifecycleOperation.NAMESERVER_CREATE,
+                "cluster-1", "127.0.0.1:9876", "request-1", true, "accepted");
         when(clusterService.createNameServer(any(CreateNameServerDTO.class))).thenReturn(created);
 
         mockMvc.perform(post("/api/nameservers/create")
@@ -244,7 +241,9 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.addr").value("127.0.0.1:9876"));
+                .andExpect(jsonPath("$.data.operation").value("NAMESERVER_CREATE"))
+                .andExpect(jsonPath("$.data.target").value("127.0.0.1:9876"))
+                .andExpect(jsonPath("$.data.accepted").value(true));
 
         verify(clusterService).createNameServer(any(CreateNameServerDTO.class));
     }
@@ -276,6 +275,7 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
         UpdateNameServerDTO request = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr(" ")
+                .newAddr("127.0.0.2:9876")
                 .build();
 
         mockMvc.perform(post("/api/nameservers/update")
@@ -286,6 +286,42 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.message").value("addr is required"));
 
         verifyNoInteractions(clusterService);
+    }
+
+    @Test
+    void updateNameServerShouldRejectMissingReplacementAddress() throws Exception {
+        UpdateNameServerDTO request = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("127.0.0.1:9876")
+                .build();
+
+        mockMvc.perform(post("/api/nameservers/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("newAddr is required"));
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
+    void updateNameServerShouldReturnAcceptedDispatchResult() throws Exception {
+        UpdateNameServerDTO request = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("127.0.0.1:9876")
+                .newAddr("127.0.0.2:9876")
+                .build();
+        when(clusterService.updateNameServer(any(UpdateNameServerDTO.class))).thenReturn(
+                new LifecycleOperationResult(LifecycleOperation.NAMESERVER_UPDATE, "cluster-1",
+                        "127.0.0.1:9876", "request-2", true, "accepted"));
+
+        mockMvc.perform(post("/api/nameservers/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.operation").value("NAMESERVER_UPDATE"))
+                .andExpect(jsonPath("$.data.requestId").value("request-2"))
+                .andExpect(jsonPath("$.data.accepted").value(true));
+        verify(clusterService).updateNameServer(any(UpdateNameServerDTO.class));
     }
 
     @Test

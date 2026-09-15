@@ -183,8 +183,8 @@ describe('K8s certificate API', () => {
     const requests = [
       ['/nameservers/restart', target],
       ['/nameservers/upgrade', { ...target, targetVersion: '5.4.0' }],
-      ['/nameservers/create', target],
-      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876' }],
+      ['/nameservers/create', { ...target, version: '5.4.0' }],
+      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876', version: '5.4.0' }],
       ['/nameservers/delete', target],
     ] as const;
     requests.forEach(([url, body]) => {
@@ -196,19 +196,19 @@ describe('K8s certificate API', () => {
             ? 'NAMESERVER_UPGRADE'
             : url.endsWith('/delete')
               ? 'NAMESERVER_DELETE'
-              : undefined;
+              : url.endsWith('/create')
+                ? 'NAMESERVER_CREATE'
+                : 'NAMESERVER_UPDATE';
         return [200, {
           code: 200,
-          data: operation
-            ? {
-                operation,
-                clusterId: 'cluster-1',
-                target: '127.0.0.1:9876',
-                requestId: 'request-1',
-                accepted: true,
-                message: 'accepted',
-              }
-            : null,
+          data: {
+            operation,
+            clusterId: 'cluster-1',
+            target: '127.0.0.1:9876',
+            requestId: 'request-1',
+            accepted: true,
+            message: 'accepted',
+          },
         }];
       });
     });
@@ -221,10 +221,17 @@ describe('K8s certificate API', () => {
       operation: 'NAMESERVER_UPGRADE',
       accepted: true,
     });
-    await expect(createNameServer(target)).resolves.toBeUndefined();
+    await expect(createNameServer({ ...target, version: '5.4.0' })).resolves.toMatchObject({
+      operation: 'NAMESERVER_CREATE',
+      accepted: true,
+    });
     await expect(
-      updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
-    ).resolves.toBeUndefined();
+      updateNameServer({ ...target, newAddr: '127.0.0.2:9876', version: '5.4.0' }),
+    ).resolves.toMatchObject({
+      operation: 'NAMESERVER_UPDATE',
+      target: '127.0.0.1:9876',
+      accepted: true,
+    });
     await expect(deleteNameServer(target)).resolves.toMatchObject({
       operation: 'NAMESERVER_DELETE',
       accepted: true,

@@ -59,6 +59,80 @@ class ProcessLifecycleOperationExecutorTest {
     }
 
     @Test
+    void createNameServerPassesOnlyTheNewEndpointAndOptionalVersion() {
+        LifecycleProperties properties = enabledProperties(LifecycleOperation.NAMESERVER_CREATE);
+        List<String> captured = new ArrayList<>();
+        LifecycleProcessRunner runner = (command, workingDirectory, timeout, maxOutputBytes) -> {
+            captured.addAll(command);
+            return LifecycleProcessResult.success("accepted");
+        };
+
+        new ProcessLifecycleOperationExecutor(properties, runner).execute(new LifecycleOperationRequest(
+                LifecycleOperation.NAMESERVER_CREATE, "cluster-1", "new-ns:9876",
+                null, "5.5.0", "request-2"));
+
+        assertThat(captured).containsExactly("/opt/rocketmq/lifecycle", "nameserver-create",
+                "--cluster-id", "cluster-1", "--target", "new-ns:9876",
+                "--target-version", "5.5.0", "--request-id", "request-2");
+    }
+
+    @Test
+    void updateNameServerPassesDistinctOldAndReplacementEndpoints() {
+        LifecycleProperties properties = enabledProperties(LifecycleOperation.NAMESERVER_UPDATE);
+        List<String> captured = new ArrayList<>();
+        LifecycleProcessRunner runner = (command, workingDirectory, timeout, maxOutputBytes) -> {
+            captured.addAll(command);
+            return LifecycleProcessResult.success("accepted");
+        };
+
+        new ProcessLifecycleOperationExecutor(properties, runner).execute(new LifecycleOperationRequest(
+                LifecycleOperation.NAMESERVER_UPDATE, "cluster-1", "old-ns:9876",
+                "new-ns:9876", null, "request-3"));
+
+        assertThat(captured).containsExactly("/opt/rocketmq/lifecycle", "nameserver-update",
+                "--cluster-id", "cluster-1", "--target", "old-ns:9876",
+                "--target-address", "new-ns:9876", "--request-id", "request-3");
+    }
+
+    @Test
+    void updateNameServerRejectsMissingReplacementBeforeLaunchingProcess() {
+        LifecycleProperties properties = enabledProperties(LifecycleOperation.NAMESERVER_UPDATE);
+        boolean[] started = {false};
+        LifecycleProcessRunner runner = (command, workingDirectory, timeout, maxOutputBytes) -> {
+            started[0] = true;
+            return LifecycleProcessResult.success("unexpected");
+        };
+
+        assertThatThrownBy(() -> new ProcessLifecycleOperationExecutor(properties, runner).execute(
+                new LifecycleOperationRequest(LifecycleOperation.NAMESERVER_UPDATE,
+                        "cluster-1", "old-ns:9876", null, null, "request-4")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400))
+                .hasMessageContaining("targetAddress");
+        assertThat(started[0]).isFalse();
+    }
+
+    @Test
+    void provisioningOperationsAreIndependentlyAllowlisted() {
+        LifecycleProperties properties = enabledProperties(LifecycleOperation.BROKER_RESTART);
+        boolean[] started = {false};
+        LifecycleProcessRunner runner = (command, workingDirectory, timeout, maxOutputBytes) -> {
+            started[0] = true;
+            return LifecycleProcessResult.success("unexpected");
+        };
+
+        for (LifecycleOperation operation : List.of(LifecycleOperation.NAMESERVER_CREATE,
+                LifecycleOperation.NAMESERVER_UPDATE)) {
+            LifecycleOperationRequest request = new LifecycleOperationRequest(operation, "cluster-1",
+                    "old-ns:9876", "new-ns:9876", null, "request-5");
+            assertThatThrownBy(() -> new ProcessLifecycleOperationExecutor(properties, runner).execute(request))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(501));
+        }
+        assertThat(started[0]).isFalse();
+    }
+
+    @Test
     void rejectsDisabledExecutionBeforeStartingAProcess() {
         LifecycleProperties properties = enabledProperties(LifecycleOperation.BROKER_RESTART);
         properties.setEnabled(false);

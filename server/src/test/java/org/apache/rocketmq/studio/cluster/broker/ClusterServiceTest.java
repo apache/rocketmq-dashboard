@@ -31,6 +31,7 @@ import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
@@ -39,6 +40,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -85,6 +87,11 @@ class ClusterServiceTest {
     private ClusterService clusterService;
 
     private ClusterVO sampleCluster;
+
+    @AfterEach
+    void clearUserContext() {
+        AuthenticatedUserContext.clear();
+    }
 
     @BeforeEach
     void setUp() {
@@ -628,15 +635,120 @@ class ClusterServiceTest {
     }
 
     @Test
-    void createNameServerShouldThrowUnsupportedWhenClusterExists() {
+    void createNameServerShouldDispatchOnlyAValidatedNewAddress() {
+        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_CREATE,
+                "10.0.0.21:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         CreateNameServerDTO command = CreateNameServerDTO.builder()
                 .clusterId("cluster-1")
-                .addr("10.0.0.21:9876")
+                .addr(" 10.0.0.21:9876 ")
+                .version("5.5.0")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.createNameServer(command),
-                "NameServer create is not implemented");
+        assertThat(clusterService.createNameServer(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_CREATE
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("10.0.0.21:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion().equals("5.5.0")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+        verify(auditService).record(eq("CREATE_NAMESERVER"), eq("NAMESERVER"),
+                eq("10.0.0.21:9876"), eq("cluster-1"),
+                org.mockito.ArgumentMatchers.contains("requestId="), eq("SUCCESS"));
+    }
+
+    @Test
+    void updateNameServerShouldDispatchOldAndNewAddressesSeparately() {
+        AuthenticatedUserContext.setUser("admin", true);
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_UPDATE,
+                "10.0.0.20:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
+        UpdateNameServerDTO command = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .newAddr(" 10.0.0.22:9876 ")
+                .version("5.5.0")
+                .build();
+
+        assertThat(clusterService.updateNameServer(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_UPDATE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress().equals("10.0.0.22:9876")
+                        && request.targetVersion().equals("5.5.0")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+    }
+
+    @Test
+    void newNameServerAddressMustNotExistOrContainMultipleEndpoints() {
+        AuthenticatedUserContext.setUser("admin", true);
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("new:9876,other:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("--unsafe:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("new:9876").version("--unsafe").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verifyNoInteractions(lifecycleOperationExecutor);
+    }
+
+    @Test
+    void updateNameServerMustHaveDistinctNonConflictingReplacementAddress() {
+        AuthenticatedUserContext.setUser("admin", true);
+        sampleCluster.setNameServers(List.of(
+                NameServerVO.builder().addr("10.0.0.20:9876").build(),
+                NameServerVO.builder().addr("10.0.0.21:9876").build()));
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpdateNameServerDTO versionOnly = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").version("5.5.0").build();
+        UpdateNameServerDTO unchanged = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").newAddr("10.0.0.20:9876").build();
+        UpdateNameServerDTO duplicate = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").newAddr("10.0.0.21:9876").build();
+
+        assertThatThrownBy(() -> clusterService.updateNameServer(versionOnly))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.updateNameServer(unchanged))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.updateNameServer(duplicate))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+        verifyNoInteractions(lifecycleOperationExecutor);
+    }
+
+    @Test
+    void nonAdminMustNotProvisionOrUpdateNameServers() {
+        AuthenticatedUserContext.setUser("reader", false);
+        CreateNameServerDTO create = CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.21:9876").build();
+        UpdateNameServerDTO update = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876")
+                .newAddr("10.0.0.22:9876").build();
+
+        assertThatThrownBy(() -> clusterService.createNameServer(create))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(403));
+        assertThatThrownBy(() -> clusterService.updateNameServer(update))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(403));
+        verifyNoInteractions(clusterRepository, lifecycleOperationExecutor);
     }
 
     @Test
@@ -645,10 +757,6 @@ class ClusterServiceTest {
         LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_RESTART,
                 "10.0.0.20:9876");
         when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
-        UpdateNameServerDTO update = UpdateNameServerDTO.builder()
-                .clusterId("cluster-1")
-                .addr("10.0.0.20:9876")
-                .build();
         RestartNameServerDTO restart = RestartNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.20:9876")
@@ -663,8 +771,6 @@ class ClusterServiceTest {
                 .addr("10.0.0.20:9876")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.updateNameServer(update),
-                "NameServer update is not implemented");
         assertThat(clusterService.restartNameServer(restart)).isSameAs(accepted);
         assertThat(clusterService.upgradeNameServer(upgrade)).isSameAs(accepted);
         assertThat(clusterService.deleteNameServer(delete)).isSameAs(accepted);
@@ -756,10 +862,12 @@ class ClusterServiceTest {
 
     @Test
     void updateNameServerShouldThrowWhenNameServerNotFound() {
+        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         UpdateNameServerDTO command = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("missing:9876")
+                .newAddr("10.0.0.22:9876")
                 .build();
 
         assertThatThrownBy(() -> clusterService.updateNameServer(command))

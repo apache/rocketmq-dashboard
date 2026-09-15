@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.cluster.lifecycle;
 /** Lifecycle actions that must be delegated to the deployment control plane. */
 public enum LifecycleOperation {
     BROKER_RESTART("broker-restart", "RESTART_BROKER", "BROKER"),
+    NAMESERVER_CREATE("nameserver-create", "CREATE_NAMESERVER", "NAMESERVER"),
+    NAMESERVER_UPDATE("nameserver-update", "UPDATE_NAMESERVER", "NAMESERVER"),
     NAMESERVER_RESTART("nameserver-restart", "RESTART_NAMESERVER", "NAMESERVER"),
     NAMESERVER_UPGRADE("nameserver-upgrade", "UPGRADE_NAMESERVER", "NAMESERVER"),
     NAMESERVER_DELETE("nameserver-delete", "DELETE_NAMESERVER", "NAMESERVER"),

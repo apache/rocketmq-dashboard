@@ -113,6 +113,9 @@ public class ProcessLifecycleOperationExecutor implements LifecycleOperationExec
         if (request.operation() == LifecycleOperation.NAMESERVER_UPGRADE) {
             requireText(request.targetVersion(), "targetVersion");
         }
+        if (request.operation() == LifecycleOperation.NAMESERVER_UPDATE) {
+            requireText(request.targetAddress(), "targetAddress");
+        }
     }
 
     private static void requireText(String value, String field) {

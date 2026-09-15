@@ -33,5 +33,8 @@ public class UpdateNameServerDTO {
     @NotBlank(message = "addr is required")
     private String addr;
 
+    @NotBlank(message = "newAddr is required")
+    private String newAddr;
+
     private String version;
 }
