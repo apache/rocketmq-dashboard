@@ -26,6 +26,8 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -426,12 +428,15 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void restartBrokerShouldReturnSuccess() throws Exception {
-        when(clusterService.restartBroker("cluster-1", "broker-0")).thenReturn(true);
+        when(clusterService.restartBroker("cluster-1", "broker-0"))
+                .thenReturn(new LifecycleOperationResult(LifecycleOperation.BROKER_RESTART,
+                        "cluster-1", "broker-0", "request-1", true, "accepted"));
 
         mockMvc.perform(post("/api/clusters/cluster-1/brokers/broker-0/restart"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.message").value("Broker restart initiated for broker-0"));
+                .andExpect(jsonPath("$.data.operation").value("BROKER_RESTART"))
+                .andExpect(jsonPath("$.data.accepted").value(true));
     }
 
     private ClusterConfigUpdateResultVO successfulUpdateResult() {

@@ -23,6 +23,8 @@ import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -292,7 +294,9 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
                 .clusterId("cluster-1")
                 .addr("127.0.0.1:9876")
                 .build();
-        when(clusterService.restartNameServer(any(RestartNameServerDTO.class))).thenReturn(true);
+        when(clusterService.restartNameServer(any(RestartNameServerDTO.class))).thenReturn(
+                new LifecycleOperationResult(LifecycleOperation.NAMESERVER_RESTART, "cluster-1",
+                        "127.0.0.1:9876", "request-1", true, "accepted"));
 
         mockMvc.perform(post("/api/nameservers/restart")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -342,7 +346,9 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
                 .clusterId("cluster-1")
                 .addr("127.0.0.1:9876")
                 .build();
-        when(clusterService.deleteNameServer(any(DeleteNameServerDTO.class))).thenReturn(true);
+        when(clusterService.deleteNameServer(any(DeleteNameServerDTO.class))).thenReturn(
+                new LifecycleOperationResult(LifecycleOperation.NAMESERVER_DELETE, "cluster-1",
+                        "127.0.0.1:9876", "request-1", true, "accepted"));
 
         mockMvc.perform(post("/api/nameservers/delete")
                         .contentType(MediaType.APPLICATION_JSON)

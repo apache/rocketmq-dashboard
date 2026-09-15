@@ -23,6 +23,8 @@ import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -66,7 +68,9 @@ class ProxyControllerTest extends WebMvcAuthTestSupport {
                 .clusterId("cluster-1")
                 .addr("127.0.0.1:8081")
                 .build();
-        when(clusterService.restartProxy(any(RestartProxyDTO.class))).thenReturn(true);
+        when(clusterService.restartProxy(any(RestartProxyDTO.class))).thenReturn(
+                new LifecycleOperationResult(LifecycleOperation.PROXY_RESTART, "cluster-1",
+                        "127.0.0.1:8081", "request-1", true, "accepted"));
 
         mockMvc.perform(post("/api/proxies/restart")
                         .contentType(MediaType.APPLICATION_JSON)

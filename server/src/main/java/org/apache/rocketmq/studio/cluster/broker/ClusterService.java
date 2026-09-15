@@ -21,6 +21,10 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationExecutor;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationRequest;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
@@ -49,6 +53,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -64,6 +69,7 @@ public class ClusterService {
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
     private final NameserverRegistryService registryService;
+    private final LifecycleOperationExecutor lifecycleOperationExecutor;
 
     // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
     private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(
@@ -567,15 +573,19 @@ public class ClusterService {
         }
     }
 
-    public boolean restartBroker(String clusterId, String brokerName) {
+    public LifecycleOperationResult restartBroker(String clusterId, String brokerName) {
         log.info("Restarting broker: {} in cluster: {}", brokerName, clusterId);
         ClusterVO cluster = clusterRepository.findById(clusterId)
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
-        if (cluster.getBrokers() == null || cluster.getBrokers().stream()
-                .noneMatch(broker -> brokerName.equals(broker.getName()))) {
+        BrokerVO broker = cluster.getBrokers() == null ? null : cluster.getBrokers().stream()
+                .filter(candidate -> brokerName.equals(candidate.getName()))
+                .findFirst()
+                .orElse(null);
+        if (broker == null) {
             throw new BusinessException(404, "Broker not found: " + brokerName);
         }
-        throw unsupportedOperation("Broker restart");
+        return dispatchLifecycle(LifecycleOperation.BROKER_RESTART, clusterId, brokerName,
+                broker.getAddr(), null);
     }
 
     public NameServerVO createNameServer(CreateNameServerDTO command) {
@@ -595,40 +605,44 @@ public class ClusterService {
         throw unsupportedOperation("NameServer update");
     }
 
-    public boolean restartNameServer(RestartNameServerDTO command) {
+    public LifecycleOperationResult restartNameServer(RestartNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Restarting NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer restart");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_RESTART, command.getClusterId(),
+                command.getAddr(), command.getAddr(), null);
     }
 
-    public boolean upgradeNameServer(UpgradeNameServerDTO command) {
+    public LifecycleOperationResult upgradeNameServer(UpgradeNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Upgrading NameServer: {} to version: {} in cluster: {}",
                 command.getAddr(), command.getTargetVersion(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer upgrade");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_UPGRADE, command.getClusterId(),
+                command.getAddr(), command.getAddr(), command.getTargetVersion());
     }
 
-    public boolean deleteNameServer(DeleteNameServerDTO command) {
+    public LifecycleOperationResult deleteNameServer(DeleteNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Deleting NameServer: {} from cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer delete");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_DELETE, command.getClusterId(),
+                command.getAddr(), command.getAddr(), null);
     }
 
-    public boolean restartProxy(RestartProxyDTO command) {
+    public LifecycleOperationResult restartProxy(RestartProxyDTO command) {
         log.info("Restarting Proxy: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireProxy(cluster, command.getAddr());
-        throw unsupportedOperation("Proxy restart");
+        return dispatchLifecycle(LifecycleOperation.PROXY_RESTART, command.getClusterId(),
+                command.getAddr(), command.getAddr(), null);
     }
 
     private void requireNameServerCommand(Object command) {
@@ -653,5 +667,46 @@ public class ClusterService {
 
     private BusinessException unsupportedOperation(String operation) {
         return new BusinessException(501, operation + " is not implemented by the current cluster provider");
+    }
+
+    private LifecycleOperationResult dispatchLifecycle(LifecycleOperation operation, String clusterId,
+                                                       String target, String targetAddress,
+                                                       String targetVersion) {
+        String requestId = UUID.randomUUID().toString();
+        LifecycleOperationRequest request = new LifecycleOperationRequest(
+                operation, clusterId, target, targetAddress, targetVersion, requestId);
+        try {
+            LifecycleOperationResult result = lifecycleOperationExecutor.execute(request);
+            recordLifecycleAudit(operation, clusterId, target, requestId, result.message(),
+                    result.accepted() ? "SUCCESS" : "FAILED");
+            return result;
+        } catch (BusinessException exception) {
+            recordLifecycleAudit(operation, clusterId, target, requestId, exception.getMessage(), "FAILED");
+            throw exception;
+        } catch (RuntimeException exception) {
+            String message = rootMessage(exception);
+            recordLifecycleAudit(operation, clusterId, target, requestId, message, "FAILED");
+            throw new BusinessException(502, "Lifecycle operation failed: " + message);
+        }
+    }
+
+    private void recordLifecycleAudit(LifecycleOperation operation, String clusterId, String target,
+                                      String requestId, String message, String result) {
+        try {
+            auditService.record(operation.auditOperation(), operation.resourceType(), target, clusterId,
+                    "requestId=" + requestId + ", message=" + (message == null ? "" : message), result);
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record lifecycle audit for {} {}: {}", operation, target,
+                    auditFailure.getMessage());
+        }
+    }
+
+    private static String rootMessage(Throwable failure) {
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null || current.getMessage().isBlank()
+                ? current.getClass().getSimpleName() : current.getMessage();
     }
 }
