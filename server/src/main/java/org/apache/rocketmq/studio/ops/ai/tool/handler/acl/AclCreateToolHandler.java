@@ -31,7 +31,7 @@ import java.util.List;
 public class AclCreateToolHandler extends MutationToolHandler<AclMutationInput, AclRuleVO> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "create ACL rule '%s:%s' in cluster '%s'.",
+            "create ACL rule '%s:%s' in instance '%s'.",
             List.of("Adds a rule to the ACL policy evaluated for broker requests."),
             List.of("The new ACL rule changes permissions for subsequent broker requests."));
 
@@ -49,14 +49,14 @@ public class AclCreateToolHandler extends MutationToolHandler<AclMutationInput, 
 
     @Override
     public ToolPlan preview(AclMutationInput input, ToolExecutionContext context) {
-        return PLAN_DESCRIPTION.builder(input.principal(), input.resource(), context.cluster())
+        return PLAN_DESCRIPTION.builder(input.principal(), input.resource(), context.instanceId())
                 .after(AclMutationInput.from(input.toRule(null)))
                 .build();
     }
 
     @Override
     public AclRuleVO execute(AclMutationInput input, ToolExecutionContext context) {
-        return aclService.createRule(input.toRule(null), context.cluster());
+        return aclService.createRule(input.toRule(null), context.instanceId());
     }
 
 }

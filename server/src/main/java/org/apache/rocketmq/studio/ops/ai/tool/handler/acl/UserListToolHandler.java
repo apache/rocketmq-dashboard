@@ -21,13 +21,13 @@ import org.apache.rocketmq.studio.instance.acl.AclService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclUserItem;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.InstanceInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class UserListToolHandler implements ToolHandler<ClusterInput, ListOutput<AclUserItem>> {
+public class UserListToolHandler implements ToolHandler<InstanceInput, ListOutput<AclUserItem>> {
     private final AclService aclService;
 
     @Override
@@ -36,14 +36,14 @@ public class UserListToolHandler implements ToolHandler<ClusterInput, ListOutput
     }
 
     @Override
-    public Class<ClusterInput> inputType() {
-        return ClusterInput.class;
+    public Class<InstanceInput> inputType() {
+        return InstanceInput.class;
     }
 
     @Override
     public ListOutput<AclUserItem> execute(
-            ClusterInput input, ToolExecutionContext context) {
-        return new ListOutput<>(aclService.listUsers(context.cluster()).stream()
+            InstanceInput input, ToolExecutionContext context) {
+        return new ListOutput<>(aclService.listUsers(context.instanceId()).stream()
                 .map(AclUserItem::from).toList());
     }
 }

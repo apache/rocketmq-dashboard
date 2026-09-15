@@ -67,12 +67,22 @@ class ToolCatalogTest {
     }
 
     @Test
-    void requiresClusterForEveryToolIncludingClusterList() {
-        Resource missingCluster = catalog(tool("rmq.cluster.list", false));
+    void requiresInstanceIdForEveryNonExemptTool() {
+        Resource missingInstanceId = catalog(tool("rmq.topic.list", false));
 
-        assertThatThrownBy(() -> ToolCatalogTestSupport.loadCatalog("1.0.0", missingCluster))
+        assertThatThrownBy(() -> ToolCatalogTestSupport.loadCatalog("1.0.0", missingInstanceId))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("must require cluster");
+                .hasMessageContaining("must require instanceId");
+    }
+
+    @Test
+    void exemptsPlatformLevelToolsFromTheInstanceIdRequirement() {
+        Resource exempt = catalog(tool("rmq.broker.list", false));
+
+        ToolCatalog catalog = ToolCatalogTestSupport.loadCatalog("1.0.0", exempt);
+
+        assertThat(catalog.getDefinition("rmq.broker.list").inputSchema())
+                .doesNotContainKey("required");
     }
 
     private static Resource catalog(String... tools) {
@@ -83,12 +93,12 @@ class ToolCatalogTest {
                 """.formatted(String.join("\n", tools)));
     }
 
-    private static String tool(String name, boolean clusterRequired) {
-        String required = clusterRequired ? """
+    private static String tool(String name, boolean instanceIdRequired) {
+        String required = instanceIdRequired ? """
                 required:
-                  - cluster
+                  - instanceId
                 properties:
-                  cluster:
+                  instanceId:
                     type: string
                     minLength: 1
                 """.indent(6) : "";

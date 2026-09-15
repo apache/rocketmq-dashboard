@@ -16,23 +16,32 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.nameserver;
 
-import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
-import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterListOutput;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverListInput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterInput;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
+/**
+ * Platform-level NameServer endpoint list (decision 26). With {@code clusterName} the resolver
+ * pins the owning instance; otherwise every Apache instance's endpoints are aggregated and
+ * deduplicated. No instanceId.
+ */
 @Component
 @RequiredArgsConstructor
 public class NameserverListToolHandler
-        implements ToolHandler<ClusterInput, ClusterListOutput<NameserverListToolHandler.Item>> {
+        implements ToolHandler<NameserverListInput, ListOutput<NameserverListToolHandler.Item>> {
 
-    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final PlatformClusterResolver clusterResolver;
 
     @Override
     public String name() {
@@ -40,24 +49,24 @@ public class NameserverListToolHandler
     }
 
     @Override
-    public Class<ClusterInput> inputType() {
-        return ClusterInput.class;
+    public Class<NameserverListInput> inputType() {
+        return NameserverListInput.class;
     }
 
     @Override
-    public ClusterListOutput<Item> execute(
-            ClusterInput input, ToolExecutionContext context) {
-        String endpoint = runtimeAdminClientResolver.resolveEndpoint(context.cluster());
-        List<Item> nodes = java.util.Arrays.stream(endpoint.split("[;,]"))
-                .map(String::trim).filter(address -> !address.isEmpty()).distinct().sorted()
-                .map(address -> new Item(address, address, address, null, null, "UNKNOWN", null)).toList();
-        return new ClusterListOutput<>(context.cluster(), nodes);
-    }
-
-    private static Item project(NameServerVO nameserver) {
-        String address = nameserver.getAddr();
-        String status = nameserver.getStatus() == null ? "UNKNOWN" : nameserver.getStatus().name();
-        return new Item(address, address, address, null, null, status, null);
+    public ListOutput<Item> execute(NameserverListInput input, ToolExecutionContext context) {
+        Set<String> addresses = new TreeSet<>();
+        if (StringUtils.hasText(input.clusterName())) {
+            addresses.addAll(clusterResolver.require(input.clusterName()).nameServerAddrs());
+        } else {
+            for (InstanceVO instance : clusterResolver.manageableInstances()) {
+                addresses.addAll(PlatformClusterResolver.splitEndpoints(instance.getEndpoint()));
+            }
+        }
+        List<Item> nodes = addresses.stream()
+                .map(address -> new Item(address, address, address, null, null, "UNKNOWN", null))
+                .toList();
+        return new ListOutput<>(nodes);
     }
 
     public record Item(

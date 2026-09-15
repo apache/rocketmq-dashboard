@@ -16,5 +16,5 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.topic;
 
-public record TopicRouteInput(String cluster, String topic, String namespace) {
+public record TopicRouteInput(String instanceId, String topicName) {
 }

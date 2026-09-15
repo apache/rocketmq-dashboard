@@ -36,12 +36,12 @@ public class CapabilityResolver {
     private final InstanceProviderRegistry providerRegistry;
     private final InstanceResolver instanceResolver;
 
-    public Set<String> resolve(String cluster) {
-        if (cluster == null || cluster.isBlank()) {
-            throw ToolError.CAPABILITY_CLUSTER_REQUIRED.exception();
+    public Set<String> resolve(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw ToolError.CAPABILITY_INSTANCE_REQUIRED.exception();
         }
-        InstanceVO instance = instanceResolver.findByName(cluster)
-                .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(cluster));
+        InstanceVO instance = instanceResolver.findByName(instanceId)
+                .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(instanceId));
         return resolve(instance);
     }
 

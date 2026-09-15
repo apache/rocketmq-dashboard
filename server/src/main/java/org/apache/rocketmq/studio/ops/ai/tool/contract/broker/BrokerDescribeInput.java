@@ -16,5 +16,6 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.broker;
 
-public record BrokerDescribeInput(String cluster, String broker) {
+/** Addressed by the clusterName + brokerName pair (brokerName repeats across clusters, decision 26). */
+public record BrokerDescribeInput(String clusterName, String brokerName) {
 }

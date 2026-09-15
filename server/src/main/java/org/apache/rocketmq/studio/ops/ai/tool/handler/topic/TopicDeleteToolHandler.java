@@ -31,7 +31,7 @@ import java.util.List;
 public class TopicDeleteToolHandler extends MutationToolHandler<TopicInput, Void> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "delete topic '%s' in cluster '%s'.",
+            "delete topic '%s' in instance '%s'.",
             List.of("Deletes the topic route and makes retained messages unavailable."),
             List.of("Deleting the topic makes its retained messages unavailable to producers and consumers."));
 
@@ -50,16 +50,16 @@ public class TopicDeleteToolHandler extends MutationToolHandler<TopicInput, Void
     @Override
     public ToolPlan preview(TopicInput input, ToolExecutionContext context) {
         TopicVO current = metadataService.getTopic(
-                context.cluster(), null, input.topic());
+                context.instanceId(), null, input.topicName());
         TopicInput before = TopicInput.from(current);
-        return PLAN_DESCRIPTION.builder(input.topic(), context.cluster())
+        return PLAN_DESCRIPTION.builder(input.topicName(), context.instanceId())
                 .before(before)
                 .build();
     }
 
     @Override
     public Void execute(TopicInput input, ToolExecutionContext context) {
-        metadataService.deleteTopic(context.cluster(), input.topic());
+        metadataService.deleteTopic(context.instanceId(), input.topicName());
         return null;
     }
 

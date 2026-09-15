@@ -45,10 +45,13 @@ public class AlertRuleListToolHandler
         return AlertRuleListInput.class;
     }
 
+    /**
+     * Platform-level listing: returns global rules plus rules bound to any Instance.
+     */
     @Override
     public ListOutput<AlertRuleListItem> execute(
             AlertRuleListInput input, ToolExecutionContext context) {
-        return new ListOutput<>(alertService.findRules(context.cluster()).stream()
+        return new ListOutput<>(alertService.listRules().stream()
                 .filter(rule -> matchesEnabled(rule, input.enabled()))
                 .filter(rule -> matchesSearch(rule, input.search()))
                 .map(AlertRuleListItem::from)

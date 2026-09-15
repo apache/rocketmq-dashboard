@@ -23,25 +23,26 @@ import org.springframework.beans.BeanUtils;
 
 /** Optional values stay absent; the input schema rejects explicit JSON nulls. */
 public record TopicUpdateInput(
-        String cluster,
-        String topic,
-        String namespace,
+        String instanceId,
+        String topicName,
         TopicType type,
         Integer writeQueues,
         Integer readQueues,
         TopicPerm perm,
         String remark) {
 
-    /** Applies supplied values to a copy of the current configuration, without creation defaults. */
+    private static final int DEFAULT_QUEUE_COUNT = 8;
+    private static final TopicType DEFAULT_TYPE = TopicType.NORMAL;
+    private static final TopicPerm DEFAULT_PERM = TopicPerm.RW;
+
+    /**
+     * Applies supplied values to a copy of the current configuration, without creation defaults.
+     * The topic type is immutable: it is never merged from the input, only the creation path
+     * ({@link #toTopicVO()}) honours it.
+     */
     public TopicVO mergeWith(TopicVO current) {
         TopicVO merged = new TopicVO();
         BeanUtils.copyProperties(current, merged);
-        if (namespace != null) {
-            merged.setNamespace(namespace);
-        }
-        if (type != null) {
-            merged.setType(type);
-        }
         if (writeQueues != null) {
             merged.setWriteQueues(writeQueues);
         }
@@ -55,5 +56,18 @@ public record TopicUpdateInput(
             merged.setRemark(remark);
         }
         return merged;
+    }
+
+    /** Builds a new configuration from the supplied values, filling creation defaults for absent fields. */
+    public TopicVO toTopicVO() {
+        TopicVO vo = new TopicVO();
+        vo.setName(topicName);
+        vo.setInstanceId(instanceId);
+        vo.setRemark(remark);
+        vo.setWriteQueues(writeQueues != null ? writeQueues : DEFAULT_QUEUE_COUNT);
+        vo.setReadQueues(readQueues != null ? readQueues : DEFAULT_QUEUE_COUNT);
+        vo.setType(type != null ? type : DEFAULT_TYPE);
+        vo.setPerm(perm != null ? perm : DEFAULT_PERM);
+        return vo;
     }
 }

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.acl;
 
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
@@ -23,16 +24,20 @@ import org.apache.rocketmq.studio.instance.acl.AclService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclRuleItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclListInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.service.ToolSchemaValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.DefaultResourceLoader;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -47,6 +52,12 @@ class AclListToolHandlerTest {
 
     @InjectMocks
     private AclListToolHandler handler;
+
+    private final ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+    private final ToolSchemaValidator validator = new ToolSchemaValidator(
+            catalog,
+            new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(),
+            new JsonMapper());
 
     @Test
     void executeShouldListRulesAndProjectItems() {
@@ -63,20 +74,47 @@ class AclListToolHandlerTest {
                 .aclVersion("v1")
                 .gmtCreate(LocalDateTime.of(2024, 1, 1, 12, 0))
                 .build();
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(),
                 eq("cluster-1"), eq(1), eq(20)))
                 .thenReturn(PageResult.of(List.of(rule), 1, 1, 20));
 
         PageOutput<AclRuleItem> result = handler.execute(new AclListInput(
-                "cluster-1", null, null, null, null, null, new PageRequest(1, 20)), context("cluster-1"));
+                "cluster-1", null, null, null, null, new PageRequest(1, 20)), context("cluster-1"));
 
         assertThat(result.total()).isEqualTo(1L);
         assertThat(result.items()).hasSize(1);
         AclRuleItem item = result.items().getFirst();
-        assertThat(item.id()).isEqualTo(1L);
+        assertThat(item.id()).isEqualTo("1");
         assertThat(item.principal()).isEqualTo("user-1");
         assertThat(item.decision()).isEqualTo("GRANT");
-        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(),
                 eq("cluster-1"), eq(1), eq(20));
+    }
+
+    /**
+     * Regression for §14 defect 1: a rule that only carries the schema-required fields
+     * ({@code id}/{@code principal}/{@code resource}) leaves every optional field {@code null}.
+     * Before the fix the numeric {@code id} plus the missing optional fields violated the
+     * {@code rmq.acl.list} output schema and the listing crashed whenever any row existed.
+     */
+    @Test
+    void executeShouldSatisfyOutputSchemaWhenOptionalRuleFieldsAreNull() {
+        AclRuleVO sparseRule = AclRuleVO.builder()
+                .id(7L)
+                .principal("user-1")
+                .resource("TopicA")
+                .build();
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(),
+                eq("cluster-1"), eq(1), eq(20)))
+                .thenReturn(PageResult.of(List.of(sparseRule), 1, 1, 20));
+
+        PageOutput<AclRuleItem> result = handler.execute(new AclListInput(
+                "cluster-1", null, null, null, null, new PageRequest(1, 20)), context("cluster-1"));
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().getFirst().id()).isEqualTo("7");
+        assertThat(result.items().getFirst().resourceType()).isNull();
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.acl.list"), result)).doesNotThrowAnyException();
     }
 }

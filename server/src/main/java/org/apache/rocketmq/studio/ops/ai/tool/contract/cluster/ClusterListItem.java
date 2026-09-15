@@ -17,24 +17,16 @@
 package org.apache.rocketmq.studio.ops.ai.tool.contract.cluster;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 
+/**
+ * Platform-level physical cluster/broker overview row (decision 25/26): one row per broker
+ * replica, keyed by the physical cluster name.
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ClusterListItem(
-        String id,
-        String name,
-        ClusterType type,
-        ClusterStatus status,
+        String cluster,
+        String address,
+        String brokerName,
+        Long brokerId,
         String version) {
-
-    public static ClusterListItem from(ClusterVO cluster) {
-        return new ClusterListItem(
-                cluster.getId(),
-                cluster.getName(),
-                cluster.getType(),
-                cluster.getStatus(),
-                cluster.getVersion());
-    }
 }

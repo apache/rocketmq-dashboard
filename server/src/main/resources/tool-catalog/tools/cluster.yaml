@@ -11,13 +11,9 @@ tools:
       - CLUSTER_TOPOLOGY
     inputSchema:
       type: object
+      required: []
       additionalProperties: false
-      required:
-        - cluster
       properties:
-        cluster:
-          type: string
-          minLength: 1
         status:
           type: string
           minLength: 1
@@ -32,30 +28,26 @@ tools:
           items:
             type: object
             required:
-              - id
-              - name
-              - type
-              - status
+              - cluster
+              - address
+              - brokerName
+              - brokerId
             additionalProperties: false
             properties:
-              id:
+              cluster:
                 type: string
                 minLength: 1
-              name:
+              address:
                 type: string
                 minLength: 1
-              type:
-                enum:
-                  - V4_DIRECT
-                  - V5_PROXY_LOCAL
-                  - V5_PROXY_CLUSTER
-              status:
-                enum:
-                  - healthy
-                  - warning
-                  - error
-                  - offline
+              brokerName:
+                type: string
+                minLength: 1
+              brokerId:
+                type: integer
               version:
-                type: string
+                type:
+                  - string
+                  - 'null'
     viewHint: table
     deprecated: false

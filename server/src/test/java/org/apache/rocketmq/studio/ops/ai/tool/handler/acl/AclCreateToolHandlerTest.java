@@ -56,7 +56,7 @@ class AclCreateToolHandlerTest {
     void createPreviewsExactlyTheConfigurationSentToTheService(Map<String, Object> configuration) {
         assertThat(handler.name()).isEqualTo("rmq.acl.create");
         Map<String, Object> input = new LinkedHashMap<>(configuration);
-        input.put("cluster", "cluster-1");
+        input.put("instanceId", "cluster-1");
         input.put("dry_run", true);
         ToolExecutionContext execution = context("cluster-1", input);
         ToolPlan plan = handler.preview(
@@ -92,6 +92,6 @@ class AclCreateToolHandlerTest {
                 Map.of("principal", "user-1", "resource", "TopicA",
                         "resourceType", "TOPIC", "resourcePattern", "LITERAL",
                         "actions", List.of("PUB", "SUB"), "decision", "GRANT",
-                        "scope", "CLUSTER", "aclVersion", "2"));
+                        "scope", "CLUSTER"));
     }
 }

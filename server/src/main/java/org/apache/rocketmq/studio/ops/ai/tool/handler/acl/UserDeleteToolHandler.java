@@ -31,7 +31,7 @@ import java.util.List;
 public class UserDeleteToolHandler extends MutationToolHandler<ResourceDeleteInput, Void> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "delete user '%s' in cluster '%s'.",
+            "delete user '%s' in instance '%s'.",
             List.of("Deletes the ACL identity and its generated credentials."),
             List.of());
 
@@ -50,15 +50,15 @@ public class UserDeleteToolHandler extends MutationToolHandler<ResourceDeleteInp
     @Override
     public ToolPlan preview(ResourceDeleteInput input, ToolExecutionContext context) {
         AclUserItem before = AclUserItem.from(aclService.getUser(
-                input.id(), context.cluster()));
-        return PLAN_DESCRIPTION.builder(input.id(), context.cluster())
+                input.id(), context.instanceId()));
+        return PLAN_DESCRIPTION.builder(input.id(), context.instanceId())
                 .before(before)
                 .build();
     }
 
     @Override
     public Void execute(ResourceDeleteInput input, ToolExecutionContext context) {
-        aclService.deleteUser(input.id(), context.cluster());
+        aclService.deleteUser(input.id(), context.instanceId());
         return null;
     }
 }

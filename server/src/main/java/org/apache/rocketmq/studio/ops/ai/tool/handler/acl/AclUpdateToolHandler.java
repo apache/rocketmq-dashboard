@@ -32,7 +32,7 @@ import java.util.List;
 public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, AclRuleVO> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "update ACL rule '%s' in cluster '%s'.",
+            "update ACL rule '%s' in instance '%s'.",
             List.of("Replaces the selected ACL rule."),
             List.of("The updated ACL rule changes permissions for subsequent broker requests."));
 
@@ -50,10 +50,10 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
 
     @Override
     public ToolPlan preview(AclMutationInput input, ToolExecutionContext context) {
-        String instanceId = context.cluster();
+        String instanceId = context.instanceId();
         AclMutationInput before = AclMutationInput.from(aclService.getRule(input.id(), instanceId));
         AclMutationInput after = AclMutationInput.from(input.toRule(parseId(input.id())));
-        return PLAN_DESCRIPTION.builder(input.id(), context.cluster())
+        return PLAN_DESCRIPTION.builder(input.id(), context.instanceId())
                 .before(before)
                 .after(after)
                 .warningIf(before.equals(after),
@@ -63,7 +63,7 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
 
     @Override
     public AclRuleVO execute(AclMutationInput input, ToolExecutionContext context) {
-        return aclService.updateRule(input.toRule(parseId(input.id())), context.cluster());
+        return aclService.updateRule(input.toRule(parseId(input.id())), context.instanceId());
     }
 
     private static Long parseId(String id) {

@@ -16,12 +16,14 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.acl;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
 
 import java.util.List;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record AclRuleItem(
-        Long id,
+        String id,
         String principal,
         String resource,
         String resourceType,
@@ -34,7 +36,7 @@ public record AclRuleItem(
 
     public static AclRuleItem from(AclRuleVO rule) {
         return new AclRuleItem(
-                rule.getId(),
+                rule.getId() == null ? null : rule.getId().toString(),
                 rule.getPrincipal(),
                 rule.getResource(),
                 rule.getResourceType(),

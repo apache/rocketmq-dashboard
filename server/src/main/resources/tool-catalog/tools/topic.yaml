@@ -4,7 +4,7 @@ tools:
     cli:
       resource: topic
       verb: list
-    description: List RocketMQ topics in one Studio cluster.
+    description: List RocketMQ topics in one Studio Instance.
     riskLevel: L1
     permission: topic:read
     requiredCapabilities:
@@ -12,11 +12,16 @@ tools:
     inputSchema:
       type: object
       required:
-        - cluster
+        - instanceId
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+          description: Fuzzy topic name filter.
           minLength: 1
         type:
           enum:
@@ -25,9 +30,6 @@ tools:
             - DELAY
             - TRANSACTION
             - LITE
-        search:
-          type: string
-          minLength: 1
     outputSchema:
       type: object
       required:
@@ -50,8 +52,6 @@ tools:
               name:
                 type: string
                 minLength: 1
-              namespace:
-                type: string
               clusterId:
                 type: string
               type:
@@ -78,212 +78,11 @@ tools:
                 type: integer
     viewHint: table
     deprecated: false
-  - name: rmq.topic.create
+  - name: rmq.topic.detail
     cli:
       resource: topic
-      verb: create
-    description: Create a RocketMQ topic.
-    riskLevel: L2
-    permission: topic:write
-    requiredCapabilities:
-      - TOPIC_MANAGEMENT
-    inputSchema:
-      type: object
-      required:
-        - cluster
-        - topic
-      additionalProperties: false
-      properties:
-        cluster:
-          type: string
-          minLength: 1
-        topic:
-          type: string
-          minLength: 1
-        namespace:
-          type: string
-          minLength: 1
-        type:
-          enum:
-            - NORMAL
-            - FIFO
-            - DELAY
-            - TRANSACTION
-            - LITE
-        writeQueues:
-          type: integer
-          minimum: 1
-        readQueues:
-          type: integer
-          minimum: 1
-        perm:
-          enum:
-            - RW
-            - RO
-            - WO
-        remark:
-          type: string
-        confirm_token:
-          type: string
-          minLength: 1
-        dry_run:
-          type: boolean
-          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
-    outputSchema:
-      type: object
-      required:
-        - status
-        - cluster
-        - plan
-      additionalProperties: false
-      properties:
-        status:
-          enum:
-            - PLANNED
-            - EXECUTED
-        cluster:
-          type: string
-        confirm_token:
-          type: string
-        plan:
-          type: object
-          required:
-            - summary
-            - impact
-            - before
-            - after
-            - warnings
-          additionalProperties: false
-          properties:
-            summary:
-              type: string
-            impact:
-              type: array
-              items:
-                type: string
-            before:
-              type: object
-            after:
-              type: object
-            warnings:
-              type: array
-              items:
-                type: string
-        result:
-          type: object
-    viewHint: object
-    deprecated: false
-  - name: rmq.topic.update
-    cli:
-      resource: topic
-      verb: update
-    description: Update a RocketMQ topic.
-    riskLevel: L2
-    permission: topic:write
-    requiredCapabilities:
-      - TOPIC_MANAGEMENT
-    inputSchema:
-      type: object
-      required:
-        - cluster
-        - topic
-      additionalProperties: false
-      anyOf:
-        - required:
-            - type
-        - required:
-            - writeQueues
-        - required:
-            - readQueues
-        - required:
-            - perm
-        - required:
-            - remark
-      properties:
-        cluster:
-          type: string
-          minLength: 1
-        topic:
-          type: string
-          minLength: 1
-        namespace:
-          type: string
-          minLength: 1
-        type:
-          enum:
-            - NORMAL
-            - FIFO
-            - DELAY
-            - TRANSACTION
-            - LITE
-        writeQueues:
-          type: integer
-          minimum: 1
-        readQueues:
-          type: integer
-          minimum: 1
-        perm:
-          enum:
-            - RW
-            - RO
-            - WO
-        remark:
-          type: string
-        confirm_token:
-          type: string
-          minLength: 1
-        dry_run:
-          type: boolean
-          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
-    outputSchema:
-      type: object
-      required:
-        - status
-        - cluster
-        - plan
-      additionalProperties: false
-      properties:
-        status:
-          enum:
-            - PLANNED
-            - EXECUTED
-        cluster:
-          type: string
-        confirm_token:
-          type: string
-        plan:
-          type: object
-          required:
-            - summary
-            - impact
-            - before
-            - after
-            - warnings
-          additionalProperties: false
-          properties:
-            summary:
-              type: string
-            impact:
-              type: array
-              items:
-                type: string
-            before:
-              type: object
-            after:
-              type: object
-            warnings:
-              type: array
-              items:
-                type: string
-        result:
-          type: object
-    viewHint: object
-    deprecated: false
-  - name: rmq.topic.describe
-    cli:
-      resource: topic
-      verb: describe
-    description: Describe one RocketMQ topic, including configuration, consumer groups and broker routes.
+      verb: detail
+    description: "Show full detail of one RocketMQ topic: configuration, consumer groups, broker routes and per-queue offset stats. queueStats is omitted (without failing the call) when the Instance lacks REMOTING capability or offset stats collection fails."
     riskLevel: L1
     permission: topic:read
     requiredCapabilities:
@@ -291,23 +90,21 @@ tools:
     inputSchema:
       type: object
       required:
-        - cluster
-        - topic
+        - instanceId
+        - topicName
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
           minLength: 1
-        topic:
-          type: string
-          minLength: 1
-        namespace:
+        topicName:
           type: string
           minLength: 1
     outputSchema:
       type: object
       required:
-        - cluster
+        - instanceId
         - name
         - writeQueues
         - readQueues
@@ -318,13 +115,11 @@ tools:
         - routes
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
         name:
           type: string
           minLength: 1
-        namespace:
-          type: string
         clusterId:
           type: string
         type:
@@ -415,6 +210,28 @@ tools:
                 type: boolean
               topicSysFlag:
                 type: integer
+        queueStats:
+          type: array
+          description: Per-queue offset stats; omitted when the Instance lacks REMOTING capability or stats collection fails.
+          items:
+            type: object
+            required:
+              - brokerName
+              - queueId
+              - minOffset
+              - maxOffset
+            additionalProperties: false
+            properties:
+              brokerName:
+                type: string
+              queueId:
+                type: integer
+              minOffset:
+                type: integer
+              maxOffset:
+                type: integer
+              lastUpdateTimestamp:
+                type: integer
     viewHint: object
     deprecated: false
   - name: rmq.topic.route
@@ -430,17 +247,15 @@ tools:
     inputSchema:
       type: object
       required:
-        - cluster
-        - topic
+        - instanceId
+        - topicName
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
           type: string
+          description: Studio Instance identifier.
           minLength: 1
-        topic:
-          type: string
-          minLength: 1
-        namespace:
+        topicName:
           type: string
           minLength: 1
     outputSchema:
@@ -493,51 +308,61 @@ tools:
                 type: integer
     viewHint: table
     deprecated: false
-  - name: rmq.topic.send
+  - name: rmq.topic.update
     cli:
       resource: topic
-      verb: send
-    description: Send one message to a RocketMQ topic.
+      verb: update
+    description: Update a RocketMQ topic.
     riskLevel: L2
     permission: topic:write
     requiredCapabilities:
       - TOPIC_MANAGEMENT
-      - REMOTING
     inputSchema:
       type: object
       required:
-        - cluster
-        - topic
-        - body
+        - instanceId
+        - topicName
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
           type: string
           minLength: 1
-        topic:
+        type:
+          description: "Only used when the topic does not exist (creation); the topic type cannot be changed after creation."
+          enum:
+            - NORMAL
+            - FIFO
+            - DELAY
+            - TRANSACTION
+            - LITE
+        writeQueues:
+          type: integer
+          minimum: 1
+        readQueues:
+          type: integer
+          minimum: 1
+        perm:
+          enum:
+            - RW
+            - RO
+            - WO
+        remark:
           type: string
-          minLength: 1
-        tag:
-          type: string
-        key:
-          type: string
-        body:
-          type: string
-          minLength: 1
-        properties:
-          type: string
-          description: JSON object string of message properties, e.g. '{"key1":"value1"}'.
-        confirm_token:
-          type: string
-          minLength: 1
         dry_run:
           type: boolean
           description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
     outputSchema:
       type: object
       required:
         - status
-        - cluster
+        - instanceId
         - plan
       additionalProperties: false
       properties:
@@ -545,7 +370,7 @@ tools:
           enum:
             - PLANNED
             - EXECUTED
-        cluster:
+        instanceId:
           type: string
         confirm_token:
           type: string
@@ -575,17 +400,6 @@ tools:
                 type: string
         result:
           type: object
-          required:
-            - msgId
-            - sendTime
-          additionalProperties: false
-          properties:
-            msgId:
-              type: string
-            offsetMsgId:
-              type: string
-            sendTime:
-              type: integer
     viewHint: object
     deprecated: false
   - name: rmq.topic.delete
@@ -600,16 +414,20 @@ tools:
     inputSchema:
       type: object
       required:
-        - cluster
-        - topic
+        - instanceId
+        - topicName
       additionalProperties: false
       properties:
-        cluster:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
           type: string
           minLength: 1
-        topic:
-          type: string
-          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
         confirm_token:
           type: string
           minLength: 1
@@ -618,14 +436,11 @@ tools:
         reason:
           type: string
           minLength: 1
-        dry_run:
-          type: boolean
-          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
     outputSchema:
       type: object
       required:
         - status
-        - cluster
+        - instanceId
         - plan
       additionalProperties: false
       properties:
@@ -633,7 +448,7 @@ tools:
           enum:
             - PLANNED
             - EXECUTED
-        cluster:
+        instanceId:
           type: string
         confirm_token:
           type: string

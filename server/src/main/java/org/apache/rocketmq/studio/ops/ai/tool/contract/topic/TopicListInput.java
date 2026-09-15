@@ -16,5 +16,5 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.topic;
 
-public record TopicListInput(String cluster, String type, String search) {
+public record TopicListInput(String instanceId, String topicName, String type) {
 }

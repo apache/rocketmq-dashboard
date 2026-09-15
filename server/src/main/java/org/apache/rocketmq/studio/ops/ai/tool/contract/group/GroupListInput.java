@@ -16,5 +16,5 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.group;
 
-public record GroupListInput(String cluster, String search) {
+public record GroupListInput(String instanceId, String groupName) {
 }

@@ -19,8 +19,12 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.proxy;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ClusterListOutput;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyListInput;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedCluster;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -37,30 +41,75 @@ import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.c
 class ProxyListToolHandlerTest {
 
     @Mock
+    private PlatformClusterResolver clusterResolver;
+
+    @Mock
     private ClusterProvider clusterProvider;
 
     @InjectMocks
     private ProxyListToolHandler handler;
 
     @Test
-    void executeShouldListProxies() {
+    void listsProxiesOfResolvedClusterTest() {
         assertThat(handler.name()).isEqualTo("rmq.proxy.list");
-        ProxyVO proxy = ProxyVO.builder()
-                .addr("127.0.0.1:8081")
+        when(clusterResolver.require("rmq-a")).thenReturn(new ManagedCluster(
+                "rmq-a", "instance-a", List.of(), List.of()));
+        when(clusterProvider.discoverProxies("instance-a"))
+                .thenReturn(List.of(proxy("10.0.0.1:8081")));
+
+        ListOutput<ProxyVO> result = handler.execute(
+                new ProxyListInput("rmq-a"), context("instance-a"));
+
+        assertThat(result.items())
+                .extracting(ProxyVO::getAddr)
+                .containsExactly("10.0.0.1:8081");
+    }
+
+    @Test
+    void aggregatesAcrossInstancesAndDedupesByAddrTest() {
+        when(clusterResolver.manageableInstances()).thenReturn(List.of(
+                instance("instance-a"), instance("instance-b")));
+        when(clusterProvider.discoverProxies("instance-a"))
+                .thenReturn(List.of(proxy("10.0.0.1:8081")));
+        when(clusterProvider.discoverProxies("instance-b"))
+                .thenReturn(List.of(proxy("10.0.0.1:8081"), proxy("10.0.0.2:8081")));
+
+        ListOutput<ProxyVO> result = handler.execute(
+                new ProxyListInput(null), context("instance-a"));
+
+        assertThat(result.items())
+                .extracting(ProxyVO::getAddr)
+                .containsExactly("10.0.0.1:8081", "10.0.0.2:8081");
+    }
+
+    @Test
+    void skipsFailingInstancesDuringAggregationTest() {
+        when(clusterResolver.manageableInstances()).thenReturn(List.of(
+                instance("instance-down"), instance("instance-up")));
+        when(clusterProvider.discoverProxies("instance-down"))
+                .thenThrow(new IllegalStateException("unreachable"));
+        when(clusterProvider.discoverProxies("instance-up"))
+                .thenReturn(List.of(proxy("10.0.0.3:8081")));
+
+        ListOutput<ProxyVO> result = handler.execute(
+                new ProxyListInput(null), context("instance-a"));
+
+        assertThat(result.items())
+                .extracting(ProxyVO::getAddr)
+                .containsExactly("10.0.0.3:8081");
+    }
+
+    private static InstanceVO instance(String name) {
+        return InstanceVO.builder().name(name).vendor(InstanceVendor.APACHE).build();
+    }
+
+    private static ProxyVO proxy(String addr) {
+        return ProxyVO.builder()
+                .addr(addr)
                 .status(ClusterStatus.healthy)
-                .connections(10)
+                .connections(0)
                 .grpcPort(8081)
                 .remotingPort(8080)
                 .build();
-        when(clusterProvider.discoverProxies("cluster-1")).thenReturn(List.of(proxy));
-
-        ClusterListOutput<ProxyVO> result = handler.execute(
-                new ClusterInput("cluster-1"), context("cluster-1"));
-
-        assertThat(result.cluster()).isEqualTo("cluster-1");
-        assertThat(result.items()).containsExactly(proxy);
-        assertThat(result.items().getFirst().getAddr()).isEqualTo("127.0.0.1:8081");
-        assertThat(result.items().getFirst().getStatus()).isEqualTo(ClusterStatus.healthy);
-        assertThat(result.items().getFirst().getGrpcPort()).isEqualTo(8081);
     }
 }

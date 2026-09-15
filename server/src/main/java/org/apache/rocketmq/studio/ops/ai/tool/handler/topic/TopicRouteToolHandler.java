@@ -49,7 +49,7 @@ public class TopicRouteToolHandler
     public ListOutput<TopicRouteItem> execute(
             TopicRouteInput input, ToolExecutionContext context) {
         List<BrokerRouteVO> routes =
-                metadataService.getTopicRoutes(context.cluster(), input.topic());
+                metadataService.getTopicRoutes(context.instanceId(), input.topicName());
         return new ListOutput<>(routes.stream()
                 .map(TopicRouteItem::from)
                 .toList());

@@ -32,7 +32,7 @@ import java.util.List;
 public class UserCreateToolHandler extends MutationToolHandler<UserCreateInput, AclUserItem> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "create user '%s' in cluster '%s'.",
+            "create user '%s' in instance '%s'.",
             List.of("Creates an ACL identity; credentials are generated only during apply."),
             List.of());
 
@@ -50,13 +50,13 @@ public class UserCreateToolHandler extends MutationToolHandler<UserCreateInput, 
 
     @Override
     public ToolPlan preview(UserCreateInput input, ToolExecutionContext context) {
-        String instanceId = context.cluster();
+        String instanceId = context.instanceId();
         AclUserItem before = aclService.listUsers(instanceId).stream()
                 .filter(user -> input.username().equals(user.getUsername()))
                 .findFirst().map(AclUserItem::from).orElse(null);
         AclUserItem after = new AclUserItem(
                 null, input.username(), Boolean.TRUE.equals(input.admin()), input.clusters());
-        return PLAN_DESCRIPTION.builder(input.username(), context.cluster())
+        return PLAN_DESCRIPTION.builder(input.username(), context.instanceId())
                 .before(before)
                 .after(after)
                 .build();
@@ -69,6 +69,6 @@ public class UserCreateToolHandler extends MutationToolHandler<UserCreateInput, 
                 .admin(Boolean.TRUE.equals(input.admin()))
                 .clusters(input.clusters())
                 .build();
-        return AclUserItem.from(aclService.createUser(user, context.cluster()));
+        return AclUserItem.from(aclService.createUser(user, context.instanceId()));
     }
 }

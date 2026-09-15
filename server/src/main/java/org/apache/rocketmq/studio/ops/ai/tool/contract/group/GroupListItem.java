@@ -26,7 +26,6 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GroupListItem(
         String name,
-        String namespace,
         String clusterId,
         SubscriptionMode subscriptionMode,
         ConsumeType consumeType,
@@ -38,7 +37,6 @@ public record GroupListItem(
     public static GroupListItem from(ConsumerGroupVO group) {
         return new GroupListItem(
                 group.getName(),
-                group.getNamespace(),
                 group.getClusterId(),
                 group.getSubscriptionMode(),
                 group.getConsumeType(),

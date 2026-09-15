@@ -21,9 +21,8 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 public record GroupInput(
-        String cluster,
-        String group,
-        String namespace,
+        String instanceId,
+        String groupName,
         SubscriptionMode subscriptionMode,
         ConsumeType consumeType,
         String subscriptionDataType,
@@ -33,9 +32,8 @@ public record GroupInput(
 
     public ConsumerGroupVO toConsumerGroupVO() {
         ConsumerGroupVO vo = new ConsumerGroupVO();
-        vo.setName(group);
-        vo.setNamespace(namespace);
-        vo.setInstanceId(cluster);
+        vo.setName(groupName);
+        vo.setInstanceId(instanceId);
         vo.setSubscriptionDataType(subscriptionDataType);
         vo.setDeliveryOrderType(deliveryOrderType);
         if (retryMaxTimes != null) {
@@ -52,7 +50,6 @@ public record GroupInput(
     public ConsumerGroupVO mergeWith(ConsumerGroupVO current) {
         ConsumerGroupVO merged = new ConsumerGroupVO();
         org.springframework.beans.BeanUtils.copyProperties(current, merged);
-        if (namespace != null) merged.setNamespace(namespace);
         if (subscriptionMode != null) merged.setSubscriptionMode(subscriptionMode);
         if (consumeType != null) merged.setConsumeType(consumeType);
         if (subscriptionDataType != null) merged.setSubscriptionDataType(subscriptionDataType);
@@ -66,7 +63,6 @@ public record GroupInput(
         return new GroupInput(
                 group.getInstanceId(),
                 group.getName(),
-                group.getNamespace(),
                 group.getSubscriptionMode(),
                 group.getConsumeType(),
                 group.getSubscriptionDataType(),

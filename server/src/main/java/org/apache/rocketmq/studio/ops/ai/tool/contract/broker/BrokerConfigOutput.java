@@ -32,9 +32,9 @@ public record BrokerConfigOutput(
         List<BrokerStatus> brokers,
         List<ConfigDifference> differences) {
 
-    public static BrokerConfigOutput from(BrokerConfigDiffVO diff, String instanceId) {
+    public static BrokerConfigOutput from(BrokerConfigDiffVO diff) {
         return new BrokerConfigOutput(
-                instanceId,
+                diff.getCluster(),
                 diff.isComplete(),
                 diff.isDriftDetected(),
                 diff.getBrokerCount(),

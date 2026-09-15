@@ -4,19 +4,15 @@ tools:
     cli:
       resource: alert-rule
       verb: list
-    description: List alert rules explicitly bound to the selected Studio Instance; global and other Instance rules are excluded.
+    description: List alert rules across the whole Studio deployment (platform-level, including global rules and rules bound to any Instance).
     riskLevel: L1
     permission: alert:read
     requiredCapabilities: []
     inputSchema:
       type: object
-      required:
-        - cluster
+      required: []
       additionalProperties: false
       properties:
-        cluster:
-          type: string
-          minLength: 1
         search:
           type: string
           minLength: 1

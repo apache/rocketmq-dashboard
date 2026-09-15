@@ -31,8 +31,9 @@ import java.util.List;
 public class ConsumerGroupDeleteToolHandler extends MutationToolHandler<GroupInput, Void> {
 
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
-            "delete consumer group '%s' in cluster '%s'.",
-            List.of("Removes the consumer group's broker-side subscription configuration."),
+            "delete consumer group '%s' in instance '%s'.",
+            List.of("Removes the consumer group's broker-side subscription configuration.",
+                    "Best-effort deletes the group's dead-letter topic (%DLQ%<group>)."),
             List.of("Deleting the group removes its broker-side subscription configuration."));
 
     private final MetadataService metadataService;
@@ -50,16 +51,16 @@ public class ConsumerGroupDeleteToolHandler extends MutationToolHandler<GroupInp
     @Override
     public ToolPlan preview(GroupInput input, ToolExecutionContext context) {
         ConsumerGroupVO current = metadataService.requireConsumerGroup(
-                context.cluster(), input.group());
+                context.instanceId(), input.groupName());
         GroupInput before = GroupInput.from(current);
-        return PLAN_DESCRIPTION.builder(input.group(), context.cluster())
+        return PLAN_DESCRIPTION.builder(input.groupName(), context.instanceId())
                 .before(before)
                 .build();
     }
 
     @Override
     public Void execute(GroupInput input, ToolExecutionContext context) {
-        metadataService.deleteConsumerGroup(context.cluster(), input.group());
+        metadataService.deleteConsumerGroup(context.instanceId(), input.groupName());
         return null;
     }
 }

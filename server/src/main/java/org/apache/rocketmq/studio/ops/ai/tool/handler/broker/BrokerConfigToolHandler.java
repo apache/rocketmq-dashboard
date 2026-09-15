@@ -18,17 +18,27 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.broker;
 
 import org.apache.rocketmq.studio.cluster.broker.BrokerConfigDiffService;
 import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
-import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
-import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.BrokerClusterInput;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * Read-only Broker cluster configuration diff (decision 20/26), addressed by physical cluster
+ * name. The resolver maps clusterName to its owning instance, so {@link
+ * BrokerConfigDiffService#compare} receives the physical cluster key plus the instance and the
+ * cluster-details lookup resolves the live topology (fixes the §15.5.5 root cause where the
+ * instance id was passed as the cluster key). No mutation is exposed. No instanceId argument.
+ */
 @Component
 @RequiredArgsConstructor
 public class BrokerConfigToolHandler implements ToolHandler<BrokerClusterInput, BrokerConfigOutput> {
 
+    private final PlatformClusterResolver clusterResolver;
     private final BrokerConfigDiffService brokerConfigDiffService;
 
     @Override
@@ -42,9 +52,10 @@ public class BrokerConfigToolHandler implements ToolHandler<BrokerClusterInput, 
     }
 
     @Override
-    public BrokerConfigOutput execute(
-            BrokerClusterInput input, ToolExecutionContext context) {
-        BrokerConfigDiffVO diff = brokerConfigDiffService.compareForInstance(context.cluster());
-        return BrokerConfigOutput.from(diff, context.cluster());
+    public BrokerConfigOutput execute(BrokerClusterInput input, ToolExecutionContext context) {
+        String clusterName = input.clusterName();
+        String instanceId = clusterResolver.resolveInstanceId(clusterName);
+        BrokerConfigDiffVO diff = brokerConfigDiffService.compare(clusterName, instanceId);
+        return BrokerConfigOutput.from(diff);
     }
 }
