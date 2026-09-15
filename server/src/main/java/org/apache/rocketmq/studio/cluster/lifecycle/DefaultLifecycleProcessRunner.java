@@ -38,6 +38,8 @@ import java.util.concurrent.TimeoutException;
 @Component
 final class DefaultLifecycleProcessRunner implements LifecycleProcessRunner {
 
+    private static final long PROCESS_STOP_GRACE_SECONDS = 1;
+
     private final ExecutorService outputReaders = Executors.newVirtualThreadPerTaskExecutor();
 
     @Override
@@ -54,6 +56,7 @@ final class DefaultLifecycleProcessRunner implements LifecycleProcessRunner {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to start lifecycle executable", exception);
         }
+        closeInput(process);
 
         Future<OutputCapture> output = outputReaders.submit(
                 () -> readOutput(process.getInputStream(), maxOutputBytes));
@@ -76,16 +79,44 @@ final class DefaultLifecycleProcessRunner implements LifecycleProcessRunner {
         return new LifecycleProcessResult(process.exitValue(), capture.value(), false, capture.truncated());
     }
 
-    private static void stop(Process process) {
-        process.destroy();
+    private static void closeInput(Process process) {
         try {
-            if (!process.waitFor(1, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-            }
+            process.getOutputStream().close();
+        } catch (IOException exception) {
+            stop(process);
+            throw new IllegalStateException("Failed to close lifecycle executable input", exception);
+        }
+    }
+
+    private static void stop(Process process) {
+        ProcessHandle root = process.toHandle();
+        List<ProcessHandle> descendants = root.descendants().toList();
+        root.destroy();
+        destroy(descendants, false);
+        try {
+            process.waitFor(PROCESS_STOP_GRACE_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
+        } finally {
+            // A wrapper may exit promptly while a child ignores TERM and keeps running.
+            destroy(descendants, true);
+            root.descendants().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
         }
+        if (root.isAlive()) {
+            root.destroyForcibly();
+        }
+    }
+
+    private static void destroy(List<ProcessHandle> processes, boolean forcibly) {
+        processes.stream()
+                .filter(ProcessHandle::isAlive)
+                .forEach(process -> {
+                    if (forcibly) {
+                        process.destroyForcibly();
+                    } else {
+                        process.destroy();
+                    }
+                });
     }
 
     private static OutputCapture awaitOutput(Future<OutputCapture> output) {

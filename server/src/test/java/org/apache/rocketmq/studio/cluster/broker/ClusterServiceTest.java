@@ -640,7 +640,7 @@ class ClusterServiceTest {
     }
 
     @Test
-    void nameServerOperationsShouldThrowUnsupportedWhenNameServerExists() {
+    void nameServerLifecycleOperationsShouldDispatchValidatedRequests() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_RESTART,
                 "10.0.0.20:9876");
@@ -668,7 +668,21 @@ class ClusterServiceTest {
         assertThat(clusterService.restartNameServer(restart)).isSameAs(accepted);
         assertThat(clusterService.upgradeNameServer(upgrade)).isSameAs(accepted);
         assertThat(clusterService.deleteNameServer(delete)).isSameAs(accepted);
-        verify(lifecycleOperationExecutor, org.mockito.Mockito.times(3)).execute(any());
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_RESTART
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_UPGRADE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion().equals("5.3.0")));
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_DELETE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
     }
 
     @Test
@@ -711,7 +725,33 @@ class ClusterServiceTest {
         assertThat(clusterService.restartProxy(command)).isSameAs(accepted);
         verify(lifecycleOperationExecutor).execute(argThat(request ->
                 request.operation() == LifecycleOperation.PROXY_RESTART
-                        && request.target().equals("10.0.0.10:8081")));
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("10.0.0.10:8081")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
+    }
+
+    @Test
+    void restartProxyShouldRejectNullCommand() {
+        assertThatThrownBy(() -> clusterService.restartProxy(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(clusterRepository, lifecycleOperationExecutor);
+    }
+
+    @Test
+    void lifecycleFailureShouldBeAuditedAndPropagated() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        BusinessException timeout = new BusinessException(504, "Lifecycle operation timed out");
+        when(lifecycleOperationExecutor.execute(any())).thenThrow(timeout);
+
+        assertThatThrownBy(() -> clusterService.restartBroker("cluster-1", "broker-0"))
+                .isSameAs(timeout);
+        verify(auditService).record(eq("RESTART_BROKER"), eq("BROKER"), eq("broker-0"),
+                eq("cluster-1"), org.mockito.ArgumentMatchers.contains("Lifecycle operation timed out"),
+                eq("FAILED"));
     }
 
     @Test
@@ -826,6 +866,7 @@ class ClusterServiceTest {
     private static LifecycleOperationResult acceptedResult(LifecycleOperation operation, String target) {
         return new LifecycleOperationResult(operation, "cluster-1", target, "request-1", true, "accepted");
     }
+
     @Test
     void instanceConfigUpdateUsesDiscoveredPhysicalClusterAndSelectedConnection() {
         sampleCluster.setId("DefaultCluster");
