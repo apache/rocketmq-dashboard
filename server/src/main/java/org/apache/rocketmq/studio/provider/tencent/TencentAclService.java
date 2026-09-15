@@ -102,6 +102,12 @@ public class TencentAclService {
                 if (role == null || !StringUtils.hasText(role.getRoleName())) {
                     continue;
                 }
+                // A role with both permissions disabled has no effective ACL rule; it is still
+                // listed as a user so operators can re-enable permissions.
+                if (!Boolean.TRUE.equals(role.getPermRead())
+                        && !Boolean.TRUE.equals(role.getPermWrite())) {
+                    continue;
+                }
                 if (requestedPrincipal != null
                         && !requestedPrincipal.equals(role.getRoleName())) {
                     continue;
@@ -239,14 +245,21 @@ public class TencentAclService {
         return createRule(instanceId, rule);
     }
 
+    /**
+     * Revokes the cluster-wide rule for a Tencent role by clearing PermRead/PermWrite.
+     * The role account itself must stay: on Tencent a role also owns the credentials, so
+     * calling DeleteRole here would silently remove the ACL user.
+     */
     public void deleteRule(String instanceId, String principal) {
         Context context = resolve(instanceId);
         String roleName = requireRoleName(principal, "ACL principal");
-        DeleteRoleRequest request = new DeleteRoleRequest();
+        ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
         request.setRole(roleName);
+        request.setPermRead(false);
+        request.setPermWrite(false);
         clientFactory.call(context.credentialId(), context.regionId(),
-                client -> client.DeleteRole(request));
+                client -> client.ModifyRole(request));
     }
 
     private static String requireRulePrincipal(AclRuleVO rule) {
