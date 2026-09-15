@@ -161,7 +161,15 @@ const ProducerPage = () => {
 
   const handleTopicChange = () => {
     producerGroupRequestIdRef.current += 1;
+    // Invalidate any in-flight connection query and drop the previous topic's results so
+    // the table/readiness banner cannot keep showing stale rows (and so export cannot
+    // relabel them under the newly selected topic).
+    queryRequestIdRef.current += 1;
+    queryInFlightRef.current = null;
     setProducerGroups([]);
+    setConnectionList([]);
+    setConnectionSummary(null);
+    setLoading(false);
     form.setFieldValue('producerGroup', undefined);
   };
 

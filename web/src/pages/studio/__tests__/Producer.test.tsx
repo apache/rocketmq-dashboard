@@ -299,6 +299,41 @@ describe('ProducerPage', () => {
     expect(screen.getByText('JAVA: 2')).toBeInTheDocument();
   });
 
+  it('clears stale connection results when the topic changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-a',
+          clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('producer-a')).toBeInTheDocument();
+
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('payment-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('producer-a')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+  });
+
   it('exports the current producer connection diagnostics as CSV', async () => {
     const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       expect(blob).toBeInstanceOf(Blob);
