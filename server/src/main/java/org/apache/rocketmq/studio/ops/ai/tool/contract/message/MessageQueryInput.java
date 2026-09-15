@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
+
 /**
  * Identifier order is the dispatch priority: msgId, then uniqueKey, then key.
  */
@@ -26,5 +28,12 @@ public record MessageQueryInput(
         String uniqueKey,
         String key,
         Long startTime,
-        Long endTime) {
+        Long endTime,
+        PageRequest page,
+        boolean includeBody) {
+
+    public MessageQueryInput(String instanceId, String topicName, String msgId,
+                             String uniqueKey, String key, Long startTime, Long endTime) {
+        this(instanceId, topicName, msgId, uniqueKey, key, startTime, endTime, null, false);
+    }
 }

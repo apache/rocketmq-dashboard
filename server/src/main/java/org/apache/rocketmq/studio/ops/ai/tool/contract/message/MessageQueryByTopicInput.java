@@ -16,10 +16,19 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
+
 public record MessageQueryByTopicInput(
         String instanceId,
         String topicName,
         String tag,
         Long startTime,
-        Long endTime) {
+        Long endTime,
+        PageRequest page,
+        boolean includeBody) {
+
+    public MessageQueryByTopicInput(String instanceId, String topicName, String tag,
+                                    Long startTime, Long endTime) {
+        this(instanceId, topicName, tag, startTime, endTime, null, false);
+    }
 }
