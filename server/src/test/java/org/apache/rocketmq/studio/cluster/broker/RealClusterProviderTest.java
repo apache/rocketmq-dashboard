@@ -236,6 +236,30 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void managedDiscoveryLabelsTheSameEndpointItActuallyConnectsTo() throws Exception {
+        properties.setNamesrvAddr("env-namesrv:9876");
+        runtimeProperties.setEnabled(true);
+        OpsConnectionSettings first = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "first:9876", false, false);
+        OpsConnectionSettings second = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "second:9876", false, false);
+        when(runtimeConnection.current()).thenReturn(first, second);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sampleClusterInfo());
+        when(adminFactory.executeDefault(eq(first), isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(3);
+                    return action.apply(admin);
+                });
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).extracting(ClusterVO::getEndpoint).containsExactly("first:9876");
+        verify(adminFactory).executeDefault(eq(first), isNull(), eq("anonymous"), any());
+        org.mockito.Mockito.verify(runtimeConnection).current();
+    }
+
+    @Test
     void discoversAndRefreshesEachClusterWithOnlyItsOwnBrokers() throws Exception {
         properties.setNamesrvAddr("10.0.0.1:9876");
         stubDefaultClusterInfo("10.0.0.1:9876", multiClusterInfo());
