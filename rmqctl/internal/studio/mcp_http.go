@@ -45,9 +45,9 @@ var noRedirectPolicy = func(*http.Request, []*http.Request) error {
 // It handles initialize/initialized lifecycle, automatic reconnection on
 // session termination, and forwarding of server-initiated notifications.
 type MCPClientSession struct {
-	cluster   string
-	transport mcptransport.HTTPConnection
-	timeout   time.Duration
+	instanceID string
+	transport  mcptransport.HTTPConnection
+	timeout    time.Duration
 
 	closeOnce     sync.Once
 	closed        chan struct{}
@@ -101,7 +101,7 @@ func (c Client) NewMCPClientSession(target Target) (*MCPClientSession, error) {
 		return nil, err
 	}
 	session := &MCPClientSession{
-		cluster:       target.Cluster,
+		instanceID:    target.InstanceID,
 		transport:     transport,
 		timeout:       target.Timeout,
 		closed:        make(chan struct{}),

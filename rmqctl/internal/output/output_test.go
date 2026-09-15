@@ -26,7 +26,7 @@ func TestToolCallSummary(t *testing.T) {
 	buf := &bytes.Buffer{}
 	result := map[string]any{
 		"status":        "PLANNED",
-		"cluster":       "dev",
+		"instanceId":    "dev",
 		"confirm_token": "confirmation-token",
 		"plan":          map[string]any{"summary": "Create topic orders"},
 	}

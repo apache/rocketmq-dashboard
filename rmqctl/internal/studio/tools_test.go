@@ -54,9 +54,9 @@ func TestCallTool(t *testing.T) {
 
 	client := NewClient(server.Client())
 	result, err := client.CallTool(context.Background(), Target{
-		Server: server.URL, Cluster: "instance-dev",
+		Server: server.URL, InstanceID: "instance-dev",
 		Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: time.Second,
-	}, "rmq.topic.list", map[string]any{"cluster": "dev"})
+	}, "rmq.topic.list", map[string]any{"instanceId": "instance-dev"})
 	resultMap, ok := result.(map[string]any)
 	if err != nil || !ok || resultMap["items"] == nil {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -70,13 +70,13 @@ func TestCallToolKeepsCatalogControlsInArguments(t *testing.T) {
 			t.Fatal(err)
 		}
 		if request.Arguments["dry_run"] != true ||
-			request.Arguments["topic"] != "orders" {
+			request.Arguments["topicName"] != "orders" {
 			t.Errorf("unexpected transport request: %#v", request)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"code": 200, "message": "success", "data": map[string]any{
 				"status":        "PLANNED",
-				"cluster":       "dev",
+				"instanceId":    "instance-dev",
 				"confirm_token": "confirmation", "plan": map[string]any{"summary": "create"},
 			},
 		})
@@ -85,10 +85,10 @@ func TestCallToolKeepsCatalogControlsInArguments(t *testing.T) {
 
 	client := NewClient(server.Client())
 	result, err := client.CallTool(context.Background(), Target{
-		Server: server.URL, Cluster: "instance-dev",
+		Server: server.URL, InstanceID: "instance-dev",
 		Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: time.Second,
-	}, "rmq.topic.create", map[string]any{
-		"cluster": "dev", "topic": "orders", "dry_run": true,
+	}, "rmq.topic.update", map[string]any{
+		"instanceId": "instance-dev", "topicName": "orders", "dry_run": true,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	toolcatalog "github.com/apache/rocketmq-dashboard/rmqctl/internal/catalog"
 	mcptransport "github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -33,7 +34,7 @@ import (
 // 404/session-terminated errors.
 func (session *MCPClientSession) SendMessage(ctx context.Context, payload json.RawMessage) (json.RawMessage, bool, error) {
 	var bindErr error
-	payload, bindErr = bindToolInstance(payload, session.cluster)
+	payload, bindErr = bindToolInstance(payload, session.instanceID)
 	if bindErr != nil {
 		return nil, false, bindErr
 	}
@@ -271,19 +272,38 @@ func (session *MCPClientSession) enqueueNotification(payload json.RawMessage) {
 	}
 }
 
-// bindToolInstance fills only an absent tools/call argument. Explicit values remain subject
-// to the server's canonical Instance identity check against X-RMQ-Cluster.
-func bindToolInstance(payload json.RawMessage, cluster string) (json.RawMessage, error) {
+// bindToolInstance passes the explicit --instance-id value through to tools/call
+// arguments, but only for tools whose catalog input schema declares an instance
+// identifier field (instanceId, or the transitional cluster name). Platform-level
+// tools (no instance field in the schema) and tools unknown to the catalog are
+// left untouched. Values explicitly provided by the MCP client are preserved and
+// remain subject to the server's canonical Instance identity check against the
+// x-rmq-instance-id header.
+func bindToolInstance(payload json.RawMessage, instanceID string) (json.RawMessage, error) {
 	var message map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &message); err != nil {
 		return nil, err
 	}
 	var method string
-	if err := json.Unmarshal(message["method"], &method); err != nil || method != "tools/call" || cluster == "" {
+	if err := json.Unmarshal(message["method"], &method); err != nil || method != "tools/call" || instanceID == "" {
 		return payload, nil
 	}
 	var params map[string]json.RawMessage
 	if err := json.Unmarshal(message["params"], &params); err != nil || params == nil {
+		return payload, nil
+	}
+	var toolName string
+	if raw, ok := params["name"]; ok {
+		if err := json.Unmarshal(raw, &toolName); err != nil {
+			return payload, nil
+		}
+	}
+	tool, exists := toolcatalog.LookupTool(toolName)
+	if !exists {
+		return payload, nil
+	}
+	fieldName, declaresInstance := toolcatalog.InstanceFieldName(tool.InputSchema)
+	if !declaresInstance {
 		return payload, nil
 	}
 	arguments := map[string]json.RawMessage{}
@@ -292,10 +312,10 @@ func bindToolInstance(payload json.RawMessage, cluster string) (json.RawMessage,
 			return payload, nil
 		}
 	}
-	if _, exists := arguments["cluster"]; exists {
+	if _, exists := arguments[fieldName]; exists {
 		return payload, nil
 	}
-	arguments["cluster"], _ = json.Marshal(cluster)
+	arguments[fieldName], _ = json.Marshal(instanceID)
 	params["arguments"], _ = json.Marshal(arguments)
 	message["params"], _ = json.Marshal(params)
 	return json.Marshal(message)

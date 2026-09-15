@@ -70,6 +70,9 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 			if runtime.options.context != "" {
 				stdioArgs = append(stdioArgs, "--context", runtime.options.context)
 			}
+			if runtime.options.instanceID != "" {
+				stdioArgs = append(stdioArgs, "--instance-id", runtime.options.instanceID)
+			}
 			if runtime.options.timeout != studio.DefaultTimeout {
 				stdioArgs = append(stdioArgs, "--timeout", runtime.options.timeout.String())
 			}

@@ -27,6 +27,7 @@ import (
 type option struct {
 	context    string
 	configPath string
+	instanceID string
 	output     string
 	timeout    time.Duration
 	yes        bool
@@ -44,6 +45,8 @@ func (a *App) newCommand(opts *option) (*cobra.Command, error) {
 	}
 	cmd.PersistentFlags().StringVar(&opts.context, "context", "", "config context name")
 	cmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "config file path")
+	cmd.PersistentFlags().StringVar(&opts.instanceID, "instance-id", "",
+		"Studio Instance identifier for tool calls and request signing (required; never defaulted from the context)")
 	cmd.PersistentFlags().DurationVar(&opts.timeout, "timeout", studio.DefaultTimeout, "request timeout")
 	cmd.PersistentFlags().StringVarP(&opts.output, "output", "o", output.FormatTable, "output format: table, json, or yaml")
 	cmd.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "skip the interactive confirmation prompt for L2/L3 operations")

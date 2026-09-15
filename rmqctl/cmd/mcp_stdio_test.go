@@ -47,4 +47,32 @@ func TestMCPConfigEmitsOnlyContextAndConfigReferences(t *testing.T) {
 		strings.Contains(output, "--cluster") || strings.Contains(output, "--server") {
 		t.Fatalf("config leaked or duplicated context fields: %s", output)
 	}
+	if strings.Contains(output, "--instance-id") {
+		t.Fatalf("config must not invent --instance-id when it is unset: %s", output)
+	}
+}
+
+// TestMCPConfigCarriesExplicitInstanceID verifies that an explicitly set
+// --instance-id is forwarded into the generated MCP client snippet, since
+// mcp stdio requires it for request signing and the x-rmq-instance-id header.
+func TestMCPConfigCarriesExplicitInstanceID(t *testing.T) {
+	app := &App{}
+	runtime := commandRuntime{options: &option{
+		context: "prod", configPath: "/tmp/rmqctl.yaml", instanceID: "instance-prod",
+		output: "table", timeout: studio.DefaultTimeout,
+	}}
+	cmd := app.newMCPConfigCommand(runtime)
+	stdout := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetArgs([]string{})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	output := stdout.String()
+	for _, want := range []string{`"--instance-id"`, `"instance-prod"`} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("config missing %s: %s", want, output)
+		}
+	}
 }

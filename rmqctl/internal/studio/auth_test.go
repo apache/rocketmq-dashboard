@@ -26,7 +26,7 @@ type hmacGoldenVector struct {
 	Name             string `json:"name"`
 	AccessKey        string `json:"accessKey"`
 	SecretKey        string `json:"secretKey"`
-	Cluster          string `json:"cluster"`
+	InstanceID       string `json:"instanceId"`
 	Timestamp        string `json:"timestamp"`
 	Method           string `json:"method"`
 	Path             string `json:"path"`
@@ -38,7 +38,7 @@ type hmacGoldenVector struct {
 func TestSigningRoundTripperMatchesGoldenVectors(t *testing.T) {
 	for _, vector := range loadHMACGoldenVectors(t) {
 		t.Run(vector.Name, func(t *testing.T) {
-			canonical := canonicalRequest(vector.AccessKey, vector.Cluster, vector.Timestamp,
+			canonical := canonicalRequest(vector.AccessKey, vector.InstanceID, vector.Timestamp,
 				vector.Method, vector.Path)
 			if canonical != vector.CanonicalRequest {
 				t.Fatalf("canonical request mismatch:\ngot:\n%s\nwant:\n%s", canonical, vector.CanonicalRequest)
@@ -70,7 +70,7 @@ func TestSigningRoundTripperMatchesGoldenVectors(t *testing.T) {
 				},
 				target: Target{
 					Server:     "https://studio.example.com",
-					Cluster:    vector.Cluster,
+					InstanceID: vector.InstanceID,
 					Credential: Credential{AccessKey: vector.AccessKey, SecretKey: vector.SecretKey},
 				},
 				base: roundTripFunc(func(signed *http.Request) (*http.Response, error) {
@@ -79,7 +79,7 @@ func TestSigningRoundTripperMatchesGoldenVectors(t *testing.T) {
 					if signed.Header.Get("Authorization") != wantAuthorization {
 						t.Fatalf("Authorization = %q, want %q", signed.Header.Get("Authorization"), wantAuthorization)
 					}
-					if signed.Header.Get(HeaderInstance) != vector.Cluster {
+					if signed.Header.Get(HeaderInstance) != vector.InstanceID {
 						t.Fatalf("signed headers = %#v", signed.Header)
 					}
 					if signed.Header.Get(HeaderTimestamp) != vector.Timestamp {
@@ -115,7 +115,7 @@ func loadHMACGoldenVectors(t *testing.T) []hmacGoldenVector {
 	if !ok {
 		t.Fatal("resolve test source path")
 	}
-	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "testdata", "auth-hmac-vectors.json")
+	path := filepath.Join(filepath.Dir(source), "testdata", "auth-hmac-vectors.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read required HMAC golden vectors: %v", err)

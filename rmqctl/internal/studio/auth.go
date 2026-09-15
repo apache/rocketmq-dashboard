@@ -20,8 +20,8 @@ import (
 
 const (
 	HMACAlgorithm   = "RMQ-HMAC-SHA256"
-	HeaderInstance  = "X-RMQ-Cluster"
-	HeaderTimestamp = "X-RMQ-Timestamp"
+	HeaderInstance  = "x-rmq-instance-id"
+	HeaderTimestamp = "x-rmq-timestamp"
 )
 
 type AuthTransport struct {
@@ -50,7 +50,7 @@ func signedHTTPClient(client *http.Client, target Target) (*http.Client, error) 
 func (transport AuthTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	clone := request.Clone(request.Context())
 	clone.Header = request.Header.Clone()
-	clone.Header.Set(HeaderInstance, transport.target.Cluster)
+	clone.Header.Set(HeaderInstance, transport.target.InstanceID)
 	now := time.Now
 	if transport.now != nil {
 		now = transport.now
@@ -67,7 +67,7 @@ func (transport AuthTransport) RoundTrip(request *http.Request) (*http.Response,
 
 	canonical := canonicalRequest(
 		transport.target.Credential.AccessKey,
-		transport.target.Cluster,
+		transport.target.InstanceID,
 		timestamp,
 		clone.Method,
 		signedPath,
@@ -81,13 +81,14 @@ func (transport AuthTransport) RoundTrip(request *http.Request) (*http.Response,
 }
 
 // canonicalRequest builds the string-to-sign for HMAC authentication. The
-// method and escaped path/query bind the request target. The body is not read
-// or authenticated by this protocol. See docs/mcp-hmac.md.
-func canonicalRequest(accessKey, cluster, timestamp, method, path string) string {
+// third line is the Studio instance identifier supplied via --instance-id.
+// The method and escaped path/query bind the request target. The body is not
+// read or authenticated by this protocol. See docs/mcp-hmac.md.
+func canonicalRequest(accessKey, instanceID, timestamp, method, path string) string {
 	return strings.Join([]string{
 		HMACAlgorithm,
 		accessKey,
-		cluster,
+		instanceID,
 		timestamp,
 		method,
 		path,

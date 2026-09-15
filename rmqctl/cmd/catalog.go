@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	toolcatalog "github.com/apache/rocketmq-dashboard/rmqctl/internal/catalog"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
@@ -93,8 +94,27 @@ func newToolCommand(runtime commandRuntime, tool toolcatalog.Tool) (*cobra.Comma
 }
 
 func bindSchemaArguments(cmd *cobra.Command, toolName string, schema toolcatalog.InputSchema) (argumentBinder, error) {
+	return bindSchemaArgumentsAtDepth(cmd, toolName, schema, 0)
+}
+
+// bindSchemaArgumentsAtDepth registers one flag per leaf field. At the top
+// level (depth 0) the instance identifier field (instanceId, or the
+// transitional cluster name in the pre-regeneration catalog) is skipped: its
+// value is supplied exclusively by the global persistent --instance-id flag,
+// which avoids registering a conflicting per-tool flag and keeps a single
+// source of truth for the instance identity.
+func bindSchemaArgumentsAtDepth(cmd *cobra.Command, toolName string, schema toolcatalog.InputSchema, depth int) (argumentBinder, error) {
+	instanceField := ""
+	if depth == 0 {
+		if name, ok := toolcatalog.InstanceFieldName(schema); ok {
+			instanceField = name
+		}
+	}
 	binder := argumentBinder{bindings: make([]argumentBinding, 0, len(schema.Fields))}
 	for _, field := range schema.Fields {
+		if field.Name == instanceField {
+			continue
+		}
 		usage := schemaFlagUsage(field)
 		binding := argumentBinding{name: field.Name, flag: field.Flag}
 		switch field.Kind {
@@ -102,7 +122,7 @@ func bindSchemaArguments(cmd *cobra.Command, toolName string, schema toolcatalog
 			if field.Object == nil {
 				return argumentBinder{}, fmt.Errorf("missing object schema for field %q in tool %q", field.Name, toolName)
 			}
-			object, err := bindSchemaArguments(cmd, toolName, *field.Object)
+			object, err := bindSchemaArgumentsAtDepth(cmd, toolName, *field.Object, depth+1)
 			if err != nil {
 				return argumentBinder{}, err
 			}
@@ -168,12 +188,16 @@ func runTool(
 	if err != nil {
 		return err
 	}
-	if suppliedCluster, supplied := arguments["cluster"]; supplied {
-		if err := validateExplicitCluster(suppliedCluster, target.Cluster); err != nil {
-			return err
-		}
-	} else {
-		arguments["cluster"] = target.Cluster
+	// Fill client-side defaults (x-client-default: NOW) before required
+	// validation and argument assembly so a schema-required field with a
+	// client default is self-consistent. Explicit flags always win.
+	applyClientDefaults(tool, arguments)
+	// Pass the explicit --instance-id value through to tools whose schema
+	// declares the instance identifier (decision 7: pass-through of the
+	// caller's explicit value, not a default injection). Platform-level
+	// tools have no instance field and only use it for signing/headers.
+	if instanceField, ok := toolcatalog.InstanceFieldName(tool.InputSchema); ok {
+		arguments[instanceField] = target.InstanceID
 	}
 	if err := validateSchemaArguments(tool, tool.InputSchema, arguments); err != nil {
 		return err
@@ -181,6 +205,35 @@ func runTool(
 
 	if err := confirmRisk(cmd, runtime, tool, arguments); err != nil {
 		return err
+	}
+
+	// L2/L3 mutations require a server-issued confirm_token from a matching
+	// dry-run preview before they execute. When --yes is supplied without an
+	// explicit --confirm-token or --dry-run, transparently run the preview first
+	// to obtain the token so callers need not script the two-phase handshake
+	// manually. L1 tools, explicit dry-runs, and calls that already carry a
+	// confirm_token are left untouched.
+	if tool.RiskLevel != "L1" && runtime.options.yes {
+		if _, hasToken := arguments["confirm_token"]; !hasToken {
+			if dryRun, _ := arguments["dry_run"].(bool); !dryRun {
+				preview := make(map[string]any, len(arguments)+1)
+				for key, value := range arguments {
+					preview[key] = value
+				}
+				preview["dry_run"] = true
+				previewResult, err := runtime.client.CallTool(cmd.Context(), target, tool.Name, preview)
+				if err != nil {
+					return err
+				}
+				mutation, err := types.DecodeMutationOutput(previewResult)
+				if err != nil {
+					return err
+				}
+				if mutation.ConfirmToken != "" {
+					arguments["confirm_token"] = mutation.ConfirmToken
+				}
+			}
+		}
 	}
 
 	result, err := runtime.client.CallTool(cmd.Context(), target, tool.Name, arguments)
@@ -197,29 +250,31 @@ func runTool(
 	return renderTable(out, tool, result)
 }
 
-// validateExplicitCluster rejects a --cluster value that does not match the
-// authenticated context Instance. The server independently enforces the same
-// check, but failing early in the CLI avoids sending credentials to the wrong
-// endpoint and gives the user an actionable message.
-func validateExplicitCluster(supplied any, contextCluster string) error {
-	cluster, ok := supplied.(string)
-	if !ok || strings.TrimSpace(cluster) == "" {
-		return invalidArgument("--cluster must be a non-empty Studio Instance identifier")
+// nowMillis returns the current Unix epoch milliseconds. It is a variable so
+// tests can pin the clock when asserting x-client-default: NOW fills.
+var nowMillis = func() int64 { return time.Now().UnixMilli() }
+
+// applyClientDefaults fills top-level fields annotated with the catalog
+// extension x-client-default: NOW when the user did not pass the matching
+// flag. binder.arguments only records flags explicitly set on the command
+// line, so absence from arguments is exactly "not supplied by the user".
+// Filling happens before required validation so required fields with a client
+// default (e.g. group reset-offset --timestamp) validate cleanly. The catalog
+// generator rejects x-client-default on nested properties, so only top-level
+// fields need to be considered.
+func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) {
+	for _, field := range tool.InputSchema.Fields {
+		if field.ClientDefault != toolcatalog.ClientDefaultNow {
+			continue
+		}
+		if argumentPresent(arguments, field.Name) {
+			continue
+		}
+		arguments[field.Name] = nowMillis()
 	}
-	cluster = strings.TrimSpace(cluster)
-	if cluster == contextCluster {
-		return nil
-	}
-	return types.NewCLIError(
-		types.CodeInvalidArgument,
-		fmt.Sprintf("--cluster %q does not match the current context Instance %q", cluster, contextCluster),
-		"Switch context with 'config use-context' or omit --cluster to use the current context.")
 }
 
 func schemaFlagUsage(field toolcatalog.Field) string {
-	if field.Name == "cluster" {
-		return "Studio Instance identifier (defaults to the selected context; must identify the same Instance)"
-	}
 	usage := field.Description
 	if usage == "" {
 		usage = strings.ReplaceAll(field.Flag, "-", " ")

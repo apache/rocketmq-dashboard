@@ -71,14 +71,16 @@ func testEnv(name string) string {
 // used by config tests that do not need credential resolution.
 func emptyEnv(string) string { return "" }
 
-// newTestConfig builds a single-context config.Config pointing at serverURL
-// with the given instance suffix. The context uses env: credential references that
-// testEnv can resolve.
-func newTestConfig(serverURL, instanceSuffix string) config.Config {
+// newTestConfig builds a single-context config.Config pointing at serverURL.
+// Contexts no longer store a cluster/instance identifier (decision 7); the
+// instance is supplied via the global --instance-id flag that
+// executeTestAppWithInstance prepends to the command arguments. The context
+// uses env: credential references that testEnv can resolve.
+func newTestConfig(serverURL string) config.Config {
 	return config.Config{
 		CurrentContext: "test",
 		Contexts: map[string]config.Context{"test": {
-			Server: serverURL, Cluster: "instance-" + instanceSuffix,
+			Server: serverURL,
 			Credential: config.CredentialRef{
 				AccessKeyRef: "env:RMQ_TEST_AK", SecretKeyRef: "env:RMQ_TEST_SK",
 			},
@@ -112,10 +114,12 @@ func executeTestAppWithInstance(t *testing.T, client *http.Client, serverURL, in
 	app.Store.Getenv = testEnv
 	app.confirm = stubConfirmReject
 	configPath := newTestConfigPath(t)
-	if err := app.Store.Save(configPath, newTestConfig(serverURL, instanceSuffix)); err != nil {
+	if err := app.Store.Save(configPath, newTestConfig(serverURL)); err != nil {
 		t.Fatal(err)
 	}
-	arguments = append([]string{"--config", configPath}, arguments...)
+	arguments = append([]string{
+		"--config", configPath, "--instance-id", "instance-" + instanceSuffix,
+	}, arguments...)
 	exitCode := app.Execute(arguments)
 	return stdout.String(), stderr.String(), exitCode
 }
@@ -147,11 +151,13 @@ func executeTestAppWithStdin(t *testing.T, client *http.Client, serverURL, insta
 		return nil
 	}
 	configPath := newTestConfigPath(t)
-	if err := app.Store.Save(configPath, newTestConfig(serverURL, instanceSuffix)); err != nil {
+	if err := app.Store.Save(configPath, newTestConfig(serverURL)); err != nil {
 		t.Fatal(err)
 	}
 	app.In = strings.NewReader(stdinContent)
-	arguments = append([]string{"--config", configPath}, arguments...)
+	arguments = append([]string{
+		"--config", configPath, "--instance-id", "instance-" + instanceSuffix,
+	}, arguments...)
 	exitCode := app.Execute(arguments)
 	return stdout.String(), stderr.String(), exitCode
 }

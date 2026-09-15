@@ -39,7 +39,7 @@ const (
 
 type Target struct {
 	Server     string
-	Cluster    string
+	InstanceID string
 	Credential Credential
 	Timeout    time.Duration
 }
@@ -64,8 +64,8 @@ func (t Target) validate() error {
 	if server.User != nil || server.RawQuery != "" || server.Fragment != "" {
 		return fmt.Errorf("studio server URL must not contain user info, a query, or a fragment")
 	}
-	if strings.TrimSpace(t.Cluster) == "" {
-		return fmt.Errorf("studio target requires cluster")
+	if strings.TrimSpace(t.InstanceID) == "" {
+		return fmt.Errorf("studio target requires an instance id; pass --instance-id explicitly")
 	}
 	if t.Credential.AccessKey == "" || t.Credential.SecretKey == "" {
 		return fmt.Errorf("studio target requires accessKey and secretKey")
