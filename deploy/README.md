@@ -82,6 +82,31 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
+## 生命周期操作执行器
+
+Broker 重启、NameServer 重启/升级/删除和 Proxy 重启需要部署控制面参与，RocketMQ Admin 协议本身
+不负责进程生命周期。Studio 支持通过服务端配置调用一个部署侧可执行文件；默认关闭，未配置时相关
+接口会返回 501。
+
+```env
+STUDIO_LIFECYCLE_ENABLED=true
+STUDIO_LIFECYCLE_EXECUTABLE=/opt/rocketmq/bin/studio-lifecycle
+STUDIO_LIFECYCLE_TIMEOUT=PT30S
+STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES=8192
+STUDIO_LIFECYCLE_ALLOWED_OPERATIONS=BROKER_RESTART,NAMESERVER_RESTART,NAMESERVER_UPGRADE,NAMESERVER_DELETE,PROXY_RESTART
+```
+
+Studio 使用无 shell 的固定参数启动该文件。执行器会收到类似以下参数，并负责 Docker Compose、Kubernetes、
+SSH 或其他运维平台的实际编排：
+
+```text
+broker-restart --cluster-id <cluster> --target <broker-name> \
+  --target-address <broker-address> --request-id <uuid>
+```
+
+退出码 0 只表示操作已被部署控制面接受；健康检查、滚动策略和回滚由执行器负责。请只允许管理员访问
+这些接口，并把执行文件安装在 Studio 服务运行环境中。
+
 ## 前置条件
 
 - 本地安装 Docker

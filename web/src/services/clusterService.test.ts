@@ -24,15 +24,21 @@ vi.mock('../config', () => ({
 
 import {
   createK8sCert,
+  createNameServer,
   deleteK8sCert,
+  deleteNameServer,
   getCluster,
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
   previewClusterConfig,
+  restartBroker,
+  restartNameServer,
+  restartProxy,
   updateClusterConfig,
   updateK8sCert,
   updateNameServer,
+  upgradeNameServer,
 } from './clusterService';
 
 describe('clusterService mock clusters', () => {
@@ -166,6 +172,79 @@ describe('clusterService mock clusters', () => {
         }
       }
     }
+  });
+
+  it('returns a lifecycle result when restarting a mock broker', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const broker = cluster.brokers[0];
+
+    await expect(restartBroker(cluster.id, broker.name)).resolves.toMatchObject({
+      operation: 'BROKER_RESTART',
+      clusterId: cluster.id,
+      target: broker.name,
+      accepted: true,
+    });
+  });
+
+  it('returns a lifecycle result when restarting a mock NameServer', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const nameServer = cluster.nameServers[0];
+
+    await expect(restartNameServer({ clusterId: cluster.id, addr: nameServer.addr })).resolves
+      .toMatchObject({
+        operation: 'NAMESERVER_RESTART',
+        clusterId: cluster.id,
+        target: nameServer.addr,
+        accepted: true,
+      });
+  });
+
+  it('returns a lifecycle result when upgrading a mock NameServer', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const nameServer = cluster.nameServers[0];
+
+    await expect(upgradeNameServer({
+      clusterId: cluster.id,
+      addr: nameServer.addr,
+      version: '5.4.0',
+    })).resolves.toMatchObject({
+      operation: 'NAMESERVER_UPGRADE',
+      clusterId: cluster.id,
+      target: nameServer.addr,
+      accepted: true,
+    });
+  });
+
+  it('returns a lifecycle result when deleting a mock NameServer', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const nameServer = cluster.nameServers[0];
+
+    try {
+      const deleteResult = await deleteNameServer({ clusterId: cluster.id, addr: nameServer.addr });
+
+      expect(deleteResult).toMatchObject({
+        operation: 'NAMESERVER_DELETE',
+        clusterId: cluster.id,
+        target: nameServer.addr,
+        accepted: true,
+      });
+      expect(deleteResult.requestId).toMatch(/^mock-/);
+      expect(deleteResult.message).toContain(nameServer.addr);
+    } finally {
+      await createNameServer({ clusterId: cluster.id, addr: nameServer.addr });
+    }
+  });
+
+  it('returns a lifecycle result when restarting a mock Proxy', async () => {
+    const cluster = await getCluster('cluster-prod');
+    const proxy = cluster.proxies[0];
+
+    await expect(restartProxy({ clusterId: cluster.id, addr: proxy.addr })).resolves.toMatchObject({
+      operation: 'PROXY_RESTART',
+      clusterId: cluster.id,
+      target: proxy.addr,
+      accepted: true,
+    });
   });
 
   it('copies certificate SAN arrays before writing them into the mock store', async () => {

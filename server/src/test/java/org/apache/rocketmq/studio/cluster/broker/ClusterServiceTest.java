@@ -20,6 +20,9 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationExecutor;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
@@ -74,6 +77,9 @@ class ClusterServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private LifecycleOperationExecutor lifecycleOperationExecutor;
 
     @InjectMocks
     private ClusterService clusterService;
@@ -586,11 +592,20 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartBrokerShouldThrowUnsupportedWhenBrokerExists() {
+    void restartBrokerShouldDispatchLifecycleOperationWhenBrokerExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.BROKER_RESTART, "broker-0");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
 
-        assertUnsupportedOperation(() -> clusterService.restartBroker("cluster-1", "broker-0"),
-                "Broker restart is not implemented");
+        assertThat(clusterService.restartBroker("cluster-1", "broker-0")).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.BROKER_RESTART
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("broker-0")
+                        && request.targetAddress().equals("10.0.0.1:10911")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+        verify(auditService).record(eq("RESTART_BROKER"), eq("BROKER"), eq("broker-0"),
+                eq("cluster-1"), org.mockito.ArgumentMatchers.contains("requestId="), eq("SUCCESS"));
     }
 
     @Test
@@ -627,6 +642,9 @@ class ClusterServiceTest {
     @Test
     void nameServerOperationsShouldThrowUnsupportedWhenNameServerExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_RESTART,
+                "10.0.0.20:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         UpdateNameServerDTO update = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.20:9876")
@@ -647,12 +665,10 @@ class ClusterServiceTest {
 
         assertUnsupportedOperation(() -> clusterService.updateNameServer(update),
                 "NameServer update is not implemented");
-        assertUnsupportedOperation(() -> clusterService.restartNameServer(restart),
-                "NameServer restart is not implemented");
-        assertUnsupportedOperation(() -> clusterService.upgradeNameServer(upgrade),
-                "NameServer upgrade is not implemented");
-        assertUnsupportedOperation(() -> clusterService.deleteNameServer(delete),
-                "NameServer delete is not implemented");
+        assertThat(clusterService.restartNameServer(restart)).isSameAs(accepted);
+        assertThat(clusterService.upgradeNameServer(upgrade)).isSameAs(accepted);
+        assertThat(clusterService.deleteNameServer(delete)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor, org.mockito.Mockito.times(3)).execute(any());
     }
 
     @Test
@@ -682,15 +698,20 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartProxyShouldThrowUnsupportedWhenProxyExists() {
+    void restartProxyShouldDispatchLifecycleOperationWhenProxyExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.PROXY_RESTART,
+                "10.0.0.10:8081");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         RestartProxyDTO command = RestartProxyDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.10:8081")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.restartProxy(command),
-                "Proxy restart is not implemented");
+        assertThat(clusterService.restartProxy(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.PROXY_RESTART
+                        && request.target().equals("10.0.0.10:8081")));
     }
 
     @Test
@@ -800,6 +821,10 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining(message)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+    }
+
+    private static LifecycleOperationResult acceptedResult(LifecycleOperation operation, String target) {
+        return new LifecycleOperationResult(operation, "cluster-1", target, "request-1", true, "accepted");
     }
     @Test
     void instanceConfigUpdateUsesDiscoveredPhysicalClusterAndSelectedConnection() {

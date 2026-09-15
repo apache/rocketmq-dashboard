@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.cluster.config.BrokerConfigDiffVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -34,7 +35,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/clusters")
@@ -86,15 +86,9 @@ public class ClusterController {
     }
 
     @PostMapping("/{clusterId}/brokers/{name}/restart")
-    public Result<Map<String, Object>> restartBroker(@PathVariable String clusterId,
-                                                     @PathVariable String name) {
-        boolean success = clusterService.restartBroker(clusterId, name);
-        if (!success) {
-            throw new BusinessException(500, "Failed to restart broker: " + name);
-        }
-        return Result.ok(Map.of(
-                "message", "Broker restart initiated for " + name
-        ));
+    public Result<LifecycleOperationResult> restartBroker(@PathVariable String clusterId,
+                                                          @PathVariable String name) {
+        return Result.ok(clusterService.restartBroker(clusterId, name));
     }
 
     private void requireUpdateConfigCommand(UpdateConfigDTO command) {
