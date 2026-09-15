@@ -959,8 +959,8 @@ const SystemAlertsPage = () => {
                     </Tag>
                   )}
                   {silence.domain ?? t('common.all')} ·{' '}
-                  {silence.instanceId ?? t('sysAlerts.allInstances')} · {silence.startsAt} -{' '}
-                  {silence.endsAt}
+                  {silence.instanceId ?? t('sysAlerts.allInstances')} ·{' '}
+                  {formatUtcDateTime(silence.startsAt)} - {formatUtcDateTime(silence.endsAt)}
                   {silence.labels && Object.keys(silence.labels).length > 0
                     ? ` · ${Object.entries(silence.labels)
                         .map(([key, value]) => `${key}=${value}`)
@@ -968,7 +968,9 @@ const SystemAlertsPage = () => {
                     : ''}
                   {silence.recurrence && silence.recurrence !== 'ONCE'
                     ? ` · ${silence.timeZone} · ${t('sysAlerts.repeatsUntil', {
-                        time: silence.recurrenceUntil ?? '',
+                        time: silence.recurrenceUntil
+                          ? formatUtcDateTime(silence.recurrenceUntil)
+                          : '',
                       })}`
                     : ''}
                 </Text>

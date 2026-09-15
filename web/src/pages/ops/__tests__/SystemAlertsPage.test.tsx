@@ -497,6 +497,38 @@ describe('SystemAlertsPage', () => {
     });
   });
 
+  it('renders maintenance window boundaries as UTC instants instead of raw API strings', async () => {
+    vi.mocked(listAlertSilencesPage).mockResolvedValue({
+      items: [
+        {
+          id: 21,
+          domain: 'CLUSTER',
+          instanceId: 'local',
+          startsAt: '2026-08-10T01:00',
+          endsAt: '2026-08-10T02:00',
+          recurrence: 'WEEKLY',
+          timeZone: 'Asia/Shanghai',
+          recurrenceDays: [1],
+          recurrenceUntil: '2026-10-01T00:00',
+          createdBy: 'admin',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 10,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+
+    const row = await screen.findByText(/CLUSTER.*local/);
+    expect(row).toHaveTextContent(formatUtcDateTime('2026-08-10T01:00'));
+    expect(row).toHaveTextContent(formatUtcDateTime('2026-08-10T02:00'));
+    expect(row).toHaveTextContent(formatUtcDateTime('2026-10-01T00:00'));
+    expect(row).not.toHaveTextContent('2026-08-10T01:00');
+    expect(row).not.toHaveTextContent('2026-10-01T00:00');
+  });
   it('creates a bounded weekly maintenance schedule in an IANA time zone', async () => {
     vi.mocked(listAlertSilencesPage).mockResolvedValue({
       items: [],
