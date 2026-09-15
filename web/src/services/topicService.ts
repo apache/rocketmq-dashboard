@@ -106,9 +106,7 @@ export const listAllTopics = async (params: TopicQuery = {}): Promise<Topic[]> =
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
-    const duplicate = mockTopics.some(
-      (topic) => topic.name === data.name && topic.clusterId === data.clusterId,
-    );
+    const duplicate = mockTopics.some((topic) => topic.name === data.name);
     if (duplicate) throw new Error(`Topic already exists: ${data.name}`);
 
     const topic = {
