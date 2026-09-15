@@ -76,4 +76,49 @@ class DefaultLifecycleProcessRunnerTest {
 
         assertThat(result.timedOut()).isTrue();
     }
+
+    @Test
+    void closesProcessInputWhenNoInputIsExpected() {
+        assumeTrue(Files.isExecutable(Path.of("/bin/sh")));
+
+        LifecycleProcessResult result = runner.run(
+                List.of("/bin/sh", "-c", "read value || printf closed"),
+                null, Duration.ofSeconds(2), 128);
+
+        assertThat(result.timedOut()).isFalse();
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.output()).isEqualTo("closed");
+    }
+
+    @Test
+    void terminatesDescendantsWhenTheProcessTimesOut() throws Exception {
+        assumeTrue(Files.isExecutable(Path.of("/bin/sh")));
+        Path childPidFile = Files.createTempFile("lifecycle-child-", ".pid");
+        try {
+            LifecycleProcessResult result = runner.run(
+                    List.of("/bin/sh", "-c",
+                            "/bin/sh -c 'trap \"\" TERM; sleep 30' & child=$!; "
+                                    + "printf '%s' \"$child\" > \"$1\"; wait \"$child\"",
+                            "lifecycle-test", childPidFile.toString()),
+                    null, Duration.ofMillis(200), 128);
+
+            assertThat(result.timedOut()).isTrue();
+            long childPid = Long.parseLong(Files.readString(childPidFile));
+            assertThat(waitUntilExited(childPid, Duration.ofSeconds(2))).isTrue();
+        } finally {
+            Files.deleteIfExists(childPidFile);
+        }
+    }
+
+    private static boolean waitUntilExited(long pid, Duration timeout) throws InterruptedException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) {
+                Thread.sleep(10);
+            } else {
+                return true;
+            }
+        }
+        return !ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+    }
 }

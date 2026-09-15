@@ -612,7 +612,7 @@ public class ClusterService {
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
         return dispatchLifecycle(LifecycleOperation.NAMESERVER_RESTART, command.getClusterId(),
-                command.getAddr(), command.getAddr(), null);
+                command.getAddr(), null, null);
     }
 
     public LifecycleOperationResult upgradeNameServer(UpgradeNameServerDTO command) {
@@ -623,7 +623,7 @@ public class ClusterService {
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
         return dispatchLifecycle(LifecycleOperation.NAMESERVER_UPGRADE, command.getClusterId(),
-                command.getAddr(), command.getAddr(), command.getTargetVersion());
+                command.getAddr(), null, command.getTargetVersion());
     }
 
     public LifecycleOperationResult deleteNameServer(DeleteNameServerDTO command) {
@@ -633,16 +633,19 @@ public class ClusterService {
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
         return dispatchLifecycle(LifecycleOperation.NAMESERVER_DELETE, command.getClusterId(),
-                command.getAddr(), command.getAddr(), null);
+                command.getAddr(), null, null);
     }
 
     public LifecycleOperationResult restartProxy(RestartProxyDTO command) {
+        if (command == null) {
+            throw new BusinessException(400, "Proxy request is required");
+        }
         log.info("Restarting Proxy: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireProxy(cluster, command.getAddr());
         return dispatchLifecycle(LifecycleOperation.PROXY_RESTART, command.getClusterId(),
-                command.getAddr(), command.getAddr(), null);
+                command.getAddr(), null, null);
     }
 
     private void requireNameServerCommand(Object command) {

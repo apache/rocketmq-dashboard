@@ -96,16 +96,23 @@ STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES=8192
 STUDIO_LIFECYCLE_ALLOWED_OPERATIONS=BROKER_RESTART,NAMESERVER_RESTART,NAMESERVER_UPGRADE,NAMESERVER_DELETE,PROXY_RESTART
 ```
 
-Studio 使用无 shell 的固定参数启动该文件。执行器会收到类似以下参数，并负责 Docker Compose、Kubernetes、
-SSH 或其他运维平台的实际编排：
+Studio 使用无 shell 的固定参数启动该文件。部署侧执行器负责 Docker Compose、Kubernetes、SSH 或其他
+运维平台的实际编排，参数如下：
 
-```text
-broker-restart --cluster-id <cluster> --target <broker-name> \
-  --target-address <broker-address> --request-id <uuid>
-```
+| allowlist 值 | 子命令 | 目标参数 |
+| --- | --- | --- |
+| `BROKER_RESTART` | `broker-restart` | `--target <broker-name> --target-address <broker-address>` |
+| `NAMESERVER_RESTART` | `nameserver-restart` | `--target <nameserver-address>` |
+| `NAMESERVER_UPGRADE` | `nameserver-upgrade` | `--target <nameserver-address> --target-version <version>` |
+| `NAMESERVER_DELETE` | `nameserver-delete` | `--target <nameserver-address>` |
+| `PROXY_RESTART` | `proxy-restart` | `--target <proxy-address>` |
 
-退出码 0 只表示操作已被部署控制面接受；健康检查、滚动策略和回滚由执行器负责。请只允许管理员访问
-这些接口，并把执行文件安装在 Studio 服务运行环境中。
+每个命令还会收到 `--cluster-id <cluster>` 和 `--request-id <uuid>`。标准输出和标准错误会合并，最多保留
+`STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES` 字节，并返回给管理员和写入审计记录；适配器不得输出密钥或令牌。
+
+退出码 0 只表示操作已被部署控制面接受；健康检查、滚动策略和回滚由执行器负责。未启用、未配置或未
+加入 allowlist 时返回 501；进程启动失败或非零退出返回 502；超时返回 504，并终止适配器进程树。请只
+允许管理员访问这些接口，并把执行文件安装在 Studio 服务运行环境中。
 
 ## 前置条件
 
