@@ -26,7 +26,6 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceVO;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -47,27 +46,14 @@ public class RocketMQDefaultClusterResolver {
 
     private final RocketMQProperties properties;
     private final MqAdminProperties adminProperties;
-    private final MqAdminExtFactory adminFactory;
     private final OpsDefaultClient defaultClient;
 
-    @Autowired
     public RocketMQDefaultClusterResolver(RocketMQProperties properties,
                                           MqAdminProperties adminProperties,
-                                          MqAdminExtFactory adminFactory,
                                           OpsDefaultClient defaultClient) {
         this.properties = properties;
         this.adminProperties = adminProperties;
-        this.adminFactory = adminFactory;
         this.defaultClient = defaultClient;
-    }
-
-    public RocketMQDefaultClusterResolver(RocketMQProperties properties,
-                                          MqAdminProperties adminProperties,
-                                          MqAdminExtFactory adminFactory) {
-        this.properties = properties;
-        this.adminProperties = adminProperties;
-        this.adminFactory = adminFactory;
-        this.defaultClient = null;
     }
 
     public Optional<InstanceVO> find(String cluster) {
@@ -130,18 +116,12 @@ public class RocketMQDefaultClusterResolver {
 
     private <T> T execute(OpsDefaultClient.Selection defaultSelection, MqAdminExtFactory.AdminAction<T> action,
                           MqAdminProperties.Credential credential) {
-        String endpoint = requireEndpoint(defaultSelection);
+        requireEndpoint(defaultSelection);
         if (credential == null) {
-            if (defaultClient == null) {
-                return adminFactory.execute(endpoint, null, action);
-            }
             return defaultSelection.execute(null, "anonymous", action);
         }
         RPCHook hook = new AclClientRPCHook(new SessionCredentials(
                 credential.getAccessKey().trim(), credential.getSecretKey().trim()));
-        if (defaultClient == null) {
-            return adminFactory.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
-        }
         return defaultSelection.execute(hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
     }
 
@@ -168,10 +148,10 @@ public class RocketMQDefaultClusterResolver {
     }
 
     private OpsDefaultClient.Selection defaultSelection() {
-        return defaultClient == null ? null : defaultClient.select(properties.getNamesrvAddr());
+        return defaultClient.select(properties.getNamesrvAddr());
     }
 
     private String namesrvAddr(OpsDefaultClient.Selection defaultSelection) {
-        return defaultSelection == null ? properties.getNamesrvAddr() : defaultSelection.namesrvAddr();
+        return defaultSelection.namesrvAddr();
     }
 }

@@ -149,14 +149,21 @@ public class ProxyConsumerResolver {
     }
 
     List<String> discoverProxyAddresses(String instanceId) {
-        String cacheKey = StringUtils.hasText(instanceId) ? instanceId : DEFAULT_INSTANCE_KEY;
+        OpsDefaultClient.Selection defaultSelection = StringUtils.hasText(instanceId)
+                ? null : defaultClient.select(properties.getNamesrvAddr());
+        String cacheKey = defaultSelection == null ? instanceId
+                : DEFAULT_INSTANCE_KEY + ":" + defaultSelection.namesrvAddr();
+        if (defaultSelection != null) {
+            proxyAddressCache.keySet().removeIf(key -> key.startsWith(DEFAULT_INSTANCE_KEY + ":")
+                    && !key.equals(cacheKey));
+        }
         CachedProxyAddresses cached = proxyAddressCache.get(cacheKey);
         if (cached != null && cached.expiresAtMillis() > System.currentTimeMillis()) {
             return cached.addresses();
         }
         Set<String> ips = new LinkedHashSet<>();
         try {
-            executeAdmin(instanceId, admin -> {
+            executeAdmin(instanceId, defaultSelection, admin -> {
                 ConsumerConnection connection =
                         admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
                 if (connection != null && connection.getConnectionSet() != null) {
@@ -185,11 +192,12 @@ public class ProxyConsumerResolver {
         return addresses;
     }
 
-    private <T> T executeAdmin(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+    private <T> T executeAdmin(String instanceId, OpsDefaultClient.Selection defaultSelection,
+                               MqAdminExtFactory.AdminAction<T> action) {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
-        return defaultClient.select(properties.getNamesrvAddr()).execute(null, "anonymous", action);
+        return defaultSelection.execute(null, "anonymous", action);
     }
 
     private NettyRemotingClient remotingClient() {

@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.argThat;
 
 class OpsServiceTest {
 
@@ -211,8 +214,26 @@ class OpsServiceTest {
         assertThat(repository.load()).isEmpty();
     }
 
+    @Test
+    void successfulRuntimeChangeReleasesObsoleteDefaultClientsButRejectedWriteDoesNot() {
+        authenticateAdmin();
+        InMemoryRepository repository = new InMemoryRepository();
+        OpsRuntimeProperties properties = properties(true, "first:9876");
+        OpsRuntimeConnection runtime = new OpsRuntimeConnection(repository, properties, () -> false);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsService service = new OpsService(runtime, properties, mock(OperationAuditService.class), defaultClient);
+
+        service.updateVipChannel(true);
+        verify(defaultClient).releaseInactiveManagedDefaults(argThat(settings ->
+                settings.currentNamesrv().equals("first:9876") && settings.useVIPChannel()));
+        assertThatThrownBy(() -> service.updateUseTLS(true))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("TLS requires");
+        org.mockito.Mockito.verifyNoMoreInteractions(defaultClient);
+    }
+
     private static OpsService service(OpsRuntimeConnection runtimeConnection, OpsRuntimeProperties properties) {
-        return new OpsService(runtimeConnection, properties, mock(OperationAuditService.class));
+        return new OpsService(runtimeConnection, properties, mock(OperationAuditService.class),
+                mock(OpsDefaultClient.class));
     }
 
     private static void authenticateAdmin() {

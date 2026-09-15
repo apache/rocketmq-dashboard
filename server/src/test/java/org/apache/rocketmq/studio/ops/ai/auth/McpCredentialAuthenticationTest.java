@@ -259,6 +259,7 @@ class McpCredentialAuthenticationTest {
         private final InstanceRepository repository = mock(InstanceRepository.class);
         private final MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
         private final OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        private final OpsDefaultClient.Selection defaultSelection = mock(OpsDefaultClient.Selection.class);
 
         @BeforeEach
         void useRealResolvers() {
@@ -266,12 +267,13 @@ class McpCredentialAuthenticationTest {
             properties.setNamesrvAddr("configured:9876");
             MqAdminProperties credentials = new MqAdminProperties();
             credentials.getCredentials().put("admin", adminCredential);
-            when(defaultClient.namesrvAddr("configured:9876")).thenReturn("configured:9876");
-            when(defaultClient.execute(eq("configured:9876"), any(), eq("admin"), any()))
+            when(defaultClient.select("configured:9876")).thenReturn(defaultSelection);
+            when(defaultSelection.namesrvAddr()).thenReturn("configured:9876");
+            when(defaultSelection.execute(any(), eq("admin"), any()))
                     .thenReturn(List.of(CONFIGURED_CLUSTER));
 
             RocketMQDefaultClusterResolver configured = new RocketMQDefaultClusterResolver(properties,
-                    credentials, factory, defaultClient);
+                    credentials, defaultClient);
             InstanceResolver resolver = new InstanceResolver(repository, configured);
             RuntimeAdminClientResolver runtime = new RuntimeAdminClientResolver(
                     resolver, factory, credentials, mock(MqClientPool.class));
@@ -298,8 +300,8 @@ class McpCredentialAuthenticationTest {
                 assertIdentityCleared();
             }
             verify(repository, times(ENTRY_POINTS.size())).findByName(CONFIGURED_CLUSTER);
-            verify(defaultClient, times(ENTRY_POINTS.size()))
-                    .execute(eq("configured:9876"), any(), eq("admin"), any());
+            verify(defaultSelection, times(ENTRY_POINTS.size()))
+                    .execute(any(), eq("admin"), any());
             verifyNoMoreInteractions(repository, factory);
             verifyNoInteractions(cloudCredentialRepository);
         }

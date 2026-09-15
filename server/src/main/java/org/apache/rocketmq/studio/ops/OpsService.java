@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops;
 
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,12 +37,14 @@ public class OpsService {
     private final OpsRuntimeConnection runtimeConnection;
     private final OpsRuntimeProperties runtimeProperties;
     private final OperationAuditService auditService;
+    private final OpsDefaultClient defaultClient;
 
     public OpsService(OpsRuntimeConnection runtimeConnection, OpsRuntimeProperties runtimeProperties,
-                      OperationAuditService auditService) {
+                      OperationAuditService auditService, OpsDefaultClient defaultClient) {
         this.runtimeConnection = runtimeConnection;
         this.runtimeProperties = runtimeProperties;
         this.auditService = auditService;
+        this.defaultClient = defaultClient;
     }
 
     public synchronized OpsHomeVO getHomePage() {
@@ -76,6 +79,7 @@ public class OpsService {
             return new OpsConnectionSettings(settings.addresses(), normalized,
                     settings.useVIPChannel(), settings.useTLS());
         });
+        defaultClient.releaseInactiveManagedDefaults(updated);
         audit("UPDATE_OPS_NAMESERVER", updated.currentNamesrv(),
                 "currentNamesrv=" + updated.currentNamesrv());
     }
@@ -93,6 +97,7 @@ public class OpsService {
             return new OpsConnectionSettings(addresses, settings.currentNamesrv(),
                     settings.useVIPChannel(), settings.useTLS());
         });
+        defaultClient.releaseInactiveManagedDefaults(updated);
         audit("ADD_OPS_NAMESERVER", normalized, "namesrvAddr=" + normalized
                 + ",total=" + updated.addresses().size());
     }
@@ -116,6 +121,7 @@ public class OpsService {
             return new OpsConnectionSettings(addresses, settings.currentNamesrv(),
                     settings.useVIPChannel(), settings.useTLS());
         });
+        defaultClient.releaseInactiveManagedDefaults(updated);
         audit("DELETE_OPS_NAMESERVER", normalized, "namesrvAddr=" + normalized
                 + ",total=" + updated.addresses().size());
     }
@@ -126,6 +132,7 @@ public class OpsService {
         OpsConnectionSettings updated = runtimeConnection.update(settings ->
                 new OpsConnectionSettings(settings.addresses(), requireNameServer(settings),
                         enabled, settings.useTLS()));
+        defaultClient.releaseInactiveManagedDefaults(updated);
         audit("UPDATE_OPS_VIP_CHANNEL", "default", "useVIPChannel=" + updated.useVIPChannel());
     }
 
@@ -135,6 +142,7 @@ public class OpsService {
         OpsConnectionSettings updated = runtimeConnection.update(settings ->
                 new OpsConnectionSettings(settings.addresses(), requireNameServer(settings),
                         settings.useVIPChannel(), enabled));
+        defaultClient.releaseInactiveManagedDefaults(updated);
         audit("UPDATE_OPS_TLS", "default", "useTLS=" + updated.useTLS());
     }
 

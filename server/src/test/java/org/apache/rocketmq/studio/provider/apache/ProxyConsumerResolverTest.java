@@ -118,6 +118,41 @@ class ProxyConsumerResolverTest {
     }
 
     @Test
+    void switchingOpsDefaultNameserverDoesNotReusePreviousProxyAddresses() throws Exception {
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("env-namesrv:9876");
+        OpsDefaultClient opsDefaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection first = mock(OpsDefaultClient.Selection.class);
+        OpsDefaultClient.Selection second = mock(OpsDefaultClient.Selection.class);
+        when(opsDefaultClient.select("env-namesrv:9876")).thenReturn(first, second);
+        when(first.namesrvAddr()).thenReturn("namesrv-a:9876");
+        when(second.namesrvAddr()).thenReturn("namesrv-b:9876");
+        when(first.execute(isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        when(second.execute(isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        ConsumerConnection firstSyncer = connectionFrom("10.0.4.66:10911");
+        ConsumerConnection secondSyncer = connectionFrom("10.0.3.110:10911");
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(firstSyncer, secondSyncer);
+        ProxyConsumerResolver managed =
+                new ProxyConsumerResolver(runtimeAdminClientResolver, properties, opsDefaultClient);
+
+        assertThat(managed.discoverProxyAddresses(null)).containsExactly("10.0.4.66:8080");
+        assertThat(managed.discoverProxyAddresses(null)).containsExactly("10.0.3.110:8080");
+    }
+
+    private static ConsumerConnection connectionFrom(String address) {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection proxy = new Connection();
+        proxy.setClientAddr(address);
+        syncer.setConnectionSet(new HashSet<>(List.of(proxy)));
+        return syncer;
+    }
+
+    @Test
     void discoverProxyAddressesShouldCacheResultsTest() throws Exception {
         ConsumerConnection syncer = new ConsumerConnection();
         syncer.setConnectionSet(new HashSet<>());

@@ -51,7 +51,7 @@ public class MqAdminExtFactory {
     /** Default admin RPC timeout in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MILLIS = 5000L;
 
-    private final Map<AdminClientCacheKey, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
+    private final Map<AdminClientCacheKey, ClientLease<DefaultMQAdminExt>> cache = new ConcurrentHashMap<>();
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -104,22 +104,29 @@ public class MqAdminExtFactory {
         }
         AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
                 normalizeAuthenticationIdentity(authenticationIdentity), managedDefault, vipChannel, useTLS);
-        DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
-                key -> {
-                    // Re-check under the cache lock so a request that passed the initial closed check
-                    // cannot create a fresh connection while the factory is shutting down.
-                    if (closed) {
-                        throw new BusinessException(503, "Admin factory is shutting down");
-                    }
-                    return createAndStart(key, rpcHook);
-                });
+        ClientLease<DefaultMQAdminExt> lease;
+        while (true) {
+            lease = cache.computeIfAbsent(cacheKey, key -> {
+                // Re-check under the cache lock so shutdown cannot create a fresh connection.
+                if (closed) {
+                    throw new BusinessException(503, "Admin factory is shutting down");
+                }
+                return new ClientLease<>(createAndStart(key, rpcHook), this::safeShutdown);
+            });
+            if (lease.acquire()) {
+                break;
+            }
+            cache.remove(cacheKey, lease);
+        }
         try {
-            return action.apply(admin);
+            return action.apply(lease.client());
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
             log.warn("Admin action failed against namesrv {}: {}", namesrvAddr, ex.getMessage());
             throw new BusinessException(502, "RocketMQ admin call failed: " + rootMessage(ex));
+        } finally {
+            lease.release();
         }
     }
 
@@ -140,10 +147,26 @@ public class MqAdminExtFactory {
             if (!entry.getKey().namesrvAddr().equals(normalizedNamesrvAddr)) {
                 return false;
             }
-            safeShutdown(entry.getValue());
+            entry.getValue().retire();
             return true;
         });
         log.info("Released RocketMQ admin clients for namesrv {}", normalizedNamesrvAddr);
+    }
+
+    /** Evicts obsolete Ops-managed clients without touching clients owned by an Instance. */
+    public void releaseInactiveManagedDefaults(OpsConnectionSettings current) {
+        String selected = current.currentNamesrv().isBlank() ? ""
+                : normalizeNamesrvAddr(current.currentNamesrv());
+        cache.entrySet().removeIf(entry -> {
+            AdminClientCacheKey key = entry.getKey();
+            boolean stillCurrent = key.namesrvAddr().equals(selected)
+                    && key.vipChannel() == current.useVIPChannel() && key.useTLS() == current.useTLS();
+            if (!key.managedDefault() || stillCurrent) {
+                return false;
+            }
+            entry.getValue().retire();
+            return true;
+        });
     }
 
     /** Stops one credential-scoped client without interrupting other identities on the endpoint. */
@@ -157,9 +180,9 @@ public class MqAdminExtFactory {
         }
         AdminClientCacheKey key = new AdminClientCacheKey(normalizedNamesrvAddr,
                 normalizeAuthenticationIdentity(authenticationIdentity), false, false, false);
-        DefaultMQAdminExt admin = cache.remove(key);
-        if (admin != null) {
-            safeShutdown(admin);
+        ClientLease<DefaultMQAdminExt> lease = cache.remove(key);
+        if (lease != null) {
+            lease.retire();
             log.info("Released RocketMQ admin client for namesrv {} and identity {}",
                     normalizedNamesrvAddr, key.authenticationIdentity());
         }
@@ -232,7 +255,7 @@ public class MqAdminExtFactory {
     @PreDestroy
     public void shutdown() {
         closed = true;
-        cache.values().forEach(this::safeShutdown);
+        cache.values().forEach(ClientLease::retire);
         cache.clear();
         log.info("Shut down all RocketMQ admin clients");
     }

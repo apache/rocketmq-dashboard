@@ -35,10 +35,19 @@ public class OpsDefaultClient {
     private final MqAdminExtFactory adminFactory;
     private final MqClientPool clientPool;
 
+    /** Discards obsolete managed clients after a successful persisted Ops update. */
+    public void releaseInactiveManagedDefaults(OpsConnectionSettings current) {
+        adminFactory.releaseInactiveManagedDefaults(current);
+        clientPool.releaseInactiveManagedDefaults(current);
+    }
+
     /** Freezes the endpoint and transport values for one default-client operation. */
     public Selection select(String externalDefault) {
         OpsConnectionSettings settings = runtimeProperties.isEnabled()
                 ? runtimeConnection.current() : null;
+        if (settings != null) {
+            releaseInactiveManagedDefaults(settings);
+        }
         return new Selection(externalDefault, settings);
     }
 

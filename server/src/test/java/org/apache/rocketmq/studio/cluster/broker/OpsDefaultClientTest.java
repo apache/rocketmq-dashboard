@@ -87,4 +87,38 @@ class OpsDefaultClientTest {
         verify(adminFactory).executeDefault(eq(first), eq(null), eq("anonymous"), any());
         org.mockito.Mockito.verify(runtime).current();
     }
+
+    @Test
+    void cleanupReleasesOnlyInactiveManagedClientsFromBothPools() {
+        OpsRuntimeConnection runtime = mock(OpsRuntimeConnection.class);
+        OpsRuntimeProperties properties = new OpsRuntimeProperties();
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        MqClientPool clientPool = mock(MqClientPool.class);
+        OpsDefaultClient client = new OpsDefaultClient(runtime, properties, adminFactory, clientPool);
+        OpsConnectionSettings current = new OpsConnectionSettings(
+                List.of("current:9876"), "current:9876", true, false);
+
+        client.releaseInactiveManagedDefaults(current);
+
+        verify(adminFactory).releaseInactiveManagedDefaults(current);
+        verify(clientPool).releaseInactiveManagedDefaults(current);
+    }
+
+    @Test
+    void readingManagedDefaultsCleansUpChangesWrittenByAnotherStudioReplica() {
+        OpsRuntimeConnection runtime = mock(OpsRuntimeConnection.class);
+        OpsRuntimeProperties properties = new OpsRuntimeProperties();
+        properties.setEnabled(true);
+        OpsConnectionSettings current = new OpsConnectionSettings(
+                List.of("current:9876"), "current:9876", false, true);
+        when(runtime.current()).thenReturn(current);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        MqClientPool clientPool = mock(MqClientPool.class);
+        OpsDefaultClient client = new OpsDefaultClient(runtime, properties, adminFactory, clientPool);
+
+        assertThat(client.select("env-namesrv:9876").namesrvAddr()).isEqualTo("current:9876");
+
+        verify(adminFactory).releaseInactiveManagedDefaults(current);
+        verify(clientPool).releaseInactiveManagedDefaults(current);
+    }
 }

@@ -48,7 +48,7 @@ class RocketMQClusterResolverTest {
     private final OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
     private final OpsDefaultClient.Selection defaultSelection = mock(OpsDefaultClient.Selection.class);
     private final RocketMQDefaultClusterResolver service =
-            new RocketMQDefaultClusterResolver(properties, credentials, factory, defaultClient);
+            new RocketMQDefaultClusterResolver(properties, credentials, defaultClient);
 
     @BeforeEach
     void setUp() {

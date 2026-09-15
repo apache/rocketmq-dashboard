@@ -24,7 +24,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,6 +36,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 class MqAdminExtFactoryTest {
 
@@ -107,6 +111,69 @@ class MqAdminExtFactoryTest {
 
         assertThat(factory.created.get()).isEqualTo(2);
         verify(admin, times(2)).start();
+    }
+
+    @Test
+    void managedChangeReleasesOnlyOldDefaultAdminAndKeepsInstanceClient() throws Exception {
+        DefaultMQAdminExt oldDefault = mock(DefaultMQAdminExt.class);
+        DefaultMQAdminExt instance = mock(DefaultMQAdminExt.class);
+        DefaultMQAdminExt currentDefault = mock(DefaultMQAdminExt.class);
+        AtomicInteger created = new AtomicInteger();
+        List<DefaultMQAdminExt> clients = List.of(oldDefault, instance, currentDefault);
+        MqAdminExtFactory factory = new MqAdminExtFactory() {
+            @Override
+            protected DefaultMQAdminExt newAdmin(RPCHook hook) {
+                return clients.get(created.getAndIncrement());
+            }
+        };
+        OpsConnectionSettings old = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", false, false);
+        OpsConnectionSettings current = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", true, false);
+        factory.executeDefault(old, null, "anonymous", ignored -> null);
+        factory.execute("namesrv:9876", null, "anonymous", ignored -> null);
+        factory.executeDefault(current, null, "anonymous", ignored -> null);
+
+        factory.releaseInactiveManagedDefaults(current);
+        factory.execute("namesrv:9876", null, "anonymous", ignored -> null);
+        factory.executeDefault(current, null, "anonymous", ignored -> null);
+
+        assertThat(created.get()).isEqualTo(3);
+        verify(oldDefault).shutdown();
+        verify(instance, never()).shutdown();
+        verify(currentDefault, never()).shutdown();
+    }
+
+    @Test
+    void managedReleaseWaitsForAnInFlightAdminActionBeforeShutdown() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        OpsConnectionSettings old = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", false, false);
+        OpsConnectionSettings current = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", true, false);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        AtomicReference<String> result = new AtomicReference<>();
+        Thread inFlight = Thread.startVirtualThread(() -> result.set(factory.executeDefault(old, null,
+                "anonymous", ignored -> {
+                    started.countDown();
+                    if (!proceed.await(2, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test admin action was not released");
+                    }
+                    return "completed";
+                })));
+        try {
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            factory.releaseInactiveManagedDefaults(current);
+            verify(admin, never()).shutdown();
+        } finally {
+            proceed.countDown();
+            inFlight.join();
+        }
+
+        assertThat(result.get()).isEqualTo("completed");
+        verify(admin).shutdown();
     }
 
     @Test
