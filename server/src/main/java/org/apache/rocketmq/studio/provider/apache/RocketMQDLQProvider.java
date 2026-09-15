@@ -28,6 +28,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.topic.TopicValidator;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -35,6 +36,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
@@ -543,8 +545,15 @@ public class RocketMQDLQProvider implements DLQProvider {
      * True when the failure only means "the {@code %DLQ%} topic does not exist / has no route or
      * message queue yet" — the expected state for a consumer group that has never dead-lettered a
      * message. Any other cause is a real scan failure and must not be silently degraded to empty.
+     *
+     * <p>Checked by response code first (shared with the message provider through
+     * {@link MqResponseCodes}), then by message text: some client paths surface the condition
+     * without a response code, so the text match stays as the fallback rather than being replaced.
      */
     private static boolean isDlqTopicMissing(Throwable e) {
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+            return true;
+        }
         Throwable cause = e;
         while (cause != null) {
             String message = cause.getMessage();

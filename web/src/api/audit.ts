@@ -19,6 +19,7 @@ import client from './client';
 import type { AuditQuery } from './ops';
 
 export type AuditFilter = Omit<AuditQuery, 'page' | 'pageSize'>;
+export type AuditSummaryFilter = Omit<AuditFilter, 'target' | 'clusterIdMissing'>;
 
 export interface AuditFilterOptions {
   operationTypes: string[];
@@ -53,7 +54,7 @@ export async function exportAuditLogs(params?: AuditFilter): Promise<string> {
   return res.data.data;
 }
 
-export async function fetchAuditSummary(params?: AuditFilter): Promise<AuditSummary> {
+export async function fetchAuditSummary(params?: AuditSummaryFilter): Promise<AuditSummary> {
   const res = await client.get<{ data: AuditSummary }>('/audit-logs/summary', { params });
   return res.data.data;
 }

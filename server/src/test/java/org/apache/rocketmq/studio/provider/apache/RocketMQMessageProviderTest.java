@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -304,6 +305,68 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByKeyReportsTruncationWhenTheBrokerBudgetIsReachedTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(64)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).hasSize(64);
+    }
+
+    @Test
+    void queryByKeyStaysCompleteBelowTheBrokerBudgetTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(63)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isFalse();
+        assertThat(result.messages()).hasSize(63);
+    }
+
+    @Test
+    void queryByKeyKeepsTheTruncationSignalWhenTagFilteringDropsEveryRowTest() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(64)));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, "TagA", "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isTrue();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    @Test
+    void queryByKeyReportsCompleteWhenTheClientReportsNoMessageTest() throws Exception {
+        // The NO_MESSAGE degradation must travel through the Detailed path too, otherwise a
+        // key that matches nothing would surface as possibly truncated instead of complete.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L);
+
+        assertThat(result.mayBeTruncated()).isFalse();
+        assertThat(result.messages()).isEmpty();
+    }
+
+    private static List<MessageExt> keyQueryMatches(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(index -> {
+                    MessageExt message = new MessageExt();
+                    message.setTopic("TopicA");
+                    message.setMsgId("msg-" + index);
+                    return message;
+                })
+                .toList();
+    }
+
+    @Test
     void queryByMsgIdUsesDecodedPhysicalOffsetForFallback() throws Exception {
         String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
         MQClientAPIImpl clientApi = mockOffsetLookupClient();
@@ -433,6 +496,16 @@ class RocketMQMessageProviderTest {
                 "instance-a", retryTopic, null, null, null, 100L, 200L);
 
         assertThat(messages).isEmpty();
+    }
+
+    @Test
+    void queryByTopicReturnsEmptyListWhenTopicNotExistTest() throws Exception {
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
     }
 
     @Test
@@ -947,6 +1020,15 @@ class RocketMQMessageProviderTest {
 
         assertThat(offsets).extracting(QueueOffsetVO::getQueueId)
                 .containsExactly(0, 1);
+    }
+
+    @Test
+    void getQueueOffsetsReturnsEmptyListWhenTopicNotExistTest() throws Exception {
+        when(adminExt.examineTopicRouteInfo("TopicA"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(provider.getQueueOffsets("instance-a", "TopicA")).isEmpty();
     }
 
     private MQClientAPIImpl mockOffsetLookupClient() {
