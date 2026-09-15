@@ -202,6 +202,47 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void createCertShouldTrimIdentityFields() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId(" new-tls-cert ")
+                .cluster(" test-cluster ")
+                .type("TLS")
+                .issuer(" vault ")
+                .build();
+
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> {
+            K8sCertVO cert = invocation.getArgument(0);
+            if (cert.getId() == null) {
+                cert.setId(101L);
+            }
+            return cert;
+        });
+
+        K8sCertVO result = k8sCertService.createCert(command);
+
+        assertThat(result.getK8sId()).isEqualTo("new-tls-cert");
+        assertThat(result.getCluster()).isEqualTo("test-cluster");
+        assertThat(result.getIssuer()).isEqualTo("vault");
+    }
+
+    @Test
+    void createCertShouldRejectBlankIssuerWithoutPem() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("new-tls-cert")
+                .cluster("test-cluster")
+                .type("TLS")
+                .issuer("  ")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate issuer cannot be blank")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(k8sCertRepository, never()).save(any(K8sCertVO.class));
+    }
+
+    @Test
     void createCertShouldRejectInvalidTypeBeforeSave() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("bad-cert")

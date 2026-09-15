@@ -73,7 +73,9 @@ public class K8sCertService {
             throw new BusinessException(400, "type is required");
         }
         CertType type = parseCertType(command.getType());
-        log.info("Creating K8s certificate: {}", command.getK8sId());
+        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId");
+        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
+        log.info("Creating K8s certificate: {}", k8sId);
 
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notBefore = now;
@@ -86,11 +88,13 @@ public class K8sCertService {
             notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
             issuer = parsed.getIssuerX500Principal().getName();
             san = extractSubjectAlternativeNames(parsed);
+        } else {
+            issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer");
         }
 
         K8sCertVO cert = K8sCertVO.builder()
-                .k8sId(command.getK8sId())
-                .cluster(command.getCluster())
+                .k8sId(k8sId)
+                .cluster(cluster)
                 .type(type)
                 .issuer(issuer)
                 .notBefore(notBefore)
