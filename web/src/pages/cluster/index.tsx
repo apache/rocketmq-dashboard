@@ -50,6 +50,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import ConfigDriftInsightsPanel from '../../components/ConfigDriftInsightsPanel';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
 import type {
@@ -894,6 +895,7 @@ const ClusterPage = () => {
                   </Space>
                 </Descriptions.Item>
               </Descriptions>
+              <ConfigDriftInsightsPanel kind="nameserver" result={result} />
               <Table<NameServerConfigDiffNode>
                 columns={nodeColumns}
                 dataSource={result.nodes}
@@ -1054,6 +1056,11 @@ const ClusterPage = () => {
                   </Space>
                 </Descriptions.Item>
               </Descriptions>
+              <ConfigDriftInsightsPanel
+                kind="broker"
+                result={result}
+                fieldLabel={configFieldLabel}
+              />
               <Table<BrokerConfigDiffBroker>
                 columns={brokerColumns}
                 dataSource={result.brokers}

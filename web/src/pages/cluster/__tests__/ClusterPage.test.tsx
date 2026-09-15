@@ -530,14 +530,14 @@ describe('Cluster page', () => {
     ]);
     clusterServiceMocks.getNameServerConfigDiff.mockResolvedValue({
       cluster: 'rocketmq1',
-      complete: true,
+      complete: false,
       driftDetected: true,
       nodeCount: 2,
-      reachableNodeCount: 2,
+      reachableNodeCount: 1,
       comparedKeys: ['serverWorkerThreads'],
       nodes: [
         { address: 'rocketmq1-nameserver:9876', reachable: true },
-        { address: 'rocketmq1-nameserver-1:9876', reachable: true },
+        { address: 'rocketmq1-nameserver-1:9876', reachable: false },
       ],
       differences: [
         {
@@ -565,6 +565,12 @@ describe('Cluster page', () => {
       name: /NameServer 配置差异 - rocketmq1/,
     });
     expect(within(dialog).getByText('检测到 NameServer 配置差异')).toBeInTheDocument();
+    expect(within(dialog).getByText('NameServer 配置漂移修复建议')).toBeInTheDocument();
+    expect(within(dialog).getByText('检测结果不完整，先恢复不可达节点')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText((content) => content.includes('先恢复 1 个不可达 NameServer')),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('参考多数值: 需人工选择')).toBeInTheDocument();
     expect(within(dialog).getAllByText('serverWorkerThreads').length).toBeGreaterThan(0);
     expect(
       within(dialog).getByText((content) => content.includes('rocketmq1-nameserver:9876: 8')),
@@ -580,12 +586,13 @@ describe('Cluster page', () => {
       cluster: 'cluster-prod',
       complete: true,
       driftDetected: true,
-      brokerCount: 2,
-      reachableBrokerCount: 2,
+      brokerCount: 3,
+      reachableBrokerCount: 3,
       comparedFields: ['flushDiskType', 'writeQueueNums'],
       brokers: [
         { name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true },
         { name: 'rocketmq-prod-1', address: '10.101.2.12:10911', reachable: true },
+        { name: 'rocketmq-prod-2', address: '10.101.2.13:10911', reachable: true },
       ],
       differences: [
         {
@@ -603,6 +610,12 @@ describe('Cluster page', () => {
               address: '10.101.2.12:10911',
               configured: true,
               value: '16',
+            },
+            {
+              brokerName: 'rocketmq-prod-2',
+              address: '10.101.2.13:10911',
+              configured: true,
+              value: '8',
             },
           ],
         },
@@ -624,9 +637,14 @@ describe('Cluster page', () => {
       name: /Broker 配置差异 - ns-prod/,
     });
     expect(within(dialog).getByText('检测到 Broker 配置不一致')).toBeInTheDocument();
-    expect(within(dialog).getByText('2/2')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('3/3').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText('Broker 配置漂移修复建议')).toBeInTheDocument();
+    expect(within(dialog).getByText('检测到可评审的配置漂移')).toBeInTheDocument();
+    expect(within(dialog).getByText('参考多数值: 8')).toBeInTheDocument();
+    expect(within(dialog).getByText('少数值:')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('rocketmq-prod-1').length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText('写队列数').length).toBeGreaterThan(0);
-    expect(within(dialog).getByText('defaultTopicQueueNums')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('defaultTopicQueueNums').length).toBeGreaterThan(0);
     expect(
       within(dialog).getByText((content) => content.includes('rocketmq-prod-0: 8')),
     ).toBeInTheDocument();
