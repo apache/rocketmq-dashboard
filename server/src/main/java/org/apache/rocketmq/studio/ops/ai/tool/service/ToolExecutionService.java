@@ -94,21 +94,10 @@ public class ToolExecutionService {
     private Object executeInternal(String name, Map<String, Object> input, McpAuthentication authentication) {
         try {
             ToolDefinition definition = catalog.getDefinition(name);
-            Object value = input == null ? null : input.get("cluster");
-            if (!(value instanceof String cluster) || cluster.isBlank()) {
-                throw ToolError.TOOL_CLUSTER_REQUIRED.exception();
-            }
-            if (authentication != null) {
-                if (!cluster.equals(authentication.cluster())) {
-                    throw ToolError.TOOL_TARGET_MISMATCH.exception();
-                }
-            } else {
-                instanceResolver.findByName(cluster)
-                        .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(cluster));
-            }
+            String instanceId = resolveTargetInstance(definition, input, authentication);
             String caller = authentication == null
                     ? AuthenticatedUserContext.currentUsernameOrSystem() : authentication.principal();
-            ToolExecutionContext context = ToolExecutionContext.of(cluster, definition, input, caller);
+            ToolExecutionContext context = ToolExecutionContext.of(instanceId, definition, input, caller);
 
             ToolHandler<?, ?> handler = this.handlers.get(name);
             return filterChain.execute(new ToolInvocation(context, handler));
@@ -119,5 +108,33 @@ public class ToolExecutionService {
             internal.initCause(exception);
             throw internal;
         }
+    }
+
+    /**
+     * Reads the Studio instance target from the tool arguments. Platform-level tools are addressed
+     * by a physical {@code clusterName} instead, so they skip both the mandatory {@code instanceId}
+     * check and the authenticated-target cross-check.
+     */
+    private String resolveTargetInstance(
+            ToolDefinition definition, Map<String, Object> input, McpAuthentication authentication) {
+        Object value = input == null ? null : input.get(ToolCatalog.INSTANCE_ID_FIELD);
+        if (!(value instanceof String instanceId) || instanceId.isBlank()) {
+            if (ToolCatalog.isInstanceIdExempt(definition.name())) {
+                return null;
+            }
+            throw ToolError.TOOL_INSTANCE_REQUIRED.exception(definition.name());
+        }
+        if (ToolCatalog.isInstanceIdExempt(definition.name())) {
+            return instanceId;
+        }
+        if (authentication != null) {
+            if (!instanceId.equals(authentication.instanceId())) {
+                throw ToolError.TOOL_TARGET_MISMATCH.exception();
+            }
+        } else {
+            instanceResolver.findByName(instanceId)
+                    .orElseThrow(() -> ToolError.INSTANCE_NOT_FOUND.exception(instanceId));
+        }
+        return instanceId;
     }
 }

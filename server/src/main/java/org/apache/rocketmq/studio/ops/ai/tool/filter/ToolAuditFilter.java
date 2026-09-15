@@ -51,7 +51,7 @@ public class ToolAuditFilter implements ToolExecutionFilter {
         auditService.record(context.operationType(),
                 context.resourceType(),
                 context.definition().name(),
-                context.cluster(),
+                context.instanceId(),
                 errorMessage,
                 result
         );

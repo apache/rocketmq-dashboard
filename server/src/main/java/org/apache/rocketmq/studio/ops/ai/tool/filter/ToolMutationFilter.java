@@ -66,11 +66,11 @@ public class ToolMutationFilter implements ToolExecutionFilter {
         }
         if (context.dryRun()) {
             String token = tokenService.issue(context);
-            return new MutationOutput<>(MutationOutput.Status.PLANNED, context.cluster(), plan, token, null);
+            return new MutationOutput<>(MutationOutput.Status.PLANNED, context.instanceId(), plan, token, null);
         }
 
         Object result = chain.proceed(invocation);
-        return new MutationOutput<>(MutationOutput.Status.EXECUTED, context.cluster(), plan, null, result);
+        return new MutationOutput<>(MutationOutput.Status.EXECUTED, context.instanceId(), plan, null, result);
     }
 
     private void verifyL3Requirements(ToolExecutionContext context) {

@@ -68,7 +68,7 @@ import static org.mockito.Mockito.when;
 class McpCredentialAuthenticationTest {
 
     private static final List<String> ENTRY_POINTS = List.of("/api/mcp", "/api/mcp/tools/call");
-    private static final String CLUSTER = "instance-test";
+    private static final String INSTANCE_ID = "instance-test";
     private static final String CLOUD_ACCESS_KEY = "cloud-ak";
     private static final String CLOUD_SECRET_KEY = "cloud-test-secret";
     private static final String ADMIN_ACCESS_KEY = "admin-ak";
@@ -88,9 +88,9 @@ class McpCredentialAuthenticationTest {
         adminResolver = mock(RuntimeAdminClientResolver.class);
         cloudCredentialRepository = mock(CloudCredentialRepository.class);
 
-        instance = InstanceVO.builder().name(CLUSTER).vendor(InstanceVendor.ALIYUN)
+        instance = InstanceVO.builder().name(INSTANCE_ID).vendor(InstanceVendor.ALIYUN)
                 .credentialId(7L).adminCredentialRef("admin").build();
-        when(instanceResolver.findByName(CLUSTER)).thenReturn(Optional.of(instance));
+        when(instanceResolver.findByName(INSTANCE_ID)).thenReturn(Optional.of(instance));
 
         cloudCredential = new CloudCredentialVO();
         cloudCredential.setVendor(InstanceVendor.ALIYUN);
@@ -114,7 +114,7 @@ class McpCredentialAuthenticationTest {
 
     @ParameterizedTest
     @EnumSource(InstanceVendor.class)
-    void authenticatesResolvedInstanceCredentialsAtBothEntryPoints(InstanceVendor vendor) throws Exception {
+    void authenticatesResolvedInstanceCredentialsAtBothEntryPointsTest(InstanceVendor vendor) throws Exception {
         instance.setVendor(vendor);
         cloudCredential.setVendor(vendor);
         boolean apache = vendor == InstanceVendor.APACHE;
@@ -122,7 +122,7 @@ class McpCredentialAuthenticationTest {
         String secretKey = apache ? ADMIN_SECRET_KEY : CLOUD_SECRET_KEY;
 
         for (String path : ENTRY_POINTS) {
-            MockHttpServletRequest request = signedRequest(path, CLUSTER, accessKey, secretKey);
+            MockHttpServletRequest request = signedRequest(path, INSTANCE_ID, accessKey, secretKey);
             byte[] body = "body remains available".getBytes(StandardCharsets.UTF_8);
             request.setContent(body);
             MockHttpServletResponse response = new MockHttpServletResponse();
@@ -131,7 +131,7 @@ class McpCredentialAuthenticationTest {
             filter.doFilter(request, response, (verifiedRequest, verifiedResponse) -> {
                 invoked.set(true);
                 assertThat(verifiedRequest.getAttribute(McpAuthentication.ATTRIBUTE))
-                        .isEqualTo(new McpAuthentication(CLUSTER, accessKey));
+                        .isEqualTo(new McpAuthentication(INSTANCE_ID, accessKey));
                 assertThat(AuthenticatedUserContext.currentUsernameOrSystem()).isEqualTo(accessKey);
                 assertThat(AuthenticatedUserContext.currentUserId()).isNull();
                 assertThat(AuthenticatedUserContext.currentUserIsAdminOrSystem()).isFalse();
@@ -142,7 +142,7 @@ class McpCredentialAuthenticationTest {
             assertThat(invoked).isTrue();
             assertIdentityCleared();
         }
-        verify(instanceResolver, times(ENTRY_POINTS.size())).findByName(CLUSTER);
+        verify(instanceResolver, times(ENTRY_POINTS.size())).findByName(INSTANCE_ID);
         verifyNoMoreInteractions(instanceResolver);
         if (apache) {
             verify(adminResolver, times(ENTRY_POINTS.size())).resolveCredential(instance);
@@ -156,11 +156,11 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void clearsIdentityAndPropagatesDownstreamFailure() throws Exception {
+    void clearsIdentityAndPropagatesDownstreamFailureTest() throws Exception {
         ServletException failure = new ServletException("Downstream execution failed");
 
         for (String path : ENTRY_POINTS) {
-            MockHttpServletRequest request = signedRequest(path, CLUSTER, CLOUD_ACCESS_KEY, CLOUD_SECRET_KEY);
+            MockHttpServletRequest request = signedRequest(path, INSTANCE_ID, CLOUD_ACCESS_KEY, CLOUD_SECRET_KEY);
             MockHttpServletResponse response = new MockHttpServletResponse();
             assertThatThrownBy(() -> filter.doFilter(request, response, (verifiedRequest, verifiedResponse) -> {
                 assertThat(AuthenticatedUserContext.currentUsernameOrSystem()).isEqualTo(CLOUD_ACCESS_KEY);
@@ -175,15 +175,15 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void rejectsUnknownTargetBeforeReadingCredentials() throws Exception {
-        when(instanceResolver.findByName(CLUSTER)).thenReturn(Optional.empty());
+    void rejectsUnknownTargetBeforeReadingCredentialsTest() throws Exception {
+        when(instanceResolver.findByName(INSTANCE_ID)).thenReturn(Optional.empty());
 
         assertRejectedAtBothEntryPoints(401);
         verifyNoInteractions(adminResolver, cloudCredentialRepository);
     }
 
     @Test
-    void rejectsMissingCloudCredentialReference() throws Exception {
+    void rejectsMissingCloudCredentialReferenceTest() throws Exception {
         instance.setCredentialId(null);
 
         assertRejectedAtBothEntryPoints(401);
@@ -191,7 +191,7 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void rejectsMissingCloudCredential() throws Exception {
+    void rejectsMissingCloudCredentialTest() throws Exception {
         when(cloudCredentialRepository.findById(7L)).thenReturn(Optional.empty());
 
         assertRejectedAtBothEntryPoints(401);
@@ -199,7 +199,7 @@ class McpCredentialAuthenticationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {422, 503})
-    void rejectsApacheCredentialBusinessFailures(int code) throws Exception {
+    void rejectsApacheCredentialBusinessFailuresTest(int code) throws Exception {
         instance.setVendor(InstanceVendor.APACHE);
         when(adminResolver.resolveCredential(instance))
                 .thenThrow(new BusinessException(code, "Admin credential unavailable"));
@@ -208,8 +208,8 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void rejectsCredentialConfigurationFailureDuringTargetResolution() throws Exception {
-        when(instanceResolver.findByName(CLUSTER))
+    void rejectsCredentialConfigurationFailureDuringTargetResolutionTest() throws Exception {
+        when(instanceResolver.findByName(INSTANCE_ID))
                 .thenThrow(new BusinessException(422, "Admin credential is not configured"));
 
         assertRejectedAtBothEntryPoints(401);
@@ -217,8 +217,8 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void preservesTargetResolutionFailureAsInternalError() throws Exception {
-        when(instanceResolver.findByName(CLUSTER))
+    void preservesTargetResolutionFailureAsInternalErrorTest() throws Exception {
+        when(instanceResolver.findByName(INSTANCE_ID))
                 .thenThrow(new BusinessException(503, "NameServer unavailable"));
 
         assertRejectedAtBothEntryPoints(500);
@@ -226,7 +226,7 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void preservesCloudCredentialRepositoryFailureAsInternalError() throws Exception {
+    void preservesCloudCredentialRepositoryFailureAsInternalErrorTest() throws Exception {
         when(cloudCredentialRepository.findById(7L))
                 .thenThrow(new DataAccessResourceFailureException("Credential database unavailable"));
 
@@ -234,7 +234,7 @@ class McpCredentialAuthenticationTest {
     }
 
     @Test
-    void preservesUnexpectedAdminResolverFailureAsInternalError() throws Exception {
+    void preservesUnexpectedAdminResolverFailureAsInternalErrorTest() throws Exception {
         instance.setVendor(InstanceVendor.APACHE);
         when(adminResolver.resolveCredential(instance))
                 .thenThrow(new DataAccessResourceFailureException("Credential resolver unavailable"));
@@ -247,8 +247,8 @@ class McpCredentialAuthenticationTest {
         "wrong-access-key, cloud-test-secret",
         "cloud-ak, wrong-secret"
     })
-    void rejectsInvalidCredentials(String accessKey, String secretKey) throws Exception {
-        assertRejectedAtBothEntryPoints(401, CLUSTER, accessKey, secretKey);
+    void rejectsInvalidCredentialsTest(String accessKey, String secretKey) throws Exception {
+        assertRejectedAtBothEntryPoints(401, INSTANCE_ID, accessKey, secretKey);
     }
 
     @Nested
@@ -276,7 +276,7 @@ class McpCredentialAuthenticationTest {
         }
 
         @Test
-        void authenticatesConfiguredTargetWithoutDatabaseRecordAtBothEntryPoints() throws Exception {
+        void authenticatesConfiguredTargetWithoutDatabaseRecordAtBothEntryPointsTest() throws Exception {
             for (String path : ENTRY_POINTS) {
                 MockHttpServletRequest request = signedRequest(
                         path, CONFIGURED_CLUSTER, ADMIN_ACCESS_KEY, ADMIN_SECRET_KEY);
@@ -301,7 +301,7 @@ class McpCredentialAuthenticationTest {
 
         @ParameterizedTest
         @EnumSource(InstanceVendor.class)
-        void registeredTargetWithMissingCredentialsNeverFallsBackToConfiguration(InstanceVendor vendor)
+        void registeredTargetWithMissingCredentialsNeverFallsBackToConfigurationTest(InstanceVendor vendor)
                 throws Exception {
             instance.setName(CONFIGURED_CLUSTER);
             instance.setVendor(vendor);
@@ -318,12 +318,12 @@ class McpCredentialAuthenticationTest {
 
     private void assertRejectedAtBothEntryPoints(int status) throws Exception {
         boolean apache = instance.getVendor() == InstanceVendor.APACHE;
-        assertRejectedAtBothEntryPoints(status, CLUSTER,
+        assertRejectedAtBothEntryPoints(status, INSTANCE_ID,
                 apache ? ADMIN_ACCESS_KEY : CLOUD_ACCESS_KEY,
                 apache ? ADMIN_SECRET_KEY : CLOUD_SECRET_KEY);
     }
 
-    private void assertRejectedAtBothEntryPoints(int status, String cluster, String accessKey, String secretKey)
+    private void assertRejectedAtBothEntryPoints(int status, String instanceId, String accessKey, String secretKey)
             throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         Map<String, String> expectedError = status == 401
@@ -334,7 +334,7 @@ class McpCredentialAuthenticationTest {
                         "message", "MCP authentication failed unexpectedly.",
                         "hint", "Retry once; if the failure persists, contact an administrator.");
         for (String path : ENTRY_POINTS) {
-            MockHttpServletRequest request = signedRequest(path, cluster, accessKey, secretKey);
+            MockHttpServletRequest request = signedRequest(path, instanceId, accessKey, secretKey);
             MockHttpServletResponse response = new MockHttpServletResponse();
             AtomicBoolean invoked = new AtomicBoolean();
 
@@ -357,17 +357,17 @@ class McpCredentialAuthenticationTest {
         assertThat(AuthenticatedUserContext.currentUserIsAdminOrSystem()).isTrue();
     }
 
-    private MockHttpServletRequest signedRequest(String path, String cluster, String accessKey, String secretKey)
+    private MockHttpServletRequest signedRequest(String path, String instanceId, String accessKey, String secretKey)
             throws Exception {
         String timestamp = Long.toString(System.currentTimeMillis());
-        String canonical = McpAuthenticator.canonicalRequest(accessKey, cluster, timestamp, "POST", path);
+        String canonical = McpAuthenticator.canonicalRequest(accessKey, instanceId, timestamp, "POST", path);
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         String signature = HexFormat.of().formatHex(mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8)));
         MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
         request.addHeader(HttpHeaders.AUTHORIZATION,
                 McpAuthenticator.ALGORITHM + " Credential=" + accessKey + ", Signature=" + signature);
-        request.addHeader(McpAuthenticator.HEADER_CLUSTER, cluster);
+        request.addHeader(McpAuthenticator.HEADER_INSTANCE, instanceId);
         request.addHeader(McpAuthenticator.HEADER_TIMESTAMP, timestamp);
         return request;
     }

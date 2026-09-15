@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.common.config;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
 import org.apache.rocketmq.studio.instance.dlq.DLQController;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
@@ -56,8 +57,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(value = DLQController.class, properties = "studio.cors.allowed-origins=http://localhost:5173")
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CorsConfig.class)
-class CorsConfigTest {
+@Import({CorsConfig.class, LegacyJackson2Config.class})
+class CorsConfigTest extends WebMvcAuthTestSupport {
 
     private static final String FRONTEND_ORIGIN = "http://localhost:5173";
 

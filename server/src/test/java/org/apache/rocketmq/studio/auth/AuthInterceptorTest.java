@@ -436,7 +436,7 @@ class AuthInterceptorTest {
     void shouldAllowReaderSafeAiToolExecutionForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
-                "POST", "/api/ai/tools/rmq.capabilities/execute", session.token());
+                "POST", "/api/ai/tools/rmq.instance.capabilities/execute", session.token());
 
         boolean allowed = session.interceptor().preHandle(
                 request, new MockHttpServletResponse(), new Object());

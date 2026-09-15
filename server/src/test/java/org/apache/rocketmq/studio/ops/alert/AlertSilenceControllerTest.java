@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AlertSilenceController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class AlertSilenceControllerTest {
+class AlertSilenceControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

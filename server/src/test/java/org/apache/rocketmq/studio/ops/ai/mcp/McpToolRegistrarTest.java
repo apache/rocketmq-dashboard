@@ -48,7 +48,7 @@ class McpToolRegistrarTest {
     void propagatesTransportAuthenticationToToolExecutor() {
         ToolDefinition definition = toolDefinition();
         ToolExecutionService toolExecutor = mock(ToolExecutionService.class);
-        Map<String, Object> output = Map.of("cluster", "cluster-001");
+        Map<String, Object> output = Map.of("instanceId", "cluster-001");
         when(toolExecutor.execute(
                 same(definition.name()), any(), same(AUTHENTICATION)))
                 .thenReturn(output);
@@ -59,7 +59,7 @@ class McpToolRegistrarTest {
                 exchange(AUTHENTICATION),
                 new McpSchema.CallToolRequest(
                         definition.name(), Map.of(
-                                "cluster", "cluster-001",
+                                "instanceId", "cluster-001",
                                 "dry_run", true)));
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
@@ -70,7 +70,7 @@ class McpToolRegistrarTest {
         assertThat(result.structuredContent()).isEqualTo(output);
         assertThat(specification.tool().inputSchema()).isEqualTo(definition.inputSchema());
         assertThat(specification.tool().description())
-                .isEqualTo("Create a RocketMQ topic\nRequires all capabilities: TOPIC_MANAGEMENT.");
+                .isEqualTo("Update a RocketMQ topic\nRequires all capabilities: TOPIC_MANAGEMENT.");
         assertThat(specification.tool().annotations().destructiveHint()).isFalse();
     }
 
@@ -86,16 +86,16 @@ class McpToolRegistrarTest {
 
     private static ToolDefinition toolDefinition() {
         return new ToolDefinition(
-                "rmq.topic.create",
-                new ToolDefinition.Cli("topic", "create"),
-                "Create a RocketMQ topic",
+                "rmq.topic.update",
+                new ToolDefinition.Cli("topic", "update"),
+                "Update a RocketMQ topic",
                 ToolRiskLevel.L2,
                 "topic:write",
                 List.of("TOPIC_MANAGEMENT"),
                 Map.of(
                         "type", "object",
-                        "properties", Map.of("cluster", Map.of("type", "string")),
-                        "required", List.of("cluster"),
+                        "properties", Map.of("instanceId", Map.of("type", "string")),
+                        "required", List.of("instanceId"),
                         "additionalProperties", false),
                 Map.of("type", "object", "additionalProperties", true),
                 "json",

@@ -124,7 +124,7 @@ public class ToolTokenService {
                     expiresAt,
                     context.definition().name(),
                     subjectBinding(context),
-                    context.cluster(),
+                    context.instanceId(),
                     canonicalInput(context.businessInput()));
             return objectMapper.writeValueAsBytes(payload);
         } catch (JsonProcessingException e) {
@@ -136,7 +136,7 @@ public class ToolTokenService {
         if (context.principal() != null && !context.principal().isBlank()) {
             return "principal:" + context.principal();
         }
-        return "instance:" + context.cluster();
+        return "instance:" + context.instanceId();
     }
 
     private static Map<String, Object> canonicalInput(Map<?, ?> input) {

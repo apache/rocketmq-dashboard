@@ -110,12 +110,12 @@ describe('AiPage tool runner', () => {
     ]);
     vi.mocked(listTools).mockResolvedValue([
       {
-        name: 'rmq.capabilities',
-        description: 'Describe cluster capabilities.',
+        name: 'rmq.instance.capabilities',
+        description: 'Describe instance capabilities.',
         parameters: {
           type: 'object',
-          required: ['cluster'],
-          properties: { cluster: { type: 'string' } },
+          required: ['instanceId'],
+          properties: { instanceId: { type: 'string' } },
         },
         riskLevel: 'L1',
         permission: 'cluster:read',
@@ -428,7 +428,7 @@ describe('AiPage tool runner', () => {
   it('loads the catalog, creates a schema template, and renders structured output', async () => {
     const user = userEvent.setup();
     vi.mocked(executeTool).mockResolvedValue({
-      cluster: 'cluster-a',
+      instanceId: 'cluster-a',
       capabilities: ['GRPC'],
     });
     renderPage();
@@ -438,19 +438,23 @@ describe('AiPage tool runner', () => {
     const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
     await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
     expect(within(dialog).getByText('Cluster A')).toBeInTheDocument();
-    expect(within(dialog).getByText('rmq.capabilities')).toBeInTheDocument();
+    expect(within(dialog).getByText('rmq.instance.capabilities')).toBeInTheDocument();
     expect(within(dialog).getByText('L1')).toBeInTheDocument();
     expect(within(dialog).getByText('cluster:read')).toBeInTheDocument();
 
     const input = within(dialog).getByRole('textbox', { name: '工具参数 JSON' });
-    expect(input).toHaveValue('{\n  "cluster": "cluster-a"\n}');
-    fireEvent.change(input, { target: { value: '{"cluster":"cluster-a"}' } });
+    expect(input).toHaveValue('{\n  "instanceId": "cluster-a"\n}');
+    fireEvent.change(input, { target: { value: '{"instanceId":"cluster-a"}' } });
     await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
 
     await waitFor(() => {
-      expect(executeTool).toHaveBeenCalledWith('rmq.capabilities', {
-        cluster: 'cluster-a',
-      });
+      expect(executeTool).toHaveBeenCalledWith(
+        'rmq.instance.capabilities',
+        {
+          instanceId: 'cluster-a',
+        },
+        'cluster-a',
+      );
     });
     expect(await within(dialog).findByTestId('tool-result')).toHaveTextContent('"capabilities": [');
     expect(within(dialog).getByTestId('tool-result')).toHaveTextContent('"GRPC"');
@@ -499,8 +503,8 @@ describe('AiPage tool runner', () => {
         description: `Tool for ${cluster}`,
         parameters: {
           type: 'object',
-          required: ['cluster'],
-          properties: { cluster: { type: 'string' } },
+          required: ['instanceId'],
+          properties: { instanceId: { type: 'string' } },
         },
       },
     ]);
@@ -519,7 +523,7 @@ describe('AiPage tool runner', () => {
     await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-b'));
     expect(within(dialog).getByText('rmq.tool.cluster-b')).toBeInTheDocument();
     expect(within(dialog).getByRole('textbox', { name: '工具参数 JSON' })).toHaveValue(
-      '{\n  "cluster": "cluster-b"\n}',
+      '{\n  "instanceId": "cluster-b"\n}',
     );
   });
 
