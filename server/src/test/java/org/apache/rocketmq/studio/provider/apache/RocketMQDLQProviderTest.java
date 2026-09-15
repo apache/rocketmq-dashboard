@@ -29,6 +29,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -493,6 +494,37 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
                 .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void listMessagesDegradesToEmptyWhenClientReportsNoMessageTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        // NO_MESSAGE carries neither "can not find message queue" nor "no topic route info", so
+        // only the response-code check recognises it as a missing DLQ topic.
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getItems()).isEmpty();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesThrowsNotFoundWhenClientReportsNoMessageTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
 
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
                 .isInstanceOf(BusinessException.class)

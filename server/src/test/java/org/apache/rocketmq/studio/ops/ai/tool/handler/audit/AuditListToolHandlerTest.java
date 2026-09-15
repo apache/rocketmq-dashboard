@@ -62,7 +62,7 @@ class AuditListToolHandlerTest {
                 .build();
         record.setId(42L);
         when(auditService.queryLogs(eq(1), eq(20), eq("topic"), eq("DELETE"), eq("TOPIC"),
-                isNull(), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS")))
+                isNull(), isNull(), eq(false), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 20));
 
         PageOutput<AuditItem> result = handler.execute(new AuditListInput(
@@ -77,6 +77,6 @@ class AuditListToolHandlerTest {
         // Rows written by another Instance stay visible: cluster_id carries the attribution.
         assertThat(item.clusterId()).isEqualTo("instance-b");
         verify(auditService).queryLogs(eq(1), eq(20), eq("topic"), eq("DELETE"), eq("TOPIC"),
-                isNull(), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS"));
+                isNull(), isNull(), eq(false), eq("2026-09-01"), eq("2026-09-14"), eq("SUCCESS"));
     }
 }

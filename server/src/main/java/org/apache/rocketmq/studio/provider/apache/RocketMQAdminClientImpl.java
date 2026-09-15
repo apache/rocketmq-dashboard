@@ -53,6 +53,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -383,11 +384,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
-                    if (StringUtils.hasText(topic.getRemark())) {
-                        existing.setRemark(topic.getRemark());
+                    // A null remark was not submitted and keeps the stored value; a submitted blank
+                    // remark is an explicit clear, so it must persist as an absent remark.
+                    boolean clearRemark = topic.getRemark() != null && !StringUtils.hasText(topic.getRemark());
+                    if (topic.getRemark() != null) {
+                        existing.setRemark(clearRemark ? null : topic.getRemark());
                     }
                     existing.setGmtModified(LocalDateTime.now());
                     topicMapper.updateById(existing);
+                    if (clearRemark) {
+                        // updateById omits null entity fields, so the cleared remark has to be
+                        // assigned explicitly instead of silently retaining the stored value.
+                        topicMapper.update(null, new UpdateWrapper<RmqTopic>()
+                                .eq("id", existing.getId())
+                                .set("remark", null));
+                    }
                 }
 
                 recordAudit("UPDATE_TOPIC", topicName,
@@ -396,6 +407,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topic.setId(existing == null ? null : existing.getId());
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
+                if (existing != null) {
+                    // Report the persisted remark so a clear or an omitted remark cannot be
+                    // mistaken for a value the update did not write.
+                    topic.setRemark(existing.getRemark());
+                }
                 return topic;
             } catch (BusinessException e) {
                 recordAudit("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
