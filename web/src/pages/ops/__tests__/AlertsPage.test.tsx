@@ -31,6 +31,7 @@ import {
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
+  importAlertRulesTransfer,
   toggleAlertRule,
 } from '../../../services/opsService';
 
@@ -756,6 +757,29 @@ describe('AlertsPage', () => {
       'aria-checked',
       'false',
     );
+  });
+
+  it('shows an actionable server error when alert rule import conflicts', async () => {
+    const serverMessage =
+      'An alert rule with the same evaluation conditions already exists: Existing rule';
+    vi.mocked(importAlertRulesTransfer).mockRejectedValue({
+      response: { data: { code: 409, message: serverMessage } },
+    });
+    const user = userEvent.setup();
+    const { container } = renderPage();
+    await screen.findByText('Broker disk usage');
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('Alert rule import input not found');
+    const file = new File(
+      [JSON.stringify({ version: 1, domain: 'CLUSTER', rules: [] })],
+      'cluster-alert-rules.json',
+      { type: 'application/json' },
+    );
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText(serverMessage)).toBeInTheDocument();
+    expect(screen.queryByText('导入失败，请选择当前页面导出的规则文件')).not.toBeInTheDocument();
   });
 
   it('disables other alert rule mutations while a bulk action is running', async () => {

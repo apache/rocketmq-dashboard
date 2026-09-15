@@ -76,6 +76,7 @@ import {
   type AlertTemplatePreviewIssue,
 } from '../../utils/alertTemplatePreview';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
+import { describeApiError } from '../../utils/apiError';
 const { TextArea } = Input;
 
 const channelColors: Record<string, string> = {
@@ -448,8 +449,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       setPage(1);
       refreshRules();
       message.success(t('alerts.importSuccess', { count: imported.length }));
-    } catch {
-      message.error(t('alerts.importFailed'));
+    } catch (error) {
+      message.error(describeApiError(error, t('alerts.importFailed')));
     } finally {
       setTransferringRules(false);
     }

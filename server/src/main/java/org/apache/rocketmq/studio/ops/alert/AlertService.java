@@ -227,12 +227,9 @@ public class AlertService {
     }
 
     private void rejectDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
-        String fingerprint = AlertRuleSemanticFingerprint.of(rule);
-        boolean duplicate = alertRepository.findAllRules().stream()
-                .filter(candidate -> !Objects.equals(candidate.getId(), excludedId))
-                .anyMatch(candidate -> AlertRuleSemanticFingerprint.of(candidate).equals(fingerprint));
-        if (duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+        AlertRuleVO duplicate = findDuplicateSemanticRule(rule, excludedId);
+        if (duplicate != null) {
+            throw duplicateRuleException(duplicate);
         }
     }
 
@@ -240,7 +237,7 @@ public class AlertService {
         try {
             return alertRepository.insertRule(rule);
         } catch (DuplicateKeyException duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+            throw duplicateRuleException(findDuplicateSemanticRule(rule, null));
         }
     }
 
@@ -248,8 +245,24 @@ public class AlertService {
         try {
             return alertRepository.replaceRule(rule);
         } catch (DuplicateKeyException duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+            throw duplicateRuleException(findDuplicateSemanticRule(rule, rule.getId()));
         }
+    }
+
+    private AlertRuleVO findDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
+        String fingerprint = AlertRuleSemanticFingerprint.of(rule);
+        return alertRepository.findAllRules().stream()
+                .filter(candidate -> !Objects.equals(candidate.getId(), excludedId))
+                .filter(candidate -> AlertRuleSemanticFingerprint.of(candidate).equals(fingerprint))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static BusinessException duplicateRuleException(AlertRuleVO existing) {
+        String suffix = existing != null && StringUtils.hasText(existing.getName())
+                ? ": " + existing.getName() : "";
+        return new BusinessException(409,
+                "An alert rule with the same evaluation conditions already exists" + suffix);
     }
 
     private void requireDomain(AlertDomain domain) {
