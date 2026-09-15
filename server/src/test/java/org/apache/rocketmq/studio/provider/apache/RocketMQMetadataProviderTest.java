@@ -508,6 +508,18 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersMarksMetricsUnavailableWhenAnyQueueLagIsUnknown() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        mockTopicConsumeStats(admin, offset(20, 10), offset(0, 1));
+
+        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
+
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getDiffTotal()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(consumer.isMetricsAvailable()).isFalse();
+        });
+    }
+    @Test
     void getTopicConsumersStillSumsKnownQueueLags() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         mockTopicConsumeStats(admin, offset(20, 10), offset(7, 4));

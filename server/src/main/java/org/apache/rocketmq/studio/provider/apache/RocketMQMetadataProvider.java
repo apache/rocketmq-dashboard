@@ -529,12 +529,18 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     ConsumeStats stats = admin.examineConsumeStats(group, name);
                     long diffTotal = 0;
                     double consumeTps = 0;
+                    boolean lagUnknown = false;
                     if (stats != null && stats.getOffsetTable() != null) {
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
                             long queueDiff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
                             if (queueDiff == ConsumerLagResolver.UNKNOWN) {
+                                // A queue whose lag cannot be determined must not be published as a
+                                // quantity: the sentinel is kept for callers that read it directly,
+                                // while metricsAvailable tells the UI to render the unavailable state
+                                // instead of a fabricated "-1" backlog.
                                 diffTotal = ConsumerLagResolver.UNKNOWN;
+                                lagUnknown = true;
                                 break;
                             }
                             diffTotal += queueDiff;
@@ -561,6 +567,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .messageModel(messageModel)
                             .consumeTps(consumeTps)
                             .diffTotal(diffTotal)
+                            .metricsAvailable(!lagUnknown)
                             .build());
                 } catch (Exception ignored) {
                     // stats unavailable for this group, still list it below without numbers
