@@ -35,33 +35,61 @@ public class OpsDefaultClient {
     private final MqAdminExtFactory adminFactory;
     private final MqClientPool clientPool;
 
+    /** Freezes the endpoint and transport values for one default-client operation. */
+    public Selection select(String externalDefault) {
+        OpsConnectionSettings settings = runtimeProperties.isEnabled()
+                ? runtimeConnection.current() : null;
+        return new Selection(externalDefault, settings);
+    }
+
+    public final class Selection {
+        private final String externalDefault;
+        private final OpsConnectionSettings settings;
+
+        private Selection(String externalDefault, OpsConnectionSettings settings) {
+            this.externalDefault = externalDefault;
+            this.settings = settings;
+        }
+
+        public String namesrvAddr() {
+            return settings == null ? externalDefault : settings.currentNamesrv();
+        }
+
+        public <T> T execute(RPCHook hook, String identity, MqAdminExtFactory.AdminAction<T> action) {
+            return settings == null
+                    ? adminFactory.execute(externalDefault, hook, identity, action)
+                    : adminFactory.executeDefault(settings, hook, identity, action);
+        }
+
+        public <T> T withProducer(MqClientPool.ClientAction<DefaultMQProducer, T> action) {
+            return settings == null
+                    ? clientPool.withProducer(externalDefault, null, null, action)
+                    : clientPool.withProducerDefault(settings, null, "anonymous", action);
+        }
+
+        public <T> T withPullConsumer(MqClientPool.ClientAction<DefaultMQPullConsumer, T> action) {
+            return settings == null
+                    ? clientPool.withPullConsumer(externalDefault, null, null, action)
+                    : clientPool.withPullConsumerDefault(settings, null, "anonymous", action);
+        }
+    }
+
     public String namesrvAddr(String externalDefault) {
-        return runtimeProperties.isEnabled()
-                ? runtimeConnection.current().currentNamesrv() : externalDefault;
+        return select(externalDefault).namesrvAddr();
     }
 
     public <T> T execute(String externalDefault, RPCHook hook, String identity,
                          MqAdminExtFactory.AdminAction<T> action) {
-        if (runtimeProperties.isEnabled()) {
-            OpsConnectionSettings settings = runtimeConnection.current();
-            return adminFactory.executeDefault(settings, hook, identity, action);
-        }
-        return adminFactory.execute(externalDefault, hook, identity, action);
+        return select(externalDefault).execute(hook, identity, action);
     }
 
     public <T> T withProducer(String externalDefault,
                               MqClientPool.ClientAction<DefaultMQProducer, T> action) {
-        if (runtimeProperties.isEnabled()) {
-            return clientPool.withProducerDefault(runtimeConnection.current(), null, "anonymous", action);
-        }
-        return clientPool.withProducer(externalDefault, null, null, action);
+        return select(externalDefault).withProducer(action);
     }
 
     public <T> T withPullConsumer(String externalDefault,
                                   MqClientPool.ClientAction<DefaultMQPullConsumer, T> action) {
-        if (runtimeProperties.isEnabled()) {
-            return clientPool.withPullConsumerDefault(runtimeConnection.current(), null, "anonymous", action);
-        }
-        return clientPool.withPullConsumer(externalDefault, null, null, action);
+        return select(externalDefault).withPullConsumer(action);
     }
 }
