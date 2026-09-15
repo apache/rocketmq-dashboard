@@ -21,9 +21,11 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.MQAdminImpl;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -228,6 +230,80 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByUniqueKeyWithoutWindowUsesTwoArgAdminLookupTest() throws Exception {
+        MQAdminImpl mqAdmin = mockUniqKeyLookupAdmin();
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-1");
+        message.setTopic("TopicA");
+        when(mqAdmin.queryMessageByUniqKey("TopicA", "uniq-1")).thenReturn(message);
+
+        List<MessageRecordVO> result = provider.queryMessageByUniqueKey(
+                "instance-a", "TopicA", "uniq-1", null, null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().getMsgId()).isEqualTo("msg-1");
+        verify(adminExt, never()).queryMessageByUniqKey(any(), anyString(), anyString(),
+                anyInt(), anyLong(), anyLong());
+    }
+
+    @Test
+    void queryByUniqueKeyWithoutWindowReturnsEmptyWhenNoMatchTest() throws Exception {
+        MQAdminImpl mqAdmin = mockUniqKeyLookupAdmin();
+        when(mqAdmin.queryMessageByUniqKey("TopicA", "uniq-404")).thenReturn(null);
+
+        assertThat(provider.queryMessageByUniqueKey(
+                "instance-a", "TopicA", "uniq-404", null, null)).isEmpty();
+    }
+
+    @Test
+    void queryByUniqueKeyWithWindowUsesSixArgAdminLookupTest() throws Exception {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-9");
+        message.setTopic("TopicA");
+        when(adminExt.queryMessageByUniqKey(null, "TopicA", "uniq-1", 1, 100L, 200L))
+                .thenReturn(new QueryResult(0L, List.of(message)));
+
+        List<MessageRecordVO> result = provider.queryMessageByUniqueKey(
+                "instance-a", "TopicA", "uniq-1", 100L, 200L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().getMsgId()).isEqualTo("msg-9");
+        verify(adminExt, never()).getDefaultMQAdminExtImpl();
+    }
+
+    @Test
+    void queryByUniqueKeyDegradesToEmptyWhenIndexHasNoMatchTest() throws Exception {
+        when(adminExt.queryMessageByUniqKey(null, "TopicA", "uniq-404", 1, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.QUERY_NOT_FOUND,
+                        "Can not find message"));
+
+        assertThat(provider.queryMessageByUniqueKey(
+                "instance-a", "TopicA", "uniq-404", 100L, 200L)).isEmpty();
+    }
+
+    @Test
+    void queryByUniqueKeySurfacesAdminFailureTest() throws Exception {
+        when(adminExt.queryMessageByUniqKey(null, "TopicA", "uniq-1", 1, 100L, 200L))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.queryMessageByUniqueKey(
+                "instance-a", "TopicA", "uniq-1", 100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query message by unique key: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    private MQAdminImpl mockUniqKeyLookupAdmin() {
+        DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
+        MQClientInstance clientInstance = mock(MQClientInstance.class);
+        MQAdminImpl mqAdmin = mock(MQAdminImpl.class);
+        when(adminExt.getDefaultMQAdminExtImpl()).thenReturn(adminExtImpl);
+        when(adminExtImpl.getMqClientInstance()).thenReturn(clientInstance);
+        when(clientInstance.getMQAdminImpl()).thenReturn(mqAdmin);
+        return mqAdmin;
+    }
+
+    @Test
     void queryByMsgIdUsesDecodedPhysicalOffsetForFallback() throws Exception {
         String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
         MQClientAPIImpl clientApi = mockOffsetLookupClient();
@@ -341,6 +417,22 @@ class RocketMQMessageProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query messages by topic: nameserver unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryByTopicDegradesToEmptyForRetryTopicReadBlockTest() throws Exception {
+        String retryTopic = MixAll.RETRY_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(retryTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(retryTopic)).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32)))
+                .thenThrow(new MQClientException(
+                        "CODE: 16  DESC: retry topic does not match consumer group. BROKER: broker-a:10911", null));
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", retryTopic, null, null, null, 100L, 200L);
+
+        assertThat(messages).isEmpty();
     }
 
     @Test

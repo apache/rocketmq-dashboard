@@ -82,4 +82,25 @@ class RocketMQClusterResolverTest {
         credentials.getCredentials().clear();
         assertThatThrownBy(() -> service.execute(admin -> null)).isInstanceOf(BusinessException.class);
     }
+
+    @Test
+    void instanceAdvertisesTheConfiguredAdminCredentialOnlyWhenItExistsTest() {
+        properties.setNamesrvAddr("configured:9876");
+        // ACL-less deployment: no credential reference, so runtime admin calls stay anonymous
+        // instead of failing with "Admin credential reference is not configured".
+        assertThat(service.instance("DefaultCluster").getAdminCredentialRef()).isNull();
+
+        MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
+        credential.setAccessKey("ak");
+        credential.setSecretKey("sk");
+        credentials.getCredentials().put("admin", credential);
+
+        assertThat(service.instance("DefaultCluster"))
+                .satisfies(instance -> {
+                    assertThat(instance.getName()).isEqualTo("DefaultCluster");
+                    assertThat(instance.getEndpoint()).isEqualTo("configured:9876");
+                    assertThat(instance.getAdminCredentialRef()).isEqualTo("admin");
+                });
+        verifyNoInteractions(factory);
+    }
 }

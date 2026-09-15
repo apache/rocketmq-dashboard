@@ -26,6 +26,7 @@ import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -472,16 +473,38 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
 
         MqClientPool.ClientAction<DefaultMQProducer, SendMessageVO> sendAction = producer -> {
-            Message msg = new Message(topic, tag, key, bodyBytes);
+            Message msg = new Message(topic, bodyBytes);
+            if (StringUtils.hasText(tag)) {
+                msg.setTags(tag);
+            }
+            if (StringUtils.hasText(key)) {
+                msg.setKeys(key);
+            }
 
-            // Add custom properties
+            // Custom properties must skip system-reserved keys (KEYS/TAGS/UNIQ_KEY/WAIT/
+            // TIMER_*/RETRY_TOPIC/...): putUserProperty rejects them with
+            // "The Property<X> is used by system", which is how redelivering a keyed
+            // message used to fail when the source properties were copied verbatim.
             if (request.getProperties() != null) {
                 for (Map.Entry<String, String> entry : request.getProperties().entrySet()) {
+                    if (isSystemReservedProperty(entry.getKey())) {
+                        log.debug("Skipping system-reserved message property: {}", entry.getKey());
+                        continue;
+                    }
                     msg.putUserProperty(entry.getKey(), entry.getValue());
                 }
             }
 
-            SendResult sendResult = producer.send(msg);
+            // Timer delivery is a system property; it must be set through the typed API,
+            // never forwarded via user properties.
+            if (request.getDeliveryTimestamp() != null) {
+                msg.setDeliverTimeMs(request.getDeliveryTimestamp());
+            }
+
+            SendResult sendResult = StringUtils.hasText(request.getMessageGroup())
+                    ? producer.send(msg, (queues, message, arg) ->
+                            queues.get(Math.floorMod(arg.hashCode(), queues.size())), request.getMessageGroup())
+                    : producer.send(msg);
             if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
                 String status = sendResult == null ? "null" : String.valueOf(sendResult.getSendStatus());
                 throw new BusinessException(502, "Message send did not succeed: " + status);
@@ -509,6 +532,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to send message: " + e.getMessage());
         }
+    }
+
+    private static boolean isSystemReservedProperty(String key) {
+        return key == null
+                || MessageConst.STRING_HASH_SET.contains(key)
+                || key.startsWith("%RETRY%")
+                || key.startsWith("%DLQ%");
     }
 
     @Override

@@ -35,6 +35,16 @@ import java.util.Optional;
 @Component
 @RequiredArgsConstructor
 public class RocketMQDefaultClusterResolver {
+
+    /**
+     * Well-known key of the externally supplied admin credential that protects the configured
+     * default cluster ({@code studio.cluster.admin.credentials.admin.*}).
+     *
+     * <p>The default cluster has no database record, so unlike a registered instance it cannot
+     * carry a per-instance credential reference: a physical cluster name is never a credential key.
+     */
+    private static final String DEFAULT_ADMIN_CREDENTIAL_REF = "admin";
+
     private final RocketMQProperties properties;
     private final MqAdminProperties adminProperties;
     private final MqAdminExtFactory adminFactory;
@@ -50,37 +60,66 @@ public class RocketMQDefaultClusterResolver {
         if (!StringUtils.hasText(properties.getNamesrvAddr())) {
             return List.of();
         }
+        // Discovery runs before any instance is resolved and must keep working on deployments
+        // without ACL, so it falls back to an anonymous admin connection when no default admin
+        // credential is configured. Every other entry point fails closed instead.
         return execute(admin -> {
             var info = admin.examineBrokerClusterInfo();
             return info == null || info.getClusterAddrTable() == null ? List.of()
                     : info.getClusterAddrTable().keySet().stream().sorted().toList();
-        });
+        }, configuredAdminCredential());
     }
 
     public InstanceVO instance(String cluster) {
-        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
-            throw new BusinessException(503, "RocketMQ admin not connected");
-        }
+        String endpoint = requireEndpoint();
         return InstanceVO.builder().name(cluster).vendor(InstanceVendor.APACHE).type(InstanceType.DIRECT)
-                .endpoint(properties.getNamesrvAddr().trim())
-                .adminCredentialRef(cluster) // Use the cluster name as the default credential reference.
+                .endpoint(endpoint)
+                // Advertise the configured default admin credential so RuntimeAdminClientResolver
+                // authenticates with it; stay anonymous when ACL is not configured at all.
+                .adminCredentialRef(configuredAdminCredential() == null ? null : DEFAULT_ADMIN_CREDENTIAL_REF)
                 .build();
     }
 
+    /**
+     * Runs an action against the configured default cluster using its configured admin credential.
+     *
+     * <p>A configured ACL identity is never dropped silently: when the default admin credential is
+     * absent or incomplete this fails with 422 instead of reconnecting anonymously.
+     */
     public <T> T execute(MqAdminExtFactory.AdminAction<T> action) {
-        InstanceVO instance = instance(null);
-        String reference = instance.getAdminCredentialRef();
-        if (!StringUtils.hasText(reference)) {
-            return adminFactory.execute(instance.getEndpoint(), null, action);
+        MqAdminProperties.Credential credential = configuredAdminCredential();
+        if (credential == null) {
+            throw new BusinessException(422,
+                    "Admin credential reference is not configured: " + DEFAULT_ADMIN_CREDENTIAL_REF);
         }
-        reference = reference.trim();
-        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(reference);
-        if (credential == null || !StringUtils.hasText(credential.getAccessKey())
-                || !StringUtils.hasText(credential.getSecretKey())) {
-            throw new BusinessException(422, "Admin credential reference is not configured: " + reference);
+        return execute(action, credential);
+    }
+
+    private <T> T execute(MqAdminExtFactory.AdminAction<T> action, MqAdminProperties.Credential credential) {
+        String endpoint = requireEndpoint();
+        if (credential == null) {
+            return adminFactory.execute(endpoint, null, action);
         }
         RPCHook hook = new AclClientRPCHook(new SessionCredentials(
                 credential.getAccessKey().trim(), credential.getSecretKey().trim()));
-        return adminFactory.execute(instance.getEndpoint(), hook, reference, action);
+        return adminFactory.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
+    }
+
+    /** Returns the usable default admin credential, or {@code null} when ACL is not configured. */
+    private MqAdminProperties.Credential configuredAdminCredential() {
+        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(DEFAULT_ADMIN_CREDENTIAL_REF);
+        if (credential == null || !StringUtils.hasText(credential.getAccessKey())
+                || !StringUtils.hasText(credential.getSecretKey())) {
+            return null;
+        }
+        return credential;
+    }
+
+    private String requireEndpoint() {
+        String namesrvAddr = properties.getNamesrvAddr();
+        if (!StringUtils.hasText(namesrvAddr)) {
+            throw new BusinessException(503, "RocketMQ admin not connected");
+        }
+        return namesrvAddr.trim();
     }
 }

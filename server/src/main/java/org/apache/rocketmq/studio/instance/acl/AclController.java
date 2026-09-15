@@ -61,11 +61,10 @@ public class AclController {
             @RequestParam(required = false) String resource,
             @RequestParam(required = false) String scope,
             @RequestParam(required = false) String decision,
-            @RequestParam(required = false) String aclVersion,
             @RequestParam(required = false) String instanceId,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.ok(aclService.listRules(principal, resource, scope, decision, aclVersion,
+        return Result.ok(aclService.listRules(principal, resource, scope, decision,
                 instanceId, page, pageSize));
     }
 
