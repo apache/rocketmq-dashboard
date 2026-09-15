@@ -376,7 +376,11 @@ describe('InstancePage', () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
-      { ...instance(2, 'aliyun-prod'), vendor: 'ALIYUN' as InstanceVendor, type: 'CLOUD' as InstanceType },
+      {
+        ...instance(2, 'aliyun-prod'),
+        vendor: 'ALIYUN' as InstanceVendor,
+        type: 'CLOUD' as InstanceType,
+      },
     ]);
 
     renderPage();
@@ -402,6 +406,38 @@ describe('InstancePage', () => {
     const endpointInput = within(cloudDialog).getByLabelText('接入地址');
     expect(endpointInput).toBeDisabled();
     expect(endpointInput).toHaveValue('aliyun-prod:8080');
+  });
+
+  it('submits a cloud instance whose stored endpoint is blank', async () => {
+    const user = userEvent.setup();
+    const blankEndpointCloud = {
+      ...instance(2, 'aliyun-prod'),
+      vendor: 'ALIYUN' as InstanceVendor,
+      type: 'CLOUD' as InstanceType,
+      endpoint: '',
+    };
+    vi.mocked(instanceService.listInstances).mockResolvedValue([blankEndpointCloud]);
+    vi.mocked(instanceService.updateInstance).mockResolvedValue(blankEndpointCloud);
+
+    renderPage();
+    await screen.findByText('aliyun-prod');
+
+    await user.click(
+      within(screen.getByRole('row', { name: /aliyun-prod/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    expect(endpointInput).toBeDisabled();
+    expect(endpointInput).toHaveValue('');
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    // The cloud endpoint is resolved from the catalog and the input is disabled, so keeping the
+    // required rule would leave an instance with a blank stored endpoint permanently unsaveable.
+    await waitFor(() => expect(instanceService.updateInstance).toHaveBeenCalled());
+    expect(screen.queryByText('请输入接入地址')).not.toBeInTheDocument();
   });
 
   it('reloads the latest filters after a pending instance deletion completes', async () => {
