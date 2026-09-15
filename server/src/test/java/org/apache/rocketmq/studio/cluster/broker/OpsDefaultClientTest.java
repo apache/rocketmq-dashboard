@@ -66,4 +66,25 @@ class OpsDefaultClientTest {
         verify(adminFactory).executeDefault(eq(settings), eq(null), eq("admin"), any());
         verify(pool).withProducerDefault(eq(settings), eq(null), eq("anonymous"), any());
     }
+
+    @Test
+    void selectedConnectionUsesOneSnapshotForEndpointAndActualClient() {
+        OpsRuntimeConnection runtime = mock(OpsRuntimeConnection.class);
+        OpsRuntimeProperties properties = new OpsRuntimeProperties();
+        properties.setEnabled(true);
+        OpsConnectionSettings first = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "first:9876", false, false);
+        OpsConnectionSettings second = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "second:9876", false, false);
+        when(runtime.current()).thenReturn(first, second);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        OpsDefaultClient client = new OpsDefaultClient(runtime, properties, adminFactory, mock(MqClientPool.class));
+
+        OpsDefaultClient.Selection selection = client.select("env-namesrv:9876");
+        selection.execute(null, "anonymous", ignored -> "connected");
+
+        assertThat(selection.namesrvAddr()).isEqualTo("first:9876");
+        verify(adminFactory).executeDefault(eq(first), eq(null), eq("anonymous"), any());
+        org.mockito.Mockito.verify(runtime).current();
+    }
 }
