@@ -89,6 +89,12 @@ public class AuthService {
     private final PasswordHasher passwordHasher;
     private final LoginRateLimiter loginRateLimiter;
 
+    // A well-formed PBKDF2 hash of a random preimage that is not a real credential.
+    // Disabled accounts verify against it so an attempt costs the same as a
+    // wrong-password attempt on an enabled account while their stored hash is never used.
+    private static final String DUMMY_PASSWORD_HASH =
+            "pbkdf2$210000$kPEa0eO/wGZsulkmR6fTEA==$pvP6IpsLryF+jTLiMRjHX+vwXcwOsT+WB8tJPMhmCpU=";
+
     // Retained only for narrow unit tests that construct the legacy service directly.
     private final Map<String, AuthSession> activeTokens = new ConcurrentHashMap<>();
 
@@ -352,7 +358,12 @@ public class AuthService {
         RmqStudioUser user = findUserByUsername(request.getUsername())
                 .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
         if (!Boolean.TRUE.equals(user.getEnabled())) {
-            throw new BusinessException(403, "User account is disabled");
+            // Answer exactly like a wrong password on an enabled account: burn one dummy
+            // derivation so the response timing matches, and never touch this account's
+            // real hash. A distinguishable answer here would let an unauthenticated
+            // caller enumerate accounts and their enabled state.
+            passwordHasher.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            throw new BusinessException(401, "Invalid username or password");
         }
         if (!passwordHasher.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BusinessException(401, "Invalid username or password");
