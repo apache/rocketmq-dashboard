@@ -42,7 +42,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -408,6 +412,131 @@ class AuthServiceDatabaseTest {
         LoginDTO request = new LoginDTO();
         request.setUsername("operator");
         request.setPassword("wrong-password");
+
+        for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
+            assertThatThrownBy(() -> authService.login(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Invalid username or password");
+        }
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(429))
+                .hasMessageStartingWith("Too many failed login attempts");
+    }
+
+    @Test
+    void disabledAccountsWithWrongPasswordsGetTheUniformInvalidCredentialsResponse() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class)))
+                .thenReturn(user(1L, "disabled-user", false, false, "password-1"));
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("disabled-user");
+        request.setPassword("totally-wrong");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+    }
+
+    @Test
+    void disabledAccountsWithCorrectPasswordsGetTheUniformInvalidCredentialsResponse() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class)))
+                .thenReturn(user(1L, "disabled-user", false, false, "password-1"));
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("disabled-user");
+        request.setPassword("password-1");
+
+        // Deliberately uniform with unknown users and wrong passwords: the previous
+        // 403 "User account is disabled" revealed the account state before any
+        // credential check. No session may be created either.
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+        verify(sessionMapper, never()).insert(any(RmqStudioSession.class));
+    }
+
+    @Test
+    void disabledAccountVerificationNeverTouchesTheAccountPasswordHash() {
+        PasswordHasher hasherSpy = mock(PasswordHasher.class);
+        SettingsRepository repository = mock(SettingsRepository.class);
+        when(repository.loadGeneralSettings())
+                .thenReturn(GeneralSettingsVO.builder().sessionTimeout(30).build());
+        authService = new AuthService(new AuthProperties(), repository,
+                Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC), userMapper,
+                sessionMapper, hasherSpy);
+        String storedHash = "pbkdf2$210000$cmVhbFNhbHQxNjJ5dGVzRQ==$cmVhbERpZ2VzdEJhc2U2NDQ0NDQ9";
+        RmqStudioUser disabledUser = user(1L, "disabled-user", false, false, "password-1");
+        disabledUser.setPasswordHash(storedHash);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(disabledUser);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("disabled-user");
+        request.setPassword("password-1");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+        verify(hasherSpy, never()).matches(anyString(), eq(storedHash));
+        // The dummy verification must be a full-cost PBKDF2 hash so the response
+        // timing matches a wrong-password attempt on an enabled account.
+        verify(hasherSpy, times(1)).matches(anyString(), argThat(hash ->
+                hash != null && hash.startsWith("pbkdf2$210000$")));
+    }
+
+    @Test
+    void unknownUsersShareTheUniformInvalidCredentialsResponse() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("no-such-user");
+        request.setPassword("password-1");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+    }
+
+    @Test
+    void enabledAccountsWithWrongPasswordsGetTheUniformInvalidCredentialsResponse() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class)))
+                .thenReturn(user(1L, "operator", false, true, "password-1"));
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("totally-wrong");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+    }
+
+    @Test
+    void disabledAccountFailuresAreRateLimitedLikeOtherFailedLogins() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class)))
+                .thenReturn(user(1L, "disabled-user", false, false, "password-1"));
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("disabled-user");
+        request.setPassword("totally-wrong");
 
         for (int attempt = 0; attempt < LoginRateLimiter.MAX_FAILED_ATTEMPTS; attempt++) {
             assertThatThrownBy(() -> authService.login(request))
