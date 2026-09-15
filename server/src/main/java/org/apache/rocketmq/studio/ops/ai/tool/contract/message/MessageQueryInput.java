@@ -26,5 +26,21 @@ public record MessageQueryInput(
         String uniqueKey,
         String key,
         Long startTime,
-        Long endTime) {
+        Long endTime,
+        Integer page,
+        Integer pageSize,
+        Boolean includeBody) {
+
+    public MessageQueryInput(String instanceId, String topicName, String msgId,
+                             String uniqueKey, String key, Long startTime, Long endTime) {
+        this(instanceId, topicName, msgId, uniqueKey, key, startTime, endTime, null, null, null);
+    }
+
+    public int pageNumber() {
+        return page == null ? 1 : page;
+    }
+
+    public int requestedPageSize() {
+        return pageSize == null ? 20 : pageSize;
+    }
 }

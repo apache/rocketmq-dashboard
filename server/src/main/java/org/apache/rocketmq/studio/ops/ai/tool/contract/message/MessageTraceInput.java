@@ -19,5 +19,10 @@ package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 public record MessageTraceInput(
         String instanceId,
         String topicName,
-        String msgId) {
+        String msgId,
+        String traceTopic) {
+
+    public MessageTraceInput(String instanceId, String topicName, String msgId) {
+        this(instanceId, topicName, msgId, null);
+    }
 }

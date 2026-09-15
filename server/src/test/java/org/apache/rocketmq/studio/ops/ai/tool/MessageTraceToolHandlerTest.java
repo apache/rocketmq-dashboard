@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,10 +33,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 import static org.mockito.Mockito.when;
 
@@ -82,6 +85,42 @@ class MessageTraceToolHandlerTest {
             assertThat(status.deliveryStatus()).isEqualTo("success");
         });
 
+        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
+    }
+
+    @Test
+    void forwardsCustomTraceTopicWithoutChangingProjectedOutputTest() {
+        TraceRecordVO defaultTrace = TraceRecordVO.builder()
+                .nodes(List.of(TraceNodeVO.builder().title("default").build()))
+                .consumerStatus(List.of()).build();
+        TraceRecordVO customTrace = TraceRecordVO.builder()
+                .nodes(List.of(TraceNodeVO.builder().title("custom").build()))
+                .consumerStatus(List.of()).build();
+        lenient().when(messageService.getMessageTrace("instance-a", "msg-1", "TopicA"))
+                .thenReturn(defaultTrace);
+        when(messageService.getMessageTrace("instance-a", "msg-1", "TopicA", "CUSTOM_TRACE"))
+                .thenReturn(customTrace);
+        ToolExecutionContext request = ToolExecutionContext.of("instance-a", null, Map.of(
+                "instanceId", "instance-a", "topicName", "TopicA", "msgId", "msg-1",
+                "traceTopic", "CUSTOM_TRACE"));
+
+        MessageTraceOutput result = handler.execute(request.convertInput(handler.inputType()), request);
+
+        assertThat(result.nodes()).extracting(MessageTraceOutput.Node::title).containsExactly("custom");
+        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA", "CUSTOM_TRACE");
+    }
+
+    @Test
+    void blankTraceTopicKeepsTheDefaultProviderPathTest() {
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(messageService.getMessageTrace("instance-a", "msg-1", "TopicA"))
+                .thenReturn(trace);
+
+        MessageTraceOutput result = handler.execute(
+                new MessageTraceInput("instance-a", "TopicA", "msg-1", "   "),
+                context("instance-a"));
+
+        assertThat(result.msgId()).isEqualTo("msg-1");
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
 }

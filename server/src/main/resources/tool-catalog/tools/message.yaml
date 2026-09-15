@@ -4,7 +4,7 @@ tools:
     cli:
       resource: message
       verb: query
-    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths."
+    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. Results are paged (20 by default); message bodies are omitted unless includeBody is true."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -41,10 +41,23 @@ tools:
         endTime:
           type: integer
           description: Epoch milliseconds; only applies to the uniqueKey and key paths.
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        includeBody:
+          type: boolean
     outputSchema:
       type: object
       required:
         - items
+        - total
+        - page
+        - size
+        - resultMayBeTruncated
       additionalProperties: false
       properties:
         items:
@@ -55,7 +68,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -81,13 +93,21 @@ tools:
                 type: boolean
               size:
                 type: integer
+        total:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+        resultMayBeTruncated:
+          type: boolean
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_topic
     cli:
       resource: message
       verb: query-by-topic
-    description: Query RocketMQ messages by topic and optional time range in one Studio Instance.
+    description: Query RocketMQ messages by topic and optional time range in one Studio Instance. Results are paged (20 by default); message bodies are omitted unless includeBody is true.
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -112,10 +132,23 @@ tools:
           type: integer
         endTime:
           type: integer
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        includeBody:
+          type: boolean
     outputSchema:
       type: object
       required:
         - items
+        - total
+        - page
+        - size
+        - resultMayBeTruncated
       additionalProperties: false
       properties:
         items:
@@ -126,7 +159,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -152,6 +184,14 @@ tools:
                 type: boolean
               size:
                 type: integer
+        total:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+        resultMayBeTruncated:
+          type: boolean
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_offset
@@ -351,6 +391,8 @@ tools:
         msgId:
           type: string
           minLength: 1
+        traceTopic:
+          type: string
     outputSchema:
       type: object
       required:
