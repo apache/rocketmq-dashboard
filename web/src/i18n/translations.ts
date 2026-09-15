@@ -796,6 +796,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.durationRequired': { zh: '请选择持续时间', en: 'Select a duration' },
   'alerts.windowAggregation': { zh: '窗口聚合', en: 'Window aggregation' },
   'alerts.windowSeconds': { zh: '窗口秒数', en: 'Window seconds' },
+  'alerts.windowRetentionHelp': {
+    zh: '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
+    en: 'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
+  },
   'alerts.consecutiveSamples': { zh: '连续采样次数', en: 'Consecutive samples' },
   'alerts.consecutiveSamplesRequired': {
     zh: '请输入连续采样次数',

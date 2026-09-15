@@ -217,8 +217,26 @@ describe('AlertsPage', () => {
 
     expect(screen.getByRole('button', { name: 'Test Run' })).toBeInTheDocument();
     expect(screen.getByText('Window aggregation')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('Consecutive samples')).toBeInTheDocument();
     expect(screen.queryByText('窗口聚合')).not.toBeInTheDocument();
+  });
+
+  it('explains the effective native aggregation window in Chinese', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    expect(
+      screen.getByText(
+        '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
