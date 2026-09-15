@@ -175,8 +175,8 @@ export interface AuditRecord {
   operator: string;
   operationType: string;
   resourceType: string;
-  target: string;
-  clusterId: string;
+  target: string | null;
+  clusterId: string | null;
   detail: string;
   result: string;
   errorMessage: string;
@@ -195,7 +195,9 @@ export interface AuditQuery {
   search?: string;
   operationType?: string;
   resourceType?: string;
+  target?: string;
   clusterId?: string;
+  clusterIdMissing?: boolean;
   startDate?: string;
   endDate?: string;
   result?: string;
