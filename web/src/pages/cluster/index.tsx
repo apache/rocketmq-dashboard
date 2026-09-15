@@ -116,6 +116,34 @@ const CONFIG_FIELD_LABEL_KEYS: Record<string, string> = {
   msgTraceTopicName: 'cluster.msgTraceTopicName',
 };
 
+type RequestGeneration = {
+  begin: () => number;
+  isCurrent: (requestId: number) => boolean;
+  invalidate: () => void;
+};
+
+const createRequestGeneration = (): RequestGeneration => {
+  let current = 0;
+  return {
+    begin: () => {
+      current += 1;
+      return current;
+    },
+    isCurrent: (requestId) => current === requestId,
+    invalidate: () => {
+      current += 1;
+    },
+  };
+};
+
+// One latest-request guard per async flow on this page: begin() when issuing a
+// request, isCurrent() before committing its response, invalidate() when the
+// owning dialog closes or the page unmounts so late responses are dropped.
+const useRequestGeneration = (): RequestGeneration => {
+  const [generation] = useState(createRequestGeneration);
+  return generation;
+};
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const ClusterPage = () => {
@@ -166,75 +194,85 @@ const ClusterPage = () => {
 
   const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
-  const nsRegistryRequestRef = useRef(0);
-  const registryClustersRequestRef = useRef(0);
-  const k8sCertsRequestRef = useRef(0);
-  const nsConfigDiffRequestRef = useRef(0);
-  const brokerConfigDiffRequestRef = useRef(0);
-  const connectionTestRequestRef = useRef(0);
+  const nsRegistryRequest = useRequestGeneration();
+  const registryClustersRequest = useRequestGeneration();
+  const k8sCertsRequest = useRequestGeneration();
+  const nsConfigDiffRequest = useRequestGeneration();
+  const brokerConfigDiffRequest = useRequestGeneration();
+  const connectionTestRequest = useRequestGeneration();
+  const configPreviewRequest = useRequestGeneration();
 
   const loadRegistryClusters = useCallback(async () => {
-    const requestId = ++registryClustersRequestRef.current;
+    const requestId = registryClustersRequest.begin();
     void Promise.resolve().then(() => {
-      if (registryClustersRequestRef.current === requestId) setRegistryLoading(true);
+      if (registryClustersRequest.isCurrent(requestId)) setRegistryLoading(true);
     });
     try {
       const nextClusters = await listRegistryClusters();
-      if (registryClustersRequestRef.current === requestId) {
+      if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryClusters(nextClusters);
       }
     } catch {
-      if (registryClustersRequestRef.current === requestId) {
+      if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryClusters([]);
       }
     } finally {
-      if (registryClustersRequestRef.current === requestId) {
+      if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryLoading(false);
       }
     }
-  }, []);
+  }, [registryClustersRequest]);
 
   useEffect(() => {
     void Promise.resolve().then(loadRegistryClusters);
   }, [loadRegistryClusters]);
 
   const loadNsRegistry = useCallback(async () => {
-    const requestId = ++nsRegistryRequestRef.current;
+    const requestId = nsRegistryRequest.begin();
     try {
       const entries = await listNameserverRegistry();
-      if (nsRegistryRequestRef.current === requestId) setNsRegistry(entries);
+      if (nsRegistryRequest.isCurrent(requestId)) setNsRegistry(entries);
     } catch {
-      if (nsRegistryRequestRef.current === requestId) setNsRegistry([]);
+      if (nsRegistryRequest.isCurrent(requestId)) setNsRegistry([]);
     }
-  }, []);
+  }, [nsRegistryRequest]);
 
   useEffect(() => {
     void Promise.resolve().then(loadNsRegistry);
   }, [loadNsRegistry]);
 
   useEffect(() => {
-    const requestId = ++k8sCertsRequestRef.current;
+    const requestId = k8sCertsRequest.begin();
     listK8sCerts()
       .then((certs) => {
-        if (k8sCertsRequestRef.current === requestId) {
+        if (k8sCertsRequest.isCurrent(requestId)) {
           setK8sIdOptions([...new Set(certs.map((cert) => cert.k8sId).filter(Boolean))]);
         }
       })
       .catch(() => {
-        if (k8sCertsRequestRef.current === requestId) setK8sIdOptions([]);
+        if (k8sCertsRequest.isCurrent(requestId)) setK8sIdOptions([]);
       });
-  }, []);
+  }, [k8sCertsRequest]);
 
   useEffect(
     () => () => {
-      nsRegistryRequestRef.current += 1;
-      registryClustersRequestRef.current += 1;
-      k8sCertsRequestRef.current += 1;
-      nsConfigDiffRequestRef.current += 1;
-      brokerConfigDiffRequestRef.current += 1;
-      connectionTestRequestRef.current += 1;
+      nsRegistryRequest.invalidate();
+      registryClustersRequest.invalidate();
+      k8sCertsRequest.invalidate();
+      nsConfigDiffRequest.invalidate();
+      brokerConfigDiffRequest.invalidate();
+      connectionTestRequest.invalidate();
+      configPreviewRequest.invalidate();
     },
-    [],
+    [
+      brokerConfigDiffRequest,
+      configPreviewRequest,
+      connectionTestRequest,
+      k8sCertsRequest,
+      nsConfigDiffRequest,
+      nsRegistryRequest,
+      registryClustersRequest,
+    ],
   );
 
   const [nsCreateModalOpen, setNsCreateModalOpen] = useState(false);
@@ -334,7 +372,7 @@ const ClusterPage = () => {
 
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
-      const requestId = ++nsConfigDiffRequestRef.current;
+      const requestId = nsConfigDiffRequest.begin();
       setNsConfigDiffState({
         open: true,
         loading: true,
@@ -343,7 +381,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
-        if (requestId !== nsConfigDiffRequestRef.current) return;
+        if (!nsConfigDiffRequest.isCurrent(requestId)) return;
         setNsConfigDiffState({
           open: true,
           loading: false,
@@ -351,17 +389,17 @@ const ClusterPage = () => {
           result,
         });
       } catch {
-        if (requestId !== nsConfigDiffRequestRef.current) return;
+        if (!nsConfigDiffRequest.isCurrent(requestId)) return;
         setNsConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.nsConfigDiffFailed'));
       }
     },
-    [t],
+    [nsConfigDiffRequest, t],
   );
 
   const openBrokerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
-      const requestId = ++brokerConfigDiffRequestRef.current;
+      const requestId = brokerConfigDiffRequest.begin();
       setBrokerConfigDiffState({
         open: true,
         loading: true,
@@ -370,7 +408,7 @@ const ClusterPage = () => {
       });
       try {
         const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
-        if (requestId !== brokerConfigDiffRequestRef.current) return;
+        if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
         setBrokerConfigDiffState({
           open: true,
           loading: false,
@@ -378,17 +416,17 @@ const ClusterPage = () => {
           result,
         });
       } catch {
-        if (requestId !== brokerConfigDiffRequestRef.current) return;
+        if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
         setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
     },
-    [t],
+    [brokerConfigDiffRequest, t],
   );
   const closeNameServerConfigDiff = useCallback(() => {
-    nsConfigDiffRequestRef.current += 1;
+    nsConfigDiffRequest.invalidate();
     setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null });
-  }, []);
+  }, [nsConfigDiffRequest]);
 
   // ─── Connection test ──────────────────────────────────────────────────────
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -397,43 +435,43 @@ const ClusterPage = () => {
   const [connectForm] = Form.useForm();
 
   const openConnectModal = useCallback(() => {
-    connectionTestRequestRef.current += 1;
+    connectionTestRequest.invalidate();
     setProbeResult(null);
     setConnectTesting(false);
     setConnectModalOpen(true);
-  }, []);
+  }, [connectionTestRequest]);
 
   const closeConnectModal = useCallback(() => {
-    connectionTestRequestRef.current += 1;
+    connectionTestRequest.invalidate();
     setConnectModalOpen(false);
     setConnectTesting(false);
     setProbeResult(null);
     connectForm.resetFields();
-  }, [connectForm]);
+  }, [connectForm, connectionTestRequest]);
 
   const handleTestConnection = useCallback(async () => {
-    const requestId = ++connectionTestRequestRef.current;
+    const requestId = connectionTestRequest.begin();
     let namesrvAddr: string;
     try {
       ({ namesrvAddr } = await connectForm.validateFields());
     } catch {
       return;
     }
-    if (requestId !== connectionTestRequestRef.current) return;
+    if (!connectionTestRequest.isCurrent(requestId)) return;
     setConnectTesting(true);
     setProbeResult(null);
     try {
       const result = await testClusterConnection(namesrvAddr);
-      if (requestId !== connectionTestRequestRef.current) return;
+      if (!connectionTestRequest.isCurrent(requestId)) return;
       setProbeResult(result);
       message.success(t('cluster.testConnectionSuccess'));
     } catch {
-      if (requestId !== connectionTestRequestRef.current) return;
+      if (!connectionTestRequest.isCurrent(requestId)) return;
       message.error(t('cluster.testConnectionFailed'));
     } finally {
-      if (requestId === connectionTestRequestRef.current) setConnectTesting(false);
+      if (connectionTestRequest.isCurrent(requestId)) setConnectTesting(false);
     }
-  }, [connectForm, t]);
+  }, [connectForm, connectionTestRequest, t]);
 
   // ─── Cluster refresh coordinator ──────────────────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -612,6 +650,7 @@ const ClusterPage = () => {
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
     const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
+    configPreviewRequest.invalidate();
     setSelectedCluster(cluster);
     setConfigPreview(null);
     setConfigPreviewLoading(false);
@@ -644,25 +683,31 @@ const ClusterPage = () => {
   };
 
   const handleConfigPreview = async () => {
+    const requestId = configPreviewRequest.begin();
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
     } catch {
       return;
     }
+    if (!configPreviewRequest.isCurrent(requestId)) return;
     const request = buildConfigUpdateRequest(values);
     if (!request) return;
 
     setConfigPreviewLoading(true);
     try {
       const preview = await previewClusterConfig(request);
+      if (!configPreviewRequest.isCurrent(requestId)) return;
       setConfigPreview(preview);
       message.success(t('cluster.configPreviewGenerated'));
     } catch {
+      if (!configPreviewRequest.isCurrent(requestId)) return;
       setConfigPreview(null);
       message.error(t('cluster.configPreviewFailed'));
     } finally {
-      setConfigPreviewLoading(false);
+      if (configPreviewRequest.isCurrent(requestId)) {
+        setConfigPreviewLoading(false);
+      }
     }
   };
 
@@ -1000,7 +1045,7 @@ const ClusterPage = () => {
         title={t('cluster.brokerConfigDiffTitle', { name: titleName })}
         open={open}
         onCancel={() => {
-          brokerConfigDiffRequestRef.current += 1;
+          brokerConfigDiffRequest.invalidate();
           setBrokerConfigDiffState({
             open: false,
             loading: false,
@@ -1011,7 +1056,7 @@ const ClusterPage = () => {
         footer={
           <Button
             onClick={() => {
-              brokerConfigDiffRequestRef.current += 1;
+              brokerConfigDiffRequest.invalidate();
               setBrokerConfigDiffState({
                 open: false,
                 loading: false,
@@ -1309,6 +1354,7 @@ const ClusterPage = () => {
             title={t('cluster.configTitle', { name: selectedCluster.name })}
             open={configModalOpen}
             onCancel={() => {
+              configPreviewRequest.invalidate();
               setConfigModalOpen(false);
               setConfigPreview(null);
             }}
@@ -1325,7 +1371,15 @@ const ClusterPage = () => {
                 {t('cluster.configPreview')}
               </Button>
             </Space>
-            <Form form={configForm} layout="vertical" onValuesChange={() => setConfigPreview(null)}>
+            <Form
+              form={configForm}
+              layout="vertical"
+              onValuesChange={() => {
+                configPreviewRequest.invalidate();
+                setConfigPreview(null);
+                setConfigPreviewLoading(false);
+              }}
+            >
               <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
                 <Radio.Group>
                   <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
