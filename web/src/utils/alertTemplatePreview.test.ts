@@ -24,6 +24,29 @@ import {
 } from './alertTemplatePreview';
 
 describe('alert template preview', () => {
+  it('preserves padded placeholders just as the notification renderer does', () => {
+    const preview = previewAlertNotificationTemplate(
+      '${title} | ${ title } | ${title } | ${ title}',
+      { title: 'Broker unavailable' },
+    );
+
+    expect(preview.rendered).toBe('Broker unavailable | ${ title } | ${title } | ${ title}');
+    expect(preview.usedVariables).toEqual(['title']);
+    expect(preview.unknownVariables).toHaveLength(3);
+    expect(preview.status).toBe('attention');
+  });
+
+  it('trims a custom notification while retaining its editor length', () => {
+    const template = '  ${title}\nDetails\n  ';
+    const preview = previewAlertNotificationTemplate(template, { title: 'Alert' });
+
+    expect(preview.rendered).toBe('Alert\nDetails');
+    expect(preview.template).toBe(template);
+    expect(preview.length).toBe(template.length);
+    expect(preview.tokens.map((token) => token.resolved ?? token.text).join(''))
+      .toBe(preview.rendered);
+  });
+
   it('renders known variables with stable sample values', () => {
     const preview = previewAlertNotificationTemplate(
       '[${level}] ${ruleName}: ${metric}=${value} > ${threshold}${thresholdUnit}',
