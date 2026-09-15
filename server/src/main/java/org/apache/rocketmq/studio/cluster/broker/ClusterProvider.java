@@ -24,16 +24,24 @@ public interface ClusterProvider {
     List<ClusterVO> discoverClusters();
 
     default List<ClusterVO> discoverClusters(String instanceId) {
-        return discoverClusters();
+        return instanceId == null || instanceId.isBlank() ? discoverClusters() : List.of();
     }
 
     default List<ClusterVO> discoverClustersAt(String namesrvAddr) {
         return List.of();
     }
 
+    default List<org.apache.rocketmq.studio.cluster.proxy.ProxyVO> discoverProxies(String instanceId) {
+        throw new UnsupportedOperationException("Instance Proxy discovery is not supported");
+    }
+
+    default List<BrokerVO> discoverBrokers(String instanceId, String brokerName) {
+        throw new UnsupportedOperationException("Instance Broker discovery is not supported");
+    }
+
     ClusterVO refreshClusterDetail(String clusterId);
 
     default ClusterVO refreshClusterDetail(String clusterId, String instanceId) {
-        return refreshClusterDetail(clusterId);
+        return instanceId == null || instanceId.isBlank() ? refreshClusterDetail(clusterId) : null;
     }
 }

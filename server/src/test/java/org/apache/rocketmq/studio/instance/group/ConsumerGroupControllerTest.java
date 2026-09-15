@@ -17,15 +17,20 @@
 
 package org.apache.rocketmq.studio.instance.group;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -47,7 +52,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ConsumerGroupController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class ConsumerGroupControllerTest {
+@Import(LegacyJackson2Config.class)
+class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -55,13 +61,13 @@ class ConsumerGroupControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private MetadataService metadataService;
 
-    @MockBean
+    @MockitoBean
     private org.apache.rocketmq.studio.instance.InstanceService instanceService;
 
-    @MockBean
+    @MockitoBean
     private ConsumerDiagnosticsService consumerDiagnosticsService;
 
     @Test

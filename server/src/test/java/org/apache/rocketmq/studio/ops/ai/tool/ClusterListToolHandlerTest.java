@@ -16,67 +16,68 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool;
 
-import org.apache.rocketmq.studio.cluster.broker.ClusterService;
-import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
-import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.handler.cluster.ClusterListToolHandler;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedBroker;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedCluster;
+import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.when;
+import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 
+@ExtendWith(MockitoExtension.class)
 class ClusterListToolHandlerTest {
 
+    @Mock
+    private PlatformClusterResolver clusterResolver;
+
+    @InjectMocks
+    private ClusterListToolHandler handler;
+
     @Test
-    void nullClusterVersionIsEmittedAsBlankString() {
-        // The Apache runtime provider reports no cluster version; the projection must not
-        // emit a null into the schema-required "version" string.
-        ClusterVO cluster = ClusterVO.builder()
-                .name("DefaultCluster")
-                .type(ClusterType.V4_DIRECT)
-                .status(ClusterStatus.healthy)
-                .build();
-        cluster.setId("DefaultCluster");
+    void aggregatesPhysicalClusterBrokerRowsTest() {
+        assertThat(handler.name()).isEqualTo("rmq.cluster.list");
+        ManagedCluster cluster = new ManagedCluster("rmq-a", "instance-a", List.of("ns-a:9876"),
+                List.of(
+                        new ManagedBroker("broker-a", 0L, "10.0.0.1:10911", true, "V5_5_0"),
+                        new ManagedBroker("broker-a", 1L, "10.0.0.2:10911", false, null)));
+        when(clusterResolver.scanWithBrokerVersions()).thenReturn(List.of(cluster));
 
-        ClusterService clusterService = mock(ClusterService.class);
-        when(clusterService.listClusters()).thenReturn(List.of(cluster));
+        ListOutput<ClusterListItem> output = handler.execute(
+                new ClusterListInput(null), context("instance-a"));
 
-        Object output = new ClusterListToolHandler(clusterService).execute(Map.of());
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) output;
-        assertThat(rows).hasSize(1);
-        Map<String, Object> row = rows.get(0);
-        assertThat(row.get("id")).isEqualTo("DefaultCluster");
-        assertThat(row.get("name")).isEqualTo("DefaultCluster");
-        assertThat(row.get("type")).isEqualTo("V4_DIRECT");
-        assertThat(row.get("status")).isEqualTo("healthy");
-        assertThat(row.get("version")).isEqualTo("");
+        assertThat(output.items())
+                .extracting(ClusterListItem::cluster, ClusterListItem::address,
+                        ClusterListItem::brokerName, ClusterListItem::brokerId, ClusterListItem::version)
+                .containsExactly(
+                        tuple("rmq-a", "10.0.0.1:10911", "broker-a", 0L, "V5_5_0"),
+                        tuple("rmq-a", "10.0.0.2:10911", "broker-a", 1L, null));
     }
 
     @Test
-    void populatedClusterVersionIsPassedThrough() {
-        ClusterVO cluster = ClusterVO.builder()
-                .name("VersionedCluster")
-                .type(ClusterType.V4_DIRECT)
-                .status(ClusterStatus.healthy)
-                .version("V5_3_1")
-                .build();
-        cluster.setId("VersionedCluster");
+    void filtersClustersByStatusTest() {
+        ManagedCluster healthy = new ManagedCluster("rmq-healthy", "instance-a", List.of(),
+                List.of(new ManagedBroker("broker-h", 0L, "10.0.0.1:10911", true, "V5_5_0")));
+        ManagedCluster degraded = new ManagedCluster("rmq-degraded", "instance-b", List.of(),
+                List.of(new ManagedBroker("broker-d", 0L, "10.0.0.2:10911", true, null)));
+        when(clusterResolver.scanWithBrokerVersions()).thenReturn(List.of(healthy, degraded));
 
-        ClusterService clusterService = mock(ClusterService.class);
-        when(clusterService.listClusters()).thenReturn(List.of(cluster));
+        ListOutput<ClusterListItem> output = handler.execute(
+                new ClusterListInput("HEALTHY"), context("instance-a"));
 
-        Object output = new ClusterListToolHandler(clusterService).execute(Map.of());
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) output;
-        @SuppressWarnings("unchecked")
-        Map<String, Object> row = rows.get(0);
-        assertThat(row.get("version")).isEqualTo("V5_3_1");
+        assertThat(output.items())
+                .extracting(ClusterListItem::cluster)
+                .containsExactly("rmq-healthy");
     }
 }

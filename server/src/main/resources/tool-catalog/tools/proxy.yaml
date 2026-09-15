@@ -1,0 +1,110 @@
+version: 2.0.0
+tools:
+  - name: rmq.proxy.list
+    cli:
+      resource: proxy
+      verb: list
+    description: "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability."
+    riskLevel: L1
+    permission: proxy:read
+    requiredCapabilities:
+      - PROXY_DISCOVERY
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - addr
+              - status
+              - connections
+              - grpcPort
+              - remotingPort
+            additionalProperties: false
+            properties:
+              addr:
+                type: string
+              status:
+                type:
+                  - string
+                  - 'null'
+              connections:
+                type: integer
+              grpcPort:
+                type: integer
+              remotingPort:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.proxy.config
+    cli:
+      resource: proxy
+      verb: config
+    description: "Read the Proxy configuration and reachability snapshot for one physical cluster, with an optional addr filter (read-only; configuration reload is not exposed through MCP)."
+    riskLevel: L1
+    permission: proxy:read
+    requiredCapabilities:
+      - PROXY_DISCOVERY
+    inputSchema:
+      type: object
+      required:
+        - clusterName
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+        addr:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - addr
+            additionalProperties: false
+            properties:
+              addr:
+                type: string
+              status:
+                type:
+                  - string
+                  - 'null'
+              connections:
+                type: integer
+              grpcPort:
+                type: integer
+              remotingPort:
+                type: integer
+              grpcReachable:
+                type: boolean
+              remotingReachable:
+                type: boolean
+              version:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false

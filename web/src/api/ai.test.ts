@@ -306,12 +306,16 @@ describe('AI API', () => {
   });
 
   describe('executeTool', () => {
-    it('posts structured input and returns structured output', async () => {
-      const input = { cluster: 'cluster-a', topic: 'orders' };
+    it('posts structured input with the instanceId query param and returns structured output', async () => {
+      const input = { instanceId: 'cluster-a', topicName: 'orders' };
       const output = { items: [{ name: 'orders' }], total: 1 };
-      mock.onPost('/ai/tools/rmq.topic.list/execute', input).reply(200, { data: output });
+      mock
+        .onPost('/ai/tools/rmq.topic.list/execute', input, {
+          params: { instanceId: 'cluster-a' },
+        })
+        .reply(200, { data: output });
 
-      await expect(executeTool('rmq.topic.list', input)).resolves.toEqual(output);
+      await expect(executeTool('rmq.topic.list', input, 'cluster-a')).resolves.toEqual(output);
     });
   });
 });

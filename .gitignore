@@ -10,12 +10,14 @@ Thumbs.db
 # Build artifacts
 dist/
 target/
+rmqctl/bin/
 
 # Dependencies
 node_modules/
 
 # Generated docs
 docs/*.html
+docs/generated/
 
 # Husky internal files (auto-generated scaffolds)
 .husky/_/

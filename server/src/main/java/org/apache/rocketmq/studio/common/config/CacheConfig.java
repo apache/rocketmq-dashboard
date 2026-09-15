@@ -17,13 +17,18 @@
 package org.apache.rocketmq.studio.common.config;
 
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Declares the {@link CacheManager} backing the {@code @Cacheable} methods enabled by
- * {@code @EnableCaching} on the application class.
+ * Enables caching and declares the {@link CacheManager} backing the {@code @Cacheable} methods.
+ * <p>
+ * {@code @EnableCaching} lives here rather than on {@code StudioApplication} so that
+ * {@code @WebMvcTest} slices (which do not load this {@code @Configuration}) never activate the
+ * caching infrastructure and therefore do not require a {@code CacheManager} bean to start their
+ * application context. The full application still picks up this class via component scanning.
  * <p>
  * {@code @EnableCaching} on its own leaves the manager to Spring Boot's cache
  * auto-configuration. In this application that did not yield a manager able to serve the
@@ -38,6 +43,7 @@ import org.springframework.context.annotation.Configuration;
  * reintroduce the same failure. Caches in use today: {@code data-sources}.
  */
 @Configuration
+@EnableCaching
 public class CacheConfig {
 
     @Bean

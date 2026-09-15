@@ -17,17 +17,18 @@
 
 package org.apache.rocketmq.studio.common.config;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
 import org.apache.rocketmq.studio.instance.dlq.DLQController;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.cors.CorsConfiguration;
@@ -56,15 +57,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(value = DLQController.class, properties = "studio.cors.allowed-origins=http://localhost:5173")
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CorsConfig.class)
-class CorsConfigTest {
+@Import({CorsConfig.class, LegacyJackson2Config.class})
+class CorsConfigTest extends WebMvcAuthTestSupport {
 
     private static final String FRONTEND_ORIGIN = "http://localhost:5173";
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private DLQService dlqService;
 
     @Test

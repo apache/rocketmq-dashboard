@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.nameserver;
 
+import static org.mockito.Mockito.verifyNoInteractions;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -298,6 +299,68 @@ class NameServerConfigDiffServiceTest {
                         .isEqualTo(400));
     }
 
+    @Test
+    void readShouldReturnSafeConfigPerEndpointTest() throws Exception {
+        when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
+                "ns-a:9876;ns-b:9876",
+                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action.apply(admin);
+        });
+        when(admin.getNameServerConfig(List.of("ns-a:9876")))
+                .thenReturn(Map.of("ns-a:9876", properties(
+                        "listenPort", "9876",
+                        "serverWorkerThreads", "8",
+                        "password", "secret")));
+        when(admin.getNameServerConfig(List.of("ns-b:9876")))
+                .thenReturn(Map.of("ns-b:9876", properties("listenPort", "9876")));
+
+        List<NameServerConfigDiffService.NodeConfig> nodes = service.read("cluster-a", "instance-a");
+
+        assertThat(nodes)
+                .extracting(NameServerConfigDiffService.NodeConfig::addr)
+                .containsExactly("ns-a:9876", "ns-b:9876");
+        assertThat(nodes.get(0).config())
+                .containsEntry("listenPort", "9876")
+                .containsEntry("serverWorkerThreads", "8")
+                .doesNotContainKey("password");
+        assertThat(nodes.get(1).config()).containsEntry("listenPort", "9876");
+    }
+
+    @Test
+    void readShouldSkipUnreachableEndpointsTest() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                "ns-a:9876;ns-b:9876",
+                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
+        when(admin.getNameServerConfig(List.of("ns-a:9876")))
+                .thenReturn(Map.of("ns-a:9876", properties("listenPort", "9876")));
+        when(admin.getNameServerConfig(List.of("ns-b:9876")))
+                .thenThrow(new IllegalStateException("unreachable"));
+
+        List<NameServerConfigDiffService.NodeConfig> nodes = service.read("cluster-a", null);
+
+        assertThat(nodes).singleElement()
+                .extracting(NameServerConfigDiffService.NodeConfig::addr)
+                .isEqualTo("ns-a:9876");
+    }
+
+    @Test
+    void readShouldFailWhenNoEndpointIsReachableTest() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                "ns-a:9876", List.of(nameServer("ns-a:9876"))));
+        when(admin.getNameServerConfig(List.of("ns-a:9876")))
+                .thenThrow(new IllegalStateException("unreachable"));
+
+        assertThatThrownBy(() -> service.read("cluster-a", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("No reachable NameServer endpoint to read config from: cluster-a")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                        .isEqualTo(502));
+    }
+
     private ClusterVO cluster(String endpoint, List<NameServerVO> nameServers) {
         ClusterVO cluster = ClusterVO.builder()
                 .name("cluster-a")
@@ -319,4 +382,23 @@ class NameServerConfigDiffServiceTest {
         }
         return properties;
     }
+    @Test
+    void compareForInstanceUsesOnlyRegisteredEndpointsAndRuntimeCredentials() throws Exception {
+        when(runtimeAdminClientResolver.resolveEndpoint("prod-apache")).thenReturn("selected-ns:9876");
+        when(runtimeAdminClientResolver.execute(eq("prod-apache"), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action.apply(admin);
+        });
+        when(admin.getNameServerConfig(List.of("selected-ns:9876")))
+                .thenReturn(Map.of("selected-ns:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compareForInstance("prod-apache");
+
+        assertThat(result.getCluster()).isEqualTo("prod-apache");
+        assertThat(result.isComplete()).isTrue();
+        assertThat(result.getNodes()).extracting(NameServerConfigDiffVO.NodeStatusVO::getAddress)
+                .containsExactly("selected-ns:9876");
+        verifyNoInteractions(clusterService, adminFactory);
+    }
+
 }

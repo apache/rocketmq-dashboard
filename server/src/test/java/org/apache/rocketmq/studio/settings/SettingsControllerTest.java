@@ -16,6 +16,11 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -23,8 +28,8 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.ops.alert.NotificationOutboxService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -47,7 +52,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SettingsController.class)
-class SettingsControllerTest {
+@Import(LegacyJackson2Config.class)
+class SettingsControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -55,10 +61,10 @@ class SettingsControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private SettingsService settingsService;
 
-    @MockBean
+    @MockitoBean
     private NotificationOutboxService notificationOutboxService;
 
     @Test

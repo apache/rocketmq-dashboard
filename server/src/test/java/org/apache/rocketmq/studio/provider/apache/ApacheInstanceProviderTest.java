@@ -21,7 +21,9 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,6 +57,24 @@ class ApacheInstanceProviderTest {
     private ApacheInstanceProvider provider;
 
     @Test
+    void topicWritesPassExplicitInstanceToAdminClient() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setInstanceId("other-instance");
+        when(adminClient.createTopic("inst-1", topic)).thenReturn(topic);
+        when(adminClient.updateTopic("inst-1", topic)).thenReturn(topic);
+
+        assertThat(provider.createTopic("inst-1", topic)).isSameAs(topic);
+        assertThat(provider.updateTopic("inst-1", topic)).isSameAs(topic);
+        provider.deleteTopic("inst-1", "orders");
+
+        verify(adminClient).createTopic("inst-1", topic);
+        verify(adminClient).updateTopic("inst-1", topic);
+        verify(adminClient).deleteTopic("inst-1", "orders");
+        verifyNoMoreInteractions(adminClient);
+    }
+
+    @Test
     void capabilitiesShouldIncludeApacheOnlyOperationsTest() {
         assertThat(provider.capabilities()).contains(
                 InstanceCapability.TOPIC_MANAGEMENT,
@@ -67,6 +88,20 @@ class ApacheInstanceProviderTest {
     @Test
     void vendorShouldBeApacheTest() {
         assertThat(provider.vendor()).isEqualTo(InstanceVendor.APACHE);
+    }
+
+    @Test
+    void queryMessagesDetailedShouldDelegateToMessageProviderTest() {
+        MessageQueryResult result = MessageQueryResult.truncated(java.util.List.of());
+        when(messageProvider.queryMessagesDetailed(
+                "inst-1", "TopicA", null, null, "order-1", 100L, 200L))
+                .thenReturn(result);
+
+        assertThat(provider.queryMessagesDetailed(
+                "inst-1", "TopicA", null, null, "order-1", 100L, 200L))
+                .isSameAs(result);
+        verify(messageProvider).queryMessagesDetailed(
+                "inst-1", "TopicA", null, null, "order-1", 100L, 200L);
     }
 
     @Test

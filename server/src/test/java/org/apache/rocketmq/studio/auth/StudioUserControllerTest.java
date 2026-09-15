@@ -16,16 +16,19 @@
  */
 package org.apache.rocketmq.studio.auth;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
-import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -43,16 +46,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(StudioUserController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @TestPropertySource(properties = "studio.auth.login-required=false")
-class StudioUserControllerTest {
+@Import(LegacyJackson2Config.class)
+class StudioUserControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @MockBean
-    private AuthService authService;
-
-    @MockBean
-    private SettingsRepository settingsRepository;
 
     @BeforeEach
     void disableLoginForControllerSlice() {

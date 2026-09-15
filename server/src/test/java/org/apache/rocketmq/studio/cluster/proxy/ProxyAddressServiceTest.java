@@ -346,4 +346,46 @@ class ProxyAddressServiceTest {
         assertThat(down.isGrpcReachable()).isFalse();
         assertThat(down.isRemotingReachable()).isFalse();
     }
+    @Test
+    void instanceReloadRejectsForeignAddressBeforeProbesOrHttp() {
+        when(clusterService.listProxiesForInstance("prod-apache"))
+                .thenReturn(List.of(ProxyVO.builder().addr("selected-proxy:8081").build()));
+        assertThatThrownBy(() -> proxyAddressService.previewReloadForInstance("prod-apache", "127.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> proxyAddressService.reloadConfigForInstance("prod-apache", "127.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(healthProbe, restTemplate);
+    }
+
+    @Test
+    void instanceReloadRechecksMembershipAfterPreview() {
+        when(clusterService.listProxiesForInstance("prod-apache"))
+                .thenReturn(List.of(ProxyVO.builder().addr("selected-proxy:8081").build()), List.of());
+        assertThat(proxyAddressService.previewReloadForInstance("prod-apache", "selected-proxy:8081")
+                .getProxyAddr()).isEqualTo("selected-proxy:8081");
+        assertThatThrownBy(() -> proxyAddressService.reloadConfigForInstance("prod-apache", "selected-proxy:8081"))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    void instancePreviewUsesDiscoveredPortsAndReloadUsesTheValidatedAddress() {
+        when(clusterService.listProxiesForInstance("prod-apache"))
+                .thenReturn(List.of(ProxyVO.builder().addr("selected-proxy:10911")
+                        .grpcPort(8081).remotingPort(10911).build()));
+        when(restTemplate.postForEntity(eq("http://selected-proxy:10911/admin/reloadConfig"),
+                isNull(), eq(String.class))).thenReturn(ResponseEntity.ok("ok"));
+
+        ProxyTopologyVO preview = proxyAddressService.previewReloadForInstance("prod-apache", "selected-proxy:10911");
+        proxyAddressService.reloadConfigForInstance("prod-apache", "selected-proxy:10911");
+
+        assertThat(preview.getGrpcPort()).isEqualTo(8081);
+        assertThat(preview.getRemotingPort()).isEqualTo(10911);
+        verify(healthProbe).probe(eq("selected-proxy"), eq(8081), anyInt());
+        verify(healthProbe).probe(eq("selected-proxy"), eq(10911), anyInt());
+        verify(restTemplate).postForEntity(eq("http://selected-proxy:10911/admin/reloadConfig"),
+                isNull(), eq(String.class));
+        verify(clusterService, times(2)).listProxiesForInstance("prod-apache");
+    }
+
 }

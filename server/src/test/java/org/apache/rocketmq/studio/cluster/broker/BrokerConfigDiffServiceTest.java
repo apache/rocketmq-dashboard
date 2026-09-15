@@ -240,4 +240,19 @@ class BrokerConfigDiffServiceTest {
                 .brokerPermission(brokerPermission)
                 .build();
     }
+    @Test
+    void instanceComparisonUsesPhysicalClusterNameWithoutChangingConnection() {
+        ClusterVO selected = cluster(broker("broker-a", "10.0.0.1:10911"));
+        selected.setId("DefaultCluster");
+        when(clusterService.requireSingleCluster("prod-apache")).thenReturn(selected);
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "prod-apache"))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+
+        BrokerConfigDiffVO result = service.compareForInstance("prod-apache");
+
+        assertThat(result.getCluster()).isEqualTo("DefaultCluster");
+        assertThat(result.isComplete()).isTrue();
+        verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "prod-apache");
+    }
+
 }

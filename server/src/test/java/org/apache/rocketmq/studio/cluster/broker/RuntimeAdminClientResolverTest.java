@@ -16,6 +16,10 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.instance.InstanceResolver;
+import org.apache.rocketmq.studio.provider.apache.RocketMQDefaultClusterResolver;
+import static org.mockito.Mockito.mock;
+
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -54,21 +58,40 @@ class RuntimeAdminClientResolverTest {
     private MqClientPool clientPool;
 
     @Test
+    void configuredTargetExecutesWithoutARegisteredInstance() {
+        RocketMQDefaultClusterResolver configured = mock(RocketMQDefaultClusterResolver.class);
+        InstanceVO target = InstanceVO.builder().name("DefaultCluster").endpoint("configured:9876").build();
+        when(configured.find("DefaultCluster")).thenReturn(Optional.of(target));
+        when(adminFactory.execute(eq("configured:9876"), isNull(), isNull(), any())).thenReturn("done");
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(
+                new InstanceResolver(instanceRepository, configured), adminFactory,
+                new MqAdminProperties(), clientPool);
+        String result = resolver.execute("DefaultCluster", admin -> "unused");
+        assertThat(result).isEqualTo("done");
+        assertThat(target.getId()).isNull();
+        verify(adminFactory).execute(eq("configured:9876"), isNull(), isNull(), any());
+    }
+
+    @Test
     void resolvesTrimmedEndpointFromSelectedInstance() {
         InstanceVO instance = InstanceVO.builder().endpoint(" namesrv-a:9876 ").build();
         instance.setId(1L);
         when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
 
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties(), clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                new MqAdminProperties(),
+                clientPool);
 
         assertThat(resolver.resolveEndpoint("instance-a")).isEqualTo("namesrv-a:9876");
     }
 
     @Test
     void rejectsUnknownOrUnconfiguredInstances() {
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties(), clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                new MqAdminProperties(),
+                clientPool);
         when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
         InstanceVO noEndpoint = InstanceVO.builder().endpoint(" ").build();
         when(instanceRepository.findByIdentifier("no-endpoint")).thenReturn(Optional.of(noEndpoint));
@@ -86,8 +109,10 @@ class RuntimeAdminClientResolverTest {
         InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876").build();
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         when(adminFactory.execute(eq("namesrv-b:9876"), isNull(), isNull(), any())).thenReturn("done");
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties(), clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                new MqAdminProperties(),
+                clientPool);
 
         String result = resolver.execute("instance-b", admin -> "unused");
         assertThat(result).isEqualTo("done");
@@ -102,8 +127,10 @@ class RuntimeAdminClientResolverTest {
                 .build();
         instance.setId(2L);
         when(instanceRepository.findByIdentifier("cloud-instance")).thenReturn(Optional.of(instance));
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties(), clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                new MqAdminProperties(),
+                clientPool);
 
         assertThatThrownBy(() -> resolver.resolveEndpoint("cloud-instance"))
                 .isInstanceOf(BusinessException.class)
@@ -129,8 +156,10 @@ class RuntimeAdminClientResolverTest {
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         when(adminFactory.execute(eq("namesrv-b:9876"), any(), eq("production-admin"), any()))
                 .thenReturn("done");
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties, clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                properties,
+                clientPool);
 
         String result = resolver.execute("instance-b", ignored -> "unused");
 
@@ -145,7 +174,7 @@ class RuntimeAdminClientResolverTest {
     }
 
     @Test
-    void resolvesCredentialHookForShortLivedRuntimeClients() {
+    void executesPullConsumerWithTheSelectedInstanceCredentialTest() {
         InstanceVO instance = InstanceVO.builder()
                 .endpoint("namesrv-b:9876")
                 .adminCredentialRef("production-admin")
@@ -157,11 +186,18 @@ class RuntimeAdminClientResolverTest {
         credential.setSecretKey("admin-sk");
         properties.getCredentials().put("production-admin", credential);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties, clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                properties,
+                clientPool);
 
+        resolver.executePullConsumer("instance-b", ignored -> null);
+
+        ArgumentCaptor<org.apache.rocketmq.remoting.RPCHook> hookCaptor = ArgumentCaptor.forClass(
+                org.apache.rocketmq.remoting.RPCHook.class);
+        verify(clientPool).withPullConsumer(eq("namesrv-b:9876"), hookCaptor.capture(), eq("production-admin"), any());
         org.apache.rocketmq.acl.common.AclClientRPCHook hook =
-                (org.apache.rocketmq.acl.common.AclClientRPCHook) resolver.resolveCredentialHook("instance-b");
+                (org.apache.rocketmq.acl.common.AclClientRPCHook) hookCaptor.getValue();
 
         assertThat(hook.getSessionCredentials().getAccessKey()).isEqualTo("admin-ak");
         assertThat(hook.getSessionCredentials().getSecretKey()).isEqualTo("admin-sk");
@@ -169,14 +205,18 @@ class RuntimeAdminClientResolverTest {
     }
 
     @Test
-    void returnsNoCredentialHookWhenTheSelectedInstanceHasNoCredentialReference() {
+    void executesProducerWithoutCredentialWhenTheSelectedInstanceHasNoReferenceTest() {
         InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876").build();
         instance.setId(5L);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                new MqAdminProperties(), clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                new MqAdminProperties(),
+                clientPool);
 
-        assertThat(resolver.resolveCredentialHook("instance-b")).isNull();
+        resolver.executeProducer("instance-b", ignored -> null);
+
+        verify(clientPool).withProducer(eq("namesrv-b:9876"), isNull(), isNull(), any());
         verifyNoInteractions(adminFactory);
     }
 
@@ -194,8 +234,10 @@ class RuntimeAdminClientResolverTest {
                 .adminCredentialRef("missing").build();
         instance.setId(3L);
         when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
-        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
-                properties, clientPool);
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                properties,
+                clientPool);
 
         assertThatThrownBy(() -> resolver.execute("instance-b", ignored -> "unused"))
                 .isInstanceOf(BusinessException.class)

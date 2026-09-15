@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,7 +57,7 @@ class AuditServiceTest {
     void recordShouldCaptureAuthenticatedOperator() {
         AuthenticatedUserContext.setUsername("operator-user");
 
-        auditService.record("CREATE", "topic-a", "created topic", "SUCCESS");
+        auditService.record("CREATE", null, "topic-a", null, "created topic", "SUCCESS");
 
         ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
         verify(auditRepository).save(captor.capture());
@@ -65,7 +66,7 @@ class AuditServiceTest {
 
     @Test
     void recordShouldPreserveClusterIdWhenProvided() {
-        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:prod-cn", "prod-cn",
+        auditService.record("UPDATE_CLUSTER_CONFIG", null, "CLUSTER:prod-cn", "prod-cn",
                 "updated broker config", "SUCCESS");
 
         ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
@@ -88,32 +89,34 @@ class AuditServiceTest {
     @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
-        when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("prod-cn"),
-                isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20)))
+        when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
+                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20)))
                 .thenReturn(PageResult.of(List.of(record), 21, 2, 20));
 
         PageResult<AuditRecordVO> result = auditService.queryLogs(
-                2, 20, "topic-a", "CREATE", "TOPIC", "prod-cn", null, null, "SUCCESS");
+                2, 20, "topic-a", "CREATE", "TOPIC", "orders", "prod-cn", false,
+                null, null, "SUCCESS");
 
         assertThat(result.getItems()).containsExactly(record);
         assertThat(result.getTotal()).isEqualTo(21);
-        verify(auditRepository).findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("prod-cn"),
-                isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20));
+        verify(auditRepository).findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
+                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20));
     }
 
     @Test
     void queryLogsParsesDateRangeBeforeDelegating() {
         when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
-                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10)))
+                isNull(), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
+                isNull(), eq(1), eq(10)))
                 .thenReturn(PageResult.empty(1, 10));
 
-        auditService.queryLogs(1, 10, null, null, null, null,
+        auditService.queryLogs(1, 10, null, null, null, null, null, false,
                 "2026-08-01", "2026-08-02", null);
 
         ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(auditRepository).findPage(isNull(), isNull(), isNull(), isNull(),
-                start.capture(), end.capture(), isNull(), eq(1), eq(10));
+                isNull(), eq(false), start.capture(), end.capture(), isNull(), eq(1), eq(10));
         assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
     }
@@ -121,11 +124,11 @@ class AuditServiceTest {
     @Test
     void queryLogsRejectsInvalidPageBounds() {
         assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null,
-                null, null, null))
+                null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be greater than 0");
         assertThatThrownBy(() -> auditService.queryLogs(1, 101, null, null, null, null,
-                null, null, null))
+                null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("pageSize must be between 1 and 100");
     }
@@ -133,7 +136,7 @@ class AuditServiceTest {
     @Test
     void queryLogsRejectsInvalidDateRange() {
         assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null,
-                "2026-08-02", "2026-08-01", null))
+                null, false, "2026-08-02", "2026-08-01", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate must not be after endDate");
     }
@@ -151,11 +154,12 @@ class AuditServiceTest {
                 .result("FAILED")
                 .errorMessage("=denied")
                 .build();
-        when(auditRepository.findPage(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
-                any(LocalDateTime.class), any(LocalDateTime.class), eq("FAILED"), eq(1), eq(10_000)))
+        when(auditRepository.findPage(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic,a"),
+                eq("prod-cn"), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
+                eq("FAILED"), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
-        String csv = auditService.exportLogs("topic", "DELETE", "TOPIC", "prod-cn",
+        String csv = auditService.exportLogs("topic", "DELETE", "TOPIC", "topic,a", "prod-cn", false,
                 "2026-08-01", "2026-08-02", "FAILED");
 
         assertThat(csv).contains("resourceType,target,clusterId,detail,result,errorMessage")
@@ -164,12 +168,44 @@ class AuditServiceTest {
     }
 
     @Test
+    void exportLogsLabelsTimestampColumnWithServerZoneOffset() {
+        AuditRecordVO record = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 8, 1, 9, 30))
+                .operator("alice")
+                .operationType("DELETE")
+                .resourceType("TOPIC")
+                .target("topic-a")
+                .result("SUCCESS")
+                .build();
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), eq(false),
+                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
+
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            // The stored base is server-local and stays unconverted; only the column name
+            // tells the consumer which zone the values are in.
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+                    .startsWith("\uFEFFtimestamp(UTC+08:00),operator,")
+                    .contains("\"2026-08-01T09:30\"");
+
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+                    .startsWith("\uFEFFtimestamp(UTC),operator,");
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
+    }
+
+    @Test
     void exportLogsRejectsResultsBeyondBound() {
-        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(1), eq(10_000)))
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
+                eq(false), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
 
-        assertThatThrownBy(() -> auditService.exportLogs(null, null, null, null, null, null, null))
+        assertThatThrownBy(() -> auditService.exportLogs(
+                null, null, null, null, null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Audit log export exceeds the maximum of 10000 records; narrow the filters");
     }

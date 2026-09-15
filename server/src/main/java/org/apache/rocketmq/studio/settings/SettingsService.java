@@ -299,13 +299,13 @@ public class SettingsService {
         }
 
         try {
-            JsonNode response = restClient.get()
+            String body = restClient.get()
                     .uri(prometheusQueryUri(request.getUrl(), request.getType()))
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
-                    .body(JsonNode.class);
-            return prometheusSuccess(response);
+                    .body(String.class);
+            return prometheusSuccess(parseJson(body));
         } catch (IllegalArgumentException | URISyntaxException exception) {
             return failed(exception.getMessage());
         } catch (RestClientResponseException exception) {
@@ -445,6 +445,17 @@ public class SettingsService {
                     .build();
         }
         return failed(prometheusBodyError(response));
+    }
+
+    private JsonNode parseJson(String body) {
+        if (!StringUtils.hasText(body)) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(body);
+        } catch (IOException ignored) {
+            return null;
+        }
     }
 
     private String prometheusErrorMessage(RestClientResponseException exception) {

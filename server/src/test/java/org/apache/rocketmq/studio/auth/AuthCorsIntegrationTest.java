@@ -17,20 +17,24 @@
 
 package org.apache.rocketmq.studio.auth;
 
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.common.config.CorsConfig;
 import org.apache.rocketmq.studio.instance.InstanceController;
 import org.apache.rocketmq.studio.instance.InstanceCapabilityService;
 import org.apache.rocketmq.studio.instance.InstanceService;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.Optional;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -48,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "studio.cors.allowed-origins=https://studio.example.com,http://localhost:5173"
 })
 @AutoConfigureMockMvc(addFilters = false)
-@Import({AuthWebConfig.class, CorsConfig.class})
+@Import({AuthWebConfig.class, CorsConfig.class, LegacyJackson2Config.class})
 class AuthCorsIntegrationTest {
 
     private static final String FRONTEND_ORIGIN = "https://studio.example.com";
@@ -58,20 +62,23 @@ class AuthCorsIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private InstanceService instanceService;
 
-    @MockBean
+    @MockitoBean
     private InstanceCapabilityService instanceCapabilityService;
 
-    @MockBean
+    @MockitoBean
     private AuthProperties authProperties;
 
-    @MockBean
+    @MockitoBean
     private AuthService authService;
 
-    @MockBean
+    @MockitoBean
     private SettingsRepository settingsRepository;
+
+    @MockitoBean
+    private ToolCatalog toolCatalog;
 
     @BeforeEach
     void enableLoginProtection() {
@@ -107,13 +114,13 @@ class AuthCorsIntegrationTest {
                         .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN))
                 .andExpect(status().isUnauthorized());
 
-        verify(authService).isAuthenticated(null);
+        verify(authService).getAuthenticatedUser(null);
     }
     @Test
     void shouldRejectNonAdminMutationBeforeControllerExecution() throws Exception {
         String authorization = "Bearer reader-token";
-        when(authService.isAuthenticated(authorization)).thenReturn(true);
-        when(authService.isAdmin(authorization)).thenReturn(false);
+        when(authService.getAuthenticatedUser(authorization)).thenReturn(Optional.of(
+                LoginVO.UserInfo.builder().userId(2L).username("reader").admin(false).build()));
 
         mockMvc.perform(post("/api/instances/create")
                         .header(HttpHeaders.AUTHORIZATION, authorization)

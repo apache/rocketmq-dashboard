@@ -37,4 +37,10 @@ public class SendMessageDTO {
     private String key;
     private String body;
     private Map<String, String> properties;
+
+    /** FIFO sharding key; messages of the same group are sent to the same queue. */
+    private String messageGroup;
+
+    /** Absolute delivery time in epoch milliseconds for DELAY (timer) messages. */
+    private Long deliveryTimestamp;
 }

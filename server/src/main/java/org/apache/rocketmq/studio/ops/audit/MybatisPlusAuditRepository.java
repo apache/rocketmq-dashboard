@@ -54,21 +54,14 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operationType,
-                                              String resourceType, String clusterId,
+                                              String resourceType, String target, String clusterId,
+                                              boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
-        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
-                .and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
-                .eq(StringUtils.hasText(operationType), "operation", operationType)
-                .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
-                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
-                .ge(startDate != null, "gmt_create", startDate)
-                .le(endDate != null, "gmt_create", endDate)
-                .eq(StringUtils.hasText(result), "result", result)
-                .orderByDesc("gmt_create", "id");
+        QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
+        applyFilters(query, search, operationType, resourceType, target, clusterId, clusterIdMissing,
+                startDate, endDate, result);
+        query.orderByDesc("gmt_create", "id");
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
         List<AuditRecordVO> records = resultPage.getRecords().stream()
@@ -113,7 +106,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                     String clusterId, LocalDateTime startDate, LocalDateTime endDate,
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
-                operationType, resourceType, clusterId, startDate, endDate, result);
+                operationType, resourceType, null, clusterId, false, startDate, endDate, result);
 
         // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
         // round trip instead of four separate COUNT(*) statements. Note that when the caller
@@ -194,8 +187,13 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .toList();
     }
 
+    /**
+     * Single source of truth for the audit filters, shared by the paged list, the summary and the
+     * hotspot queries so a card can never disagree with the rows it describes.
+     */
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-                              String operationType, String resourceType, String clusterId,
+                              String operationType, String resourceType, String target,
+                              String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
         query.and(StringUtils.hasText(search), w -> w
                         .like("operator", search)
@@ -203,7 +201,9 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                         .or().like("detail", search))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
-                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq(StringUtils.hasText(target), "resource_name", target)
+                .eq(!clusterIdMissing && StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .and(clusterIdMissing, scope -> scope.isNull("cluster_id").or().eq("cluster_id", ""))
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result);

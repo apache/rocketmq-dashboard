@@ -1,0 +1,705 @@
+version: 2.0.0
+tools:
+  - name: rmq.message.query
+    cli:
+      resource: message
+      verb: query
+    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths."
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - topicName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          description: Message id; highest-priority identifier (direct read, 0..1 message).
+          minLength: 1
+        uniqueKey:
+          type: string
+          description: Client-generated unique key (UNIQ_KEY index, 0..1 message); defaults to a recent 3-day window when no time range is given.
+          minLength: 1
+        key:
+          type: string
+          description: Business key (key index, 0..n messages).
+          minLength: 1
+        startTime:
+          type: integer
+          description: Epoch milliseconds; only applies to the uniqueKey and key paths.
+        endTime:
+          type: integer
+          description: Epoch milliseconds; only applies to the uniqueKey and key paths.
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.query_by_topic
+    cli:
+      resource: message
+      verb: query-by-topic
+    description: Query RocketMQ messages by topic and optional time range in one Studio Instance.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - topicName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+          minLength: 1
+        tag:
+          type: string
+        startTime:
+          type: integer
+        endTime:
+          type: integer
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.query_by_offset
+    cli:
+      resource: message
+      verb: query-by-offset
+    description: "Fetch the message stored at one physical queue offset (admin queryMsgByOffset); returns empty items when the offset is out of range or the CommitLog entry was already cleaned. Pair it with the queueStats block of rmq.topic.detail."
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_QUERY
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - topicName
+        - brokerName
+        - queueId
+        - offset
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+          minLength: 1
+        brokerName:
+          type: string
+          minLength: 1
+        queueId:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - msgId
+              - topic
+              - storeTime
+              - bodyTruncated
+              - size
+            additionalProperties: false
+            properties:
+              msgId:
+                type: string
+              topic:
+                type: string
+              tag:
+                type: string
+              key:
+                type: string
+              storeTime:
+                type: integer
+              storeHost:
+                type: string
+              bornHost:
+                type: string
+              body:
+                type: string
+              bodyEncoding:
+                type: string
+              bodyTruncated:
+                type: boolean
+              size:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.query_dlq
+    cli:
+      resource: message
+      verb: query-dlq
+    description: Query dead-letter groups, or the dead-letter messages of one group, in a Studio Instance.
+    riskLevel: L1
+    permission: dlq:read
+    requiredCapabilities:
+      - DLQ_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+        search:
+          type: string
+        time:
+          type: object
+          additionalProperties: false
+          properties:
+            startTime:
+              type: integer
+            endTime:
+              type: integer
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+        group:
+          type: string
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              groupName:
+                type: string
+              dlqTopic:
+                type: string
+              messageCount:
+                type: integer
+              retryCount:
+                type: integer
+              status:
+                type: string
+              statsAvailable:
+                type: boolean
+              lastEnqueueTime:
+                type:
+                  - string
+                  - 'null'
+              msgId:
+                type: string
+              topic:
+                type: string
+              queueId:
+                type: integer
+              offset:
+                type: integer
+              storeTime:
+                type: integer
+              keys:
+                type: string
+              body:
+                type: string
+    viewHint: table
+    deprecated: false
+  - name: rmq.message.trace
+    cli:
+      resource: message
+      verb: trace
+    description: Return the message trace timeline for one message id.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities:
+      - MESSAGE_TRACE
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - msgId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+        msgId:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - msgId
+        - nodes
+      additionalProperties: false
+      properties:
+        msgId:
+          type: string
+        nodes:
+          type: array
+          items:
+            type: object
+            required:
+              - title
+            additionalProperties: false
+            properties:
+              title:
+                type: string
+              timestamp:
+                type: integer
+              status:
+                type: string
+              costTime:
+                type: integer
+              description:
+                type: string
+        consumerStatus:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              group:
+                type: string
+              deliveryStatus:
+                type: string
+              consumeTime:
+                type: integer
+              retryCount:
+                type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.message.send
+    cli:
+      resource: message
+      verb: send
+    description: "Send one message to a RocketMQ topic; the registered topic type drives dispatch: NORMAL/LITE keep the plain parameters, FIFO topics require messageGroup, DELAY topics require deliveryTimestamp, and TRANSACTION topics are rejected (transaction messages cannot be sent through the ops channel)."
+    riskLevel: L2
+    permission: message:write
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - topicName
+        - body
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicName:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        messageGroup:
+          type: string
+          description: Sharding key; required for FIFO topics so messages of the same group land on the same queue.
+          minLength: 1
+        deliveryTimestamp:
+          type: integer
+          description: Epoch milliseconds for delayed delivery; required for DELAY topics (the server sets TIMER_DELIVER_MS itself, do not pass it via properties).
+        tag:
+          type: string
+        key:
+          type: string
+        properties:
+          type: string
+          description: JSON object string of message properties, e.g. '{"key1":"value1"}'.
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - msgId
+            - sendTime
+          additionalProperties: false
+          properties:
+            msgId:
+              type: string
+            offsetMsgId:
+              type: string
+            sendTime:
+              type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.message.redelivery
+    cli:
+      resource: message
+      verb: redelivery
+    description: "Redeliver an existing message for one consumer group: the copy goes to %RETRY%<groupName> by default so only that group re-consumes it; pass targetTopic explicitly to send it to a specific topic visible to all its subscribers instead."
+    riskLevel: L2
+    permission: message:write
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+        - msgId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          description: Consumer group receiving the redelivered copy; used for audit and trace correlation when targetTopic is provided.
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+        sourceTopic:
+          type: string
+          minLength: 1
+        targetTopic:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - redelivered
+            - originalMsgId
+            - targetTopic
+          additionalProperties: false
+          properties:
+            redelivered:
+              type: boolean
+            originalMsgId:
+              type: string
+            newMsgId:
+              type: string
+            targetTopic:
+              type: string
+    viewHint: object
+    deprecated: false
+  - name: rmq.message.redelivery_dlq
+    cli:
+      resource: message
+      verb: redelivery-dlq
+    description: Resend dead-letter messages for a consumer group back to the target topic.
+    riskLevel: L2
+    permission: dlq:write
+    requiredCapabilities:
+      - DLQ_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        targetTopic:
+          type: string
+        time:
+          type: object
+          additionalProperties: false
+          properties:
+            startTime:
+              type: integer
+            endTime:
+              type: integer
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - matched
+            - resent
+            - failed
+            - outcome
+            - scanIncomplete
+            - failedQueueCount
+          additionalProperties: false
+          properties:
+            matched:
+              type: integer
+            resent:
+              type: integer
+            failed:
+              type: integer
+            outcome:
+              type: string
+            scanIncomplete:
+              type: boolean
+            failedQueueCount:
+              type: integer
+    viewHint: object
+    deprecated: false

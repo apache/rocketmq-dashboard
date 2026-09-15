@@ -39,6 +39,7 @@ public class ClientConnectionVO {
     private String address;
     private ClientLanguage language;
     private String version;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
     private LocalDateTime connectedAt;
     private boolean partial;
     private String clusterName;
