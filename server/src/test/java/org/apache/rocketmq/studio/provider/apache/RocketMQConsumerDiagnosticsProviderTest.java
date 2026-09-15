@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerStackTraceVO;
@@ -47,13 +48,13 @@ class RocketMQConsumerDiagnosticsProviderTest {
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Mock
-    private MqAdminExtFactory adminFactory;
-
-    @Mock
     private RocketMQProperties properties;
 
     @Mock
     private MQAdminExt adminExt;
+
+    @Mock
+    private OpsDefaultClient defaultClient;
 
     private RocketMQConsumerDiagnosticsProvider provider;
 
@@ -62,9 +63,10 @@ class RocketMQConsumerDiagnosticsProviderTest {
         lenient().when(properties.getNamesrvAddr()).thenReturn("127.0.0.1:9876");
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
-        lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
-        provider = new RocketMQConsumerDiagnosticsProvider(runtimeAdminClientResolver, adminFactory, properties);
+        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+        provider = new RocketMQConsumerDiagnosticsProvider(runtimeAdminClientResolver, properties, defaultClient);
     }
 
     @Test
@@ -95,7 +97,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
                         "java.base/java.lang.Thread.run(Thread.java:1583)");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt).getConsumerRunningInfo("cg-orders", "client-1", true);
-        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verify(defaultClient, never()).execute(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -157,7 +159,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
         ConsumerStackTraceVO result = provider.getConsumerStack(null, "cg-orders", "client-1");
 
         assertThat(result.getThreadCount()).isZero();
-        verify(adminFactory).execute(eq("127.0.0.1:9876"), any(), any());
+        verify(defaultClient).execute(eq("127.0.0.1:9876"), any(), eq("anonymous"), any());
         verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
     }
 

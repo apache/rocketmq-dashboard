@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
 
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +48,8 @@ public class MqClientPool {
 
     private enum Kind { PULL_CONSUMER, PRODUCER }
 
-    private record ClientKey(String namesrvAddr, String authenticationIdentity, Kind kind) {
+    private record ClientKey(String namesrvAddr, String authenticationIdentity, Kind kind,
+                             boolean managedDefault, boolean vipChannel, boolean useTLS) {
     }
 
     private final Map<ClientKey, Object> cache = new ConcurrentHashMap<>();
@@ -61,14 +63,36 @@ public class MqClientPool {
 
     public <T> T withPullConsumer(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                                   ClientAction<DefaultMQPullConsumer, T> action) {
-        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity), Kind.PULL_CONSUMER),
+        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity),
+                        Kind.PULL_CONSUMER, false, false, false),
                 rpcHook, this::createPullConsumer, action);
     }
 
     public <T> T withProducer(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                               ClientAction<DefaultMQProducer, T> action) {
-        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity), Kind.PRODUCER),
+        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity),
+                        Kind.PRODUCER, false, false, false),
                 rpcHook, this::createProducer, action);
+    }
+
+    public <T> T withPullConsumerDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                         String authenticationIdentity,
+                                         ClientAction<DefaultMQPullConsumer, T> action) {
+        return execute(defaultKey(settings, authenticationIdentity, Kind.PULL_CONSUMER),
+                rpcHook, this::createPullConsumer, action);
+    }
+
+    public <T> T withProducerDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                     String authenticationIdentity,
+                                     ClientAction<DefaultMQProducer, T> action) {
+        return execute(defaultKey(settings, authenticationIdentity, Kind.PRODUCER),
+                rpcHook, this::createProducer, action);
+    }
+
+    private static ClientKey defaultKey(OpsConnectionSettings settings, String authenticationIdentity,
+                                        Kind kind) {
+        return new ClientKey(normalize(settings.currentNamesrv()), identity(authenticationIdentity),
+                kind, true, settings.useVIPChannel(), settings.useTLS());
     }
 
     private <C, T> T execute(ClientKey cacheKey, RPCHook rpcHook,
@@ -86,7 +110,7 @@ public class MqClientPool {
             if (closed) {
                 throw new BusinessException(503, "RocketMQ client pool is shutting down");
             }
-            return creator.create(key.namesrvAddr(), rpcHook);
+            return creator.create(key, rpcHook);
         });
         try {
             return action.apply(client);
@@ -121,7 +145,8 @@ public class MqClientPool {
             return;
         }
         for (Kind kind : Kind.values()) {
-            ClientKey key = new ClientKey(normalized, identity(authenticationIdentity), kind);
+            ClientKey key = new ClientKey(normalized, identity(authenticationIdentity),
+                    kind, false, false, false);
             Object client = cache.remove(key);
             if (client != null) {
                 safeShutdown(client);
@@ -133,12 +158,25 @@ public class MqClientPool {
 
     @FunctionalInterface
     private interface ClientCreator<C> {
-        C create(String namesrvAddr, RPCHook rpcHook);
+        C create(ClientKey key, RPCHook rpcHook);
     }
 
-    private DefaultMQPullConsumer createPullConsumer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+    protected DefaultMQPullConsumer newPullConsumer(RPCHook rpcHook) {
+        return new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+    }
+
+    protected DefaultMQProducer newProducer(RPCHook rpcHook) {
+        return new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
+    }
+
+    private DefaultMQPullConsumer createPullConsumer(ClientKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
+        DefaultMQPullConsumer consumer = newPullConsumer(rpcHook);
         consumer.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            consumer.setVipChannelEnabled(key.vipChannel());
+            consumer.setUseTLS(key.useTLS());
+        }
         consumer.setInstanceName(buildInstanceName(namesrvAddr));
         try {
             consumer.start();
@@ -151,9 +189,14 @@ public class MqClientPool {
         }
     }
 
-    private DefaultMQProducer createProducer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQProducer producer = new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
+    private DefaultMQProducer createProducer(ClientKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
+        DefaultMQProducer producer = newProducer(rpcHook);
         producer.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            producer.setVipChannelEnabled(key.vipChannel());
+            producer.setUseTLS(key.useTLS());
+        }
         producer.setInstanceName(buildInstanceName(namesrvAddr));
         producer.setSendMsgTimeout((int) PRODUCER_SEND_TIMEOUT_MILLIS);
         producer.setRetryTimesWhenSendFailed(2);

@@ -19,7 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
-import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerDiagnosticsProvider;
@@ -53,8 +53,8 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
     static final int MAX_JSTACK_CHARS = 2 * 1024 * 1024;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
-    private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final OpsDefaultClient defaultClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -74,10 +74,11 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
             return runtimeAdminClientResolver.execute(instanceId,
                     admin -> getConsumerStack(admin, groupName, clientId));
         }
-        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+        if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
-        return adminFactory.execute(properties.getNamesrvAddr(), null,
+        return defaultClient.execute(namesrvAddr, null, "anonymous",
                 admin -> getConsumerStack(admin, groupName, clientId));
     }
 

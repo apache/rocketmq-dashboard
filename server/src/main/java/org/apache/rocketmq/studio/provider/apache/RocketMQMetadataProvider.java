@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -115,6 +116,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final OpsDefaultClient defaultClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -128,11 +130,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     /** Whether a default NameServer is configured and live queries are therefore possible. */
     private boolean hasAdmin() {
-        return StringUtils.hasText(properties.getNamesrvAddr());
+        return StringUtils.hasText(defaultClient.namesrvAddr(properties.getNamesrvAddr()));
     }
 
     private <T> T adminExecute(MqAdminExtFactory.AdminAction<T> action) {
-        return adminFactory.execute(properties.getNamesrvAddr(), null, action);
+        return defaultClient.execute(defaultClient.namesrvAddr(properties.getNamesrvAddr()),
+                null, "anonymous", action);
     }
 
     @Override

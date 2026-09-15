@@ -53,15 +53,17 @@ public class RealClusterProvider implements ClusterProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final MqAdminProperties properties;
+    private final OpsDefaultClient defaultClient;
 
     @Override
     public List<ClusterVO> discoverClusters() {
-        String namesrvAddr = properties.getNamesrvAddr();
+        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             log.info("No NameServer configured; skipping cluster discovery");
             return List.of();
         }
-        return describeClusters(namesrvAddr);
+        return defaultClient.execute(properties.getNamesrvAddr(), null, "anonymous",
+                admin -> toClusterVOs(namesrvAddr, admin.examineBrokerClusterInfo()));
     }
 
     @Override
@@ -77,11 +79,12 @@ public class RealClusterProvider implements ClusterProvider {
         if (clusterId == null || clusterId.isBlank()) {
             throw new BusinessException(400, "Cluster ID is required");
         }
-        String namesrvAddr = properties.getNamesrvAddr();
+        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "No NameServer configured for cluster " + clusterId);
         }
-        return adminFactory.execute(namesrvAddr, null, admin -> toClusterVOs(namesrvAddr,
+        return defaultClient.execute(properties.getNamesrvAddr(), null, "anonymous",
+                admin -> toClusterVOs(namesrvAddr,
                         admin.examineBrokerClusterInfo()).stream()
                 .filter(cluster -> clusterId.equals(cluster.getId()))
                 .findFirst()

@@ -16,16 +16,17 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
-import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -33,7 +34,6 @@ import java.util.List;
 import java.util.Optional;
 
 @Component
-@RequiredArgsConstructor
 public class RocketMQDefaultClusterResolver {
 
     /**
@@ -48,16 +48,37 @@ public class RocketMQDefaultClusterResolver {
     private final RocketMQProperties properties;
     private final MqAdminProperties adminProperties;
     private final MqAdminExtFactory adminFactory;
+    private final OpsDefaultClient defaultClient;
+
+    @Autowired
+    public RocketMQDefaultClusterResolver(RocketMQProperties properties,
+                                          MqAdminProperties adminProperties,
+                                          MqAdminExtFactory adminFactory,
+                                          OpsDefaultClient defaultClient) {
+        this.properties = properties;
+        this.adminProperties = adminProperties;
+        this.adminFactory = adminFactory;
+        this.defaultClient = defaultClient;
+    }
+
+    public RocketMQDefaultClusterResolver(RocketMQProperties properties,
+                                          MqAdminProperties adminProperties,
+                                          MqAdminExtFactory adminFactory) {
+        this.properties = properties;
+        this.adminProperties = adminProperties;
+        this.adminFactory = adminFactory;
+        this.defaultClient = null;
+    }
 
     public Optional<InstanceVO> find(String cluster) {
-        if (!StringUtils.hasText(cluster) || !StringUtils.hasText(properties.getNamesrvAddr())) {
+        if (!StringUtils.hasText(cluster) || !StringUtils.hasText(defaultNamesrvAddr())) {
             return Optional.empty();
         }
         return names().contains(cluster) ? Optional.of(instance(cluster)) : Optional.empty();
     }
 
     public List<String> names() {
-        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+        if (!StringUtils.hasText(defaultNamesrvAddr())) {
             return List.of();
         }
         // Discovery runs before any instance is resolved and must keep working on deployments
@@ -98,11 +119,17 @@ public class RocketMQDefaultClusterResolver {
     private <T> T execute(MqAdminExtFactory.AdminAction<T> action, MqAdminProperties.Credential credential) {
         String endpoint = requireEndpoint();
         if (credential == null) {
-            return adminFactory.execute(endpoint, null, action);
+            if (defaultClient == null) {
+                return adminFactory.execute(endpoint, null, action);
+            }
+            return defaultClient.execute(endpoint, null, "anonymous", action);
         }
         RPCHook hook = new AclClientRPCHook(new SessionCredentials(
                 credential.getAccessKey().trim(), credential.getSecretKey().trim()));
-        return adminFactory.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
+        if (defaultClient == null) {
+            return adminFactory.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
+        }
+        return defaultClient.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
     }
 
     /** Returns the usable default admin credential, or {@code null} when ACL is not configured. */
@@ -116,10 +143,15 @@ public class RocketMQDefaultClusterResolver {
     }
 
     private String requireEndpoint() {
-        String namesrvAddr = properties.getNamesrvAddr();
+        String namesrvAddr = defaultNamesrvAddr();
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return namesrvAddr.trim();
+    }
+
+    private String defaultNamesrvAddr() {
+        return defaultClient == null ? properties.getNamesrvAddr()
+                : defaultClient.namesrvAddr(properties.getNamesrvAddr());
     }
 }

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
@@ -34,10 +35,10 @@ import java.util.Properties;
 @RequiredArgsConstructor
 public class RocketMQBrokerConfigService {
 
-    private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
+    private final OpsDefaultClient defaultClient;
 
     /**
      * Read broker config from the live broker via admin API.
@@ -62,7 +63,7 @@ public class RocketMQBrokerConfigService {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
-        return adminFactory.execute(namesrvAddr(), null, action);
+        return defaultClient.execute(namesrvAddr(), null, "anonymous", action);
     }
 
     /**
@@ -134,7 +135,7 @@ public class RocketMQBrokerConfigService {
     }
 
     private String namesrvAddr() {
-        String namesrvAddr = properties.getNamesrvAddr();
+        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin is not configured. Set studio.rocketmq.namesrv-addr.");
         }

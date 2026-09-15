@@ -31,6 +31,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
@@ -440,8 +441,7 @@ class RocketMQDashboardProviderTest {
         InstanceRepository instanceRepository = mock(InstanceRepository.class);
         when(instanceRepository.findAll()).thenReturn(List.of());
         RocketMQDashboardProvider provider = new RocketMQDashboardProvider(
-                mock(MqAdminExtFactory.class), properties, mock(RuntimeAdminClientResolver.class),
-                instanceRepository);
+                properties, mock(RuntimeAdminClientResolver.class), instanceRepository, defaultClient(null));
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -675,15 +675,23 @@ class RocketMQDashboardProviderTest {
 
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt, RuntimeAdminClientResolver resolver,
                                                   List<InstanceVO> instances) {
-        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
-        when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
         InstanceRepository instanceRepository = mock(InstanceRepository.class);
         when(instanceRepository.findAll()).thenReturn(instances);
-        return new RocketMQDashboardProvider(adminFactory, properties, resolver, instanceRepository);
+        return new RocketMQDashboardProvider(properties, resolver, instanceRepository, defaultClient(adminExt));
     }
+
+    private OpsDefaultClient defaultClient(DefaultMQAdminExt adminExt) {
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        if (adminExt != null) {
+            when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
+                    invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+        }
+        return defaultClient;
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();

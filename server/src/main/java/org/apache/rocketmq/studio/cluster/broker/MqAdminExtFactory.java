@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
@@ -78,6 +79,19 @@ public class MqAdminExtFactory {
      */
     public <T> T execute(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                          AdminAction<T> action) {
+        return execute(namesrvAddr, rpcHook, authenticationIdentity, false, false, false, action);
+    }
+
+    /** Applies the managed default transport settings before starting a separate admin client. */
+    public <T> T executeDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                String authenticationIdentity, AdminAction<T> action) {
+        return execute(settings.currentNamesrv(), rpcHook, authenticationIdentity,
+                true, settings.useVIPChannel(), settings.useTLS(), action);
+    }
+
+    private <T> T execute(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
+                          boolean managedDefault, boolean vipChannel, boolean useTLS,
+                          AdminAction<T> action) {
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "NameServer address is required");
         }
@@ -89,7 +103,7 @@ public class MqAdminExtFactory {
             throw new BusinessException(400, "NameServer address is required");
         }
         AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
-                normalizeAuthenticationIdentity(authenticationIdentity));
+                normalizeAuthenticationIdentity(authenticationIdentity), managedDefault, vipChannel, useTLS);
         DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
                 key -> {
                     // Re-check under the cache lock so a request that passed the initial closed check
@@ -97,7 +111,7 @@ public class MqAdminExtFactory {
                     if (closed) {
                         throw new BusinessException(503, "Admin factory is shutting down");
                     }
-                    return createAndStart(key.namesrvAddr(), rpcHook);
+                    return createAndStart(key, rpcHook);
                 });
         try {
             return action.apply(admin);
@@ -142,7 +156,7 @@ public class MqAdminExtFactory {
             return;
         }
         AdminClientCacheKey key = new AdminClientCacheKey(normalizedNamesrvAddr,
-                normalizeAuthenticationIdentity(authenticationIdentity));
+                normalizeAuthenticationIdentity(authenticationIdentity), false, false, false);
         DefaultMQAdminExt admin = cache.remove(key);
         if (admin != null) {
             safeShutdown(admin);
@@ -151,9 +165,14 @@ public class MqAdminExtFactory {
         }
     }
 
-    private DefaultMQAdminExt createAndStart(String namesrvAddr, RPCHook rpcHook) {
+    private DefaultMQAdminExt createAndStart(AdminClientCacheKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
         DefaultMQAdminExt admin = newAdmin(rpcHook);
         admin.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            admin.setVipChannelEnabled(key.vipChannel());
+            admin.setUseTLS(key.useTLS());
+        }
         admin.setInstanceName(buildInstanceName(namesrvAddr));
         try {
             admin.start();
@@ -224,7 +243,8 @@ public class MqAdminExtFactory {
         T apply(MQAdminExt admin) throws Exception;
     }
 
-    private record AdminClientCacheKey(String namesrvAddr, String authenticationIdentity) {
+    private record AdminClientCacheKey(String namesrvAddr, String authenticationIdentity,
+                                       boolean managedDefault, boolean vipChannel, boolean useTLS) {
         private AdminClientCacheKey {
             Objects.requireNonNull(namesrvAddr, "namesrvAddr");
             Objects.requireNonNull(authenticationIdentity, "authenticationIdentity");

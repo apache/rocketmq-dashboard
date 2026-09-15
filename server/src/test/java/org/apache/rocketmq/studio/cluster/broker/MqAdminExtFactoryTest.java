@@ -18,14 +18,18 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -68,6 +72,41 @@ class MqAdminExtFactoryTest {
         assertThat(second).isEqualTo("second");
         assertThat(factory.created.get()).isEqualTo(1);
         verify(admin, times(1)).start();
+    }
+
+    @Test
+    void defaultConnectionAppliesTransportBeforeStartWithoutSharingInstanceClient() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        OpsConnectionSettings settings = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", true, true);
+
+        factory.executeDefault(settings, null, "anonymous", ignored -> "default");
+        factory.execute("namesrv:9876", null, "anonymous", ignored -> "instance");
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        InOrder calls = inOrder(admin);
+        calls.verify(admin).setNamesrvAddr("namesrv:9876");
+        calls.verify(admin).setVipChannelEnabled(true);
+        calls.verify(admin).setUseTLS(true);
+        verify(admin, times(2)).start();
+    }
+
+    @Test
+    void changingDefaultTransportCreatesANewAdminClient() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        OpsConnectionSettings standard = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", false, false);
+        OpsConnectionSettings vip = new OpsConnectionSettings(
+                List.of("namesrv:9876"), "namesrv:9876", true, false);
+
+        factory.executeDefault(standard, null, "anonymous", ignored -> null);
+        factory.executeDefault(vip, null, "anonymous", ignored -> null);
+        factory.executeDefault(vip, null, "anonymous", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        verify(admin, times(2)).start();
     }
 
     @Test

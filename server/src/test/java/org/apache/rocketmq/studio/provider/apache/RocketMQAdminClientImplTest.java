@@ -37,6 +37,7 @@ import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -94,8 +95,6 @@ import static org.mockito.Mockito.when;
 class RocketMQAdminClientImplTest {
 
     @Mock
-    private MqAdminExtFactory adminFactory;
-    @Mock
     private DefaultMQAdminExt adminExt;
     @Mock
     private RocketMQProperties properties;
@@ -110,6 +109,8 @@ class RocketMQAdminClientImplTest {
     @Mock
     private MqClientPool clientPool;
     @Mock
+    private OpsDefaultClient defaultClient;
+    @Mock
     private DefaultMQProducer sendProducer;
 
     private RocketMQAdminClientImpl adminClient;
@@ -117,14 +118,17 @@ class RocketMQAdminClientImplTest {
     @BeforeEach
     void setUp() {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         lenient().when(clientPool.withProducer(any(), any(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(3).apply(sendProducer));
+        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+        lenient().when(defaultClient.withProducer(anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
         lenient().when(runtimeAdminClientResolver.executeProducer(any(), any())).thenAnswer(invocation ->
                 invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
-        adminClient = new RocketMQAdminClientImpl(adminFactory, properties, topicMapper, groupMapper, auditService,
-                runtimeAdminClientResolver, clientPool);
+        adminClient = new RocketMQAdminClientImpl(properties, topicMapper, groupMapper, auditService,
+                runtimeAdminClientResolver, defaultClient);
     }
 
     private String singleClusterTarget() {
@@ -445,7 +449,7 @@ class RocketMQAdminClientImplTest {
                 .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
 
         verifyNoInteractions(runtimeAdminClientResolver);
-        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(defaultClient);
         verifyNoInteractions(auditService);
     }
 
@@ -457,7 +461,7 @@ class RocketMQAdminClientImplTest {
                 .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
 
         verifyNoInteractions(runtimeAdminClientResolver);
-        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(defaultClient);
         verifyNoInteractions(auditService);
     }
 
@@ -597,7 +601,7 @@ class RocketMQAdminClientImplTest {
         verify(groupMapper).insert(saved.capture());
         assertThat(saved.getValue().getInstanceId()).isEmpty();
         assertThat(saved.getValue().getClusterId()).isEqualTo("cluster-1");
-        verifyNoInteractions(adminExt, adminFactory);
+        verifyNoInteractions(adminExt, defaultClient);
     }
 
     @Test
@@ -617,7 +621,7 @@ class RocketMQAdminClientImplTest {
         assertThat(saved.getValue().getInstanceId()).isEmpty();
         assertThat(saved.getValue().getClusterId()).isEqualTo("cluster-1");
         verify(selectedAdmin).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
-        verifyNoInteractions(adminExt, adminFactory);
+        verifyNoInteractions(adminExt, defaultClient);
     }
 
     @ParameterizedTest
@@ -642,7 +646,7 @@ class RocketMQAdminClientImplTest {
         assertThat(result.getInstanceId()).isEqualTo("selected-instance");
         verify(runtimeAdminClientResolver).execute(eq("selected-instance"), any());
         verify(selectedAdmin).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
-        verifyNoInteractions(adminExt, adminFactory);
+        verifyNoInteractions(adminExt, defaultClient);
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper, times(create ? 2 : 1)).selectOne(queries.capture());
         for (LambdaQueryWrapper<RmqTopic> query : queries.getAllValues()) {
@@ -1348,7 +1352,28 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(sendProducer).send(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
-        verify(clientPool).withProducer(eq("10.0.0.1:9876"), isNull(), isNull(), any());
+        verify(defaultClient).withProducer(eq("10.0.0.1:9876"), any());
+        verify(clientPool, never()).withProducer(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendMessageShouldUseOpsDefaultProducerForDefaultRequest() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        sendResult.setMsgId("msg-1");
+        sendResult.setOffsetMsgId("offset-1");
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
+        when(defaultClient.namesrvAddr("10.0.0.1:9876")).thenReturn("10.0.0.9:9876");
+
+        SendMessageDTO request = new SendMessageDTO();
+        request.setTopic("TopicA");
+        request.setBody("hello");
+
+        SendMessageVO result = adminClient.sendMessage(request);
+
+        assertThat(result.getMsgId()).isEqualTo("msg-1");
+        verify(defaultClient).withProducer(eq("10.0.0.9:9876"), any());
+        verify(clientPool, never()).withProducer(any(), any(), any(), any());
     }
 
     @Test

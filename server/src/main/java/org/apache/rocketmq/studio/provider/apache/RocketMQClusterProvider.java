@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
@@ -71,6 +72,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final OpsDefaultClient defaultClient;
 
     @Override
     public List<ClusterVO> discoverClusters() {
@@ -84,7 +86,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
         }
-        List<ClusterVO> clusters = discoverClustersAt(namesrvAddr, instanceId);
+        List<ClusterVO> clusters = discoverClustersAt(namesrvAddr, instanceId, !StringUtils.hasText(instanceId));
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         return configuredCluster == null ? clusters : clusters.stream()
@@ -93,15 +95,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public List<ClusterVO> discoverClustersAt(String namesrvAddr) {
-        return discoverClustersAt(namesrvAddr, null);
+        return discoverClustersAt(namesrvAddr, null, false);
     }
 
-    private List<ClusterVO> discoverClustersAt(String namesrvAddr, String instanceId) {
+    private List<ClusterVO> discoverClustersAt(String namesrvAddr, String instanceId, boolean useDefaultClient) {
         if (!StringUtils.hasText(namesrvAddr)) {
             return Collections.emptyList();
         }
         try {
-            return executeAdmin(instanceId, namesrvAddr, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, useDefaultClient, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return Collections.<ClusterVO>emptyList();
@@ -145,7 +147,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         try {
-            return executeAdmin(instanceId, namesrvAddr, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, !StringUtils.hasText(instanceId), admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return null;
@@ -352,13 +354,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.resolveEndpoint(instanceId);
         }
-        return properties.getNamesrvAddr();
+        return defaultClient.namesrvAddr(properties.getNamesrvAddr());
     }
 
     private <T> T executeAdmin(String instanceId, String namesrvAddr,
-                               MqAdminExtFactory.AdminAction<T> action) {
+                               boolean useDefaultClient, MqAdminExtFactory.AdminAction<T> action) {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        if (useDefaultClient) {
+            return defaultClient.execute(namesrvAddr, null, "anonymous", action);
         }
         return adminFactory.execute(namesrvAddr, null, action);
     }

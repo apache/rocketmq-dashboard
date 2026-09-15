@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerConnectionListRequestHeader;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerRunningInfoRequestHeader;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -66,9 +67,9 @@ public class ProxyConsumerResolver {
     private static final long PROXY_ADDRESS_CACHE_TTL_MILLIS = 60_000L;
     private static final String DEFAULT_INSTANCE_KEY = "__default__";
 
-    private final MqAdminExtFactory adminFactory;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final RocketMQProperties properties;
+    private final OpsDefaultClient defaultClient;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
     private final AtomicBoolean clientStarted = new AtomicBoolean(false);
@@ -188,7 +189,8 @@ public class ProxyConsumerResolver {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
-        return adminFactory.execute(properties.getNamesrvAddr(), null, action);
+        return defaultClient.execute(defaultClient.namesrvAddr(properties.getNamesrvAddr()),
+                null, "anonymous", action);
     }
 
     private NettyRemotingClient remotingClient() {

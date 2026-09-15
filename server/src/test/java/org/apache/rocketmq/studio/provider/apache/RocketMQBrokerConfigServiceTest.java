@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -36,8 +37,6 @@ import static org.mockito.Mockito.when;
 class RocketMQBrokerConfigServiceTest {
 
     @Mock
-    private MqAdminExtFactory adminFactory;
-    @Mock
     private RocketMQProperties properties;
     @Mock
     private DefaultMQAdminExt adminExt;
@@ -45,16 +44,19 @@ class RocketMQBrokerConfigServiceTest {
     private AuditService auditService;
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
+    @Mock
+    private OpsDefaultClient defaultClient;
 
     private RocketMQBrokerConfigService brokerConfigService;
 
     @BeforeEach
     void setUp() {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
         brokerConfigService = new RocketMQBrokerConfigService(
-                adminFactory, properties, runtimeAdminClientResolver, auditService);
+                properties, runtimeAdminClientResolver, auditService, defaultClient);
     }
 
     @Test
