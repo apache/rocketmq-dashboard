@@ -189,8 +189,7 @@ public class ProxyConsumerResolver {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
-        return defaultClient.execute(defaultClient.namesrvAddr(properties.getNamesrvAddr()),
-                null, "anonymous", action);
+        return defaultClient.select(properties.getNamesrvAddr()).execute(null, "anonymous", action);
     }
 
     private NettyRemotingClient remotingClient() {

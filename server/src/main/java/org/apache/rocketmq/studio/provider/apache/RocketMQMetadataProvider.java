@@ -129,13 +129,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final ProxyStatsProvider proxyStatsProvider = new NoopProxyStatsProvider();
 
     /** Whether a default NameServer is configured and live queries are therefore possible. */
-    private boolean hasAdmin() {
-        return StringUtils.hasText(defaultClient.namesrvAddr(properties.getNamesrvAddr()));
+    private OpsDefaultClient.Selection defaultSelection() {
+        return defaultClient.select(properties.getNamesrvAddr());
     }
 
-    private <T> T adminExecute(MqAdminExtFactory.AdminAction<T> action) {
-        return defaultClient.execute(defaultClient.namesrvAddr(properties.getNamesrvAddr()),
-                null, "anonymous", action);
+    private boolean hasAdmin(OpsDefaultClient.Selection defaultSelection) {
+        return StringUtils.hasText(defaultSelection.namesrvAddr());
+    }
+
+    private <T> T adminExecute(OpsDefaultClient.Selection defaultSelection,
+                               MqAdminExtFactory.AdminAction<T> action) {
+        return defaultSelection.execute(null, "anonymous", action);
     }
 
     @Override
@@ -306,13 +310,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private void enrichLiveStats(String instanceId, List<ConsumerGroupVO> groups) {
-        boolean noLiveSource = !StringUtils.hasText(instanceId) && !hasAdmin();
+        OpsDefaultClient.Selection defaultSelection =
+                StringUtils.hasText(instanceId) ? null : defaultSelection();
+        boolean noLiveSource = !StringUtils.hasText(instanceId) && !hasAdmin(defaultSelection);
         if (groups.isEmpty() || noLiveSource) {
             return;
         }
         List<Future<?>> futures = new ArrayList<>(groups.size());
         for (ConsumerGroupVO vo : groups) {
-            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, vo)));
+            futures.add(onlineEnrichmentExecutor.submit(() ->
+                    enrichGroupLiveStats(instanceId, defaultSelection, vo)));
         }
         for (int i = 0; i < groups.size(); i++) {
             try {
@@ -328,11 +335,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         }
     }
 
-    private void enrichGroupLiveStats(String instanceId, ConsumerGroupVO vo) {
+    private void enrichGroupLiveStats(String instanceId, OpsDefaultClient.Selection defaultSelection,
+                                      ConsumerGroupVO vo) {
         // The detail modal reuses the listed group as-is, so the online instance list has to be
         // filled here too; both fields come from the same connection set to stay consistent.
         List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(
-                resolveConsumerConnection(instanceId, vo.getName()));
+                resolveConsumerConnection(instanceId, defaultSelection, vo.getName()));
         vo.setInstances(instances);
         vo.setOnlineInstances(instances.size());
         try {
@@ -341,7 +349,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 stats = runtimeAdminClientResolver.execute(instanceId,
                         admin -> admin.examineConsumeStats(vo.getName()));
             } else {
-                stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
+                stats = adminExecute(defaultSelection, admin -> admin.examineConsumeStats(vo.getName()));
             }
             if (stats == null) {
                 return;
@@ -378,13 +386,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         }
     }
 
-    private ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
+    private ConsumerConnection resolveConsumerConnection(String instanceId,
+                                                         OpsDefaultClient.Selection defaultSelection,
+                                                         String group) {
         try {
             if (StringUtils.hasText(instanceId)) {
                 return runtimeAdminClientResolver.execute(instanceId,
                         admin -> admin.examineConsumerConnectionInfo(group));
             }
-            return adminExecute(admin -> admin.examineConsumerConnectionInfo(group));
+            return adminExecute(defaultSelection, admin -> admin.examineConsumerConnectionInfo(group));
         } catch (Exception e) {
             if (isGroupNotOnline(e) && proxyConsumerResolver != null) {
                 return proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
@@ -421,10 +431,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, admin -> getTopicRoutes(admin, name));
         }
-        if (!hasAdmin()) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        if (!hasAdmin(defaultSelection)) {
             return Collections.emptyList();
         }
-        return adminExecute(admin -> getTopicRoutes(admin, name));
+        return adminExecute(defaultSelection, admin -> getTopicRoutes(admin, name));
     }
 
     private List<BrokerRouteVO> getTopicRoutes(MQAdminExt admin, String name) {
@@ -516,10 +527,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return runtimeAdminClientResolver.execute(instanceId,
                     admin -> getTopicConsumersPage(admin, name, page, pageSize));
         }
-        if (!hasAdmin()) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        if (!hasAdmin(defaultSelection)) {
             return TopicConsumerPageVO.builder().items(List.of()).total(0).page(page).pageSize(pageSize).build();
         }
-        return adminExecute(admin -> getTopicConsumersPage(admin, name, page, pageSize));
+        return adminExecute(defaultSelection, admin -> getTopicConsumersPage(admin, name, page, pageSize));
     }
 
     private TopicConsumerPageVO getTopicConsumersPage(MQAdminExt admin, String name, int page, int pageSize) {
@@ -626,10 +638,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, admin -> getGroupProgress(admin, name));
         }
-        if (!hasAdmin()) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        if (!hasAdmin(defaultSelection)) {
             return Collections.emptyList();
         }
-        return adminExecute(admin -> getGroupProgress(admin, name));
+        return adminExecute(defaultSelection, admin -> getGroupProgress(admin, name));
     }
 
     private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
@@ -679,10 +692,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return runtimeAdminClientResolver.execute(instanceId,
                     admin -> getGroupSubscriptions(admin, instanceId, name));
         }
-        if (!hasAdmin()) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        if (!hasAdmin(defaultSelection)) {
             return Collections.emptyList();
         }
-        return adminExecute(admin -> getGroupSubscriptions(admin, null, name));
+        return adminExecute(defaultSelection, admin -> getGroupSubscriptions(admin, null, name));
     }
 
     private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String instanceId, String name) {

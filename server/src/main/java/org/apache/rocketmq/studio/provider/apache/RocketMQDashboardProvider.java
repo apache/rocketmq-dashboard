@@ -78,12 +78,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .sorted(Comparator.comparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
         if (apacheInstances.isEmpty()) {
-            String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+            OpsDefaultClient.Selection defaultSelection = defaultClient.select(properties.getNamesrvAddr());
+            String namesrvAddr = defaultSelection.namesrvAddr();
             if (!StringUtils.hasText(namesrvAddr)) {
                 log.warn("NameServer address not configured, returning empty dashboard");
                 return unavailableTopologyDashboard();
             }
-            return defaultClient.execute(namesrvAddr, null, "anonymous",
+            return defaultSelection.execute(null, "anonymous",
                     admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
         }
         return aggregateInstances(apacheInstances);

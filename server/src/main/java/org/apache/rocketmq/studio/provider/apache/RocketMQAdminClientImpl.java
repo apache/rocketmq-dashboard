@@ -434,8 +434,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public void deleteTopic(String instanceId, String name) {
-        String namesrvAddr = namesrvAddr(instanceId);
-        executeForInstance(instanceId, admin -> {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection(instanceId);
+        String namesrvAddr = namesrvAddr(instanceId, defaultSelection);
+        executeForInstance(instanceId, defaultSelection, admin -> {
             try {
                 String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
@@ -540,7 +541,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         try {
             return StringUtils.hasText(request.getInstanceId())
                     ? runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction)
-                    : defaultClient.withProducer(namesrvAddr(), sendAction);
+                    : defaultClient.select(properties.getNamesrvAddr()).withProducer(sendAction);
         } catch (BusinessException e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw e;
@@ -1108,25 +1109,33 @@ public class RocketMQAdminClientImpl implements AdminClient {
      * Returns the configured default NameServer address, failing fast when the studio has no
      * RocketMQ endpoint configured (equivalent to the former absent admin bean).
      */
-    private String namesrvAddr() {
-        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+    private OpsDefaultClient.Selection defaultSelection(String instanceId) {
+        return StringUtils.hasText(instanceId) ? null : defaultClient.select(properties.getNamesrvAddr());
+    }
+
+    private String namesrvAddr(String instanceId, OpsDefaultClient.Selection defaultSelection) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
+                : requireNamesrvAddr(defaultSelection.namesrvAddr());
+    }
+
+    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+        return executeForInstance(instanceId, defaultSelection(instanceId), action);
+    }
+
+    private <T> T executeForInstance(String instanceId, OpsDefaultClient.Selection defaultSelection,
+                                     MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return defaultSelection.execute(null, "anonymous", action);
+    }
+
+    private String requireNamesrvAddr(String namesrvAddr) {
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return namesrvAddr;
-    }
-
-    private String namesrvAddr(String instanceId) {
-        return StringUtils.hasText(instanceId)
-                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
-                : namesrvAddr();
-    }
-
-    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, action);
-        }
-        return defaultClient.execute(namesrvAddr(), null, "anonymous", action);
     }
 
     private String metadataScope(String instanceId) {

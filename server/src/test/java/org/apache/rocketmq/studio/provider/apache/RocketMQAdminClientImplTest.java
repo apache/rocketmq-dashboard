@@ -111,6 +111,8 @@ class RocketMQAdminClientImplTest {
     @Mock
     private OpsDefaultClient defaultClient;
     @Mock
+    private OpsDefaultClient.Selection defaultSelection;
+    @Mock
     private DefaultMQProducer sendProducer;
 
     private RocketMQAdminClientImpl adminClient;
@@ -120,11 +122,12 @@ class RocketMQAdminClientImplTest {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         lenient().when(clientPool.withProducer(any(), any(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(3).apply(sendProducer));
-        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
-        lenient().when(defaultClient.withProducer(anyString(), any())).thenAnswer(invocation ->
-                invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
+        lenient().when(defaultClient.select(anyString())).thenReturn(defaultSelection);
+        lenient().when(defaultSelection.namesrvAddr()).thenReturn("10.0.0.1:9876");
+        lenient().when(defaultSelection.execute(any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        lenient().when(defaultSelection.withProducer(any())).thenAnswer(invocation ->
+                invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(0).apply(sendProducer));
         lenient().when(runtimeAdminClientResolver.executeProducer(any(), any())).thenAnswer(invocation ->
                 invocation.<MqClientPool.ClientAction<DefaultMQProducer, Object>>getArgument(1).apply(sendProducer));
         adminClient = new RocketMQAdminClientImpl(properties, topicMapper, groupMapper, auditService,
@@ -1352,7 +1355,7 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(sendProducer).send(messageCaptor.capture());
         assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
-        verify(defaultClient).withProducer(eq("10.0.0.1:9876"), any());
+        verify(defaultSelection).withProducer(any());
         verify(clientPool, never()).withProducer(any(), any(), any(), any());
     }
 
@@ -1363,7 +1366,6 @@ class RocketMQAdminClientImplTest {
         sendResult.setMsgId("msg-1");
         sendResult.setOffsetMsgId("offset-1");
         when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
-        when(defaultClient.namesrvAddr("10.0.0.1:9876")).thenReturn("10.0.0.9:9876");
 
         SendMessageDTO request = new SendMessageDTO();
         request.setTopic("TopicA");
@@ -1372,7 +1374,7 @@ class RocketMQAdminClientImplTest {
         SendMessageVO result = adminClient.sendMessage(request);
 
         assertThat(result.getMsgId()).isEqualTo("msg-1");
-        verify(defaultClient).withProducer(eq("10.0.0.9:9876"), any());
+        verify(defaultSelection).withProducer(any());
         verify(clientPool, never()).withProducer(any(), any(), any(), any());
     }
 

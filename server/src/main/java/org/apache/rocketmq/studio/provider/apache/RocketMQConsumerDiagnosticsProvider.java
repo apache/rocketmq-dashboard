@@ -74,11 +74,12 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
             return runtimeAdminClientResolver.execute(instanceId,
                     admin -> getConsumerStack(admin, groupName, clientId));
         }
-        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+        OpsDefaultClient.Selection defaultSelection = defaultClient.select(properties.getNamesrvAddr());
+        String namesrvAddr = defaultSelection.namesrvAddr();
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
-        return defaultClient.execute(namesrvAddr, null, "anonymous",
+        return defaultSelection.execute(null, "anonymous",
                 admin -> getConsumerStack(admin, groupName, clientId));
     }
 

@@ -46,15 +46,18 @@ class RocketMQBrokerConfigServiceTest {
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
     @Mock
     private OpsDefaultClient defaultClient;
+    @Mock
+    private OpsDefaultClient.Selection defaultSelection;
 
     private RocketMQBrokerConfigService brokerConfigService;
 
     @BeforeEach
     void setUp() {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+        lenient().when(defaultClient.select(anyString())).thenReturn(defaultSelection);
+        lenient().when(defaultSelection.namesrvAddr()).thenReturn("10.0.0.1:9876");
+        lenient().when(defaultSelection.execute(any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         brokerConfigService = new RocketMQBrokerConfigService(
                 properties, runtimeAdminClientResolver, auditService, defaultClient);
     }

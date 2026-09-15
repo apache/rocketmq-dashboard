@@ -63,7 +63,13 @@ public class RocketMQBrokerConfigService {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
-        return defaultClient.execute(namesrvAddr(), null, "anonymous", action);
+        OpsDefaultClient.Selection defaultSelection = defaultClient.select(properties.getNamesrvAddr());
+        String namesrvAddr = defaultSelection.namesrvAddr();
+        if (!StringUtils.hasText(namesrvAddr)) {
+            throw new BusinessException(503,
+                    "RocketMQ admin is not configured. Set studio.rocketmq.namesrv-addr.");
+        }
+        return defaultSelection.execute(null, "anonymous", action);
     }
 
     /**
@@ -134,11 +140,4 @@ public class RocketMQBrokerConfigService {
         }
     }
 
-    private String namesrvAddr() {
-        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
-        if (!StringUtils.hasText(namesrvAddr)) {
-            throw new BusinessException(503, "RocketMQ admin is not configured. Set studio.rocketmq.namesrv-addr.");
-        }
-        return namesrvAddr;
-    }
 }

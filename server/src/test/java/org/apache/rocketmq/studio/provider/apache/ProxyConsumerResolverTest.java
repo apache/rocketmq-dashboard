@@ -54,6 +54,9 @@ class ProxyConsumerResolverTest {
     @Mock
     private OpsDefaultClient defaultClient;
 
+    @Mock
+    private OpsDefaultClient.Selection defaultSelection;
+
     private ProxyConsumerResolver resolver;
 
     @BeforeEach
@@ -61,10 +64,11 @@ class ProxyConsumerResolverTest {
         lenient().when(runtimeAdminClientResolver.execute(any(String.class), any()))
                 .thenAnswer(invocation ->
                         invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
-        lenient().when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-        lenient().when(defaultClient.execute(anyString(), any(), anyString(), any()))
+        lenient().when(defaultClient.select(anyString())).thenReturn(defaultSelection);
+        lenient().when(defaultSelection.namesrvAddr()).thenReturn(null);
+        lenient().when(defaultSelection.execute(any(), anyString(), any()))
                 .thenAnswer(invocation ->
-                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         resolver = new ProxyConsumerResolver(runtimeAdminClientResolver, new RocketMQProperties(), defaultClient);
     }
 
@@ -93,10 +97,11 @@ class ProxyConsumerResolverTest {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
         OpsDefaultClient opsDefaultClient = mock(OpsDefaultClient.class);
-        when(opsDefaultClient.namesrvAddr("10.0.0.1:9876")).thenReturn("10.0.0.9:9876");
-        when(opsDefaultClient.execute(eq("10.0.0.9:9876"), isNull(), eq("anonymous"), any()))
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        when(opsDefaultClient.select("10.0.0.1:9876")).thenReturn(selection);
+        when(selection.execute(isNull(), eq("anonymous"), any()))
                 .thenAnswer(invocation ->
-                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         ConsumerConnection syncer = new ConsumerConnection();
         Connection proxy = new Connection();
         proxy.setClientId("proxy-a");
@@ -108,7 +113,8 @@ class ProxyConsumerResolverTest {
                 .discoverProxyAddresses(null);
 
         assertThat(addresses).containsExactly("10.0.4.66:8080");
-        verify(opsDefaultClient).execute(eq("10.0.0.9:9876"), isNull(), eq("anonymous"), any());
+        verify(opsDefaultClient).select("10.0.0.1:9876");
+        verify(selection).execute(isNull(), eq("anonymous"), any());
     }
 
     @Test

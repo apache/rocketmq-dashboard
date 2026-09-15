@@ -46,13 +46,16 @@ class RocketMQClusterResolverTest {
     private final MqAdminProperties credentials = new MqAdminProperties();
     private final MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
     private final OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+    private final OpsDefaultClient.Selection defaultSelection = mock(OpsDefaultClient.Selection.class);
     private final RocketMQDefaultClusterResolver service =
             new RocketMQDefaultClusterResolver(properties, credentials, factory, defaultClient);
 
     @BeforeEach
     void setUp() {
-        lenient().when(defaultClient.namesrvAddr(any()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(defaultClient.select(any()))
+                .thenReturn(defaultSelection);
+        lenient().when(defaultSelection.namesrvAddr())
+                .thenAnswer(invocation -> properties.getNamesrvAddr() == null ? null : properties.getNamesrvAddr().trim());
     }
 
     @Test
@@ -72,8 +75,8 @@ class RocketMQClusterResolverTest {
         clusters.put("SecondCluster", Set.of("broker-b"));
         info.setClusterAddrTable(clusters);
         when(admin.examineBrokerClusterInfo()).thenReturn(info);
-        when(defaultClient.execute(eq("configured:9876"), isNull(), eq("anonymous"), any()))
-                .thenAnswer(call -> call.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(admin));
+        when(defaultSelection.execute(isNull(), eq("anonymous"), any()))
+                .thenAnswer(call -> call.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
         assertThat(service.find("SecondCluster")).get().satisfies(instance -> {
             assertThat(instance.getId()).isNull();
             assertThat(instance.getName()).isEqualTo("SecondCluster");
@@ -90,7 +93,7 @@ class RocketMQClusterResolverTest {
         credential.setSecretKey("sk");
         credentials.getCredentials().put("admin", credential);
         service.execute(admin -> null);
-        verify(defaultClient).execute(eq("configured:9876"), any(AclClientRPCHook.class), eq("admin"), any());
+        verify(defaultSelection).execute(any(AclClientRPCHook.class), eq("admin"), any());
         credentials.getCredentials().clear();
         assertThatThrownBy(() -> service.execute(admin -> null)).isInstanceOf(BusinessException.class);
     }

@@ -440,8 +440,12 @@ class RocketMQDashboardProviderTest {
         properties.setNamesrvAddr(" ");
         InstanceRepository instanceRepository = mock(InstanceRepository.class);
         when(instanceRepository.findAll()).thenReturn(List.of());
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        when(defaultClient.select(" ")).thenReturn(selection);
+        when(selection.namesrvAddr()).thenReturn(" ");
         RocketMQDashboardProvider provider = new RocketMQDashboardProvider(
-                properties, mock(RuntimeAdminClientResolver.class), instanceRepository, defaultClient(null));
+                properties, mock(RuntimeAdminClientResolver.class), instanceRepository, defaultClient);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -684,10 +688,12 @@ class RocketMQDashboardProviderTest {
 
     private OpsDefaultClient defaultClient(DefaultMQAdminExt adminExt) {
         OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
-        when(defaultClient.namesrvAddr(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        when(defaultClient.select(anyString())).thenReturn(selection);
+        when(selection.namesrvAddr()).thenReturn("10.0.0.1:9876");
         if (adminExt != null) {
-            when(defaultClient.execute(anyString(), any(), anyString(), any())).thenAnswer(invocation ->
-                    invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+            when(selection.execute(any(), anyString(), any())).thenAnswer(invocation ->
+                    invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         }
         return defaultClient;
     }

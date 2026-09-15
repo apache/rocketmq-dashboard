@@ -57,12 +57,13 @@ public class RealClusterProvider implements ClusterProvider {
 
     @Override
     public List<ClusterVO> discoverClusters() {
-        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+        OpsDefaultClient.Selection selection = defaultClient.select(properties.getNamesrvAddr());
+        String namesrvAddr = selection.namesrvAddr();
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             log.info("No NameServer configured; skipping cluster discovery");
             return List.of();
         }
-        return defaultClient.execute(properties.getNamesrvAddr(), null, "anonymous",
+        return selection.execute(null, "anonymous",
                 admin -> toClusterVOs(namesrvAddr, admin.examineBrokerClusterInfo()));
     }
 
@@ -79,11 +80,12 @@ public class RealClusterProvider implements ClusterProvider {
         if (clusterId == null || clusterId.isBlank()) {
             throw new BusinessException(400, "Cluster ID is required");
         }
-        String namesrvAddr = defaultClient.namesrvAddr(properties.getNamesrvAddr());
+        OpsDefaultClient.Selection selection = defaultClient.select(properties.getNamesrvAddr());
+        String namesrvAddr = selection.namesrvAddr();
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "No NameServer configured for cluster " + clusterId);
         }
-        return defaultClient.execute(properties.getNamesrvAddr(), null, "anonymous",
+        return selection.execute(null, "anonymous",
                 admin -> toClusterVOs(namesrvAddr,
                         admin.examineBrokerClusterInfo()).stream()
                 .filter(cluster -> clusterId.equals(cluster.getId()))
