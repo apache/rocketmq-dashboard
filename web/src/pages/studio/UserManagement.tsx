@@ -326,7 +326,10 @@ const UserManagementPage = () => {
       '注销用户会话失败',
     );
 
-  const openCreateUserModal = () => setCreateOpen(true);
+  const openCreateUserModal = () => {
+    createForm.resetFields();
+    setCreateOpen(true);
+  };
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -720,7 +723,10 @@ const UserManagementPage = () => {
         title="新建 Studio 用户"
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
           <Form.Item name="username" label="用户名" rules={[{ required: true }, { max: 128 }]}>
