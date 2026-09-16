@@ -1493,6 +1493,7 @@ const TopicPage = () => {
           <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={(value) => {
+              setSelectedRowKeys([]);
               resetTablePage();
               selectInstance(value);
             }}
@@ -1506,11 +1507,13 @@ const TopicPage = () => {
             onSearch={(value) => {
               // Store the trimmed term so the client-side row filter matches what the
               // server query used; padded input would otherwise filter out every row.
+              setSelectedRowKeys([]);
               setSearchText(value.trim());
               resetTablePage();
             }}
             onChange={(e) => {
               if (!e.target.value) {
+                setSelectedRowKeys([]);
                 setSearchText('');
                 resetTablePage();
               }
@@ -1520,6 +1523,7 @@ const TopicPage = () => {
             placeholder="类型筛选"
             value={typeFilter}
             onChange={(value) => {
+              setSelectedRowKeys([]);
               setTypeFilter(value);
               resetTablePage();
             }}
@@ -1638,6 +1642,7 @@ const TopicPage = () => {
             showSizeChanger: true,
             showTotal: (t) => `共 ${t} 条`,
             onChange: (page, pageSize) => {
+              setSelectedRowKeys([]);
               setTablePage(page);
               setTablePageSize(pageSize);
             },

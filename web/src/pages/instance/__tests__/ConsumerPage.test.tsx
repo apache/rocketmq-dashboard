@@ -312,6 +312,19 @@ describe('Consumer page', () => {
     });
   });
 
+  it('clears selected consumer groups when the search scope changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'missing-group');
+
+    expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     cleanup();
     Modal.destroyAll();
