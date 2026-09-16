@@ -331,6 +331,33 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigShouldPreserveNotificationChannelFields() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=abc")
+                .smsWebhook("https://sms.example.com/notify")
+                .emailRecipients("ops@example.com,net@example.com")
+                .build());
+        LlmConfigVO config = LlmConfigVO.builder()
+                .provider("deepseek")
+                .apiKey("sk-deepseek")
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .enabled(true)
+                .build();
+
+        llmConfigService.saveConfig(config);
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=abc");
+        assertThat(captor.getValue().getSmsWebhook()).isEqualTo("https://sms.example.com/notify");
+        assertThat(captor.getValue().getEmailRecipients())
+                .isEqualTo("ops@example.com,net@example.com");
+    }
+
+    @Test
     void saveConfigShouldRejectInvalidApiBase() {
         assertThatThrownBy(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
                 .provider("openai")

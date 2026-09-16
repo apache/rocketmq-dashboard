@@ -99,13 +99,27 @@ export const GeneralSettingsTab = () => {
     };
   }, [message, notifyForm, securityForm, t]);
 
+  // Other tabs (AI assistant settings) write the same settings record while this tab stays
+  // mounted, so every save must be built from a fresh read instead of the mount-time snapshot.
+  const loadFreshSettings = async (fallback: GeneralSettings): Promise<GeneralSettings> => {
+    try {
+      const fresh = await getGeneralSettings();
+      setSettings(fresh);
+      return fresh;
+    } catch {
+      return fallback;
+    }
+  };
+
   const persistPreference = async (patch: Partial<GeneralSettings>) => {
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
     setSavingPreference(true);
     try {
-      await saveGeneralSettings(buildPayload(next));
+      const base = await loadFreshSettings(settings);
+      await saveGeneralSettings(buildPayload({ ...base, ...patch }));
+      setSettings({ ...base, ...patch });
       message.success(t('settings.saveSuccess'));
     } catch {
       message.error(t('settings.saveFailed'));
@@ -117,10 +131,11 @@ export const GeneralSettingsTab = () => {
   const mergeAndSave = async (patch: Partial<GeneralSettings>) => {
     if (!settings) return false;
     try {
-      await saveGeneralSettings(buildPayload({ ...settings, ...patch }));
+      const base = await loadFreshSettings(settings);
+      await saveGeneralSettings(buildPayload({ ...base, ...patch }));
       const statePatch = { ...patch };
       delete statePatch.clearDingtalkSigningSecret;
-      setSettings({ ...settings, ...statePatch });
+      setSettings({ ...base, ...statePatch });
       return true;
     } catch {
       message.error(t('settings.saveFailed'));

@@ -119,6 +119,11 @@ public class LlmConfigService {
                 .notifySound(current.isNotifySound())
                 .sessionTimeout(current.getSessionTimeout())
                 .requireLogin(current.isRequireLogin())
+                // The LLM form never edits notification channels; keep the stored values
+                // instead of persisting nulls over them.
+                .dingtalkWebhook(current.getDingtalkWebhook())
+                .smsWebhook(current.getSmsWebhook())
+                .emailRecipients(current.getEmailRecipients())
                 .llmProvider(normalized.getProvider())
                 .llmEngine(normalized.getEngine())
                 .apiKey(persistedApiKey)
