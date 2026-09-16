@@ -88,6 +88,40 @@ class MybatisPlusAuditRepositoryTest {
     }
 
     @Test
+    void findPageShouldEscapeLikeWildcardsInSearchTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage("100%_done", null, null, null, null, false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqOperationAudit> query = (QueryWrapper<RmqOperationAudit>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment())
+                .contains("operator LIKE", "resource_name LIKE", "detail LIKE")
+                .contains("ESCAPE");
+        assertThat(query.getParamNameValuePairs().values())
+                .contains("%100\\%\\_done%");
+    }
+
+    @Test
+    void summarizeShouldEscapeLikeWildcardsInSearchTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.summarize("prod_%", null, null, null, null, null, null);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, org.mockito.Mockito.atLeastOnce()).selectMaps(captor.capture());
+        QueryWrapper<RmqOperationAudit> first = (QueryWrapper<RmqOperationAudit>) captor.getAllValues().get(0);
+        assertThat(first.getSqlSegment())
+                .contains("operator LIKE", "ESCAPE");
+        assertThat(first.getParamNameValuePairs().values())
+                .contains("%prod\\_\\%%");
+    }
+
+    @Test
     void findPageUsesEqualityForExactTargetTest() {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
