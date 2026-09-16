@@ -66,6 +66,7 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
 
     @Override
     public ToolPlan preview(MessageSendInput input, ToolExecutionContext context) {
+        parseProperties(input.properties());
         validateForTopicType(resolveTopicType(context.instanceId(), input.topicName()), input);
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("topic", input.topicName());

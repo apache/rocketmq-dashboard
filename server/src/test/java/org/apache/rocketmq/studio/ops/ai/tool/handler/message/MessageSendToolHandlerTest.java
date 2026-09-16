@@ -26,6 +26,8 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Map;
@@ -44,6 +46,20 @@ class MessageSendToolHandlerTest {
 
     private final MetadataService metadata = mock(MetadataService.class);
     private final MessageSendToolHandler handler = new MessageSendToolHandler(metadata);
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{", "[]", "{\"nested\":{\"key\":\"value\"}}"})
+    void malformedPropertiesFailDuringPreviewAndExecution(String properties) {
+        givenTopicType(TopicType.NORMAL);
+        MessageSendInput request = new MessageSendInput("instance-a", "TopicA", "hello", null, null,
+                null, null, properties);
+
+        assertThatThrownBy(() -> handler.preview(request, context("instance-a")))
+                .isInstanceOf(org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException.class);
+        assertThatThrownBy(() -> handler.execute(request, context("instance-a")))
+                .isInstanceOf(org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException.class);
+        verify(metadata, never()).sendMessage(any(SendMessageDTO.class));
+    }
 
     private void givenTopicType(TopicType type) {
         TopicVO topic = new TopicVO();
