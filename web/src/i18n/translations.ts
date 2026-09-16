@@ -195,6 +195,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.createCluster': { zh: '新建集群', en: 'New Cluster' },
   'cluster.nsAddr': { zh: 'NameServer 地址', en: 'NameServer Address' },
   'cluster.nsAddrPlaceholder': { zh: '例：10.0.1.1:9876', en: 'e.g. 10.0.1.1:9876' },
+  'cluster.nsAddrGuidanceTitle': {
+    zh: 'NameServer 地址填写说明',
+    en: 'NameServer address guidance',
+  },
+  'cluster.nsAddrGuidance': {
+    zh: 'Studio 会从服务器直接连接该地址，因此地址必须能被 Studio 服务器访问。支持 SLB/VIP、Headless Service DNS（例如 namesrv.mq.svc.cluster.local:9876），也支持用英文逗号分隔的多个 NameServer 地址（例如 ns1:9876,ns2:9876）。',
+    en: 'Studio connects to this address directly from the server, so it must be reachable from the Studio server. Supported forms include an SLB/VIP, a headless Service DNS name (for example namesrv.mq.svc.cluster.local:9876), and a comma-separated NameServer list (for example ns1:9876,ns2:9876).',
+  },
   'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
   'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },

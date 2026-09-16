@@ -50,6 +50,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
 import type {
@@ -1835,6 +1836,11 @@ const ClusterPage = () => {
         cancelText={t('common.cancel')}
         destroyOnHidden
       >
+        <InfoBanner
+          title={t('cluster.nsAddrGuidanceTitle')}
+          description={t('cluster.nsAddrGuidance')}
+          data-testid="nameserver-address-guidance"
+        />
         <Form form={nsCreateForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="name"
@@ -1930,6 +1936,11 @@ const ClusterPage = () => {
         destroyOnHidden
       >
         <Text type="secondary">{t('cluster.testConnectionDesc')}</Text>
+        <InfoBanner
+          title={t('cluster.nsAddrGuidanceTitle')}
+          description={t('cluster.nsAddrGuidance')}
+          data-testid="nameserver-address-guidance"
+        />
         <Form form={connectForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="namesrvAddr"
