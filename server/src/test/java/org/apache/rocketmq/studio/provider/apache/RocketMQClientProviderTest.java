@@ -263,6 +263,21 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerGroupSelectorKeepsBestEffortResultsWhenOneBrokerFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+
+        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 20);
+
+        assertThat(groups).containsExactly("pg-payment");
+    }
+
+    @Test
     void exactProducerQueryPassesNonBlankGroupToAdminApi() throws Exception {
         ProducerConnection producerConnection = new ProducerConnection();
         producerConnection.setConnectionSet(new HashSet<>(List.of(
@@ -313,17 +328,51 @@ class RocketMQClientProviderTest {
     }
 
     @Test
-    void producerQueryWithoutGroupReturnsPartialResultsWhenOneGroupFails() throws Exception {
+    void producerQueryWithoutGroupFailsWhenOneGroupQueryFails() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findProducerConnections("instance-a", "TopicA", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query producer connections for group pg-order: "
+                        + "Failed to query producer connections: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void producerQueryWithoutGroupFailsWhenOneBrokerGroupDiscoveryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+
+        assertThatThrownBy(() -> provider.findProducerConnections("instance-a", "TopicA", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query active producer groups from broker 127.0.0.1:10911: "
+                        + "broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void producerQueryWithoutGroupTreatsOfflineGroupAsCompleteEmptyResult() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-offline", List.of(producerInfo("offline-producer", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        when(adminExt.examineProducerConnectionInfo("pg-offline", "TopicA"))
+                .thenThrow(new MQClientException("Not found the producer group connection", null));
         ProducerConnection paymentConnection = new ProducerConnection();
         paymentConnection.setConnectionSet(new HashSet<>(List.of(
                 connection("producer-payment", "10.0.0.2:1000"))));
-        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
-                .thenThrow(new IllegalStateException("broker unavailable"));
         when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
                 .thenReturn(paymentConnection);
 
