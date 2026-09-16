@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.JdbcRowValues;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
 import org.apache.rocketmq.studio.persistence.mapper.RmqOperationAuditMapper;
 import org.springframework.stereotype.Repository;
@@ -195,10 +196,11 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                               String operationType, String resourceType, String target,
                               String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
+        String searchPattern = SqlLikeUtils.escape(search);
         query.and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+                        .like("operator", searchPattern)
+                        .or().like("resource_name", searchPattern)
+                        .or().like("detail", searchPattern))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(target), "resource_name", target)

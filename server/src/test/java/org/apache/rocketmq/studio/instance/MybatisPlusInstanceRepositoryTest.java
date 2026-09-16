@@ -259,4 +259,18 @@ class MybatisPlusInstanceRepositoryTest {
         vo.setAdminCredentialRef("admin-" + name);
         return vo;
     }
+
+    @Test
+    void searchShouldEscapeLikeWildcardsInTheKeywordTest() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        repository.search("100%_done");
+
+        ArgumentCaptor<QueryWrapper<RmqInstance>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        queryCaptor.getValue().getSqlSegment();
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsOnly("%100\\%\\_done%");
+    }
 }

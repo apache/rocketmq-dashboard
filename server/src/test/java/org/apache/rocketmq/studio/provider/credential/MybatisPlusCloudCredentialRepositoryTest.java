@@ -40,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import java.util.List;
 
 @ExtendWith(MockitoExtension.class)
 class MybatisPlusCloudCredentialRepositoryTest {
@@ -118,5 +119,20 @@ class MybatisPlusCloudCredentialRepositoryTest {
         entity.setAccessKey("access-key");
         entity.setSecretKey("c2VjcmV0");
         return entity;
+    }
+
+    @Test
+    void findPageShouldEscapeLikeWildcardsInTheSearchTest() {
+        when(credentialMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqCloudCredential>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, "100%_done", 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(credentialMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        queryCaptor.getValue().getSqlSegment();
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsOnly("%100\\%\\_done%");
     }
 }

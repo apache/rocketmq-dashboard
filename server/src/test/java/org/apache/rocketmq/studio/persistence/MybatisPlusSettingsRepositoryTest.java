@@ -27,6 +27,11 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.util.List;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 class MybatisPlusSettingsRepositoryTest {
 
@@ -185,5 +190,20 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(stored.getJson()).contains("sk-roundtrip-token");
         assertThat(repository.loadGeneralSettings().getApiKey()).isEqualTo("sk-roundtrip-token");
+    }
+
+    @Test
+    void findDataSourcesShouldEscapeLikeWildcardsInTheSearchTest() {
+        when(dataSourceMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources("100%_done", null, 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        queryCaptor.getValue().getSqlSegment();
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%100\\%\\_done%");
     }
 }

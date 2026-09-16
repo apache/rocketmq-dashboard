@@ -24,6 +24,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
@@ -122,8 +123,8 @@ public class MybatisPlusAclRepository implements AclRepository {
         String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
-                        .like("username", search)
-                        .or().like("access_key", search))
+                        .like("username", SqlLikeUtils.escape(search))
+                        .or().like("access_key", SqlLikeUtils.escape(search)))
                 .orderByDesc("gmt_create")
                 .orderByDesc("id");
         IPage<RmqAclUser> mapperPage = userMapper.selectPage(new Page<>(page, pageSize), query);
@@ -394,8 +395,8 @@ public class MybatisPlusAclRepository implements AclRepository {
     private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
             String decision, String aclVersion) {
         return new QueryWrapper<RmqAclRule>()
-                .like(StringUtils.hasText(principal), "principal", principal)
-                .like(StringUtils.hasText(resource), "resource", resource)
+                .like(StringUtils.hasText(principal), "principal", SqlLikeUtils.escape(principal))
+                .like(StringUtils.hasText(resource), "resource", SqlLikeUtils.escape(resource))
                 .eq(StringUtils.hasText(scope), "scope", scope)
                 .eq(StringUtils.hasText(decision), "decision", decision)
                 .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)

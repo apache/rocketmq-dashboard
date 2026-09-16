@@ -598,4 +598,21 @@ class MybatisPlusAclRepositoryTest {
         rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
         return rule;
     }
+
+    @Test
+    void findUserPageShouldEscapeLikeWildcardsInTheKeywordTest() {
+        Page<RmqAclUser> mapperPage = new Page<>(1, 20);
+        mapperPage.setRecords(List.of());
+        mapperPage.setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findUserPage("100%_done", 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        queryCaptor.getValue().getSqlSegment();
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsOnly("%100\\%\\_done%");
+    }
 }
