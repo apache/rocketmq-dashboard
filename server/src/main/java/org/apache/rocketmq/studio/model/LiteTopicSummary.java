@@ -25,6 +25,8 @@ public class LiteTopicSummary {
 
     private String topicPattern;
 
+    private String namespace;
+
     private Integer topicCount;
 
     private List<String> sessionIds;
