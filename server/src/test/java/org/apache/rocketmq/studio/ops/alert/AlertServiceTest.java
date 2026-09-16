@@ -996,7 +996,7 @@ class AlertServiceTest {
 
         assertThatThrownBy(() -> alertService.createRule(duplicate))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("An alert rule with the same evaluation conditions already exists")
+                .hasMessage("An alert rule with the same evaluation conditions already exists: Existing rule")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
 
         verify(alertRepository, never()).insertRule(any());
@@ -1030,7 +1030,7 @@ class AlertServiceTest {
 
         assertThatThrownBy(() -> alertService.updateRule(update))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("An alert rule with the same evaluation conditions already exists")
+                .hasMessage("An alert rule with the same evaluation conditions already exists: Existing")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
 
         verify(alertRepository, never()).replaceRule(any());

@@ -47,6 +47,7 @@ import {
   type CloudRegion,
 } from '../../api/aliyunCatalog';
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
+import { describeApiError } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -91,12 +92,6 @@ const APACHE_ACCESS_TYPE_OPTIONS = [
   { value: 'PROXY_CLUSTER', labelKey: 'instance.proxyClusterMode' },
   { value: 'DIRECT', labelKey: 'instance.directMode' },
 ] as const;
-
-function describeApiError(error: unknown, fallback: string): string {
-  const serverMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
-    ?.message;
-  return typeof serverMessage === 'string' && serverMessage.trim() ? serverMessage : fallback;
-}
 
 type InstanceTypeFilter = 'ALL' | Instance['type'];
 
