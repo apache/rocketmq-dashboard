@@ -7,7 +7,10 @@ import type {
   ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
+  LifecycleOperationResult,
   K8sCertInfo,
+  NameServerCreateRequest,
+  NameServerUpdateRequest,
   NameServerConfigDiffResult,
   NameserverRegistryEntry,
 } from '../api/cluster';
@@ -289,7 +292,16 @@ export async function previewClusterConfig(
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {
-  if (isMockMode()) return { success: true, message: `Broker ${brokerName} restarted (mock)` };
+  if (isMockMode()) {
+    return {
+      operation: 'BROKER_RESTART',
+      clusterId,
+      target: brokerName,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `Broker ${brokerName} restarted (mock)`,
+    } satisfies LifecycleOperationResult;
+  }
   return clusterApi.restartBroker(clusterId, brokerName);
 }
 
@@ -357,14 +369,23 @@ function getMockCluster(clusterId: string) {
   return cluster;
 }
 
-export async function restartNameServer(data: { clusterId: string; addr: string }): Promise<void> {
+export async function restartNameServer(
+  data: { clusterId: string; addr: string },
+): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const nameServer = getMockCluster(data.clusterId).nameServers.find(
       (item) => item.addr === data.addr,
     );
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
     nameServer.status = 'healthy';
-    return;
+    return {
+      operation: 'NAMESERVER_RESTART',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `NameServer ${data.addr} restarted (mock)`,
+    };
   }
   return clusterApi.restartNameServer(data);
 }
@@ -373,67 +394,106 @@ export async function upgradeNameServer(data: {
   clusterId: string;
   addr: string;
   version: string;
-}): Promise<void> {
+}): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const exists = getMockCluster(data.clusterId).nameServers.some(
       (item) => item.addr === data.addr,
     );
     if (!exists) throw new Error(`NameServer not found: ${data.addr}`);
-    return;
+    return {
+      operation: 'NAMESERVER_UPGRADE',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `NameServer ${data.addr} upgraded (mock)`,
+    };
   }
   return clusterApi.upgradeNameServer(data);
 }
 
-export async function deleteNameServer(data: { clusterId: string; addr: string }): Promise<void> {
+export async function deleteNameServer(
+  data: { clusterId: string; addr: string },
+): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     const index = nameServers.findIndex((item) => item.addr === data.addr);
     if (index < 0) throw new Error(`NameServer not found: ${data.addr}`);
     nameServers.splice(index, 1);
-    return;
+    return {
+      operation: 'NAMESERVER_DELETE',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `NameServer ${data.addr} deleted (mock)`,
+    };
   }
   return clusterApi.deleteNameServer(data);
 }
 
-export async function createNameServer(data: { clusterId: string; addr: string }): Promise<void> {
+export async function createNameServer(
+  data: NameServerCreateRequest,
+): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     if (nameServers.some((item) => item.addr === data.addr)) {
       throw new Error(`NameServer already exists: ${data.addr}`);
     }
-    nameServers.push({ addr: data.addr, status: 'healthy' });
-    return;
+    nameServers.push({ addr: data.addr, status: 'warning' });
+    return {
+      operation: 'NAMESERVER_CREATE',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `NameServer ${data.addr} create submitted (mock)`,
+    };
   }
   return clusterApi.createNameServer(data);
 }
 
-export async function updateNameServer(data: {
-  clusterId: string;
-  addr: string;
-  newAddr?: string;
-}): Promise<void> {
+export async function updateNameServer(
+  data: NameServerUpdateRequest,
+): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     const nameServer = nameServers.find((item) => item.addr === data.addr);
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
-    if (data.newAddr && data.newAddr !== data.addr) {
+    if (data.newAddr !== data.addr) {
       const duplicate = nameServers.some(
         (item) => item !== nameServer && item.addr === data.newAddr,
       );
       if (duplicate) throw new Error(`NameServer already exists: ${data.newAddr}`);
     }
-    if (data.newAddr) nameServer.addr = data.newAddr;
-    return;
+    nameServer.addr = data.newAddr;
+    return {
+      operation: 'NAMESERVER_UPDATE',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `NameServer ${data.addr} update submitted (mock)`,
+    };
   }
   return clusterApi.updateNameServer(data);
 }
 
-export async function restartProxy(data: { clusterId: string; addr: string }): Promise<void> {
+export async function restartProxy(
+  data: { clusterId: string; addr: string },
+): Promise<LifecycleOperationResult> {
   if (isMockMode()) {
     const proxy = getMockCluster(data.clusterId).proxies.find((item) => item.addr === data.addr);
     if (!proxy) throw new Error(`Proxy not found: ${data.addr}`);
     proxy.status = 'healthy';
-    return;
+    return {
+      operation: 'PROXY_RESTART',
+      clusterId: data.clusterId,
+      target: data.addr,
+      requestId: `mock-${Date.now()}`,
+      accepted: true,
+      message: `Proxy ${data.addr} restarted (mock)`,
+    };
   }
   return clusterApi.restartProxy(data);
 }

@@ -110,6 +110,15 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+  lifecycle:
+    # Lifecycle actions are disabled until a deployment-owned executable is configured and
+    # explicitly allowlisted. The executable receives fixed arguments; Studio never invokes a shell.
+    enabled: ${STUDIO_LIFECYCLE_ENABLED:false}
+    executable: ${STUDIO_LIFECYCLE_EXECUTABLE:}
+    working-directory: ${STUDIO_LIFECYCLE_WORKING_DIRECTORY:}
+    timeout: ${STUDIO_LIFECYCLE_TIMEOUT:PT30S}
+    max-output-bytes: ${STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES:8192}
+    allowed-operations: ${STUDIO_LIFECYCLE_ALLOWED_OPERATIONS:}
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}

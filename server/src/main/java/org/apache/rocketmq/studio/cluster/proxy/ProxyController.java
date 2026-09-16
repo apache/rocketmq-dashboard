@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -70,12 +71,8 @@ public class ProxyController {
     }
 
     @PostMapping("/restart")
-    public Result<Void> restartProxy(@Valid @RequestBody RestartProxyDTO command) {
-        boolean success = clusterService.restartProxy(command);
-        if (!success) {
-            throw new BusinessException(500, "Failed to restart proxy");
-        }
-        return Result.ok();
+    public Result<LifecycleOperationResult> restartProxy(@Valid @RequestBody RestartProxyDTO command) {
+        return Result.ok(clusterService.restartProxy(command));
     }
 
     private void requireClusterId(String clusterId) {

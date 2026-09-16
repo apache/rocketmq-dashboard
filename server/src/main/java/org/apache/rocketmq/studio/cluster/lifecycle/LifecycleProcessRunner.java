@@ -14,27 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.nameserver;
+package org.apache.rocketmq.studio.cluster.lifecycle;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.time.Duration;
+import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class UpdateNameServerDTO {
-    @NotBlank(message = "clusterId is required")
-    private String clusterId;
+@FunctionalInterface
+interface LifecycleProcessRunner {
 
-    @NotBlank(message = "addr is required")
-    private String addr;
-
-    @NotBlank(message = "newAddr is required")
-    private String newAddr;
-
-    private String version;
+    LifecycleProcessResult run(List<String> command, String workingDirectory,
+                               Duration timeout, int maxOutputBytes);
 }

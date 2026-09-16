@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.nameserver;
 
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -75,49 +76,38 @@ public class NameServerController {
     }
 
     @PostMapping("/create")
-    public Result<NameServerVO> createNameServer(@Valid @RequestBody(required = false) CreateNameServerDTO command) {
+    public Result<LifecycleOperationResult> createNameServer(
+            @Valid @RequestBody(required = false) CreateNameServerDTO command) {
         requireCommand(command);
         return Result.ok(clusterService.createNameServer(command));
     }
 
     @PostMapping("/update")
-    public Result<Void> updateNameServer(@Valid @RequestBody(required = false) UpdateNameServerDTO command) {
+    public Result<LifecycleOperationResult> updateNameServer(
+            @Valid @RequestBody(required = false) UpdateNameServerDTO command) {
         requireCommand(command);
-        clusterService.updateNameServer(command);
-        return Result.ok();
+        return Result.ok(clusterService.updateNameServer(command));
     }
 
     @PostMapping("/restart")
-    public Result<Void> restartNameServer(
+    public Result<LifecycleOperationResult> restartNameServer(
             @Valid @RequestBody(required = false) RestartNameServerDTO command) {
         requireCommand(command);
-        boolean success = clusterService.restartNameServer(command);
-        requireOperationSuccess(success, "restart");
-        return Result.ok();
+        return Result.ok(clusterService.restartNameServer(command));
     }
 
     @PostMapping("/upgrade")
-    public Result<Void> upgradeNameServer(
+    public Result<LifecycleOperationResult> upgradeNameServer(
             @Valid @RequestBody(required = false) UpgradeNameServerDTO command) {
         requireCommand(command);
-        boolean success = clusterService.upgradeNameServer(command);
-        requireOperationSuccess(success, "upgrade");
-        return Result.ok();
+        return Result.ok(clusterService.upgradeNameServer(command));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteNameServer(
+    public Result<LifecycleOperationResult> deleteNameServer(
             @Valid @RequestBody(required = false) DeleteNameServerDTO command) {
         requireCommand(command);
-        boolean success = clusterService.deleteNameServer(command);
-        requireOperationSuccess(success, "delete");
-        return Result.ok();
-    }
-
-    private void requireOperationSuccess(boolean success, String operation) {
-        if (!success) {
-            throw new BusinessException(500, "Failed to " + operation + " NameServer");
-        }
+        return Result.ok(clusterService.deleteNameServer(command));
     }
 
     private void requireCommand(Object command) {

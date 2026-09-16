@@ -259,10 +259,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.error': { zh: '异常', en: 'Error' },
   'cluster.offline': { zh: '离线', en: 'Offline' },
   'cluster.heartbeat': { zh: '心跳时间', en: 'Heartbeat' },
-  'cluster.restartNotSupported': {
-    zh: '暂不支持在线重启，请通过运维平台操作',
-    en: 'Online restart not supported, please use ops platform',
-  },
   'cluster.confirmRestart': { zh: '确认重启', en: 'Confirm Restart' },
 
   // ─── Instance / Topic / Group / ACL / Message ───

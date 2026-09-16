@@ -76,6 +76,7 @@ import {
   listNameserverRegistry,
   listRegistryClusters,
   previewClusterConfig,
+  restartBroker,
   restartProxy,
   testClusterConnection,
   updateClusterConfig,
@@ -1311,7 +1312,21 @@ const ClusterPage = () => {
               aria-label={t('cluster.restart')}
               danger
               style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-              onClick={() => message.warning(t('cluster.restartNotSupported'))}
+              onClick={() => {
+                Modal.confirm({
+                  title: t('cluster.confirmRestart'),
+                  content: t('cluster.restartBrokerConfirm', { name: record.name }),
+                  okText: t('common.confirm'),
+                  cancelText: t('common.cancel'),
+                  onOk: async () => {
+                    const result = await restartBroker(record.cluster.id, record.name);
+                    await requestRefresh('operation');
+                    message.success(
+                      result?.message || t('cluster.restartBrokerSubmitted', { name: record.name }),
+                    );
+                  },
+                });
+              }}
             >
               {t('cluster.restart')}
             </Button>
@@ -1692,9 +1707,14 @@ const ClusterPage = () => {
                   okText: t('common.confirm'),
                   cancelText: t('common.cancel'),
                   onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                    const result = await restartProxy({
+                      clusterId: record.clusterId,
+                      addr: record.addr,
+                    });
                     await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    message.success(
+                      result?.message || t('cluster.restartProxySubmitted', { addr: record.addr }),
+                    );
                   },
                 });
               }}
