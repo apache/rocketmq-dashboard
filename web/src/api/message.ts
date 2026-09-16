@@ -3,6 +3,7 @@ import client from './client';
 // Matches mock/messages.ts
 export interface MessageRecord {
   msgId: string;
+  offsetMsgId?: string | null;
   topic: string;
   tag: string | null;
   key: string | null;
