@@ -205,8 +205,15 @@ describe('UserManagementPage', () => {
     renderPage();
     await screen.findByText('operator');
     await applyAdminDisabledFilter(user, 'ops');
-    await user.click(screen.getByRole('button', { name: '导出' }));
     const expectedExportQuery = { search: 'ops', admin: true, enabled: false };
+    await waitFor(() =>
+      expect(listStudioUsers).toHaveBeenLastCalledWith({
+        ...expectedExportQuery,
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: '导出' }));
     await waitFor(() => expect(downloadStudioUsers).toHaveBeenCalledWith(expectedExportQuery));
     expect(downloadCsv).toHaveBeenCalledTimes(1);
     const [exportFilename, exportedCsv] = vi.mocked(downloadCsv).mock.calls[0];
