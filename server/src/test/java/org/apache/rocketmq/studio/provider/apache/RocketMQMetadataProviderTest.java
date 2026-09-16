@@ -118,6 +118,25 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void searchEscapesLikeWildcardsAndAddsExplicitEscapeClause() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+        provider.listTopics(null, null, null, "prod_user");
+        provider.listConsumerGroups(null, null, "prod_user");
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> topics = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> groups = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(topics.capture());
+        verify(groupMapper).selectList(groups.capture());
+        for (LambdaQueryWrapper<?> query : List.of(topics.getValue(), groups.getValue())) {
+            assertThat(query.getSqlSegment()).contains("LIKE", "ESCAPE");
+            assertThat(query.getParamNameValuePairs().values()).contains("%prod\\_user%");
+        }
+    }
+
+    @Test
     void listConsumerGroupsReadsConsumeTypeColumn() {
         RmqGroup entity = new RmqGroup();
         entity.setName("group-broadcast");
