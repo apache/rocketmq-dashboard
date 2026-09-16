@@ -88,6 +88,40 @@ const createHistoryEntry = (
   });
 
 describe('metrics explorer diagnostics', () => {
+  it('preserves both sample kinds in a mixed Prometheus matrix series', () => {
+    const data: MetricData = {
+      resultType: 'matrix',
+      warnings: [],
+      series: [{
+        labels: { instance: 'broker-a' },
+        values: [{ timestamp: 2, value: '12' }],
+        histograms: [
+          { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
+          { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
+        ],
+      }],
+    };
+
+    expect(toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({ timestamp, kind })))
+      .toEqual([
+        { timestamp: 1, kind: 'histogram' },
+        { timestamp: 2, kind: 'scalar' },
+        { timestamp: 3, kind: 'histogram' },
+      ]);
+    expect(summarizeMetricData(data)).toMatchObject({
+      seriesCount: 1, visibleSeriesCount: 1, sampleCount: 3,
+      scalarSampleCount: 1, histogramSampleCount: 2,
+      earliestTimestamp: 1, latestTimestamp: 3,
+    });
+    expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({
+      sampleType: 'mixed', sampleCount: 3, latestTimestamp: 3,
+      latestValue: 20, histogramCount: 4, histogramSum: 20,
+    });
+    const rows = buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' });
+    expect(rows.map((row) => row.sampleType)).toEqual(['histogram', 'scalar', 'histogram']);
+    expect(rows.map((row) => row.timestamp)).toEqual([1, 2, 3]);
+  });
+
   it('sorts scalar samples and ignores non-numeric values', () => {
     const samples = toMetricSeriesSamples(metricData.series[0]);
 

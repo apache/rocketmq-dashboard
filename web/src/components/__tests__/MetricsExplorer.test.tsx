@@ -551,14 +551,14 @@ describe('MetricsExplorer', () => {
     expect(await screen.findByText('20 messages/s')).toBeInTheDocument();
   });
 
-  it('prefers scalar samples when a series has both values and histograms', async () => {
+  it('shows separate scalar and histogram trends for a mixed series', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({
       ...metricData,
       series: [
         {
           ...metricData.series[0],
           histograms: [
-            { timestamp: 1_800_000_000, histogram: { count: '99', sum: '999', buckets: [] } },
+            { timestamp: 1_800_000_001, histogram: { count: '99', sum: '999', buckets: [] } },
           ],
         },
       ],
@@ -567,8 +567,10 @@ describe('MetricsExplorer', () => {
     renderWithProviders(<MetricsExplorer />);
 
     expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
-    expect(screen.queryByText('999 messages/s')).not.toBeInTheDocument();
-    expect(screen.queryByText('直方图')).not.toBeInTheDocument();
+    expect(screen.getByText('999 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('直方图')).toBeInTheDocument();
+    expect(screen.getByText(/broker-a.*\(scalar\)/)).toBeInTheDocument();
+    expect(screen.getByText(/broker-a.*\(直方图\)/)).toBeInTheDocument();
   });
 
   it('queries the selected data source through the datasource endpoint', async () => {

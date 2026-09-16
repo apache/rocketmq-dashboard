@@ -84,7 +84,7 @@ export interface MetricSeriesDetailRow {
   seriesIndex: number;
   seriesLabel: string;
   labels: string;
-  sampleType: MetricSampleKind;
+  sampleType: MetricSampleKind | 'mixed';
   sampleCount: number;
   latestTimestamp?: number;
   latestValue?: number;
@@ -166,7 +166,7 @@ const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
     })),
   );
 
-// Native histograms carry no scalar samples. To keep diagnostics usable, derive
+// To keep native histogram diagnostics usable, derive
 // a trend value from the observed sum and fall back to observation count.
 const toHistogramSamples = (series: MetricSeries): NumericMetricSample[] =>
   sortMetricSamples(
@@ -186,10 +186,11 @@ const toHistogramSamples = (series: MetricSeries): NumericMetricSample[] =>
 
 export const toMetricSeriesSamples = (series: MetricSeries): MetricSeriesSamples => {
   const scalar = toScalarSamples(series);
-  if (scalar.length > 0) {
-    return { samples: scalar, fromHistogram: false };
-  }
-  return { samples: toHistogramSamples(series), fromHistogram: true };
+  const histograms = toHistogramSamples(series);
+  return {
+    samples: sortMetricSamples([...scalar, ...histograms]),
+    fromHistogram: histograms.length > 0,
+  };
 };
 
 export const summarizeMetricData = (data: MetricData): MetricResultSummary => {
@@ -200,15 +201,12 @@ export const summarizeMetricData = (data: MetricData): MetricResultSummary => {
   let latestTimestamp: number | undefined;
 
   data.series.forEach((series) => {
-    const { samples, fromHistogram } = toMetricSeriesSamples(series);
+    const { samples } = toMetricSeriesSamples(series);
     if (samples.length === 0) return;
     visibleSeriesCount += 1;
-    if (fromHistogram) {
-      histogramSampleCount += samples.length;
-    } else {
-      scalarSampleCount += samples.length;
-    }
     samples.forEach((sample) => {
+      if (sample.kind === 'histogram') histogramSampleCount += 1;
+      else scalarSampleCount += 1;
       earliestTimestamp =
         earliestTimestamp === undefined
           ? sample.timestamp
@@ -322,7 +320,9 @@ export const buildMetricSeriesDetailRows = (
       seriesIndex: seriesIndex + 1,
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
-      sampleType: fromHistogram ? 'histogram' : 'scalar',
+      sampleType: fromHistogram
+        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
       latestValue: latest?.value,
