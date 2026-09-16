@@ -523,9 +523,11 @@ class RocketMQMetadataProviderTest {
 
         List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
 
-        assertThat(consumers).singleElement()
-                .extracting(TopicConsumerVO::getDiffTotal)
-                .isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getDiffTotal()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            // The sentinel must not be published as a real backlog of -1.
+            assertThat(consumer.isMetricsAvailable()).isFalse();
+        });
     }
 
     @Test
