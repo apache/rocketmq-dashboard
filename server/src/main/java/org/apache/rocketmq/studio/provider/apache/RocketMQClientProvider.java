@@ -105,6 +105,11 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
+        return findProducerGroups(adminExt, topic, query, limit, false);
+    }
+
+    private List<String> findProducerGroups(
+            MQAdminExt adminExt, String topic, String query, int limit, boolean requireComplete) {
         BrokerTopology topology = discoverBrokerTopology(adminExt, null, "producer group selector");
         if (topology.brokerAddresses().isEmpty()) {
             return List.of();
@@ -118,6 +123,11 @@ public class RocketMQClientProvider implements ClientProvider {
                 successfulBrokers++;
                 collectProducerGroups(groups, producerTable, normalizedQuery);
             } catch (Exception e) {
+                if (requireComplete) {
+                    throw new BusinessException(502,
+                            "Failed to query active producer groups from broker "
+                                    + brokerAddress + ": " + rootMessage(e));
+                }
                 log.warn("Failed to fetch producer groups from broker={}, skipping", brokerAddress, e);
             }
         }
@@ -138,22 +148,20 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<ClientConnectionVO> findProducerConnectionsForActiveGroups(MQAdminExt adminExt, String topic) {
-        List<String> producerGroups = findProducerGroups(adminExt, topic, null, Integer.MAX_VALUE);
+        List<String> producerGroups = findProducerGroups(
+                adminExt, topic, null, Integer.MAX_VALUE, true);
         if (producerGroups.isEmpty()) {
             return List.of();
         }
         List<ClientConnectionVO> connections = new ArrayList<>();
-        int successfulGroupQueries = 0;
         for (String producerGroup : producerGroups) {
             try {
                 connections.addAll(findProducerConnectionsForGroup(adminExt, topic, producerGroup));
-                successfulGroupQueries++;
             } catch (BusinessException e) {
-                log.warn("Failed to query producer connections for group={}, skipping", producerGroup, e);
+                throw new BusinessException(502,
+                        "Failed to query producer connections for group "
+                                + producerGroup + ": " + e.getMessage());
             }
-        }
-        if (successfulGroupQueries == 0) {
-            throw new BusinessException(502, "Failed to query producer connections from all groups");
         }
         return connections;
     }
