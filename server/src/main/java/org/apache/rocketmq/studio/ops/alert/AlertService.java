@@ -199,12 +199,18 @@ public class AlertService {
         Long id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
+        String previousSemanticFingerprint = alertRepository.findRuleById(id)
+                .map(AlertRuleSemanticFingerprint::of)
+                .orElse(null);
         NativeAlertRulePolicy.validate(rule);
         rejectDuplicateSemanticRule(rule, id);
         if (!replaceRuleWithoutDuplicate(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        if (previousSemanticFingerprint == null
+                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.of(rule))) {
+            alertStateRepository.deleteByRuleId(id);
+        }
         auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
@@ -282,7 +288,6 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -295,7 +300,6 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -344,7 +348,6 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
                 auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
                 updated.add(rule);
@@ -433,7 +436,6 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
                 auditRule(auditOperation, rule, auditDetail);
                 succeeded.add(id);
                 updated.add(rule);
