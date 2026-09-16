@@ -475,6 +475,8 @@ describe('SystemAlertsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: '维护窗口' }));
     expect(await screen.findByText(/CLUSTER.*local/)).toBeInTheDocument();
+    // UTC LocalDateTime values must be rendered in the operator's local time zone.
+    expect(screen.getByText(new RegExp(formatUtcDateTime('2026-08-10T01:00')))).toBeInTheDocument();
     expect(listAlertSilencesPage).toHaveBeenCalledWith({ page: 1, pageSize: 10 });
 
     await user.type(screen.getByLabelText('规则 ID'), '42');
