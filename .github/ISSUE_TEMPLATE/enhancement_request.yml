@@ -1,0 +1,91 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: Enhancement Request
+title: "[Enhancement] "
+description: Improve an existing capability without adding a new feature or fixing a defect.
+labels: [ "enhancement" ]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before Creating the Enhancement Request
+      description: >
+        Most issues are either a bug or a feature request. Use this template only when the
+        proposal improves existing functionality or user experience — for example usability,
+        performance, observability or error messaging.
+      options:
+        - label: >
+            I have confirmed this is an enhancement rather than a bug or a new feature.
+          required: true
+        - label: >
+            I have searched the [open issues](https://github.com/apache/rocketmq-dashboard/issues)
+            and believe this is not a duplicate.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Summary
+      placeholder: >
+        A clear and concise description of the enhancement.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Motivation
+      placeholder: >
+        Why this is needed, which use cases it serves, and what it costs today (extra clicks,
+        slow page, misleading message, wasted resources).
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the Solution You'd Like
+      placeholder: >
+        The proposed change and the implementation steps. List separate options separately if
+        you have more than one.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe Alternatives You've Considered
+      placeholder: >
+        Other ways to reach the same outcome, and why they are worse.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      placeholder: >
+        Screenshots, measurements, related issues or pull requests.
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Are You Willing to Submit a Pull Request?
+      description: >
+        Not required. Pull requests target the `master` branch; see CONTRIBUTING.md.
+      options:
+        - label: Yes, I am willing to submit a pull request.
+
+  - type: markdown
+    attributes:
+      value: Thanks for completing our form!

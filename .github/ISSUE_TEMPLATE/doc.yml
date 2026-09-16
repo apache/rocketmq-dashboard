@@ -1,0 +1,70 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: Doc Report
+title: "[Doc] "
+description: Report a problem in the documentation, or propose new documentation.
+labels: [ "documentation" ]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before Creating the Doc Report
+      options:
+        - label: >
+            I have searched the [open issues](https://github.com/apache/rocketmq-dashboard/issues)
+            and found no similar issue.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Which Documentation
+      description: Point at the file or page.
+      placeholder: >
+        e.g. README.md#quick-start, docs/api-spec.md, deploy/README.md, the in-app help text
+        on the Consumer Group page, or "missing: how to configure the LLM datasource".
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: What Is Wrong
+      placeholder: >
+        Typo, outdated instruction, wrong command, missing step, missing translation, or a
+        statement that no longer matches the code.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Suggested Change
+      placeholder: >
+        The corrected text, or an outline of the section that should be added.
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Are You Willing to Submit a Pull Request?
+      description: >
+        Not required, but doc pull requests are usually merged quickly. Base the branch on
+        `master`, and keep README.md and README_zh.md in sync when you change either one.
+      options:
+        - label: Yes, I am willing to submit a pull request.
+
+  - type: markdown
+    attributes:
+      value: Thanks for completing our form!

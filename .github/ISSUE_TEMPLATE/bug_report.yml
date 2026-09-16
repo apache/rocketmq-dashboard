@@ -1,0 +1,141 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: Bug Report
+title: "[Bug] "
+description: Report a defect in RocketMQ Studio (backend, frontend, deployment or CLI).
+labels: [ "bug" ]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before Creating the Bug Report
+      options:
+        - label: >
+            I have searched the [open issues](https://github.com/apache/rocketmq-dashboard/issues)
+            of this repository and believe that this is not a duplicate.
+          required: true
+        - label: >
+            This is a defect in RocketMQ Studio, not a usage question and not a defect in
+            another Apache RocketMQ repository.
+          required: true
+        - label: >
+            I can reproduce this on the current `master` branch, or I have stated the exact
+            version I am running below.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Studio Version
+      description: Which RocketMQ Studio build shows the problem.
+      placeholder: >
+        branch: (e.g. master)
+        git commit id: (e.g. e5ac52440f1a2b3c4d5e6f708192a3b4c5d6e7f8)
+        deployed as: (docker compose | deploy.sh | Kubernetes | built from source)
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Runtime Environment
+      description: Where Studio runs, and what it talks to.
+      placeholder: >
+        OS: (e.g. "Ubuntu 22.04", "Alibaba Cloud Linux 3")
+        MySQL: (e.g. "8.0.36, container from deploy/docker-compose.yml")
+        browser (for UI issues): (e.g. "Chrome 141 on macOS 26")
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Connected RocketMQ Cluster
+      description: The cluster(s) the failing operation targets.
+      placeholder: >
+        RocketMQ version: (e.g. "5.5.1", "4.9.7")
+        access mode: (Proxy gRPC | Proxy remoting | Direct to NameServer/Broker)
+        deployment: (e.g. "docker compose from deploy/rocketmq", "self-managed cluster")
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Build Toolchain
+      description: Only needed when the problem is a build or startup failure.
+      placeholder: >
+        JDK: (e.g. "Dragonwell 21.0.4")
+        Maven: (e.g. "3.9.9")
+        Node.js: (e.g. "20.19.0")
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Describe the Bug
+      description: What happened.
+      placeholder: >
+        A clear and concise description of the defect.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Steps to Reproduce
+      description: How a maintainer can see the same behaviour.
+      placeholder: >
+        1. Start Studio with ...
+        2. Open the ... page / call the ... API with ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: What Did You Expect to See?
+      placeholder: >
+        A clear and concise description of the expected behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: What Did You See Instead?
+      placeholder: >
+        A clear and concise description of the actual behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Logs, screenshots and anything else that helps.
+      placeholder: >
+        Backend logs (docker logs rocketmq-server), browser console output, HTTP response
+        bodies, screenshots. Do not paste credentials, access keys or customer data.
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Are You Willing to Submit a Pull Request?
+      description: >
+        Not required, but welcome. Read CONTRIBUTING.md first: pull requests target the
+        `master` branch and need tests for non-trivial changes.
+      options:
+        - label: Yes, I am willing to submit a pull request.
+
+  - type: markdown
+    attributes:
+      value: Thanks for completing our form!
