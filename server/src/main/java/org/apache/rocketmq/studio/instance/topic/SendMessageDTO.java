@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -38,6 +39,7 @@ public class SendMessageDTO {
     private String body;
     private Map<String, String> properties;
 
+    private TopicType messageType;
     /** FIFO sharding key; messages of the same group are sent to the same queue. */
     private String messageGroup;
 
