@@ -20,7 +20,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -47,6 +46,9 @@ final class AlertSilenceSchedule {
         ZonedDateTime seedStart = silence.getStartsAt().toInstant(ZoneOffset.UTC).atZone(zone);
         ZonedDateTime seedEnd = silence.getEndsAt().toInstant(ZoneOffset.UTC).atZone(zone);
         Duration wallDuration = Duration.between(seedStart.toLocalDateTime(), seedEnd.toLocalDateTime());
+        Instant scheduleStart = seedStart.toInstant();
+        Instant scheduleEnd = silence.getRecurrenceUntil().toInstant(ZoneOffset.UTC);
+        Instant activeEnd = null;
         // A weekly window may span up to 7 days, so an occurrence anchored 7 days
         // back can still be in its final hours; daily windows span at most 24 hours.
         int daysToInspect = recurrence == AlertSilenceRecurrence.DAILY ? 1 : 7;
@@ -56,37 +58,38 @@ final class AlertSilenceSchedule {
             if (!runsOn(recurrence, silence.getRecurrenceDays(), candidateDate)) {
                 continue;
             }
-            ZonedDateTime candidateStart = resolve(zone, candidateDate, seedStart.toLocalTime());
-            ZonedDateTime candidateEnd = resolveEnd(zone, candidateStart, wallDuration);
-            Instant start = candidateStart.toInstant();
-            Instant end = candidateEnd.toInstant();
-            Instant scheduleStart = silence.getStartsAt().toInstant(ZoneOffset.UTC);
-            Instant scheduleEnd = silence.getRecurrenceUntil().toInstant(ZoneOffset.UTC);
+            LocalDateTime nominalStart = candidateDate.atTime(seedStart.toLocalTime());
+            Instant start;
+            Instant end;
+            if (candidateDate.equals(seedStart.toLocalDate())) {
+                // The submitted offsets identify exact instants, including the second
+                // occurrence of a repeated local time. Do not resolve them again.
+                start = seedStart.toInstant();
+                end = seedEnd.toInstant();
+            } else {
+                start = nominalStart.atZone(zone).toInstant();
+                // Resolve each nominal boundary independently. A start shifted through
+                // a DST gap must not shift a valid end time by the same amount.
+                end = nominalStart.plus(wallDuration).atZone(zone).toInstant();
+            }
             if (start.isBefore(scheduleStart) || !start.isBefore(scheduleEnd)) {
                 continue;
             }
             if (end.isAfter(scheduleEnd)) {
                 end = scheduleEnd;
             }
-            if (!now.isBefore(start) && now.isBefore(end)) {
-                return LocalDateTime.ofInstant(end, ZoneOffset.UTC);
+            if (!now.isBefore(start) && now.isBefore(end)
+                    && (activeEnd == null || end.isAfter(activeEnd))) {
+                activeEnd = end;
             }
         }
-        return null;
+        return activeEnd == null ? null : LocalDateTime.ofInstant(activeEnd, ZoneOffset.UTC);
     }
 
     private static boolean runsOn(AlertSilenceRecurrence recurrence, Set<Integer> recurrenceDays,
             LocalDate candidateDate) {
         return recurrence == AlertSilenceRecurrence.DAILY
                 || recurrenceDays != null && recurrenceDays.contains(candidateDate.getDayOfWeek().getValue());
-    }
-
-    private static ZonedDateTime resolve(ZoneId zone, LocalDate date, LocalTime time) {
-        return ZonedDateTime.of(LocalDateTime.of(date, time), zone);
-    }
-
-    private static ZonedDateTime resolveEnd(ZoneId zone, ZonedDateTime start, Duration wallDuration) {
-        return ZonedDateTime.of(start.toLocalDateTime().plus(wallDuration), zone);
     }
 
     private static boolean isInside(LocalDateTime now, LocalDateTime start, LocalDateTime end) {
