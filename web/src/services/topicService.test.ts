@@ -100,14 +100,15 @@ describe('topic service mock data', () => {
     expect(exportedTopics).toEqual(directTopics);
   });
 
-  it('rejects duplicate topic creates in the same cluster', async () => {
+  it('rejects duplicate topic creates across mock instances and clusters', async () => {
     const existing = (await listTopics({ search: 'order-create' }))[0];
-    const before = await listTopics({ clusterId: existing.clusterId });
+    const before = await listTopics({ search: existing.name });
 
     await expect(
       createTopic({
         name: existing.name,
-        clusterId: existing.clusterId,
+        clusterId: 'another-cluster',
+        instanceId: 'another-instance',
         namespace: existing.namespace,
         type: existing.type,
         writeQueues: existing.writeQueues,
@@ -116,7 +117,7 @@ describe('topic service mock data', () => {
       }),
     ).rejects.toThrow(`Topic already exists: ${existing.name}`);
 
-    const after = await listTopics({ clusterId: existing.clusterId });
+    const after = await listTopics({ search: existing.name });
     expect(after).toEqual(before);
   });
 });
