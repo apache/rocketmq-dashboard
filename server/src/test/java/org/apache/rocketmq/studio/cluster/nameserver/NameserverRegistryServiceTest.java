@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.nameserver;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -337,6 +339,67 @@ class NameserverRegistryServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("deleted concurrently");
+    }
+
+    @Test
+    void updateShouldClearOptionalColumnsThatTheRequestOmitsTest() {
+        // The Studio form submits a blanked optional field as an absent one, and updateById
+        // skips null entity fields, so the cleared columns must be assigned explicitly.
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        existing.setName("rocketmq1");
+        existing.setNamesrvAddr("rocketmq1-nameserver.svc:9876");
+        existing.setK8sNamespace("rocketmq1");
+        existing.setK8sId("k8s-1");
+        existing.setDescription("community chart cluster");
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("rocketmq1-nameserver.svc:9876")
+                .build());
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(nameserverMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet())
+                .contains("k8s_namespace")
+                .contains("k8s_id")
+                .contains("description");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+        assertThat(existing.getK8sNamespace()).isNull();
+        assertThat(existing.getK8sId()).isNull();
+        assertThat(updated.getDescription()).isNull();
+    }
+
+    @Test
+    void updateShouldWriteOptionalColumnsSubmittedByTheRequestTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(1L);
+        existing.setK8sNamespace("old-namespace");
+        existing.setK8sId("old-k8s");
+        existing.setDescription("old description");
+        when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(1L)
+                .name("rocketmq1")
+                .namesrvAddr("x:9876")
+                .k8sNamespace("new-namespace")
+                .k8sId("new-k8s")
+                .description("new description")
+                .build());
+
+        verify(nameserverMapper, never()).update(any(), any());
+        assertThat(existing.getK8sNamespace()).isEqualTo("new-namespace");
+        assertThat(existing.getK8sId()).isEqualTo("new-k8s");
+        assertThat(existing.getDescription()).isEqualTo("new description");
     }
 
     @Test
