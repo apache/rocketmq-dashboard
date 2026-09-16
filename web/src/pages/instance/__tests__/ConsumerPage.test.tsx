@@ -1475,6 +1475,56 @@ describe('Consumer page', () => {
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
 
+  it('distinguishes unavailable live stats from available zero lag and delay', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          name: 'unavailable-stats-cg',
+          totalLag: -1,
+          delaySeconds: 0,
+          consumeStatsAvailable: false,
+          consumptionTimestampAvailable: false,
+        },
+        {
+          ...group,
+          name: 'available-zero-cg',
+          totalLag: 0,
+          delaySeconds: 0,
+          consumeStatsAvailable: true,
+          consumptionTimestampAvailable: true,
+        },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    const unavailableRow = await screen.findByRole('row', { name: /unavailable-stats-cg/ });
+    expect(within(unavailableRow).getAllByText('不可用')).toHaveLength(2);
+
+    const availableZeroRow = screen.getByRole('row', { name: /available-zero-cg/ });
+    expect(within(availableZeroRow).queryByText('不可用')).not.toBeInTheDocument();
+    expect(within(availableZeroRow).getByText('0')).toBeInTheDocument();
+    expect(within(availableZeroRow).getByText('0秒')).toBeInTheDocument();
+
+    const [delayHeader] = screen.getAllByText('消费延迟');
+    await user.click(delayHeader);
+    await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('tbody tr'));
+      const order = rows
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unavailable-stats-cg')
+            ? 'unavailable'
+            : text.includes('available-zero-cg')
+              ? 'available'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['available', 'unavailable']);
+    });
+  });
+
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
     const user = userEvent.setup();
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(

@@ -961,8 +961,19 @@ const ConsumerPageContent = ({
       key: 'delaySeconds',
       width: 100,
       align: 'right',
-      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0),
+      sorter: (a, b) =>
+        (a.consumptionTimestampAvailable === false
+          ? Number.MAX_SAFE_INTEGER
+          : (a.delaySeconds ?? 0)) -
+        (b.consumptionTimestampAvailable === false
+          ? Number.MAX_SAFE_INTEGER
+          : (b.delaySeconds ?? 0)),
+      render: (seconds: number, record: ConsumerGroup) =>
+        record.consumptionTimestampAvailable === false ? (
+          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+        ) : (
+          formatDelay(seconds ?? 0)
+        ),
     },
     {
       title: '创建时间',
@@ -1725,7 +1736,11 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
+                        {selectedGroup.consumptionTimestampAvailable === false ? (
+                          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+                        ) : (
+                          <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
+                        )}
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次

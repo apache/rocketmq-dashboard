@@ -42,6 +42,10 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  /** False when broker consume stats could not be read; totalLag is then the UNKNOWN sentinel. */
+  consumeStatsAvailable?: boolean;
+  /** False when delaySeconds cannot be computed from a consumed-message timestamp. */
+  consumptionTimestampAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 

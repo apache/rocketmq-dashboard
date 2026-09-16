@@ -108,6 +108,8 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  consumeStatsAvailable?: boolean;
+  consumptionTimestampAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 
