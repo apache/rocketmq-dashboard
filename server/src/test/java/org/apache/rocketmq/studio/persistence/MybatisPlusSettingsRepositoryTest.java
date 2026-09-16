@@ -6,6 +6,8 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
@@ -40,6 +42,16 @@ class MybatisPlusSettingsRepositoryTest {
         dataSourceMapper = mock(RmqDataSourceMapper.class);
         repository = new MybatisPlusSettingsRepository(settingsMapper, dataSourceMapper,
                 new ObjectMapper());
+    }
+
+    @Test
+    void findDataSourcesEscapesSearchWildcardsAndAddsEscapeClause() {
+        when(dataSourceMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>());
+        repository.findDataSources("prod_user", null, 1, 20);
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("LIKE", "ESCAPE");
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains("%prod\\_user%");
     }
 
     @Test
