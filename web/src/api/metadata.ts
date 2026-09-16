@@ -101,6 +101,7 @@ export interface ConsumerGroup {
   consumeType: string;
   onlineInstances: number;
   totalLag: number;
+  consumeStatsAvailable?: boolean;
   subscribedTopics: string[];
   subscriptionDataType: string;
   deliveryOrderType?: string;
@@ -108,6 +109,7 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  consumptionTimestampAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 

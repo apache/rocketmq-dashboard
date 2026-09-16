@@ -29,8 +29,16 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
   { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
   { header: 'Consume Type', value: (group) => group.consumeType },
   { header: 'Online Instances', value: (group) => group.onlineInstances },
-  { header: 'Total Lag', value: (group) => group.totalLag },
-  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  {
+    header: 'Total Lag',
+    value: (group) =>
+      group.consumeStatsAvailable === false || group.totalLag < 0 ? 'unknown' : group.totalLag,
+  },
+  {
+    header: 'Delay Seconds',
+    value: (group) =>
+      group.consumptionTimestampAvailable === false ? 'unknown' : group.delaySeconds,
+  },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
   { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },

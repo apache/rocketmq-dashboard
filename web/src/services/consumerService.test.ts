@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createConsumerGroup,
   deleteConsumerGroup,
+  exportConsumerGroups,
   getConsumerGroup,
   getConsumerProgress,
   getConsumerStack,
@@ -29,6 +30,7 @@ import {
   previewConsumerOffsetReset,
   refreshConsumerGroup,
 } from './consumerService';
+import { mockConsumerGroups } from '../mock/consumers';
 
 const { mode, metadataApi } = vi.hoisted(() => ({
   mode: { mock: true },
@@ -96,6 +98,31 @@ describe('consumer service mock data', () => {
     expect(page.total).toBe(1);
     expect(page.page).toBe(1);
     expect(page.size).toBe(1);
+  });
+
+  it('exports unavailable mock live statistics as unknown', async () => {
+    const group = mockConsumerGroups[0] as (typeof mockConsumerGroups)[number] & {
+      consumeStatsAvailable?: boolean;
+      consumptionTimestampAvailable?: boolean;
+    };
+    const previous = {
+      totalLag: group.totalLag,
+      delaySeconds: group.delaySeconds,
+      consumeStatsAvailable: group.consumeStatsAvailable,
+      consumptionTimestampAvailable: group.consumptionTimestampAvailable,
+    };
+    group.totalLag = 0;
+    group.delaySeconds = 0;
+    group.consumeStatsAvailable = false;
+    group.consumptionTimestampAvailable = false;
+
+    try {
+      const csv = await exportConsumerGroups({ names: [group.name] });
+      const row = csv.split('\r\n').find((line) => line.includes(`"${group.name}"`));
+      expect(row).toContain(',"unknown","unknown",');
+    } finally {
+      Object.assign(group, previous);
+    }
   });
 
   it('returns an empty page when the one-based offset starts past the filtered total', async () => {

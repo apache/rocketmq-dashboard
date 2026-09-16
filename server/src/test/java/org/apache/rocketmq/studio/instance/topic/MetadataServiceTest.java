@@ -45,6 +45,7 @@ import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -892,6 +893,21 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldNotReportUnavailableLiveStatsAsZero() {
+        ConsumerGroupVO group = consumerGroup(
+                "stats-unavailable", "orders", ConsumerLagResolver.UNKNOWN, SubscriptionMode.Push);
+        group.setConsumeStatsAvailable(false);
+        group.setConsumptionTimestampAvailable(false);
+        group.setDelaySeconds(0);
+        when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        assertThat(csv).contains(
+                "\"stats-unavailable\",\"orders\",\"cluster-a\",\"Push\",\"CLUSTERING\",\"1\",\"unknown\",\"unknown\"");
+    }
+
+    @Test
     void importConsumerGroupsShouldContinueAfterRowFailure() {
         when(apacheProvider.createConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
                 .thenAnswer(invocation -> {
@@ -981,7 +997,9 @@ class MetadataServiceTest {
         group.setConsumeType(ConsumeType.CLUSTERING);
         group.setOnlineInstances(1);
         group.setTotalLag(lag);
+        group.setConsumeStatsAvailable(true);
         group.setDelaySeconds(3);
+        group.setConsumptionTimestampAvailable(true);
         group.setSubscriptionDataType("NORMAL");
         group.setRetryMaxTimes(16);
         group.setSubscribedTopics(List.of("orders-topic", "payments,topic"));

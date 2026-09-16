@@ -1475,6 +1475,31 @@ describe('Consumer page', () => {
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
 
+  it('renders unavailable live statistics instead of their numeric defaults', async () => {
+    const user = userEvent.setup();
+    const unavailableGroup = {
+      ...group,
+      name: 'stats-unavailable-cg',
+      totalLag: 0,
+      delaySeconds: 0,
+      consumeStatsAvailable: false,
+      consumptionTimestampAvailable: false,
+    } as ConsumerGroup;
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([unavailableGroup]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /stats-unavailable-cg/ });
+    expect(within(row).getAllByText('不可用')).toHaveLength(2);
+    expect(within(row).queryByText('0秒')).not.toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /stats-unavailable-cg/ });
+    expect(within(dialog).getAllByText('不可用')).toHaveLength(2);
+    expect(within(dialog).queryByText('0秒')).not.toBeInTheDocument();
+  });
+
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
     const user = userEvent.setup();
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(

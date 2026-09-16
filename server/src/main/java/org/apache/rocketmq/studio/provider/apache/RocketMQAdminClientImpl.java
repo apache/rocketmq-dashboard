@@ -135,6 +135,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String instanceId, String name) {
         ConsumerGroupVO vo = new ConsumerGroupVO();
         vo.setName(name);
+        vo.setTotalLag(ConsumerLagResolver.UNKNOWN);
         try {
             var conn = admin.examineConsumerConnectionInfo(name);
             if (conn != null) {
@@ -162,7 +163,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
      * Fills totalLag and delaySeconds from the broker consume stats. Proxy-connected groups
      * still maintain broker-side offset tables (the proxy forwards offset updates), so this
      * works even when the connection lookup reports the group offline; groups without any
-     * offset table (e.g. pure POP) simply keep the zero defaults. A queue whose offsets
+     * offset table (e.g. pure POP) keep their metrics unavailable. A queue whose offsets
      * resolve to the unknown sentinel marks totalLag unknown instead of summing it away as
      * zero lag.
      *
@@ -176,10 +177,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
             if (stats == null) {
                 return;
             }
-            vo.setConsumeStatsAvailable(true);
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
+            vo.setConsumeStatsAvailable(true);
             long totalLag = 0;
             boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
