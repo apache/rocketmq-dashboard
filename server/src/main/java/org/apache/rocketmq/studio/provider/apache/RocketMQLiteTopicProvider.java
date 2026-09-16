@@ -390,21 +390,19 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             long maxTopics = 0;
             long currentSessions = 0;
             long maxSessions = 0;
-            long minLiteTtlMillis = -1;
             for (String master : masters) {
                 GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
-                if (info != null) {
-                    currentTopics += Math.max(info.getCurrentLmqNum(), 0);
-                    maxTopics += Math.max(info.getMaxLmqNum(), 0);
-                    currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
+                if (info == null) {
+                    // Skip the master entirely: adding its session cap without its current
+                    // counts would build the ratio out of two different master sets.
+                    continue;
                 }
+                currentTopics += Math.max(info.getCurrentLmqNum(), 0);
+                maxTopics += Math.max(info.getMaxLmqNum(), 0);
+                currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
                 Properties brokerConfig = brokerConfig(admin, master);
                 if (brokerConfig != null) {
                     maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
-                    long minTtl = parsePositiveLong(brokerConfig.getProperty("minLiteTTl"));
-                    if (minTtl > 0) {
-                        minLiteTtlMillis = minLiteTtlMillis < 0 ? minTtl : Math.min(minLiteTtlMillis, minTtl);
-                    }
                 }
             }
 
@@ -413,12 +411,10 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             quota.setMaxTopicCount(toInt(maxTopics));
             quota.setCurrentSessionCount(toInt(currentSessions));
             quota.setMaxSessionCount(toInt(maxSessions));
-            // The protocol caps lite.topic.expiration at 30 days; the broker floor (minLiteTTl)
-            // is the effective TTL applied when a parent topic leaves the attribute unset.
+            // The protocol caps lite.topic.expiration at 30 days. There is no namespace-level
+            // default TTL to report: the effective TTL comes from each parent topic's own
+            // attribute, and the broker's minLiteTTl is a floor rather than a default.
             quota.setMaxTTL(TimeUnit.MINUTES.toMillis(MAX_LITE_TTL_MINUTES));
-            if (minLiteTtlMillis > 0) {
-                quota.setDefaultTTL(minLiteTtlMillis);
-            }
             // No broker-side creation-rate quota exists; report zero so the console renders a
             // defined value instead of a blank gauge.
             quota.setCurrentCreationRate(0.0);

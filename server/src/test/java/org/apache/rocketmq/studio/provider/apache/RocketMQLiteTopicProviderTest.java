@@ -258,10 +258,34 @@ class RocketMQLiteTopicProviderTest {
         assertThat(quota.getMaxTopicCount()).isEqualTo(40);
         assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
         assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
-        assertThat(quota.getDefaultTTL()).isEqualTo(900_000L);
+        // minLiteTTl is the broker's floor, not a namespace default: it must not be surfaced
+        // as defaultTTL, which the console would render as the TTL applied to new lite topics.
+        assertThat(quota.getDefaultTTL()).isNull();
         assertThat(quota.getMaxTTL()).isEqualTo(TimeUnit.MINUTES.toMillis(
                 RocketMQLiteTopicProvider.MAX_LITE_TTL_MINUTES));
         assertThat(quota.getRemainingQuota()).isEqualTo(37);
+    }
+
+    @Test
+    void quotaSkipsMastersWhoseLiteInfoIsUnavailable() throws Exception {
+        String silentMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, silentMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(3, 40, 3));
+        when(admin.getBrokerLiteInfo(silentMaster)).thenReturn(null);
+        Properties reachableConfig = new Properties();
+        reachableConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(BROKER_A)).thenReturn(reachableConfig);
+        Properties silentConfig = new Properties();
+        silentConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(silentMaster)).thenReturn(silentConfig);
+
+        LiteTopicQuota quota = provider.getQuota(null);
+
+        // Both masters advertise the same cap but only one contributed current counts, so the
+        // ratio has to be built from that master alone rather than mixing the two master sets.
+        assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
+        assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
+        assertThat(quota.getMaxTopicCount()).isEqualTo(40);
     }
 
     @Test
