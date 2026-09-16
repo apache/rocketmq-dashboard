@@ -66,6 +66,7 @@ import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
+import ConsumerSubscriptionPortfolioDrawer from '../../components/ConsumerSubscriptionPortfolioDrawer';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime } from '../../utils/format';
@@ -87,6 +88,7 @@ import {
   getConsumerStack,
   getConsumerSubscriptions,
   importConsumerGroups,
+  listAllConsumerGroups,
   listConsumerGroupPage,
   previewConsumerOffsetReset,
   refreshConsumerGroup,
@@ -110,6 +112,10 @@ import {
   type ConsumerGroupHealthIssue,
   type ConsumerGroupHealthStatus,
 } from '../../utils/consumerGroupDiagnostics';
+import {
+  loadConsumerSubscriptionSnapshots,
+  type ConsumerSubscriptionSnapshot,
+} from '../../utils/consumerSubscriptionPortfolio';
 
 const { Text } = Typography;
 
@@ -315,10 +321,53 @@ const ConsumerPageContent = ({
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [subscriptionPortfolioOpen, setSubscriptionPortfolioOpen] = useState(false);
+  const [subscriptionPortfolioLoading, setSubscriptionPortfolioLoading] = useState(false);
+  const [subscriptionPortfolioSnapshots, setSubscriptionPortfolioSnapshots] = useState<
+    ConsumerSubscriptionSnapshot[]
+  >([]);
+  const [subscriptionPortfolioAvailable, setSubscriptionPortfolioAvailable] = useState(0);
 
   const groupRequestIdRef = useRef(0);
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
+  const subscriptionPortfolioRequestRef = useRef(0);
+
+  const openSubscriptionPortfolio = useCallback(async () => {
+    if (!selectedInstanceId) return;
+    const requestId = ++subscriptionPortfolioRequestRef.current;
+    setSubscriptionPortfolioOpen(true);
+    setSubscriptionPortfolioLoading(true);
+    try {
+      const allGroups = visibleConsumerGroups(
+        await listAllConsumerGroups({
+          instanceId: selectedInstanceId,
+          search: search.trim() || undefined,
+        }),
+        modeFilter,
+      );
+      const loaded = await loadConsumerSubscriptionSnapshots(
+        allGroups,
+        (groupName) => getConsumerSubscriptions(groupName, selectedInstanceId),
+        4,
+        100,
+      );
+      if (subscriptionPortfolioRequestRef.current === requestId) {
+        setSubscriptionPortfolioSnapshots(loaded.snapshots);
+        setSubscriptionPortfolioAvailable(allGroups.length);
+      }
+    } catch {
+      if (subscriptionPortfolioRequestRef.current === requestId) {
+        setSubscriptionPortfolioSnapshots([]);
+        setSubscriptionPortfolioAvailable(0);
+        message.error(t('subscriptionPortfolio.loadFailed'));
+      }
+    } finally {
+      if (subscriptionPortfolioRequestRef.current === requestId) {
+        setSubscriptionPortfolioLoading(false);
+      }
+    }
+  }, [modeFilter, search, selectedInstanceId, t]);
   // Consumption switches as loaded from the broker, used to detect high-risk changes
   // (disabling consumption / toggling ordered consumption) that need a confirm before saving.
   const originalSettingsRef = useRef<{
@@ -1506,6 +1555,9 @@ const ConsumerPageContent = ({
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
             导出
           </Button>
+          <Button disabled={!hasSelectedInstance} onClick={() => void openSubscriptionPortfolio()}>
+            {t('subscriptionPortfolio.open')}
+          </Button>
           <Button
             type="primary"
             icon={<Plus size={14} weight="bold" />}
@@ -1581,6 +1633,14 @@ const ConsumerPageContent = ({
           }}
         />
       </Card>
+
+      <ConsumerSubscriptionPortfolioDrawer
+        open={subscriptionPortfolioOpen}
+        loading={subscriptionPortfolioLoading}
+        snapshots={subscriptionPortfolioSnapshots}
+        availableGroups={subscriptionPortfolioAvailable}
+        onClose={() => setSubscriptionPortfolioOpen(false)}
+      />
 
       {/* ═══════════════════════════════════════════
          Detail Modal
