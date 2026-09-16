@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
 import org.springframework.stereotype.Repository;
@@ -54,7 +55,8 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         QueryWrapper<RmqCloudCredential> q = new QueryWrapper<RmqCloudCredential>()
                 .eq(vendor != null, "vendor", vendor == null ? null : vendor.name())
-                .like(normalizedSearch != null, "name", normalizedSearch)
+                .apply(normalizedSearch != null, SqlLikeUtils.likePredicate("name"),
+                        SqlLikeUtils.contains(normalizedSearch))
                 .orderByDesc("gmt_modified", "id");
         Page<RmqCloudCredential> result = credentialMapper.selectPage(new Page<>(page, pageSize), q);
         return PageResult.of(result.getRecords().stream()

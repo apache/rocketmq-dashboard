@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
@@ -150,7 +151,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
+                        SqlLikeUtils.contains(search))
                 .orderByAsc(RmqTopic::getName);
 
         List<TopicVO> result = new ArrayList<>();
@@ -174,7 +176,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
-                .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
+                        SqlLikeUtils.contains(search))
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
                 .notLikeRight(RmqTopic::getName, "rmq_sys_")
                 .notLikeRight(RmqTopic::getName, "%RETRY%")
@@ -238,7 +241,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
                 .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
+                        SqlLikeUtils.contains(search))
                 .orderByAsc(RmqGroup::getName);
 
         List<ConsumerGroupVO> result = new ArrayList<>();
@@ -259,7 +263,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
                 .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
-                .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
+                        SqlLikeUtils.contains(search))
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
