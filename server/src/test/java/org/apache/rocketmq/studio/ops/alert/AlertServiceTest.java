@@ -1375,6 +1375,17 @@ class AlertServiceTest {
     }
 
     @Test
+    void acknowledgeAlertShouldCommitEventAndActiveStateInOneTransactionTest() throws Exception {
+        // The event update and the active-state ACK are two writes; without a shared
+        // transaction a mid-method failure leaves the event acknowledged while the
+        // episode stays FIRING and keeps producing reminders.
+        java.lang.reflect.Method acknowledge = AlertService.class.getMethod("acknowledgeAlert", Long.class);
+
+        assertThat(acknowledge.isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class))
+                .isTrue();
+    }
+
+    @Test
     void acknowledgeNativeAlertShouldAcknowledgeItsActiveRuleStateTest() {
         SystemAlertVO alert = SystemAlertVO.builder().id(1L).ruleId(7L).fingerprint("fingerprint")
                 .time(LocalDateTime.of(2026, 8, 22, 12, 0))
