@@ -791,7 +791,7 @@ const DLQPage = () => {
          ═══════════════════════════════════════════ */}
       <Drawer
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1080}
+        width={1180}
         open={detailOpen}
         onClose={() => {
           detailRequestIdRef.current += 1;
