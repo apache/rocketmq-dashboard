@@ -58,7 +58,11 @@ import {
   type ProxyHomePageData,
   type ProxyNode,
 } from '../../api/proxy';
-import { readLocalStorage, writeLocalStorage } from '../../utils/browserStorage';
+import {
+  readLocalStorage,
+  removeLocalStorage,
+  writeLocalStorage,
+} from '../../utils/browserStorage';
 
 const { Text } = Typography;
 
@@ -187,6 +191,8 @@ const ProxyPage: React.FC = () => {
     setClusterId(value);
     if (value) {
       writeLocalStorage('clusterId', value);
+    } else {
+      removeLocalStorage('clusterId');
     }
   };
 
