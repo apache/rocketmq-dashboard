@@ -833,6 +833,43 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldSurfaceConsumeTpsFromConsumeStatsTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        RmqGroup entity = new RmqGroup();
+        entity.setId(21L);
+        entity.setName("cg-tps");
+        entity.setInstanceId("instance-a");
+        entity.setClusterId("cluster-1");
+        Page<RmqGroup> databasePage = new Page<>(1, 10, 1);
+        databasePage.setRecords(List.of(entity));
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-tps")).thenReturn(connection);
+
+        org.apache.rocketmq.remoting.protocol.admin.ConsumeStats stats =
+                new org.apache.rocketmq.remoting.protocol.admin.ConsumeStats();
+        stats.setConsumeTps(123.5);
+        when(admin.examineConsumeStats("cg-tps")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        // The paginated inventory is what the UI table renders, so the TPS must be
+        // wired on this path (not only the single-group detail path).
+        PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage(
+                "instance-a", null, null, 1, 10);
+
+        assertThat(result.getItems()).hasSize(1);
+        assertThat(result.getItems().get(0).getConsumeTps()).isEqualTo(123.5);
+    }
+
+    @Test
     void listConsumerGroupsShouldReportUnknownTotalLagWhenAnyQueueOffsetIsUnknownTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-unknown");

@@ -344,6 +344,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 return;
             }
             vo.setConsumeStatsAvailable(true);
+            // Same stats query already serves the paginated inventory and the CSV export,
+            // so the broker-reported consume TPS rides along at no extra broker call.
+            vo.setConsumeTps(stats.getConsumeTps());
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
