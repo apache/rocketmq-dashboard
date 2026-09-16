@@ -97,8 +97,12 @@ class QueryHistoryControllerTest {
         verify(queryHistoryService).listTraceQueries("instance-a", null, 1, 20);
         verify(queryHistoryService).summarize(null);
     }
+
     @Test
     void listsTraceQueriesWithDefaults() throws Exception {
+        // Distinct from normalizesOptionalHistoryFilters: this drives the /traces endpoint with no
+        // parameters at all, so it pins the controller's own defaults instead of the blank-filter
+        // normalization that the /messages and /traces handlers share.
         when(queryHistoryService.listTraceQueries(null, null, 1, 20))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
@@ -124,6 +128,10 @@ class QueryHistoryControllerTest {
     @Test
     void rejectsPageBelowOne() throws Exception {
         mockMvc.perform(get("/api/query-history/messages").param("page", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("page must be at least 1"));
+
+        mockMvc.perform(get("/api/query-history/messages").param("page", "-1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("page must be at least 1"));
     }
