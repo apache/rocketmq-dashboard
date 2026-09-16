@@ -36,6 +36,13 @@ public class MessageProviderStub implements MessageProvider {
     }
 
     @Override
+    public List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                         Long startTime, Long endTime) {
+        log.warn("MessageProviderStub.queryMessageByUniqueKey called but no real message provider is configured");
+        throw unsupported();
+    }
+
+    @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         log.warn("MessageProviderStub.getMessageTrace called but no real message provider is configured");
         throw unsupported();

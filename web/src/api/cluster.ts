@@ -44,6 +44,10 @@ export interface BrokerInfo {
   tpsIn: number;
   tpsOut: number;
   diskUsage: number;
+  putMessagesToday?: number;
+  putMessagesYesterday?: number;
+  getMessagesToday?: number;
+  getMessagesYesterday?: number;
   version?: string | null;
   runtimeStatsAvailable?: boolean;
 }

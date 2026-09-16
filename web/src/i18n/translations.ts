@@ -74,6 +74,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.yes': { zh: '是', en: 'Yes' },
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
+  'common.unavailable': { zh: '不可用', en: 'Unavailable' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
@@ -97,6 +98,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.todayMessages': { zh: '今日消息', en: "Today's Messages" },
   'dashboard.clusterHealth': { zh: '集群健康概览', en: 'Cluster Health' },
   'dashboard.clusterName': { zh: '集群名称', en: 'Cluster Name' },
+  'dashboard.allInstances': { zh: '全部已配置实例', en: 'All configured instances' },
+  'dashboard.instanceFilter': { zh: '实例筛选', en: 'Instance filter' },
   'dashboard.broker': { zh: 'Broker', en: 'Broker' },
   'dashboard.proxy': { zh: 'Proxy', en: 'Proxy' },
   'dashboard.topic': { zh: 'Topic', en: 'Topic' },
@@ -111,6 +114,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  'dashboardTraffic.title': { zh: '流量洞察', en: 'Traffic Insights' },
+  'dashboardTraffic.activeClusters': { zh: '活跃集群', en: 'Active Clusters' },
+  'dashboardTraffic.topClusterShare': { zh: '最高流量占比', en: 'Top Traffic Share' },
+  'dashboardTraffic.balanceScore': { zh: '均衡评分', en: 'Balance Score' },
+  'dashboardTraffic.unhealthyTraffic': { zh: '异常流量', en: 'Unhealthy Traffic' },
+  'dashboardTraffic.findings': { zh: '需要关注的流量信号', en: 'Traffic signals to review' },
+  'dashboardTraffic.noCluster': { zh: '暂无集群流量数据', en: 'No cluster traffic data' },
+  'dashboardTraffic.allClusters': { zh: '全部集群', en: 'all clusters' },
+  'dashboardTraffic.totalTps': { zh: '总 TPS', en: 'Total TPS' },
+  'dashboardTraffic.share': { zh: '占比', en: 'Share' },
+  'dashboardTraffic.perBroker': { zh: '单 Broker TPS', en: 'TPS per Broker' },
+  'dashboardTraffic.inOutRatio': { zh: '出入比', en: 'Out/In Ratio' },
+  'dashboardTraffic.trendRising': { zh: '上升', en: 'Rising' },
+  'dashboardTraffic.trendFalling': { zh: '下降', en: 'Falling' },
+  'dashboardTraffic.trendStable': { zh: '平稳', en: 'Stable' },
+  'dashboardTraffic.trendUnknown': { zh: '未知', en: 'Unknown' },
+  'dashboardTraffic.level.healthy': { zh: '健康', en: 'Healthy' },
+  'dashboardTraffic.level.notice': { zh: '提示', en: 'Notice' },
+  'dashboardTraffic.level.warning': { zh: '告警', en: 'Warning' },
+  'dashboardTraffic.level.critical': { zh: '严重', en: 'Critical' },
+  'dashboardTraffic.issueNoActiveTraffic': {
+    zh: '未检测到活跃流量',
+    en: 'No active traffic detected',
+  },
+  'dashboardTraffic.issueTrafficConcentration': {
+    zh: '{cluster} 承载 {value} 流量',
+    en: '{cluster} carries {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyTraffic': {
+    zh: '非健康集群承载 {value} 流量',
+    en: 'Unhealthy clusters carry {value} of traffic',
+  },
+  'dashboardTraffic.issueUnhealthyClusterTraffic': {
+    zh: '{cluster} 在非健康状态下承载流量',
+    en: '{cluster} carries traffic while unhealthy',
+  },
+  'dashboardTraffic.issueBrokerLoadSkew': {
+    zh: '{cluster} 单 Broker 流量偏高',
+    en: '{cluster} has high per-broker traffic',
+  },
+  'dashboardTraffic.issueRecentDrop': {
+    zh: '近期总流量下降 {value}',
+    en: 'Recent total traffic dropped by {value}',
+  },
+  'dashboardTraffic.issueRecentSpike': {
+    zh: '近期总流量上升 {value}',
+    en: 'Recent total traffic increased by {value}',
+  },
+  'dashboardTraffic.issueTopologyUnavailable': {
+    zh: '{cluster} 拓扑数量不可用',
+    en: '{cluster} has unavailable topology counts',
+  },
+  'dashboardTraffic.issueIdleCluster': {
+    zh: '{cluster} 当前无流量',
+    en: '{cluster} is currently idle',
+  },
+  'dashboardTraffic.issueUnknown': { zh: '未知流量信号', en: 'Unknown traffic signal' },
 
   // ─── Cluster Page ───
   'cluster.title': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
@@ -121,6 +181,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.brokerClusterName': { zh: 'Broker 集群名称', en: 'Broker Cluster Name' },
   'cluster.brokerName': { zh: 'Broker 名称', en: 'Broker Name' },
   'cluster.diskUsage': { zh: '磁盘使用', en: 'Disk Usage' },
+  'cluster.putMessagesToday': { zh: '今日写入', en: 'Put Today' },
+  'cluster.putMessagesYesterday': { zh: '昨日写入', en: 'Put Yesterday' },
+  'cluster.getMessagesToday': { zh: '今日消费', en: 'Get Today' },
+  'cluster.getMessagesYesterday': { zh: '昨日消费', en: 'Get Yesterday' },
   'cluster.proxyAddr': { zh: 'Proxy 地址', en: 'Proxy Address' },
   'cluster.connections': { zh: '连接数', en: 'Connections' },
   'cluster.grpcPort': { zh: 'gRPC 端口', en: 'gRPC Port' },
@@ -204,11 +268,19 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── Instance / Topic / Group / ACL / Message ───
   'instance.title': { zh: '实例列表', en: 'Instance List' },
   'instance.subtitle': { zh: '管理 RocketMQ 集群连接', en: 'Manage RocketMQ cluster connections' },
+  'instance.managementSubtitle': {
+    zh: '接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {count} 个实例',
+    en: 'Connect and manage RocketMQ instances (Apache / Aliyun / Tencent). Showing {count} instances.',
+  },
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
   'instance.allTypes': { zh: '全部架构', en: 'All Types' },
+  'instance.cloudType': { zh: '云服务', en: 'Cloud Service' },
+  'instance.proxyLocalMode': { zh: 'Proxy Local 模式', en: 'Proxy Local Mode' },
+  'instance.proxyClusterMode': { zh: 'Proxy Cluster 模式', en: 'Proxy Cluster Mode' },
   'instance.directMode': { zh: 'Direct 模式', en: 'Direct Mode' },
   'instance.addInstance': { zh: '添加实例', en: 'Add Instance' },
+  'instance.editInstanceTitle': { zh: '编辑实例 — {name}', en: 'Edit Instance — {name}' },
   'instance.instanceName': { zh: '实例 ID', en: 'Instance ID' },
   'instance.namePlaceholder': { zh: '例：rocketmq-production', en: 'e.g. rocketmq-production' },
   'instance.accessType': { zh: '接入方式', en: 'Access Type' },
@@ -219,21 +291,240 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'e.g. proxy.example.com:8080',
   },
   'instance.remark': { zh: '备注', en: 'Remark' },
+  'instance.remarkPlaceholder': {
+    zh: '可选，描述实例用途',
+    en: 'Optional, describe the instance purpose',
+  },
+  'instance.remarkEditPlaceholder': { zh: '描述实例用途', en: 'Describe the instance purpose' },
   'instance.connect': { zh: '连接', en: 'Connect' },
   'instance.cancel': { zh: '取消', en: 'Cancel' },
   'instance.edit': { zh: '编辑', en: 'Edit' },
   'instance.delete': { zh: '删除', en: 'Delete' },
   'instance.confirmDelete': { zh: '确认删除 "{name}"？', en: 'Delete "{name}"?' },
+  'instance.confirmBatchDelete': {
+    zh: '确认删除选中的 {count} 个实例？',
+    en: 'Delete {count} selected instances?',
+  },
+  'instance.batchDeleteContent': {
+    zh: '将删除：{names}。{warning}',
+    en: 'Instances to delete: {names}. {warning}',
+  },
+  'instance.cloudBatchDeleteWarning': {
+    zh: '云厂商实例仅从 Studio 移除记录，不会释放云上的 RocketMQ 实例；仍有 Topic/Group 的开源实例无法删除。',
+    en: 'Cloud instances are only removed from Studio; the RocketMQ instances in the cloud are not released. Apache instances with Topic/Group resources still cannot be deleted.',
+  },
+  'instance.batchDeleteWarning': {
+    zh: '仍有 Topic/Group 的开源实例无法删除。',
+    en: 'Apache instances with Topic/Group resources still cannot be deleted.',
+  },
+  'instance.cloudDeleteWarning': {
+    zh: '仅从 Studio 移除该实例记录，不会释放云上的 RocketMQ 实例。',
+    en: 'Only removes this instance record from Studio. The RocketMQ instance in the cloud is not released.',
+  },
   'instance.deleteWarning': { zh: '此操作不可恢复。', en: 'This cannot be undone.' },
   'instance.deleted': { zh: '已删除', en: 'Deleted' },
-  'instance.added': { zh: '实例添加成功', en: 'Instance added' },
+  'instance.added': { zh: '实例「{name}」添加成功', en: 'Instance "{name}" added' },
+  'instance.updated': { zh: '实例「{name}」已更新', en: 'Instance "{name}" updated' },
   'instance.enter': { zh: '进入 {name}', en: 'Enter {name}' },
   'instance.createdAt': { zh: '创建时间', en: 'Created' },
   'instance.updatedAt': { zh: '修改时间', en: 'Updated' },
+  'instance.region': { zh: '地域', en: 'Region' },
+  'instance.vendor': { zh: '厂商', en: 'Vendor' },
+  'instance.aliyunEdition': { zh: 'Aliyun 版', en: 'Aliyun' },
+  'instance.tencentEdition': { zh: 'Tencent 版', en: 'Tencent' },
+  'instance.apacheDescription': {
+    zh: '接入自建 Apache RocketMQ 开源集群，支持 Proxy / Direct 两种接入方式',
+    en: 'Connect a self-managed Apache RocketMQ cluster through Proxy or Direct access',
+  },
+  'instance.aliyunDescription': {
+    zh: '选择已录入的云凭据与云上实例完成接入，接入点自动解析',
+    en: 'Select stored cloud credentials and a cloud instance; the endpoint is resolved automatically',
+  },
+  'instance.tencentDescription': {
+    zh: '接入腾讯云 TDMQ RocketMQ 版实例，接入地址填写实例的接入点',
+    en: 'Connect a Tencent Cloud TDMQ for RocketMQ instance using its endpoint',
+  },
+  'instance.openSourceEdition': { zh: '开源版', en: 'Apache' },
+  'instance.listLoadFailed': {
+    zh: '实例列表加载失败，请稍后重试',
+    en: 'Failed to load instances. Please try again later.',
+  },
+  'instance.cloudCredentialLoadFailed': {
+    zh: '云凭据列表加载失败',
+    en: 'Failed to load cloud credentials',
+  },
+  'instance.cloudRegionLoadFailed': {
+    zh: '云地域列表加载失败',
+    en: 'Failed to load cloud regions',
+  },
+  'instance.cloudInstanceLoadFailed': {
+    zh: '云实例列表加载失败',
+    en: 'Failed to load cloud instances',
+  },
+  'instance.createFailed': {
+    zh: '添加实例失败，请稍后重试',
+    en: 'Failed to add instance. Please try again later.',
+  },
+  'instance.updateFailed': {
+    zh: '更新实例失败，请稍后重试',
+    en: 'Failed to update instance. Please try again later.',
+  },
+  'instance.deleteFailed': {
+    zh: '删除实例失败，请稍后重试',
+    en: 'Failed to delete instance. Please try again later.',
+  },
+  'instance.batchDeleteFailed': {
+    zh: '批量删除失败，请稍后重试',
+    en: 'Failed to delete selected instances. Please try again later.',
+  },
+  'instance.selectCloudCredentialFirst': {
+    zh: '请先选择云凭据',
+    en: 'Select cloud credentials first',
+  },
+  'instance.importAll': { zh: '一键导入', en: 'Import All' },
+  'instance.importAllTooltip': {
+    zh: '遍历该凭据下全部地域，将所有云上实例导入（幂等，已存在的自动跳过），备注自动取自云上实例',
+    en: 'Scan all regions for this credential and import cloud instances. Existing instances are skipped and remarks come from the cloud instance.',
+  },
+  'instance.importSuccess': {
+    zh: '导入完成：共同步 {total} 个实例（新导入 {imported}，已存在跳过 {skipped}）',
+    en: 'Import complete: synced {total} instances ({imported} imported, {skipped} skipped)',
+  },
+  'instance.importAllSkipped': {
+    zh: '云上实例均已在 Studio 中（共 {skipped} 个），无需重复导入',
+    en: 'All cloud instances are already in Studio ({skipped} total). Nothing to import.',
+  },
+  'instance.importIncomplete': {
+    zh: '导入未完成：新导入 {imported} 个，已存在跳过 {skipped} 个',
+    en: 'Import incomplete: {imported} imported, {skipped} skipped',
+  },
+  'instance.importPartialFailure': {
+    zh: '{summary}，失败 {count} 个{omitted}{details}',
+    en: '{summary}. {count} failed{omitted}{details}',
+  },
+  'instance.importFailureDetailsTruncated': {
+    zh: '（仅显示前 {count} 条）',
+    en: ' (showing the first {count})',
+  },
+  'instance.importFailed': {
+    zh: '一键导入失败，请稍后重试',
+    en: 'Failed to import cloud instances. Please try again later.',
+  },
+  'instance.deletedCount': { zh: '已删除 {count} 个', en: 'Deleted {count}' },
+  'instance.batchDeletePartialFailure': {
+    zh: '{summary}，{count} 个未能删除：{failed}',
+    en: '{summary}. {count} failed to delete: {failed}',
+  },
+  'instance.cloudCredential': { zh: '云凭据', en: 'Cloud Credential' },
+  'instance.cloudCredentialRequired': { zh: '请选择云凭据', en: 'Select cloud credentials' },
+  'instance.cloudCredentialExtraPrefix': {
+    zh: '凭据为{vendor}账号的 AK/SK，',
+    en: 'Credentials are the AK/SK of the {vendor} account. ',
+  },
+  'instance.cloudCredentialSettingsLink': {
+    zh: '前往「设置 - 云凭据管理」添加',
+    en: 'Add them in Settings - Cloud Credentials',
+  },
+  'instance.selectStoredCredential': {
+    zh: '选择已录入的 AK/SK 凭据',
+    en: 'Select stored AK/SK credentials',
+  },
+  'instance.loading': { zh: '加载中…', en: 'Loading...' },
+  'instance.noCloudCredential': {
+    zh: '暂无{vendor}凭据，',
+    en: 'No {vendor} credentials. ',
+  },
+  'instance.addInSettings': { zh: '去设置中添加', en: 'Add in settings' },
+  'instance.regionRequired': { zh: '请选择地域', en: 'Select a region' },
+  'instance.selectRegion': { zh: '选择地域', en: 'Select a region' },
+  'instance.cloudInstance': { zh: '云上实例', en: 'Cloud Instance' },
+  'instance.cloudInstanceRequired': { zh: '请选择云上实例', en: 'Select a cloud instance' },
+  'instance.cloudInstanceExtra': {
+    zh: '商业版实例来自云端目录，无法手工创建',
+    en: 'Commercial instances come from the cloud catalog and cannot be created manually',
+  },
+  'instance.selectCloudInstance': { zh: '选择云上实例', en: 'Select a cloud instance' },
+  'instance.selectRegionFirst': { zh: '请先选择地域', en: 'Select a region first' },
+  'instance.nameRequired': { zh: '请输入实例 ID', en: 'Enter an instance ID' },
+  'instance.nameMax': {
+    zh: '实例 ID 不能超过 64 个字符',
+    en: 'Instance ID cannot exceed 64 characters',
+  },
+  'instance.cloudNamePlaceholder': {
+    zh: '默认取云上实例 ID',
+    en: 'Defaults to the cloud instance ID',
+  },
+  'instance.accessTypeRequired': { zh: '请选择接入方式', en: 'Select an access type' },
+  'instance.endpointRequired': { zh: '请输入接入地址', en: 'Enter an endpoint' },
+  'instance.endpointHelp': {
+    zh: '接入地址为客户端访问入口，会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。',
+    en: 'The endpoint is the client access entry and is shown on Topic pages for client configuration. If clients cannot resolve it, configure DNS or hosts mapping.',
+  },
+  'instance.directEndpointExtra': {
+    zh: 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）',
+    en: 'For Direct mode, enter the NameServer SLB address. In K8s this is usually the NameServer Service address, such as namesrv.mq.svc:9876.',
+  },
+  'instance.proxyLocalEndpointExtra': {
+    zh: 'Proxy Local 模式请填写与 Broker 同进程部署的 Proxy 接入地址（如 broker-proxy.mq.svc:8080）',
+    en: 'For Proxy Local mode, enter the Proxy endpoint deployed with the Broker, such as broker-proxy.mq.svc:8080.',
+  },
+  'instance.proxyClusterEndpointExtra': {
+    zh: 'Proxy Cluster 模式请填写独立 Proxy 集群的 SLB 内网地址（如 proxy.mq.svc:8080）',
+    en: 'For Proxy Cluster mode, enter the internal SLB endpoint of the standalone Proxy cluster, such as proxy.mq.svc:8080.',
+  },
+  'instance.cloudEndpointExtra': {
+    zh: '云服务实例接入地址由云厂商目录解析，不支持手动修改',
+    en: 'Cloud instance endpoints are resolved from the cloud catalog and cannot be edited manually.',
+  },
+  'instance.selectAccessTypeFirst': {
+    zh: '请先选择接入方式',
+    en: 'Select an access type first',
+  },
+  'instance.directEndpointPlaceholder': {
+    zh: '例：namesrv.mq.svc.cluster.local:9876',
+    en: 'e.g. namesrv.mq.svc.cluster.local:9876',
+  },
+  'instance.proxyEndpointPlaceholder': {
+    zh: '例：proxy.mq.svc.cluster.local:8080',
+    en: 'e.g. proxy.mq.svc.cluster.local:8080',
+  },
+  'instance.adminCredentialRef': { zh: '管理凭据引用', en: 'Admin Credential Ref' },
+  'instance.adminCredentialRefExtra': {
+    zh: '可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。',
+    en: 'Optional. Only stores the credential reference in server config; AK/SK is not stored or transferred.',
+  },
+  'instance.adminCredentialRefEditExtra': {
+    zh: '仅保存服务端配置中的引用，不会保存或传输 AK/SK。',
+    en: 'Only stores the reference in server config; AK/SK is not stored or transferred.',
+  },
+  'instance.adminCredentialRefPlaceholder': {
+    zh: '例：production-admin',
+    en: 'e.g. production-admin',
+  },
   'topic.title': { zh: 'Topic 管理', en: 'Topic Management' },
   'group.title': { zh: 'Group 管理', en: 'Group Management' },
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
   'message.title': { zh: '消息查询', en: 'Message Search' },
+
+  // ─── Message Query History ───
+  'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
+  'messageHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
+  'messageHistory.traceQueries': { zh: '轨迹查询', en: 'Trace Queries' },
+  'messageHistory.latestQuery': { zh: '最近查询', en: 'Latest Query' },
+  'messageHistory.searchPlaceholder': {
+    zh: '搜索 Topic、轨迹 Topic、Message ID、Key 或操作者',
+    en: 'Search Topic, trace Topic, Message ID, Key or operator',
+  },
+  'messageHistory.loadFailed': {
+    zh: '查询历史加载失败',
+    en: 'Failed to load query history',
+  },
+  'messageHistory.resultCount': { zh: '结果数', en: 'Results' },
+  'messageHistory.operator': { zh: '操作者', en: 'Operator' },
+  'messageHistory.queryTime': { zh: '查询时间', en: 'Query Time' },
+  'messageHistory.traceTopic': { zh: '轨迹 Topic', en: 'Trace Topic' },
+  'messageHistory.traceNodes': { zh: '轨迹节点', en: 'Trace Nodes' },
+  'messageHistory.consumers': { zh: '消费者', en: 'Consumers' },
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
@@ -505,6 +796,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.durationRequired': { zh: '请选择持续时间', en: 'Select a duration' },
   'alerts.windowAggregation': { zh: '窗口聚合', en: 'Window aggregation' },
   'alerts.windowSeconds': { zh: '窗口秒数', en: 'Window seconds' },
+  'alerts.windowRetentionHelp': {
+    zh: '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
+    en: 'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
+  },
   'alerts.consecutiveSamples': { zh: '连续采样次数', en: 'Consecutive samples' },
   'alerts.consecutiveSamplesRequired': {
     zh: '请输入连续采样次数',
@@ -926,6 +1221,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cluster': { zh: '集群', en: 'Cluster' },
   'audit.result': { zh: '结果', en: 'Result' },
   'audit.error': { zh: '失败原因', en: 'Error' },
+  'audit.timelineTitle': { zh: '资源操作时间线', en: 'Resource Operation Timeline' },
+  'audit.timelineView': {
+    zh: '查看 {target} 操作时间线',
+    en: 'View operation timeline for {target}',
+  },
+  'audit.timelineDateRange': { zh: '时间线日期范围', en: 'Timeline date range' },
+  'audit.timelineNoCluster': { zh: '无集群范围', en: 'No cluster scope' },
+  'audit.timelineExport': { zh: '导出时间线', en: 'Export Timeline' },
+  'audit.timelineLoadFailed': {
+    zh: '资源操作时间线加载失败，请稍后重试',
+    en: 'Failed to load the resource operation timeline. Try again later.',
+  },
+  'audit.timelineExportFailed': {
+    zh: '资源操作时间线导出失败，请稍后重试',
+    en: 'Failed to export the resource operation timeline. Try again later.',
+  },
+  'audit.timelineEmpty': { zh: '该资源暂无操作记录', en: 'No operations found for this resource' },
   'audit.searchPlaceholder': { zh: '搜索操作人或操作对象', en: 'Search operator or target' },
   'audit.cleanup': { zh: '清理日志', en: 'Cleanup' },
   'audit.cleanupTitle': { zh: '清理审计日志', en: 'Cleanup Audit Log' },
@@ -936,6 +1248,63 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
+  'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
+  'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
+  'auditInsights.level.warning': { zh: '告警', en: 'Warning' },
+  'auditInsights.level.critical': { zh: '严重', en: 'Critical' },
+  'auditInsights.controlPlaneFailures': {
+    zh: '控制面异常',
+    en: 'Control-plane Failures',
+  },
+  'auditInsights.topOperator': { zh: '最高频操作人', en: 'Top Operator' },
+  'auditInsights.currentPageRecords': {
+    zh: '当前页 {count} 条记录',
+    en: '{count} records on this page',
+  },
+  'auditInsights.operatorShare': { zh: '当前页占比 {value}', en: '{value} of this page' },
+  'auditInsights.findings': { zh: '需要关注的审计信号', en: 'Audit signals to review' },
+  'auditInsights.hotTargets': { zh: '重复异常对象', en: 'Repeated Failed Targets' },
+  'auditInsights.riskyRecords': { zh: '高风险记录', en: 'Risky Records' },
+  'auditInsights.noHotTargets': {
+    zh: '当前页没有重复失败或部分成功的对象',
+    en: 'No repeated failed or partial targets on this page',
+  },
+  'auditInsights.noRiskyRecords': {
+    zh: '当前页没有异常或高风险审计记录',
+    en: 'No failed or high-risk audit records on this page',
+  },
+  'auditInsights.target': { zh: '对象', en: 'Target' },
+  'auditInsights.failPartial': { zh: '失败 / 部分成功', en: 'Failed / Partial' },
+  'auditInsights.issue.noMatchingRecords': {
+    zh: '当前筛选没有匹配的审计记录',
+    en: 'No audit records match the current filters',
+  },
+  'auditInsights.issue.highFailureRate': {
+    zh: '当前筛选失败率 {value}，高于 {threshold} 阈值',
+    en: 'Filtered failure rate is {value}, above the {threshold} threshold',
+  },
+  'auditInsights.issue.partialOutcomes': {
+    zh: '当前筛选有 {count} 条部分成功记录',
+    en: '{count} filtered audit records are partially successful',
+  },
+  'auditInsights.issue.controlPlaneFailures': {
+    zh: '当前页有 {count} 条控制面操作失败或部分成功',
+    en: '{count} control-plane operations failed or partially succeeded on this page',
+  },
+  'auditInsights.issue.highRiskFailures': {
+    zh: '当前页有 {count} 条高风险操作失败',
+    en: '{count} high-risk operations failed on this page',
+  },
+  'auditInsights.issue.repeatedTargetFailures': {
+    zh: '{target} 在当前页出现 {count} 次失败或部分成功',
+    en: '{target} has {count} failed or partial audit events on this page',
+  },
+  'auditInsights.issue.operatorConcentration': {
+    zh: '{operator} 占当前页 {value} 操作',
+    en: '{operator} owns {value} of operations on this page',
+  },
+  'auditInsights.issue.unknown': { zh: '未知审计风险信号', en: 'Unknown audit risk signal' },
 
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
@@ -978,6 +1347,110 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.clusterListLoadFailed': {
     zh: '集群列表加载失败，已显示全局工具',
     en: 'Failed to load clusters; showing global tools',
+  },
+  'ai.mode.title': { zh: '对话模式', en: 'Chat mode' },
+  'ai.mode.chat': { zh: '对话', en: 'Chat' },
+  'ai.mode.diagnose': { zh: '诊断', en: 'Diagnose' },
+  'ai.mode.manage': { zh: '运维', en: 'Manage' },
+  'ai.mode.query': { zh: '查询', en: 'Query' },
+  'ai.promptEnhance': { zh: 'Prompt 增强', en: 'Prompt enhancement' },
+  'ai.promptEnhanceTitle': { zh: '发送前增强 Prompt', en: 'Enhance the prompt before sending' },
+  'ai.promptTemplates.button': { zh: '模板', en: 'Templates' },
+  'ai.promptTemplates.title': { zh: 'Prompt 模板', en: 'Prompt templates' },
+  'ai.promptTemplates.storageUnavailable': {
+    zh: '浏览器存储不可用，自定义 Prompt 模板暂时无法保存。',
+    en: 'Browser storage is unavailable. Custom prompt templates cannot be saved right now.',
+  },
+  'ai.promptTemplates.searchAria': { zh: '搜索 Prompt 模板', en: 'Search prompt templates' },
+  'ai.promptTemplates.searchPlaceholder': {
+    zh: '搜索模板、标签或内容',
+    en: 'Search templates, tags, or content',
+  },
+  'ai.promptTemplates.saveCurrent': { zh: '保存当前输入', en: 'Save current input' },
+  'ai.promptTemplates.titleInput': { zh: '模板标题', en: 'Template title' },
+  'ai.promptTemplates.tagsInput': { zh: '模板标签', en: 'Template tags' },
+  'ai.promptTemplates.tagsPlaceholder': { zh: '标签，逗号分隔', en: 'Tags, separated by commas' },
+  'ai.promptTemplates.empty': { zh: '暂无 Prompt 模板', en: 'No prompt templates' },
+  'ai.promptTemplates.use': { zh: '使用', en: 'Use' },
+  'ai.promptTemplates.append': { zh: '追加', en: 'Append' },
+  'ai.promptTemplates.deleteConfirm': {
+    zh: '删除这个 Prompt 模板？',
+    en: 'Delete this prompt template?',
+  },
+  'ai.promptTemplates.deleteAria': { zh: '删除模板 {title}', en: 'Delete template {title}' },
+  'ai.promptTemplates.custom': { zh: '自定义', en: 'Custom' },
+  'ai.promptTemplates.builtin': { zh: '内置', en: 'Built-in' },
+  'ai.promptTemplates.titleRequired': { zh: '请输入模板标题', en: 'Enter a template title' },
+  'ai.promptTemplates.bodyRequired': {
+    zh: '当前输入为空，无法保存模板',
+    en: 'The current input is empty and cannot be saved as a template',
+  },
+  'ai.promptTemplates.storageSaveFailed': {
+    zh: '模板保存失败，浏览器存储不可用',
+    en: 'Failed to save the template because browser storage is unavailable',
+  },
+  'ai.promptTemplates.storageDeleteFailed': {
+    zh: '模板删除失败，浏览器存储不可用',
+    en: 'Failed to delete the template because browser storage is unavailable',
+  },
+  'ai.promptTemplates.saved': { zh: 'Prompt 模板已保存', en: 'Prompt template saved' },
+  'ai.promptTemplates.deleted': { zh: 'Prompt 模板已删除', en: 'Prompt template deleted' },
+  'ai.promptTemplates.consumerLag.title': { zh: '消费延迟诊断', en: 'Consumer Lag Diagnosis' },
+  'ai.promptTemplates.consumerLag.description': {
+    zh: '排查消费堆积、在线客户端、订阅和 Broker 进度返回状态。',
+    en: 'Inspect backlog, online clients, subscriptions, and Broker progress availability.',
+  },
+  'ai.promptTemplates.consumerLag.body': {
+    zh: '请诊断当前 RocketMQ 实例中的消费延迟问题。\n\n检查范围：\n1. 找出堆积最高的消费组和 Topic。\n2. 对比消费组在线客户端、订阅关系、重试队列和队列级 offset。\n3. 判断是生产突增、消费者离线、订阅漂移、Broker 进度不可查，还是单队列热点。\n4. 给出可执行的恢复步骤，并标注哪些步骤只读、哪些步骤会修改集群状态。',
+    en: 'Diagnose consumer lag in the current RocketMQ instance.\n\nScope:\n1. Find the consumer groups and topics with the highest backlog.\n2. Compare online clients, subscriptions, retry queues, and queue-level offsets.\n3. Decide whether the cause is a producer spike, offline consumers, subscription drift, unavailable Broker progress, or a single hot queue.\n4. Provide executable recovery steps and mark which steps are read-only and which modify cluster state.',
+  },
+  'ai.promptTemplates.messageTrace.title': {
+    zh: '消息轨迹排查',
+    en: 'Message Trace Investigation',
+  },
+  'ai.promptTemplates.messageTrace.description': {
+    zh: '按 Message ID 或 Key 收集发送、存储、消费和重试线索。',
+    en: 'Collect send, storage, consume, and retry evidence by Message ID or key.',
+  },
+  'ai.promptTemplates.messageTrace.body': {
+    zh: '请协助排查一条消息的完整轨迹。\n\n已知信息：\n- Message ID：\n- Topic：\n- Key 或业务单号：\n- 大致发送时间：\n\n请先说明需要哪些查询条件，然后按发送结果、Broker 存储、消费结果、重试/DLQ 四部分输出结论。',
+    en: 'Help investigate the full trace for one message.\n\nKnown information:\n- Message ID:\n- Topic:\n- Key or business identifier:\n- Approximate send time:\n\nFirst state which query conditions are required, then summarize the send result, Broker storage, consume result, and retry/DLQ state.',
+  },
+  'ai.promptTemplates.topicChange.title': { zh: 'Topic 变更预案', en: 'Topic Change Plan' },
+  'ai.promptTemplates.topicChange.description': {
+    zh: '生成 Topic 队列、权限、TTL 或保留策略变更前的检查清单。',
+    en: 'Build a precheck list before changing topic queues, permissions, TTL, or retention.',
+  },
+  'ai.promptTemplates.topicChange.body': {
+    zh: '请为一次 RocketMQ Topic 变更生成执行预案。\n\n变更目标：\n- Topic：\n- 期望调整：\n- 影响窗口：\n\n请输出：变更前检查、风险判断、执行步骤、回滚步骤、验证方式。涉及写操作时先列出需要人工确认的命令或接口。',
+    en: 'Create an execution plan for a RocketMQ topic change.\n\nChange target:\n- Topic:\n- Expected adjustment:\n- Impact window:\n\nOutput the pre-change checks, risk assessment, execution steps, rollback steps, and verification method. For write operations, list the commands or APIs that require manual confirmation first.',
+  },
+  'ai.promptTemplates.brokerHealth.title': { zh: 'Broker 健康巡检', en: 'Broker Health Check' },
+  'ai.promptTemplates.brokerHealth.description': {
+    zh: '汇总 Broker 可用性、磁盘水位、TPS、队列分布和异常告警。',
+    en: 'Summarize Broker availability, disk usage, TPS, queue distribution, and abnormal alerts.',
+  },
+  'ai.promptTemplates.brokerHealth.body': {
+    zh: '请对当前 RocketMQ 集群做一次 Broker 健康巡检。\n\n请关注：\n1. Broker 可用性和主从状态。\n2. 磁盘水位、TPS、消息量和异常告警。\n3. Topic 队列分布是否存在热点或倾斜。\n4. 最近是否有失败的告警通知或未确认系统告警。\n\n输出时请区分“已验证事实”“需要进一步查询”“建议处理动作”。',
+    en: 'Run a Broker health check for the current RocketMQ cluster.\n\nFocus on:\n1. Broker availability and master-slave status.\n2. Disk usage, TPS, message volume, and abnormal alerts.\n3. Whether topic queue distribution has hot spots or skew.\n4. Whether there are recent failed alert notifications or unacknowledged system alerts.\n\nSeparate the output into verified facts, items requiring more queries, and recommended actions.',
+  },
+  'ai.promptTemplates.opsSummary.title': { zh: '运维变更摘要', en: 'Operations Handoff Summary' },
+  'ai.promptTemplates.opsSummary.description': {
+    zh: '把已执行的查询结果整理成面向值班和复盘的摘要。',
+    en: 'Turn completed query results into a handoff and review summary.',
+  },
+  'ai.promptTemplates.opsSummary.body': {
+    zh: '请把本次 RocketMQ 运维排查过程整理成简洁摘要。\n\n摘要结构：\n- 背景：\n- 已执行查询：\n- 关键发现：\n- 已完成操作：\n- 未完成风险：\n- 下一步：',
+    en: 'Summarize this RocketMQ operations investigation concisely.\n\nStructure:\n- Background:\n- Queries executed:\n- Key findings:\n- Completed actions:\n- Remaining risks:\n- Next steps:',
+  },
+  'ai.promptTemplates.aclRisk.title': { zh: 'ACL 风险核对', en: 'ACL Risk Check' },
+  'ai.promptTemplates.aclRisk.description': {
+    zh: '检查用户、策略、实例绑定和高危权限是否符合预期。',
+    en: 'Check users, policies, instance bindings, and high-risk permissions.',
+  },
+  'ai.promptTemplates.aclRisk.body': {
+    zh: '请核对当前 RocketMQ Studio 的 ACL 风险。\n\n请检查：\n1. 是否存在管理员权限、通配资源或写权限过宽的账号。\n2. 用户和实例绑定是否符合最小权限。\n3. 云厂商实例与 Apache 实例的 ACL 字段差异。\n4. 哪些发现需要立即处理，哪些只是建议优化。',
+    en: 'Review ACL risks in the current RocketMQ Studio environment.\n\nCheck:\n1. Whether any account has admin permissions, wildcard resources, or overly broad write permissions.\n2. Whether user and instance bindings follow least privilege.\n3. ACL field differences between cloud vendor instances and Apache instances.\n4. Which findings require immediate handling and which are optimization suggestions.',
   },
 
   // ─── Home Page ───

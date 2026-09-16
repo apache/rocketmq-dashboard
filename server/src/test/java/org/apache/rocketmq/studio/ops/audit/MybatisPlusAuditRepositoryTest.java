@@ -68,7 +68,8 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "DELETE_TOPIC", "TOPIC", "prod-cn", null, null, "FAILED", 2, 25);
+                "orders", "DELETE_TOPIC", "TOPIC", "orders", "prod-cn", false,
+                null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -82,7 +83,54 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
         assertThat(queryCaptor.getValue().getSqlSegment())
-                .contains("operation", "resource_type", "cluster_id", "result", "gmt_create", "id");
+                .contains("operation", "resource_type", "resource_name =", "cluster_id",
+                        "result", "gmt_create", "id");
+    }
+
+    @Test
+    void findPageUsesEqualityForExactTargetTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, "TOPIC", "orders", "prod-cn", false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("resource_type =", "resource_name =", "cluster_id =")
+                .doesNotContain("resource_name LIKE");
+    }
+
+    @Test
+    void findPageCanRestrictTimelineToRecordsWithoutAClusterTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, "SETTINGS", "general", null, true,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("resource_name =", "cluster_id IS NULL", "OR cluster_id =");
+    }
+
+    @Test
+    void findPageMissingClusterScopeOverridesClusterIdTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, "SETTINGS", "general", "ignored-cluster", true,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("cluster_id IS NULL", "OR cluster_id =");
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
+                .getParamNameValuePairs().values())
+                .doesNotContain("ignored-cluster");
     }
 
     @Test

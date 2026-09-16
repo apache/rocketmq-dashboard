@@ -24,7 +24,7 @@ public interface McpServerRegistry {
 
     List<AiToolVO> listTools();
 
-    List<AiToolVO> listTools(String clusterId);
+    List<AiToolVO> listTools(String instanceId);
 
     Object execute(String name, Map<String, Object> input);
 

@@ -67,7 +67,10 @@ public class AlertNotificationSuppressionService {
             page++;
         }
         return latestByIncident.values().stream()
-                .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition()))
+                // REMINDER is emitted only while the state stays FIRING, so an incident whose
+                // latest in-window event is a REMINDER is still active; only RESOLVED ends it.
+                .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition())
+                        || "REMINDER".equalsIgnoreCase(candidate.getTransition()))
                 .max(Comparator.comparing(SystemAlertVO::getTime, Comparator.nullsLast(Comparator.naturalOrder())));
     }
 

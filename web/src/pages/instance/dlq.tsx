@@ -27,6 +27,7 @@ import {
   Modal,
   Drawer,
   DatePicker,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -415,21 +416,28 @@ const DLQPage = () => {
       title: 'Group 名称',
       dataIndex: 'groupName',
       key: 'groupName',
-      width: 200,
+      minWidth: 200,
+      ellipsis: true,
       sorter: (a, b) => a.groupName.localeCompare(b.groupName),
       render: (name: string) => (
-        <Text strong style={{ fontSize: 14 }}>
-          {name}
-        </Text>
+        <Tooltip title={name}>
+          <Text strong style={{ fontSize: 14 }}>
+            {name}
+          </Text>
+        </Tooltip>
       ),
     },
     {
       title: 'DLQ Topic',
       dataIndex: 'dlqTopic',
       key: 'dlqTopic',
-      width: 240,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 240,
+      ellipsis: true,
       render: (topic: string) => (
-        <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        <Tooltip title={topic}>
+          <Text style={{ fontSize: 14, fontFamily: 'monospace' }}>{topic}</Text>
+        </Tooltip>
       ),
     },
     {
@@ -534,6 +542,15 @@ const DLQPage = () => {
       key: 'offset',
       width: 90,
       render: (offset: number) => <Text style={{ fontFamily: 'monospace' }}>{offset}</Text>,
+    },
+    {
+      title: '重投次数',
+      dataIndex: 'reconsumeTimes',
+      key: 'reconsumeTimes',
+      width: 90,
+      render: (reconsumeTimes?: number) => (
+        <Text style={{ fontFamily: 'monospace' }}>{reconsumeTimes ?? '-'}</Text>
+      ),
     },
     {
       title: '入队时间',
@@ -672,6 +689,7 @@ const DLQPage = () => {
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
       </Card>
@@ -773,7 +791,7 @@ const DLQPage = () => {
          ═══════════════════════════════════════════ */}
       <Drawer
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1080}
+        width={1180}
         open={detailOpen}
         onClose={() => {
           detailRequestIdRef.current += 1;
@@ -920,6 +938,7 @@ const DLQPage = () => {
                   }
                 },
               }}
+              tableLayout="fixed"
               scroll={{ x: tableScrollX(detailColumns, { selection: true }) }}
               columns={detailColumns}
             />

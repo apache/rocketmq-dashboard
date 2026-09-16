@@ -370,7 +370,7 @@ const ConsumerPageContent = ({
     [t, selectedInstanceId, search],
   );
 
-  const reloadConsumerGroupPageAfterDelete = useCallback(async () => {
+  const reloadConsumerGroupPage = useCallback(async () => {
     await loadConsumerGroupPage(page, pageSize);
   }, [loadConsumerGroupPage, page, pageSize]);
 
@@ -822,10 +822,7 @@ const ConsumerPageContent = ({
     setImportRows([...nextRows]);
 
     if (createdGroups.length > 0) {
-      setGroups((previous) => {
-        const createdNames = new Set(createdGroups.map((group) => group.name));
-        return [...createdGroups, ...previous.filter((group) => !createdNames.has(group.name))];
-      });
+      await reloadConsumerGroupPage();
     }
 
     const failedCount = nextRows.filter((row) => row.status === 'failed').length;
@@ -874,10 +871,15 @@ const ConsumerPageContent = ({
       title: 'Group 名称',
       dataIndex: 'name',
       key: 'name',
-      width: 190,
+      // `minWidth` rather than `width`: this is the one column allowed to grow, so a window
+      // wider than the table does not inflate every other column by the same proportion.
+      // 170 keeps the total at the container width of a 1560px window, so the table fits
+      // without a horizontal scrollbar there; on wider windows this column takes the surplus.
+      minWidth: 170,
+      ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title="点击复制名称">
+        <Tooltip title={`${name}（点击复制）`}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
@@ -966,6 +968,8 @@ const ConsumerPageContent = ({
       title: '创建时间',
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
+      // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
+      // anything narrower truncates the timestamp.
       width: 156,
       sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
@@ -989,7 +993,7 @@ const ConsumerPageContent = ({
     {
       title: '操作',
       key: 'actions',
-      width: 232,
+      width: 248,
       render: (_: unknown, record: ConsumerGroup) => (
         <Flex gap={6} justify="flex-end">
           <Button
@@ -1033,7 +1037,7 @@ const ConsumerPageContent = ({
                 cancelText: '取消',
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPageAfterDelete();
+                  await reloadConsumerGroupPage();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
@@ -1464,7 +1468,7 @@ const ConsumerPageContent = ({
                       names,
                       selectedInstanceId || undefined,
                     );
-                    if (deleted.length > 0) await reloadConsumerGroupPageAfterDelete();
+                    if (deleted.length > 0) await reloadConsumerGroupPage();
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
@@ -1552,6 +1556,7 @@ const ConsumerPageContent = ({
             },
           }}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true, expandable: true }) }}
           expandable={{
             onExpand: (expanded, record) => {
@@ -1725,10 +1730,16 @@ const ConsumerPageContent = ({
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间" span={2}>
+                      <Descriptions.Item label="创建时间">
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
+                        </Space>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="修改时间">
+                        <Space size={4}>
+                          <Clock size={13} color="#9CA3AF" />
+                          <Text type="secondary">{selectedGroup.gmtModified}</Text>
                         </Space>
                       </Descriptions.Item>
                       <Descriptions.Item label="订阅 Topic" span={2}>
@@ -1756,6 +1767,7 @@ const ConsumerPageContent = ({
                         rowKey="clientId"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(instanceColumns) }}
                       />
                     </div>
@@ -1958,6 +1970,7 @@ const ConsumerPageContent = ({
                         rowKey="id"
                         pagination={false}
                         size="small"
+                        tableLayout="fixed"
                         scroll={{ x: tableScrollX(healthIssueColumns) }}
                       />
                     ) : (
@@ -2057,6 +2070,7 @@ const ConsumerPageContent = ({
                       rowKey={(r) => `${r.topic}-${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
+                      tableLayout="fixed"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
                       locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
                     />
@@ -2258,7 +2272,7 @@ const ConsumerPageContent = ({
                 onOk: async () => {
                   setSubmitting(true);
                   try {
-                    const created = await createConsumerGroup({
+                    await createConsumerGroup({
                       name: values.name,
                       subscriptionMode: values.subscriptionMode,
                       consumeType: values.consumeType,
@@ -2268,10 +2282,10 @@ const ConsumerPageContent = ({
                       subscribedTopics: [],
                       instanceId: selectedInstanceId,
                     });
-                    setGroups((prev) => [
-                      created,
-                      ...prev.filter((group) => group.name !== created.name),
-                    ]);
+                    // The list is server-paginated: refetch the current page so the new
+                    // group lands where the server sorts it and the total stays truthful,
+                    // mirroring the topic inventory behavior after create.
+                    await reloadConsumerGroupPage();
                     message.success(`消费组 ${values.name} 创建成功`);
                     setCreateModalOpen(false);
                     form.resetFields();
@@ -2653,6 +2667,7 @@ const ConsumerPageContent = ({
                   rowKey={(row) => `${row.topic}-${row.broker}-${row.queueId}`}
                   pagination={false}
                   size="small"
+                  tableLayout="fixed"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
                   locale={{ emptyText: '未找到可预览的 Queue 位点' }}
                 />

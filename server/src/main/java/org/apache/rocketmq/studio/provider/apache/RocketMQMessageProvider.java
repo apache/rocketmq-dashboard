@@ -21,6 +21,7 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -35,6 +36,7 @@ import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -59,6 +61,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
@@ -76,6 +79,7 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private static final String TRACE_TOPIC = "RMQ_SYS_TRACE_TOPIC";
     private static final int KEY_QUERY_MAX = 64;
+    private static final int UNIQUE_KEY_QUERY_MAX = 1;
     private static final int TRACE_QUERY_MAX = 64;
     private static final int DEFAULT_TOPIC_LIMIT = 200;
     private static final int TOPIC_QUERY_HARD_CAP = 2000;
@@ -86,6 +90,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7 * ONE_DAY_MILLIS;
+    private static final long UNIQUE_KEY_DEFAULT_WINDOW_MILLIS = 3 * ONE_DAY_MILLIS;
     private static final int MAX_PULLS_PER_QUEUE = 32;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final int MAX_TOPIC_SCAN_MESSAGES_PER_QUEUE = MAX_PULLS_PER_QUEUE * TOPIC_PULL_BATCH_SIZE;
@@ -99,17 +104,23 @@ public class RocketMQMessageProvider implements MessageProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime).messages();
+    }
+
+    @Override
+    public MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId, String tag,
+                                                    String key, Long startTime, Long endTime) {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, topic, msgId, tag, key,
                         startTime, endTime));
     }
 
-    private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt,
-                                                 String topic, String msgId, String tag, String key,
-                                                 Long startTime, Long endTime) {
+    private MessageQueryResult queryMessages(String instanceId, DefaultMQAdminExt adminExt,
+                                             String topic, String msgId, String tag, String key,
+                                             Long startTime, Long endTime) {
 
         if (StringUtils.hasText(msgId)) {
-            return queryByMsgId(adminExt, topic, msgId);
+            return MessageQueryResult.complete(queryByMsgId(adminExt, topic, msgId));
         }
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
@@ -124,11 +135,12 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            return queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            return MessageQueryResult.complete(
+                    queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT));
         }
 
         log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
-        return Collections.emptyList();
+        return MessageQueryResult.complete(Collections.emptyList());
     }
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
@@ -172,30 +184,74 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
-    private List<MessageRecordVO> queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
-                                             String tag, long begin, long end) {
+    private MessageQueryResult queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
+                                          String tag, long begin, long end) {
         try {
             QueryResult queryResult = adminExt.queryMessage(topic, key, KEY_QUERY_MAX, begin, end);
             if (queryResult == null || queryResult.getMessageList() == null) {
-                return Collections.emptyList();
+                return MessageQueryResult.complete(Collections.emptyList());
             }
+            // MQAdminImpl fans the key query out to every route broker with a per-broker
+            // budget of KEY_QUERY_MAX and merges the responses without a client-side cap,
+            // so a merged count at or above the budget means some broker may have stopped
+            // at its cap. Surface that instead of silently dropping further matches.
+            boolean mayBeTruncated = queryResult.getMessageList().size() >= KEY_QUERY_MAX;
             List<MessageRecordVO> result = new ArrayList<>();
             for (MessageExt messageExt : queryResult.getMessageList()) {
                 if (matchesTag(messageExt, tag)) {
                     result.add(toRecordVO(messageExt));
                 }
             }
-            return result;
+            return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
         } catch (Exception e) {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.NO_MESSAGE)) {
                 // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
                 // returning an empty QueryResult when the key matches nothing: the query
                 // completed, so the correct response is an empty list, not a gateway error.
                 log.info("queryMessage(topic={}, key={}) matched nothing", topic, key);
-                return Collections.emptyList();
+                return MessageQueryResult.complete(Collections.emptyList());
             }
             log.warn("queryMessage(topic={}, key={}) failed: {}", topic, key, e.getMessage());
             throw new BusinessException(502, "Failed to query messages by key: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                         Long startTime, Long endTime) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> queryMessageByUniqueKey((DefaultMQAdminExt) adminExt, topic, uniqueKey,
+                        startTime, endTime));
+    }
+
+    private List<MessageRecordVO> queryMessageByUniqueKey(DefaultMQAdminExt adminExt, String topic,
+                                                          String uniqueKey, Long startTime, Long endTime) {
+        try {
+            if (startTime == null && endTime == null) {
+                // Two-arg MQAdmin lookup: UNIQ_KEY index over a default recent 3-day window.
+                MessageExt messageExt = adminExt.getDefaultMQAdminExtImpl()
+                        .getMqClientInstance()
+                        .getMQAdminImpl()
+                        .queryMessageByUniqKey(topic, uniqueKey);
+                return messageExt == null ? Collections.emptyList() : List.of(toRecordVO(messageExt));
+            }
+            long end = endTime != null ? endTime : System.currentTimeMillis();
+            long begin = startTime != null ? startTime : end - UNIQUE_KEY_DEFAULT_WINDOW_MILLIS;
+            QueryResult queryResult = adminExt.queryMessageByUniqKey(null, topic, uniqueKey,
+                    UNIQUE_KEY_QUERY_MAX, begin, end);
+            if (queryResult == null || queryResult.getMessageList() == null
+                    || queryResult.getMessageList().isEmpty()) {
+                return Collections.emptyList();
+            }
+            return List.of(toRecordVO(queryResult.getMessageList().getFirst()));
+        } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.NO_MESSAGE, ResponseCode.QUERY_NOT_FOUND)) {
+                // The index query completed but matched nothing: empty result, not a gateway error.
+                log.info("queryMessageByUniqKey(topic={}, uniqueKey={}) matched nothing", topic, uniqueKey);
+                return Collections.emptyList();
+            }
+            log.warn("queryMessageByUniqKey(topic={}, uniqueKey={}) failed: {}", topic, uniqueKey, e.getMessage());
+            throw new BusinessException(502, "Failed to query message by unique key: " + e.getMessage());
         }
     }
 
@@ -222,6 +278,10 @@ public class RocketMQMessageProvider implements MessageProvider {
                 result.sort(Comparator.comparing(QueueOffsetVO::getBrokerName)
                         .thenComparingInt(QueueOffsetVO::getQueueId));
             } catch (Exception e) {
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                    log.info("getQueueOffsets(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
+                    return Collections.emptyList();
+                }
                 log.warn("getQueueOffsets(topic={}) failed: {}", topic, e.getMessage());
                 throw new BusinessException(502, "Failed to get queue offsets: " + e.getMessage());
             }
@@ -242,6 +302,11 @@ public class RocketMQMessageProvider implements MessageProvider {
                 }
                 return toRecordVO(pullResult.getMsgFoundList().get(0), brokerName);
             } catch (Exception e) {
+                if (isRetryTopicReadBlocked(topic, e)) {
+                    log.warn("pullMessageAtOffset(topic={}) skipped: reading a %RETRY% topic requires a "
+                            + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
+                    return null;
+                }
                 log.warn("pullMessageAtOffset(topic={}, broker={}, queue={}, offset={}) failed: {}",
                         topic, brokerName, queueId, offset, e.getMessage());
                 throw new BusinessException(502, "Failed to pull message at offset: " + e.getMessage());
@@ -325,6 +390,20 @@ public class RocketMQMessageProvider implements MessageProvider {
                     }
                 }
             } catch (Exception e) {
+                if (isRetryTopicReadBlocked(topic, e)) {
+                    // Reading a %RETRY%<group> topic through the shared pooled pull consumer is
+                    // rejected by broker ACL (the pull consumer group must equal the retry topic's
+                    // group). We deliberately do NOT spin up a group-matched pull consumer: it would
+                    // register as a member of that real group and take part in its push-consumer
+                    // rebalance, stalling queues. Degrade to an empty result instead of failing.
+                    log.warn("queryByTopic(topic={}) skipped: reading a %RETRY% topic requires a "
+                            + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
+                    return Collections.emptyList();
+                }
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+                    log.info("queryByTopic(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
+                    return Collections.emptyList();
+                }
                 log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
                 throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
             }
@@ -332,6 +411,38 @@ public class RocketMQMessageProvider implements MessageProvider {
                     .sorted(TOPIC_QUERY_ORDER.reversed())
                     .toList();
         });
+    }
+
+    /**
+     * True only when {@code topic} is a {@code %RETRY%<group>} system topic and {@code e} carries one
+     * of the broker signals that the shared pooled pull consumer cannot read it: the ACL rejection
+     * {@code retry topic does not match consumer group} (CODE:16, because the pull consumer group must
+     * equal the retry topic's embedded group) or a missing route/queue. Reading such a topic would
+     * require a group-matched pull consumer, which we intentionally avoid (it would join that real
+     * group's rebalance); callers degrade to an empty result instead. Normal topics and unrelated
+     * errors return false so genuine failures still surface.
+     */
+    private static boolean isRetryTopicReadBlocked(String topic, Throwable e) {
+        if (topic == null || !topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+            return false;
+        }
+        Throwable cause = e;
+        while (cause != null) {
+            String message = cause.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                if (lower.contains("retry topic does not match consumer group")
+                        || lower.contains("can not find message queue")
+                        || lower.contains("no topic route info")) {
+                    return true;
+                }
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private TopicQueueScanPlan buildTopicQueueScanPlan(DefaultMQPullConsumer consumer, MessageQueue queue,
@@ -716,6 +827,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .storeTime(messageExt.getStoreTimestamp())
                 .bornHost(String.valueOf(messageExt.getBornHost()))
                 .storeHost(String.valueOf(messageExt.getStoreHost()))
+                .reconsumeTimes(messageExt.getReconsumeTimes())
                 .properties(displayProperties)
                 .propertiesTruncated(properties != null && (displayProperties.size() < properties.size()
                         || MessagePropertyDisplay.hasOversizedProperty(properties)))

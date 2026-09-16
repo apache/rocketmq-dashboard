@@ -27,6 +27,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
@@ -53,6 +55,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -92,6 +95,26 @@ class RocketMQMetadataProviderTest {
     private RocketMQMetadataProvider newProvider() {
         return new RocketMQMetadataProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(),
                 topicMapper, groupMapper, runtimeAdminClientResolver);
+    }
+
+    @Test
+    void configuredTopicAndGroupQueriesRetainPhysicalClusterAndEmptyInstancePredicates() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(runtimeAdminClientResolver.configuredClusterName("DefaultCluster")).thenReturn("DefaultCluster");
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+        provider.listTopics("DefaultCluster", null, null, null);
+        provider.listConsumerGroups("DefaultCluster", null, null);
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> topics = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> groups = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(topics.capture());
+        verify(groupMapper).selectList(groups.capture());
+        for (LambdaQueryWrapper<?> query : List.of(topics.getValue(), groups.getValue())) {
+            assertThat(query.getSqlSegment()).contains("instance_id =", "cluster_id =");
+            assertThat(query.getParamNameValuePairs().values()).contains("", "DefaultCluster");
+        }
     }
 
     @Test
@@ -412,6 +435,60 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicRoutesShouldReturnEmptyListWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // Exception shape captured against a live RocketMQ 5.5.0 name server:
+        // MQClientException(responseCode=17, errorMessage="No topic route info in name
+        // server for the topic: <topic>").
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThat(newLiveProvider(admin).getTopicRoutes(null, "TopicA")).isEmpty();
+    }
+
+    @Test
+    void getTopicRoutesGradesByResponseCodeOnly() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // A failure carrying route-absent-looking text but a different response code is
+        // a real error and must surface, proving grading no longer keys on the message.
+        when(admin.examineTopicRouteInfo("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.SYSTEM_ERROR,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicRoutes(null, "TopicA"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicConsumersShouldReturnEmptyPageWhenTopicHasNoBrokerRoute() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: TopicA"));
+
+        TopicConsumerPageVO page = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20);
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getPage()).isEqualTo(1);
+        assertThat(page.getPageSize()).isEqualTo(20);
+    }
+
+    @Test
+    void getTopicConsumersGradesByResponseCodeOnly() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new MQClientException(
+                ResponseCode.SYSTEM_ERROR,
+                "No topic route info in name server for the topic: TopicA"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void getTopicConsumersSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
@@ -487,6 +564,21 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getGroupProgressShouldReturnEmptyForBroadcastGroupTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // rocketmq-tools examineConsumeStats throws MQClientException(BROADCAST_CONSUMPTION)
+        // for a broadcast group with an empty offset table; the code only survives in the
+        // message text ("CODE: 213  DESC: ... the consumer is under the broadcast mode").
+        when(admin.examineConsumeStats("group-broadcast")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQClientException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.BROADCAST_CONSUMPTION,
+                        "Not found the consumer group consume stats, because return offset table is empty, "
+                                + "the consumer is under the broadcast mode"));
+
+        assertThat(newLiveProvider(admin).getGroupProgress(null, "group-broadcast")).isEmpty();
+    }
+
+    @Test
     void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumerConnectionInfo("group-a"))
@@ -556,6 +648,20 @@ class RocketMQMetadataProviderTest {
                         "the consumer group[group-proxy] not online BROKER: 10.0.0.11:10911"));
 
         assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-proxy")).isEmpty();
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldReturnEmptyWhenClientReportsGroupOfflineTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // rocketmq-tools examineConsumerConnectionInfo throws MQClientException(CONSUMER_NOT_ONLINE)
+        // when the broker returns an empty connection set; the typed code only survives in the
+        // message text ("CODE: 206  DESC: Not found the consumer group connection ...").
+        when(admin.examineConsumerConnectionInfo("group-offline")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQClientException(
+                        org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+
+        assertThat(newLiveProvider(admin).getGroupSubscriptions(null, "group-offline")).isEmpty();
     }
 
     @Test

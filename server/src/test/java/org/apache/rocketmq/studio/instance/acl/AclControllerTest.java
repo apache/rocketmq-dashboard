@@ -17,15 +17,20 @@
 
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -49,15 +54,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AclController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class AclControllerTest {
+@Import(LegacyJackson2Config.class)
+class AclControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private AclService aclService;
 
-    @MockBean
+    @MockitoBean
     private ApacheAclReadService apacheAclReadService;
 
     @Autowired
@@ -103,7 +109,7 @@ class AclControllerTest {
         rule.setId(1L);
         rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
                 .thenReturn(PageResult.of(java.util.List.of(rule), 1, 1, 20));
 
         mockMvc.perform(get("/api/acl/rules"))
@@ -121,14 +127,13 @@ class AclControllerTest {
     @Test
     void listRulesShouldPassQueryParams() throws Exception {
         when(aclService.listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
-                eq("1.0"), isNull(), eq(3), eq(5))).thenReturn(PageResult.empty(3, 5));
+                isNull(), eq(3), eq(5))).thenReturn(PageResult.empty(3, 5));
 
         mockMvc.perform(get("/api/acl/rules")
                         .param("principal", "user1")
                         .param("resource", "topic-a")
                         .param("scope", "namespace")
                         .param("decision", "DENY")
-                        .param("aclVersion", "1.0")
                         .param("page", "3")
                         .param("pageSize", "5"))
                 .andExpect(status().isOk())
@@ -137,12 +142,12 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data.size").value(5));
 
         verify(aclService).listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
-                eq("1.0"), isNull(), eq(3), eq(5));
+                isNull(), eq(3), eq(5));
     }
 
     @Test
     void listRulesShouldRejectPageSizeAboveTheInventoryLimit() throws Exception {
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq(1), eq(101))).thenThrow(new BusinessException(400,
                 "page must be >= 1 and pageSize must be between 1 and 100"));
 
@@ -154,7 +159,7 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.message")
                         .value("page must be >= 1 and pageSize must be between 1 and 100"));
 
-        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq(1), eq(101));
     }
 

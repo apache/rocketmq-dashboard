@@ -28,11 +28,20 @@ import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 public interface AdminClient {
     TopicVO getTopic(String name);
     ConsumerGroupVO getConsumerGroup(String instanceId, String name);
-    TopicVO createTopic(TopicVO topic);
-    TopicVO updateTopic(TopicVO topic);
+    default TopicVO createTopic(TopicVO topic) {
+        return createTopic(topic.getInstanceId(), topic);
+    }
+
+    default TopicVO updateTopic(TopicVO topic) {
+        return updateTopic(topic.getInstanceId(), topic);
+    }
+
+    TopicVO createTopic(String instanceId, TopicVO topic);
+    TopicVO updateTopic(String instanceId, TopicVO topic);
     void deleteTopic(String instanceId, String name);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
+    ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group);
     ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name);
     ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
                                                          ConsumerGroupSettingsCommand command);

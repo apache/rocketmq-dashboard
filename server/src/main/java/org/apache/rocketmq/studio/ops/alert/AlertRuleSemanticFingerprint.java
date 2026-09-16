@@ -62,7 +62,7 @@ final class AlertRuleSemanticFingerprint {
     }
 
     static double normalizedThreshold(AlertRuleVO rule) {
-        if ("%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(rule.getMetric())) {
+        if ("%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(normalize(rule.getMetric()))) {
             return rule.getThreshold() / 100D;
         }
         return rule.getThreshold();

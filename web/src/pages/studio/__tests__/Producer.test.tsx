@@ -516,6 +516,72 @@ describe('ProducerPage', () => {
     await waitFor(() => expect(search).not.toHaveClass('ant-btn-loading'));
   });
 
+  it('discards a slow connection response after the topic changes', async () => {
+    const user = userEvent.setup();
+    let resolveTopicAQuery: ((value: ProducerConnectionResult) => void) | undefined;
+    vi.mocked(queryProducerConnection)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveTopicAQuery = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        producerResult([
+          {
+            clientId: 'payment-producer-1',
+            clientAddr: '192.168.1.20',
+            topic: 'payment-events',
+            producerGroup: 'pg-payment',
+            language: 'JAVA',
+            versionDesc: '5.1.0',
+          },
+        ]),
+      );
+    const { container } = renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(1));
+
+    // While the order-events query is still pending, switch the topic.
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('payment-events', { selector: '.ant-select-item-option-content' }),
+    );
+
+    resolveTopicAQuery?.(
+      producerResult([
+        {
+          clientId: 'stale-producer',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    await waitFor(() => {
+      expect(within(container).queryByText('stale-producer')).not.toBeInTheDocument();
+    });
+    expect(within(container).queryByText('生产者连接健康')).not.toBeInTheDocument();
+
+    // The topic switch must also release the in-flight slot so a fresh query runs.
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenLastCalledWith(
+        'instance-1',
+        'payment-events',
+        undefined,
+      );
+    });
+    expect(await screen.findByText('payment-producer-1')).toBeInTheDocument();
+  });
+
   it('does not discover producer groups before a topic is selected', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);

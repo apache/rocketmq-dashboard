@@ -34,6 +34,10 @@ public class BrokerVO {
     private double diskUsage;
     private long tpsIn;
     private long tpsOut;
+    private long putMessagesToday;
+    private long putMessagesYesterday;
+    private long getMessagesToday;
+    private long getMessagesYesterday;
     @Builder.Default
     private boolean runtimeStatsAvailable = true;
 }

@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import org.apache.rocketmq.studio.instance.InstanceResolver;
+import org.apache.rocketmq.studio.provider.apache.RocketMQDefaultClusterResolver;
+
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -48,7 +51,9 @@ class InstanceProviderRegistryTest {
     void setUp() {
         apacheProvider = stubProvider(InstanceVendor.APACHE);
         aliyunProvider = stubProvider(InstanceVendor.ALIYUN);
-        registry = new InstanceProviderRegistry(List.of(apacheProvider, aliyunProvider), List.of(), instanceRepository);
+        registry = new InstanceProviderRegistry(List.of(apacheProvider, aliyunProvider),
+                List.of(),
+                new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)));
     }
 
     @Test
@@ -105,8 +110,9 @@ class InstanceProviderRegistryTest {
     void constructorShouldRejectDuplicateProvidersForVendorTest() {
         InstanceProvider duplicate = stubProvider(InstanceVendor.APACHE);
 
-        assertThatThrownBy(() -> new InstanceProviderRegistry(
-                List.of(apacheProvider, duplicate), List.of(), instanceRepository))
+        assertThatThrownBy(() -> new InstanceProviderRegistry(List.of(apacheProvider, duplicate),
+                List.of(),
+                new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Duplicate instance provider registered for vendor APACHE");
     }
@@ -116,8 +122,9 @@ class InstanceProviderRegistryTest {
         CloudCatalogProvider first = stubCatalog(InstanceVendor.ALIYUN);
         CloudCatalogProvider duplicate = stubCatalog(InstanceVendor.ALIYUN);
 
-        assertThatThrownBy(() -> new InstanceProviderRegistry(
-                List.of(apacheProvider), List.of(first, duplicate), instanceRepository))
+        assertThatThrownBy(() -> new InstanceProviderRegistry(List.of(apacheProvider),
+                List.of(first, duplicate),
+                new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Duplicate cloud catalog provider registered for vendor ALIYUN");
     }
@@ -125,7 +132,9 @@ class InstanceProviderRegistryTest {
     @Test
     void catalogForShouldReturnRegisteredCatalogTest() {
         CloudCatalogProvider catalog = stubCatalog(InstanceVendor.ALIYUN);
-        registry = new InstanceProviderRegistry(List.of(apacheProvider), List.of(catalog), instanceRepository);
+        registry = new InstanceProviderRegistry(List.of(apacheProvider),
+                List.of(catalog),
+                new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)));
 
         assertThat(registry.catalogFor(InstanceVendor.ALIYUN)).isSameAs(catalog);
     }

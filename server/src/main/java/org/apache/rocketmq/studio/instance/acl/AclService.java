@@ -25,8 +25,10 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.util.EntityIds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
+import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -48,16 +51,24 @@ public class AclService {
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
+    /**
+     * Minimum broker version that supports ACL 2.0 (the RocketMQ {@code auth} module with
+     * {@code authenticationEnabled}/{@code authorizationEnabled}). Below this threshold the ACL
+     * tools return an upgrade hint instead of failing silently.
+     */
+    private static final int[] MIN_ACL2_BROKER_VERSION = {5, 3, 0};
+
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
-    private final InstanceRepository instanceRepository;
+    private final InstanceResolver instanceResolver;
     private final TencentAclService tencentAclService;
+    private final ClusterProvider clusterProvider;
 
     public AclCapabilitiesVO capabilities(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
+        InstanceVO instance = instanceResolver.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (instance.getVendor() == InstanceVendor.TENCENT) {
             return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
@@ -70,26 +81,27 @@ public class AclService {
 
 
     public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
-            String aclVersion, String instanceId, Integer page, Integer pageSize) {
+            String instanceId, Integer page, Integer pageSize) {
         int normalizedPage = requireValidPage(page);
         int normalizedPageSize = requireValidPageSize(pageSize);
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principal).stream()
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
-                    .filter(rule -> equalsIgnoreCase(rule.getAclVersion(), aclVersion))
                     .toList();
             return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
-        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, aclVersion={}, page={}, pageSize={}",
-                principal, resource, scope, decision, aclVersion, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, aclVersion,
+        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
+                principal, resource, scope, decision, normalizedPage, normalizedPageSize);
+        return aclRepository.findRulePage(principal, resource, scope, decision, null,
                 normalizedPage, normalizedPageSize);
     }
 
 
     public AclRuleVO createRule(AclRuleVO rule, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             return tencentAclService.createRule(instanceId, rule);
         }
@@ -106,7 +118,34 @@ public class AclService {
         return saved;
     }
 
+    public AclRuleVO getRule(String id, String instanceId) {
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(400, "ACL rule id is required");
+        }
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.listRules(instanceId, null).stream()
+                    .filter(rule -> id.equals(rule.getPrincipal())
+                            || rule.getId() != null && id.equals(rule.getId().toString()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+        }
+        return aclRepository.findRuleById(EntityIds.parseId(id))
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + id));
+    }
+
+    public AclUserVO getUser(String id, String instanceId) {
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(400, "ACL user id is required");
+        }
+        return listUsers(instanceId).stream()
+                .filter(user -> id.equals(user.getUsername())
+                        || user.getId() != null && id.equals(user.getId().toString()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
+    }
+
     public AclRuleVO updateRule(AclRuleVO rule, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateRule(instanceId, rule);
         }
@@ -121,6 +160,7 @@ public class AclService {
     }
 
     public void deleteRule(String id, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             tencentAclService.deleteRule(instanceId, id);
             return;
@@ -172,6 +212,7 @@ public class AclService {
 
 
     public AclUserVO createUser(AclUserVO user, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             return tencentAclService.createUser(instanceId, user);
         }
@@ -188,6 +229,7 @@ public class AclService {
     }
 
     public AclUserVO updateUser(UpdateAclUserDTO user, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateUser(instanceId, user.toAclUserVO());
         }
@@ -208,6 +250,7 @@ public class AclService {
                 .secretKey(existing.getSecretKey())
                 .admin(user.getAdmin() == null ? existing.isAdmin() : user.getAdmin())
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
+                .whiteRemoteAddress(existing.getWhiteRemoteAddress())
                 .gmtCreate(existing.getGmtCreate())
                 .build();
         AclUserVO saved = aclRepository.replaceUser(merged)
@@ -217,6 +260,7 @@ public class AclService {
     }
 
     public void deleteUser(String id, String instanceId) {
+        requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             // For Tencent roles the id is the role name.
             tencentAclService.deleteUser(instanceId, id);
@@ -331,9 +375,117 @@ public class AclService {
         if (!StringUtils.hasText(instanceId)) {
             return false;
         }
-        return instanceRepository.findByIdentifier(instanceId)
+        return instanceResolver.findByIdentifier(instanceId)
                 .map(instance -> instance.getVendor() == InstanceVendor.TENCENT)
                 .orElse(false);
+    }
+
+    /**
+     * Guards every ACL/user tool entrypoint so ACL 2.0 operations fail fast with a clear upgrade
+     * hint when the backing broker is too old. Tencent instances are exempt (they use role-based
+     * ACL rather than the Apache broker auth module). When the broker version cannot be resolved
+     * the guard is permissive and lets the operation through to avoid false positives.
+     */
+    private void requireAcl2Supported(String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return;
+        }
+        int[] detected = detectLowestBrokerVersion(instanceId);
+        if (detected == null) {
+            return;
+        }
+        if (compareVersions(detected, MIN_ACL2_BROKER_VERSION) < 0) {
+            throw new BusinessException(426,
+                    "ACL 2.0 requires broker >= " + formatVersion(MIN_ACL2_BROKER_VERSION)
+                            + "; detected " + formatVersion(detected) + " \u2014 please upgrade the broker");
+        }
+    }
+
+    private int[] detectLowestBrokerVersion(String instanceId) {
+        List<BrokerVO> brokers;
+        try {
+            brokers = clusterProvider.discoverBrokers(instanceId, null);
+        } catch (Exception discoveryFailure) {
+            log.debug("ACL 2.0 version guard could not discover brokers for instance {}: {}",
+                    instanceId, discoveryFailure.getMessage());
+            return null;
+        }
+        if (brokers == null || brokers.isEmpty()) {
+            return null;
+        }
+        int[] lowest = null;
+        for (BrokerVO broker : brokers) {
+            if (broker == null) {
+                continue;
+            }
+            int[] parsed = parseVersion(broker.getVersion());
+            if (parsed == null) {
+                continue;
+            }
+            if (lowest == null || compareVersions(parsed, lowest) < 0) {
+                lowest = parsed;
+            }
+        }
+        return lowest;
+    }
+
+    /**
+     * Normalizes a broker version descriptor into a comparable {@code [major, minor, patch]} tuple.
+     * Handles both {@code MQVersion.getVersionDesc} forms (e.g. {@code V5_3_3}) and plain semantic
+     * versions (e.g. {@code 5.3.0}). Returns {@code null} when no numeric version can be extracted.
+     */
+    static int[] parseVersion(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        int start = 0;
+        while (start < value.length() && !Character.isDigit(value.charAt(start))) {
+            start++;
+        }
+        if (start == value.length()) {
+            return null;
+        }
+        value = value.substring(start);
+        List<Integer> parts = new ArrayList<>(3);
+        StringBuilder digits = new StringBuilder();
+        for (int i = 0; i < value.length() && parts.size() < 3; i++) {
+            char character = value.charAt(i);
+            if (Character.isDigit(character)) {
+                digits.append(character);
+            } else if (digits.length() > 0) {
+                parts.add(Integer.parseInt(digits.toString()));
+                digits.setLength(0);
+                if (character != '.' && character != '_') {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        if (digits.length() > 0 && parts.size() < 3) {
+            parts.add(Integer.parseInt(digits.toString()));
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        int major = parts.get(0);
+        int minor = parts.size() > 1 ? parts.get(1) : 0;
+        int patch = parts.size() > 2 ? parts.get(2) : 0;
+        return new int[] {major, minor, patch};
+    }
+
+    private static int compareVersions(int[] left, int[] right) {
+        for (int i = 0; i < 3; i++) {
+            if (left[i] != right[i]) {
+                return Integer.compare(left[i], right[i]);
+            }
+        }
+        return 0;
+    }
+
+    private static String formatVersion(int[] version) {
+        return version[0] + "." + version[1] + "." + version[2];
     }
 
     private boolean isValidAcl2BoundType(String boundType) {

@@ -78,9 +78,17 @@ public class K8sCertService {
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notBefore = now;
         LocalDateTime notAfter = now.plusYears(1);
-        String issuer = command.getIssuer();
+        // The identity fields follow the same rules as updateCert: surrounding whitespace is trimmed
+        // and a blank value is rejected, so a certificate cannot be created in a state that the
+        // update API (and every later lookup by identity) refuses to produce.
+        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId");
+        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
+        boolean certificateSupplied = command.getCertPem() != null && !command.getCertPem().isBlank();
+        // A supplied certificate always wins over the submitted issuer, so only a create without one
+        // validates the caller-provided value.
+        String issuer = certificateSupplied ? null : normalizeOptionalIdentity(command.getIssuer(), "issuer");
         List<String> san = command.getSan();
-        if (command.getCertPem() != null && !command.getCertPem().isBlank()) {
+        if (certificateSupplied) {
             X509Certificate parsed = parseCertificate(command.getCertPem());
             notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneId.systemDefault());
             notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
@@ -89,8 +97,8 @@ public class K8sCertService {
         }
 
         K8sCertVO cert = K8sCertVO.builder()
-                .k8sId(command.getK8sId())
-                .cluster(command.getCluster())
+                .k8sId(k8sId)
+                .cluster(cluster)
                 .type(type)
                 .issuer(issuer)
                 .notBefore(notBefore)

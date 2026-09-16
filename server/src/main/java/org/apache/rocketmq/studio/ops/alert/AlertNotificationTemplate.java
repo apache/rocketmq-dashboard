@@ -6,6 +6,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -59,13 +60,20 @@ final class AlertNotificationTemplate {
     }
 
     private static String formattedValue(SystemAlertVO alert, AlertRuleVO rule) {
-        if (alert.getCurrentValue() == null) {
+        Double currentValue = alert.getCurrentValue();
+        if (currentValue == null) {
             return "";
         }
-        if (rule != null && "%".equals(rule.getThresholdUnit()) && RATIO_METRICS.contains(rule.getMetric())) {
-            return String.valueOf(alert.getCurrentValue() * 100);
+        if (rule != null && "%".equals(rule.getThresholdUnit())
+                && RATIO_METRICS.contains(rule.getMetric() == null ? "" : rule.getMetric().trim())) {
+            // Ratio metrics are stored as fractions of the whole, so the percent rendering scales
+            // them by 100. Scaling through BigDecimal keeps the exact decimal form: plain double
+            // arithmetic renders the stored 0.29 as "28.999999999999996".
+            return Double.isFinite(currentValue)
+                    ? BigDecimal.valueOf(currentValue).movePointRight(2).stripTrailingZeros().toPlainString()
+                    : String.valueOf(currentValue);
         }
-        return String.valueOf(alert.getCurrentValue());
+        return String.valueOf(currentValue);
     }
 
     private static String formatLabels(Map<String, String> labels) {

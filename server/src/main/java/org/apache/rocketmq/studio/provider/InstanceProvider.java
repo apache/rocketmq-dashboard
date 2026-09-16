@@ -103,6 +103,10 @@ public interface InstanceProvider {
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
 
+    default ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        return createConsumerGroup(instanceId, group);
+    }
+
     void deleteConsumerGroup(String instanceId, String groupName);
 
     List<QueueProgressVO> getGroupProgress(String instanceId, String groupName);

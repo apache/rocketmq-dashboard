@@ -581,7 +581,8 @@ const AclPageContent = ({
       title: t('acl.principal'),
       dataIndex: 'principal',
       key: 'principal',
-      width: 200,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 200,
       sorter: (a, b) => a.principal.localeCompare(b.principal),
       render: (text: string) => (
         <Space size={6}>
@@ -599,7 +600,7 @@ const AclPageContent = ({
     {
       title: t('acl.resource'),
       key: 'resource',
-      width: 240,
+      minWidth: 240,
       sorter: (a, b) => a.resource.localeCompare(b.resource),
       render: (_: unknown, record: AclRule) => (
         <Space size={6}>
@@ -715,7 +716,8 @@ const AclPageContent = ({
       title: t('acl.username'),
       dataIndex: 'username',
       key: 'username',
-      width: 200,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 200,
       sorter: (a, b) => a.username.localeCompare(b.username),
       render: (text: string, record: NormalizedAclUser) => (
         <Space size={6}>
@@ -1014,7 +1016,7 @@ const AclPageContent = ({
     {
       title: t('acl.riskItem'),
       key: 'item',
-      width: 260,
+      minWidth: 260,
       render: (_: unknown, record) => (
         <Space direction="vertical" size={2}>
           <Typography.Text strong>{record.title}</Typography.Text>
@@ -1038,7 +1040,7 @@ const AclPageContent = ({
       title: t('acl.riskEvidence'),
       dataIndex: 'evidence',
       key: 'evidence',
-      width: 220,
+      minWidth: 220,
       render: (evidence: string[]) => (
         <Space size={4} wrap>
           {evidence.length === 0 ? (
@@ -1057,7 +1059,8 @@ const AclPageContent = ({
       title: t('acl.riskRecommendation'),
       dataIndex: 'recommendation',
       key: 'recommendation',
-      width: 280,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 280,
       render: (text: string) => <Typography.Text>{text}</Typography.Text>,
     },
   ];
@@ -1205,6 +1208,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    tableLayout="fixed"
                     scroll={{ x: tableScrollX(ruleColumns) }}
                   />
                 </div>
@@ -1258,6 +1262,7 @@ const AclPageContent = ({
                       },
                     }}
                     size="small"
+                    tableLayout="fixed"
                     scroll={{ x: tableScrollX(userColumns) }}
                   />
                 </div>
@@ -1399,6 +1404,7 @@ const AclPageContent = ({
                               rowKey="id"
                               pagination={false}
                               size="small"
+                              tableLayout="fixed"
                               scroll={{ x: tableScrollX(aclRiskColumns) }}
                               style={{ marginBottom: 12 }}
                             />

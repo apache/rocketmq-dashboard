@@ -276,6 +276,30 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it('shows the redelivery count on the message detail panel', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-RETRY'), reconsumeTimes: 2 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-RETRY');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-RETRY')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    const retryItems = screen
+      .getAllByText(/^重投次数$/)
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(retryItems).toHaveLength(1);
+    expect(retryItems[0]).toHaveTextContent('2');
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
@@ -355,5 +379,55 @@ describe('Message page query history', () => {
         expect.objectContaining({ topic: 'order-create' }),
       );
     });
+  });
+
+  it('shows the storage location on the message detail panel', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-LOCATION')]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-LOCATION');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-LOCATION')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    const locationItems = screen
+      .getAllByText(/^(Broker|Queue ID|Queue Offset)$/)
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(locationItems).toHaveLength(3);
+    expect(locationItems[0]).toHaveTextContent('broker-a');
+    expect(locationItems[1]).toHaveTextContent('0');
+    expect(locationItems[2]).toHaveTextContent('0');
+  });
+
+  it('renders placeholders on the detail panel when the storage location is unknown', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-NO-LOCATION'), brokerName: null, queueId: null, queueOffset: null },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-LOCATION');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-NO-LOCATION')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    const locationItems = screen
+      .getAllByText(/^(Broker|Queue ID|Queue Offset)$/)
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(locationItems).toHaveLength(3);
+    expect(locationItems[0]).toHaveTextContent('-');
+    expect(locationItems[1]).toHaveTextContent('-');
+    expect(locationItems[2]).toHaveTextContent('-');
   });
 });

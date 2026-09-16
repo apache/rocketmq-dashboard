@@ -24,8 +24,9 @@ import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
 import * as cloudCredentialApi from '../../../api/cloudCredential';
 import * as tencentCatalogApi from '../../../api/tencentCatalog';
 import type { CloudCredential, CloudCredentialPage } from '../../../api/cloudCredential';
-import type { Instance } from '../../../api/instance';
+import type { Instance, InstanceType, InstanceVendor } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as instanceService from '../../../services/instanceService';
 import InstancePage from '../index';
 
@@ -116,6 +117,7 @@ const deferred = <T,>() => {
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(cloudCredentialPage([]));
     vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
     vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
@@ -158,6 +160,18 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
     );
+  });
+
+  it('renders instance management copy in English mode', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    expect(screen.getByText('Instance List')).toBeInTheDocument();
+    expect(screen.getByText(/Connect and manage RocketMQ instances/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search instance ID or endpoint')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add Instance/ })).toBeInTheDocument();
+    expect(screen.queryByText('添加实例')).not.toBeInTheDocument();
   });
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
@@ -356,6 +370,119 @@ describe('InstancePage', () => {
         }),
       ),
     );
+  });
+
+  it('keeps the endpoint editable for Apache instances but read-only for cloud vendors', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      instance(1, 'production-proxy'),
+      {
+        ...instance(2, 'aliyun-prod'),
+        vendor: 'ALIYUN' as InstanceVendor,
+        type: 'CLOUD' as InstanceType,
+      },
+    ]);
+
+    renderPage();
+
+    await screen.findByText('production-proxy');
+
+    await user.click(
+      within(screen.getByRole('row', { name: /production-proxy/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const apacheDialog = await screen.findByRole('dialog');
+    expect(within(apacheDialog).getByLabelText('接入地址')).toBeEnabled();
+    await user.click(within(apacheDialog).getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => expect(apacheDialog).toHaveClass('ant-zoom-leave'));
+
+    await user.click(
+      within(screen.getByRole('row', { name: /aliyun-prod/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const cloudDialog = await screen.findByRole('dialog');
+    const endpointInput = within(cloudDialog).getByLabelText('接入地址');
+    expect(endpointInput).toBeDisabled();
+    expect(endpointInput).toHaveValue('aliyun-prod:8080');
+  });
+
+  it('submits a cloud instance whose stored endpoint is blank', async () => {
+    const user = userEvent.setup();
+    const blankEndpointCloud = {
+      ...instance(2, 'aliyun-prod'),
+      vendor: 'ALIYUN' as InstanceVendor,
+      type: 'CLOUD' as InstanceType,
+      endpoint: '',
+    };
+    vi.mocked(instanceService.listInstances).mockResolvedValue([blankEndpointCloud]);
+    vi.mocked(instanceService.updateInstance).mockResolvedValue(blankEndpointCloud);
+
+    renderPage();
+    await screen.findByText('aliyun-prod');
+
+    await user.click(
+      within(screen.getByRole('row', { name: /aliyun-prod/ })).getByRole('button', {
+        name: /编\s*辑/,
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    expect(endpointInput).toBeDisabled();
+    expect(endpointInput).toHaveValue('');
+
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    // The cloud endpoint is resolved from the catalog and the input is disabled, so keeping the
+    // required rule would leave an instance with a blank stored endpoint permanently unsaveable.
+    await waitFor(() => expect(instanceService.updateInstance).toHaveBeenCalled());
+    expect(screen.queryByText('请输入接入地址')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the server error reason when creating an instance fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.createInstance).mockRejectedValue({
+      response: { data: { message: 'Instance name already exists: new-proxy' } },
+    });
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
+    const createTypeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(createTypeSelect.parentElement!);
+    const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
+      selector: '.ant-select-item-option-content',
+    });
+    await user.click(proxyOptions[proxyOptions.length - 1]);
+    await user.type(within(dialog).getByLabelText('接入地址'), 'proxy-new:8080');
+    await user.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
+
+    expect(await screen.findByText('Instance name already exists: new-proxy')).toBeInTheDocument();
+    expect(screen.queryByText('添加实例失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the server error reason when updating an instance fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.updateInstance).mockRejectedValue({
+      response: { data: { message: 'Instance endpoint is not reachable' } },
+    });
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /production-proxy/ });
+    await user.click(within(row).getByRole('button', { name: /编\s*辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    const endpointInput = within(dialog).getByLabelText('接入地址');
+    await user.clear(endpointInput);
+    await user.type(endpointInput, 'namesrv-new:9876');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(await screen.findByText('Instance endpoint is not reachable')).toBeInTheDocument();
+    expect(screen.queryByText('更新实例失败，请稍后重试')).not.toBeInTheDocument();
   });
 
   it('reloads the latest filters after a pending instance deletion completes', async () => {

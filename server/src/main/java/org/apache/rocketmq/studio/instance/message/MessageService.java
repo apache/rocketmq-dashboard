@@ -62,6 +62,18 @@ public class MessageService {
         return result;
     }
 
+    public List<MessageRecordVO> queryMessageByUniqueKey(
+            String instanceId, String topic, String uniqueKey, Long startTime, Long endTime) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required");
+        }
+        if (!StringUtils.hasText(uniqueKey)) {
+            throw new BusinessException(400, "uniqueKey is required");
+        }
+        log.info("Querying message by unique key: topic={}, uniqueKey={}", topic, uniqueKey);
+        return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
+    }
+
     public MessageQueryPageVO queryMessagesPage(String instanceId, String topic, String msgId, String tag,
                                                  String key, Long startTime, Long endTime, int page, int pageSize) {
         if (page < 1 || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {

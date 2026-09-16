@@ -1,0 +1,232 @@
+version: 2.0.0
+tools:
+  - name: rmq.broker.list
+    cli:
+      resource: broker
+      verb: list
+    description: "List Broker replica groups across Studio, optionally filtered by physical cluster name."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - addr
+              - version
+              - status
+              - diskUsage
+              - tpsIn
+              - tpsOut
+              - runtimeStatsAvailable
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              addr:
+                type: string
+              version:
+                type:
+                  - string
+                  - 'null'
+              status:
+                type:
+                  - string
+                  - 'null'
+              diskUsage:
+                type: number
+              tpsIn:
+                type: number
+              tpsOut:
+                type: number
+              putMessagesToday:
+                type: integer
+              putMessagesYesterday:
+                type: integer
+              getMessagesToday:
+                type: integer
+              getMessagesYesterday:
+                type: integer
+              runtimeStatsAvailable:
+                type: boolean
+    viewHint: table
+    deprecated: false
+  - name: rmq.broker.describe
+    cli:
+      resource: broker
+      verb: describe
+    description: "Describe one Broker replica group within a physical cluster, addressed by the clusterName + brokerName pair; merges the replica-group detail with its runtime statistics."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - clusterName
+        - brokerName
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+        brokerName:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - brokerName
+      additionalProperties: false
+      properties:
+        brokerName:
+          type: string
+        addr:
+          type: string
+        version:
+          type:
+            - string
+            - 'null'
+        status:
+          type:
+            - string
+            - 'null'
+        diskUsage:
+          type: number
+        tpsIn:
+          type: number
+        tpsOut:
+          type: number
+        putMessagesToday:
+          type: integer
+        putMessagesYesterday:
+          type: integer
+        getMessagesToday:
+          type: integer
+        getMessagesYesterday:
+          type: integer
+        runtimeStatsAvailable:
+          type: boolean
+    viewHint: object
+    deprecated: false
+  - name: rmq.broker.config
+    cli:
+      resource: broker
+      verb: config
+    description: "Read and compare configuration across master Brokers in one resolved physical Broker cluster (read-only; configuration updates are not supported)."
+    riskLevel: L1
+    permission: broker:read
+    requiredCapabilities:
+      - BROKER_ADMIN
+    inputSchema:
+      type: object
+      required:
+        - clusterName
+      additionalProperties: false
+      properties:
+        clusterName:
+          type: string
+          description: Physical RocketMQ cluster name.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - complete
+        - driftDetected
+        - brokerCount
+        - reachableBrokerCount
+        - comparedFields
+        - brokers
+        - differences
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        complete:
+          type: boolean
+        driftDetected:
+          type: boolean
+        brokerCount:
+          type: integer
+        reachableBrokerCount:
+          type: integer
+        comparedFields:
+          type: array
+          items:
+            type: string
+        brokers:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - address
+              - reachable
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+              address:
+                type: string
+              reachable:
+                type: boolean
+              message:
+                type:
+                  - string
+                  - 'null'
+        differences:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - brokerProperty
+              - values
+            additionalProperties: false
+            properties:
+              field:
+                type: string
+              brokerProperty:
+                type: string
+              values:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - brokerName
+                    - address
+                    - configured
+                  additionalProperties: false
+                  properties:
+                    brokerName:
+                      type: string
+                    address:
+                      type: string
+                    configured:
+                      type: boolean
+                    value:
+                      type:
+                        - string
+                        - 'null'
+    viewHint: object
+    deprecated: false

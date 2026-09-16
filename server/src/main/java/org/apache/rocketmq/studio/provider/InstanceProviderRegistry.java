@@ -18,7 +18,7 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.springframework.stereotype.Component;
 
@@ -32,14 +32,14 @@ public class InstanceProviderRegistry {
 
     private final Map<InstanceVendor, InstanceProvider> providers = new EnumMap<>(InstanceVendor.class);
     private final Map<InstanceVendor, CloudCatalogProvider> catalogs = new EnumMap<>(InstanceVendor.class);
-    private final InstanceRepository instanceRepository;
+    private final InstanceResolver instanceResolver;
 
     public InstanceProviderRegistry(List<InstanceProvider> providerList,
                                     List<CloudCatalogProvider> catalogList,
-                                    InstanceRepository instanceRepository) {
+                                    InstanceResolver instanceResolver) {
         providerList.forEach(provider -> registerProvider(provider.vendor(), provider));
         catalogList.forEach(catalog -> registerCatalog(catalog.vendor(), catalog));
-        this.instanceRepository = instanceRepository;
+        this.instanceResolver = instanceResolver;
     }
 
     private void registerProvider(InstanceVendor vendor, InstanceProvider provider) {
@@ -70,7 +70,7 @@ public class InstanceProviderRegistry {
         if (instanceId == null || instanceId.isBlank()) {
             return Optional.empty();
         }
-        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
+        InstanceVO instance = instanceResolver.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         return Optional.of(forVendor(vendor));

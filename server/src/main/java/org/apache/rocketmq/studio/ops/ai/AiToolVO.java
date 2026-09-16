@@ -29,13 +29,17 @@ import java.util.List;
 @AllArgsConstructor
 public class AiToolVO {
     private String name;
+    private String version;
+    private Object cli;
     private String description;
     private Object parameters;
     private String riskLevel;
+    private String operationLevel;
     private String permission;
     private List<String> requiredCapabilities;
     private Object outputSchema;
     private String viewHint;
     private boolean deprecated;
     private String replacement;
+    private boolean implemented;
 }

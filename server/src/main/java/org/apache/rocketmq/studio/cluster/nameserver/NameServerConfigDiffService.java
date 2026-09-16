@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -39,6 +40,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NameServerConfigDiffService {
@@ -74,6 +76,14 @@ public class NameServerConfigDiffService {
     private final ClusterService clusterService;
     private final MqAdminExtFactory adminFactory;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    public NameServerConfigDiffVO compareForInstance(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "Instance is required for NameServer config comparison");
+        }
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        return compare(instanceId, ClusterVO.builder().endpoint(endpoint).build(), instanceId);
+    }
 
     public NameServerConfigDiffVO compare(String clusterId) {
         String normalizedClusterId = requireClusterId(clusterId);
@@ -130,6 +140,59 @@ public class NameServerConfigDiffService {
                 .nodes(nodes)
                 .differences(differences)
                 .build();
+    }
+
+    /**
+     * Reads the safe configuration keys of every reachable management NameServer endpoint for one
+     * physical cluster. Extracted from {@link #compare} so the read path can back the read-only
+     * {@code rmq.nameserver.config} tool (decision 15); {@link #compare} is retained for the REST
+     * diff view. {@code clusterId} must be the physical cluster name and {@code instanceId} the
+     * Studio instance that owns it, so the cluster-details lookup resolves the live topology
+     * (fixes the §15.5.5 "Cluster details are unavailable" path that keyed on the instance id).
+     * Secret-bearing keys are never exposed: only {@link #SAFE_CONFIG_KEYS} are returned.
+     */
+    public List<NodeConfig> read(String clusterId, String instanceId) {
+        String normalizedClusterId = requireClusterId(clusterId);
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        ClusterVO cluster = normalizedInstanceId == null
+                ? clusterService.getCluster(normalizedClusterId)
+                : clusterService.getCluster(normalizedClusterId, normalizedInstanceId);
+        List<String> addresses = collectNameServerAddresses(cluster);
+        if (addresses.isEmpty()) {
+            throw new BusinessException(409,
+                    "Cluster has no NameServer endpoints: " + normalizedClusterId);
+        }
+        String connectionEndpoint = connectionEndpoint(cluster, addresses);
+        List<NodeConfig> read = new ArrayList<>();
+        for (String address : addresses) {
+            try {
+                Properties config = readConfig(normalizedInstanceId, connectionEndpoint, address);
+                read.add(new NodeConfig(address, safeConfig(config)));
+            } catch (BusinessException exception) {
+                log.warn("Skipping unreachable NameServer {} while reading config for cluster {}: {}",
+                        address, normalizedClusterId, exception.getMessage());
+            }
+        }
+        if (read.isEmpty()) {
+            throw new BusinessException(502,
+                    "No reachable NameServer endpoint to read config from: " + normalizedClusterId);
+        }
+        return read;
+    }
+
+    private Map<String, String> safeConfig(Properties config) {
+        Map<String, String> safe = new LinkedHashMap<>();
+        for (String key : SAFE_CONFIG_KEYS) {
+            String value = config.getProperty(key);
+            if (value != null) {
+                safe.put(key, value);
+            }
+        }
+        return safe;
+    }
+
+    /** One NameServer endpoint's safe configuration snapshot. */
+    public record NodeConfig(String addr, Map<String, String> config) {
     }
 
     private Properties readConfig(String instanceId, String connectionEndpoint, String address) {

@@ -718,7 +718,8 @@ const MessagePageContent = ({
       title: 'Topic',
       dataIndex: 'topic',
       key: 'topic',
-      width: 170,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 170,
       ellipsis: true,
       sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
@@ -738,7 +739,7 @@ const MessagePageContent = ({
       title: 'Key',
       dataIndex: 'key',
       key: 'key',
-      width: 120,
+      minWidth: 120,
       ellipsis: true,
       render: (key: string | null) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{key || '-'}</span>
@@ -748,7 +749,7 @@ const MessagePageContent = ({
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
-      width: 260,
+      minWidth: 260,
       render: (id: string) => (
         <Text
           copyable={{ text: id }}
@@ -893,6 +894,9 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label="大小">{formatSize(selectedMsg.size)}</Descriptions.Item>
+            <Descriptions.Item label="重投次数">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
+            </Descriptions.Item>
             <Descriptions.Item label="Born Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.bornHost}</span>
             </Descriptions.Item>
@@ -901,6 +905,15 @@ const MessagePageContent = ({
             </Descriptions.Item>
             <Descriptions.Item label="存储时间" span={2}>
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Broker">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.brokerName ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue ID">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueId ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue Offset" span={2}>
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueOffset ?? '-'}</span>
             </Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
@@ -1205,6 +1218,7 @@ const MessagePageContent = ({
               },
             }}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(columns) }}
           />
         </Card>

@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -129,12 +130,18 @@ public class QueryHistoryService {
     }
 
     /**
-     * Retrieves the stored result snapshot for a given history record.
+     * Retrieves the stored result snapshot for a history record owned by the authenticated operator.
+     *
+     * <p>The lookup is scoped to the current authenticated operator. A record owned by another
+     * operator is deliberately reported as not found (404) to prevent history id enumeration.
      */
     public List<MessageRecordVO> getMessageQueryResults(long id) {
-        RmqMessageQuery query = messageQueryMapper.selectById(id);
+        String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        RmqMessageQuery query = messageQueryMapper.selectOne(new QueryWrapper<RmqMessageQuery>()
+                .eq("id", id)
+                .eq("queried_by", queriedBy));
         if (query == null) {
-            throw new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Query history record not found");
+            throw new BusinessException(404, "Query history record not found");
         }
         String snapshot = query.getResultSnapshot();
         if (!StringUtils.hasText(snapshot)) {

@@ -28,6 +28,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.topic.TopicValidator;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -35,6 +36,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
@@ -197,6 +199,17 @@ public class RocketMQDLQProvider implements DLQProvider {
                     StringUtils.hasText(targetTopic) ? targetTopic : "<original>");
             recordAudit(groupName, detail, "FAILED");
             throw e;
+        }
+        if (scanResult.topicMissing()) {
+            // The group has no %DLQ% topic yet (never dead-lettered a message). Resending is a
+            // mutation against a non-existent target, so surface a clean NOT_FOUND (legacy
+            // dlq.resend semantics) instead of silently reporting a zero-message success.
+            String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
+                            + "matched=0, resent=0, failed=0, dlqTopicMissing=true",
+                    instanceId, groupName, dlqTopic,
+                    StringUtils.hasText(targetTopic) ? targetTopic : "<original>");
+            recordAudit(groupName, detail, "NOT_FOUND");
+            throw new BusinessException(404, "No dead-letter queue found for consumer group: " + groupName);
         }
         List<MessageExt> deadLetters = scanResult.messages();
         int[] counts = {0, 0};
@@ -406,6 +419,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .queueId(message.getQueueId())
                 .offset(message.getQueueOffset())
                 .storeTime(message.getStoreTimestamp())
+                .reconsumeTimes(message.getReconsumeTimes())
                 .keys(message.getKeys())
                 .body(toUtf8Text(message.getBody()))
                 .bodyBase64(message.getBody() == null ? null
@@ -441,7 +455,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         try {
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
             if (queues == null || queues.isEmpty()) {
-                return new DeadLetterScanResult(result, 0, false);
+                return new DeadLetterScanResult(result, 0, false, false);
             }
             outer:
             for (MessageQueue queue : queues) {
@@ -514,10 +528,49 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (e instanceof BusinessException businessException) {
                 throw businessException;
             }
+            if (isDlqTopicMissing(e)) {
+                // A group that has never exceeded its retry budget has no %DLQ% topic yet; treat it
+                // as an empty dead-letter set instead of failing the scan (matches legacy dlq.list,
+                // which returned items=[]/total=0 for a group without a DLQ). Callers that mutate
+                // (redelivery_dlq) turn this flag into a clean NOT_FOUND rather than a 502 crash.
+                log.info("DLQ topic {} has no route/queue yet; returning empty scan result", dlqTopic);
+                return new DeadLetterScanResult(Collections.emptyList(), 0, false, true);
+            }
             log.warn("Failed to collect dead letters from {}: {}", dlqTopic, e.getMessage());
             throw new BusinessException(502, "Failed to scan DLQ topic " + dlqTopic + ": " + e.getMessage());
         }
-        return new DeadLetterScanResult(result, failedQueueCount, truncated);
+        return new DeadLetterScanResult(result, failedQueueCount, truncated, false);
+    }
+
+    /**
+     * True when the failure only means "the {@code %DLQ%} topic does not exist / has no route or
+     * message queue yet" — the expected state for a consumer group that has never dead-lettered a
+     * message. Any other cause is a real scan failure and must not be silently degraded to empty.
+     *
+     * <p>Checked by response code first (shared with the message provider through
+     * {@link MqResponseCodes}), then by message text: some client paths surface the condition
+     * without a response code, so the text match stays as the fallback rather than being replaced.
+     */
+    private static boolean isDlqTopicMissing(Throwable e) {
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
+            return true;
+        }
+        Throwable cause = e;
+        while (cause != null) {
+            String message = cause.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                if (lower.contains("can not find message queue")
+                        || lower.contains("no topic route info")) {
+                    return true;
+                }
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     private boolean resendOne(DefaultMQProducer producer, MessageExt deadLetter, String targetTopic) {
@@ -645,7 +698,8 @@ public class RocketMQDLQProvider implements DLQProvider {
         }
     }
 
-    private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount, boolean truncated) {
+    private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount, boolean truncated,
+                                        boolean topicMissing) {
         boolean scanIncomplete() {
             return failedQueueCount > 0 || truncated;
         }

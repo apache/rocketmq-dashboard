@@ -42,16 +42,27 @@ describe('audit log API', () => {
 
   it('uses the backend PageResult contract for filtered audit queries', async () => {
     mock.onGet('/audit-logs').reply((config) => {
-      expect(config.params).toEqual({ page: 2, pageSize: 10, result: 'SUCCESS' });
+      expect(config.params).toEqual({
+        page: 2,
+        pageSize: 10,
+        resourceType: 'TOPIC',
+        target: 'orders',
+        clusterId: 'prod-cn',
+        result: 'SUCCESS',
+      });
       return [200, { code: 200, data: { items: [], total: 12, page: 2, size: 10 } }];
     });
 
-    await expect(listAuditRecords({ page: 2, pageSize: 10, result: 'SUCCESS' })).resolves.toEqual({
-      items: [],
-      total: 12,
-      page: 2,
-      size: 10,
-    });
+    await expect(
+      listAuditRecords({
+        page: 2,
+        pageSize: 10,
+        resourceType: 'TOPIC',
+        target: 'orders',
+        clusterId: 'prod-cn',
+        result: 'SUCCESS',
+      }),
+    ).resolves.toEqual({ items: [], total: 12, page: 2, size: 10 });
   });
 
   it('returns the backend cleanup count', async () => {
@@ -66,11 +77,23 @@ describe('audit log API', () => {
   it('exports all records matching the supplied filters', async () => {
     const csv = '\uFEFFtimestamp,operator\r\n"2026-08-01T09:30","admin"\r\n';
     mock.onGet('/audit-logs/export').reply((config) => {
-      expect(config.params).toEqual({ search: 'topic', result: 'SUCCESS' });
+      expect(config.params).toEqual({
+        resourceType: 'TOPIC',
+        target: 'orders',
+        clusterId: 'prod-cn',
+        result: 'SUCCESS',
+      });
       return [200, { code: 200, data: csv }];
     });
 
-    await expect(exportAuditLogs({ search: 'topic', result: 'SUCCESS' })).resolves.toBe(csv);
+    await expect(
+      exportAuditLogs({
+        resourceType: 'TOPIC',
+        target: 'orders',
+        clusterId: 'prod-cn',
+        result: 'SUCCESS',
+      }),
+    ).resolves.toBe(csv);
   });
 
   it('loads summary metrics with the supplied filters', async () => {
@@ -85,12 +108,18 @@ describe('audit log API', () => {
       byResourceType: [{ name: 'TOPIC', count: 9 }],
     };
     mock.onGet('/audit-logs/summary').reply((config) => {
-      expect(config.params).toEqual({ clusterId: 'prod-cn', startDate: '2026-08-01' });
+      expect(config.params).toEqual({
+        clusterId: 'prod-cn',
+        startDate: '2026-08-01',
+      });
       return [200, { code: 200, data: summary }];
     });
 
     await expect(
-      fetchAuditSummary({ clusterId: 'prod-cn', startDate: '2026-08-01' }),
+      fetchAuditSummary({
+        clusterId: 'prod-cn',
+        startDate: '2026-08-01',
+      }),
     ).resolves.toEqual(summary);
   });
 });

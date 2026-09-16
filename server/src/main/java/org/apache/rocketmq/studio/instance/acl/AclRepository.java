@@ -25,6 +25,8 @@ public interface AclRepository {
     PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
             String decision, String aclVersion, int page, int pageSize);
 
+    Optional<AclRuleVO> findRuleById(Long id);
+
     AclRuleVO saveRule(AclRuleVO rule);
 
     /**

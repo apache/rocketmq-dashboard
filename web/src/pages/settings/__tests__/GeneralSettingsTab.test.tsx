@@ -149,6 +149,55 @@ describe('GeneralSettingsTab', () => {
       ),
     );
     expect(localStorage.getItem('rocketmq-studio-theme')).toBe('dark');
+    // The fresh read that guards unmanaged fields must not revert the visible preference.
+    await waitFor(() =>
+      expect(screen.getByText('深色').closest('.ant-segmented-item')).toHaveClass(
+        'ant-segmented-item-selected',
+      ),
+    );
+  });
+
+  it('saves llm fields from a fresh read instead of the mount-time snapshot', async () => {
+    const baseSettings = {
+      theme: 'system',
+      compact: false,
+      desktopNotify: false,
+      notifySound: false,
+      sessionTimeout: 30,
+      requireLogin: true,
+      apiKeyConfigured: false,
+    };
+    vi.mocked(getGeneralSettings)
+      .mockResolvedValueOnce({
+        ...baseSettings,
+        llmProvider: 'openai',
+        model: 'gpt-test',
+        baseUrl: 'https://openai.example/v1',
+      })
+      .mockResolvedValue({
+        ...baseSettings,
+        llmProvider: 'deepseek',
+        model: 'deepseek-chat',
+        baseUrl: 'https://deepseek.example/v1',
+      });
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    renderTab();
+
+    const saveButtons = await screen.findAllByRole('button', { name: '保存设置' });
+    await waitFor(() => expect(saveButtons[0]).toBeEnabled());
+    // The AI assistant tab saved a different provider while this tab stayed mounted;
+    // submitting the security form must not resurrect the stale provider.
+    fireEvent.submit(saveButtons[0].closest('form')!);
+
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+    expect(saveGeneralSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        llmProvider: 'deepseek',
+        model: 'deepseek-chat',
+        baseUrl: 'https://deepseek.example/v1',
+        sessionTimeout: 30,
+      }),
+    );
   });
 
   it('can explicitly clear a configured DingTalk signing secret', async () => {

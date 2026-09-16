@@ -68,6 +68,12 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    public Optional<AclRuleVO> findRuleById(Long id) {
+        return Optional.ofNullable(ruleMapper.selectById(id))
+                .map(MybatisPlusAclRepository::toRuleVO);
+    }
+
+    @Override
     public AclRuleVO saveRule(AclRuleVO rule) {
         RmqAclRule entity = toRuleEntity(rule);
         if (entity.getId() != null && ruleMapper.selectById(entity.getId()) != null) {
@@ -342,7 +348,13 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     private PlainAccessConfigVO toPlainAccessConfig(AclUserVO user) {
-        List<AclRuleVO> userRules = ruleMapper.selectList(ruleQuery(user.getAccessKey(), null, null, null, null))
+        // Exact principal match, mirroring the delete in upsertPlainAccessRules: the
+        // substring LIKE in ruleQuery would also absorb rules of other accounts whose
+        // accessKey contains this one (e.g. "svc-a" also matching "svc-a-v2").
+        List<AclRuleVO> userRules = ruleMapper.selectList(new QueryWrapper<RmqAclRule>()
+                        .eq("principal", user.getAccessKey())
+                        .orderByDesc("gmt_create")
+                        .orderByDesc("id"))
                 .stream()
                 .map(MybatisPlusAclRepository::toRuleVO)
                 .collect(Collectors.toList());

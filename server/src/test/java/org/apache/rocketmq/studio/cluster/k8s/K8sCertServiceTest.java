@@ -198,6 +198,45 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void createCertShouldRejectBlankIdentityFields() {
+        // updateCert refuses a blank identity, so createCert must not accept one either: the
+        // certificate would otherwise be stored in a state the update API cannot produce.
+        List<Map.Entry<String, Consumer<CreateCertDTO>>> invalidCreates = List.of(
+                Map.entry("k8sId", command -> command.setK8sId(" ")),
+                Map.entry("cluster", command -> command.setCluster("\n")),
+                Map.entry("issuer", command -> command.setIssuer("  ")));
+
+        for (Map.Entry<String, Consumer<CreateCertDTO>> invalidCreate : invalidCreates) {
+            CreateCertDTO command = CreateCertDTO.builder().type("TLS").build();
+            invalidCreate.getValue().accept(command);
+
+            assertThatThrownBy(() -> k8sCertService.createCert(command))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Certificate " + invalidCreate.getKey() + " cannot be blank")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        }
+
+        verify(k8sCertRepository, never()).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void createCertShouldTrimIdentityFieldsLikeUpdateDoes() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId(" new-tls-cert ")
+                .cluster(" test-cluster ")
+                .type("TLS")
+                .issuer(" vault ")
+                .build();
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        K8sCertVO result = k8sCertService.createCert(command);
+
+        assertThat(result.getK8sId()).isEqualTo("new-tls-cert");
+        assertThat(result.getCluster()).isEqualTo("test-cluster");
+        assertThat(result.getIssuer()).isEqualTo("vault");
+    }
+
+    @Test
     void createCertShouldRejectInvalidTypeBeforeSave() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("bad-cert")

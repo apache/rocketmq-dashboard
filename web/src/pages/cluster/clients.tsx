@@ -163,6 +163,7 @@ const ClientsPage = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
+  const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
@@ -190,6 +191,9 @@ const ClientsPage = () => {
     setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
+    // Column filters describe the previous endpoint's rows; keeping them (or antd's
+    // uncontrolled internal filter state) would hide every row of the new endpoint.
+    setColumnFilters({});
     setSelectedConnection(null);
     setLoadError(null);
     setLoading(true);
@@ -231,7 +235,11 @@ const ClientsPage = () => {
       if (connectionRequestRef.current === requestId) setLoading(true);
     });
 
-    void listConnections({ namesrvAddr: selectedEndpoint })
+    void listConnections({
+      namesrvAddr: selectedEndpoint,
+      clusterId: clusterFilter === 'ALL' ? undefined : clusterFilter,
+      type: typeFilter === 'ALL' ? undefined : typeFilter,
+    })
       .then((nextConnections) => {
         if (connectionRequestRef.current === requestId) {
           setConnections(nextConnections);
@@ -249,7 +257,7 @@ const ClientsPage = () => {
       .finally(() => {
         if (connectionRequestRef.current === requestId) setLoading(false);
       });
-  }, [connectionLoadKey, selectedEndpoint, selectedCluster]);
+  }, [connectionLoadKey, clusterFilter, selectedEndpoint, selectedCluster, typeFilter]);
 
   useEffect(
     () => () => {
@@ -262,21 +270,18 @@ const ClientsPage = () => {
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
     const clusterNames = [
-      ...new Set(connections.map((connection) => connection.clusterName)),
+      ...new Set([
+        ...registryClusters.map((cluster) => cluster.nsClusterName).filter(Boolean),
+        ...connections.map((connection) => connection.clusterName).filter(Boolean),
+      ]),
     ].sort();
     return [
       { value: 'ALL', label: t('clients.allClusters') },
       ...clusterNames.map((name) => ({ value: name, label: name })),
     ];
-  }, [connections, t]);
+  }, [connections, registryClusters, t]);
 
-  const clusterConnections = useMemo(
-    () =>
-      clusterFilter === 'ALL'
-        ? connections
-        : connections.filter((connection) => connection.clusterName === clusterFilter),
-    [connections, clusterFilter],
-  );
+  const clusterConnections = useMemo(() => connections, [connections]);
 
   const connectionStats = useMemo(() => {
     const instances = Array.from(
@@ -381,6 +386,7 @@ const ClientsPage = () => {
       filters: clusterOptions
         .filter((option) => option.value !== 'ALL')
         .map((option) => ({ text: option.label, value: option.value })),
+      filteredValue: columnFilters.clusterName ?? null,
       onFilter: (value, record) => record.clusterName === value,
       render: (name: string) => <Text style={{ fontSize: 14 }}>{name}</Text>,
     },
@@ -388,7 +394,8 @@ const ClientsPage = () => {
       title: t('clients.clientId'),
       dataIndex: 'clientId',
       key: 'clientId',
-      width: 260,
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 260,
       ellipsis: true,
       render: (id?: string | null) => (
         <Text
@@ -412,6 +419,7 @@ const ClientsPage = () => {
         { text: 'Producer', value: 'Producer' },
         { text: 'Consumer', value: 'Consumer' },
       ],
+      filteredValue: columnFilters.type ?? null,
       onFilter: (value, record) => record.type === value,
       render: (type: string) => {
         const cfg = typeConfig[type] ?? { label: type };
@@ -439,6 +447,7 @@ const ClientsPage = () => {
         { text: 'gRPC', value: 'gRPC' },
         { text: 'Remoting', value: 'Remoting' },
       ],
+      filteredValue: columnFilters.protocol ?? null,
       onFilter: (value, record) => record.protocol === value,
       render: (protocol: string) => {
         const cfg = protocolConfig[protocol] ?? { color: 'default', label: protocol };
@@ -463,6 +472,7 @@ const ClientsPage = () => {
         text: config.label,
         value,
       })),
+      filteredValue: columnFilters.language ?? null,
       onFilter: (value, record) => record.language === value,
       render: (lang: string) => {
         const cfg = languageConfig[lang] ?? { color: 'default', label: lang };
@@ -707,6 +717,20 @@ const ClientsPage = () => {
             style={{ width: 180 }}
             options={clusterOptions}
           />
+          <Select
+            aria-label={t('common.type')}
+            value={typeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              setCurrentPage(1);
+            }}
+            style={{ width: 140 }}
+            options={[
+              { value: 'ALL', label: t('common.all') },
+              { value: 'Producer', label: typeConfig.Producer?.label ?? 'Producer' },
+              { value: 'Consumer', label: typeConfig.Consumer?.label ?? 'Consumer' },
+            ]}
+          />
           <Input.Search
             placeholder={t('clients.searchPlaceholder')}
             allowClear
@@ -846,6 +870,7 @@ const ClientsPage = () => {
           rowKey="id"
           pagination={false}
           size="small"
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(resourceColumns) }}
           locale={{ emptyText: t('common.noData') }}
           style={{ marginBottom: 12 }}
@@ -858,6 +883,7 @@ const ClientsPage = () => {
             rowKey="id"
             pagination={false}
             size="small"
+            tableLayout="fixed"
             scroll={{ x: tableScrollX(issueColumns) }}
             style={{ marginBottom: 12 }}
           />
@@ -895,6 +921,7 @@ const ClientsPage = () => {
             setCurrentPage(pagination.current ?? 1);
             setPageSize(pagination.pageSize ?? 20);
           }}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns) }}
           pagination={{
             current: clampedCurrentPage,

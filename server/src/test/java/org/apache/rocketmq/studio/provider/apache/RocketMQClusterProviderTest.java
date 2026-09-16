@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.instance.InstanceResolver;
+
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
@@ -104,6 +106,47 @@ class RocketMQClusterProviderTest {
         assertThat(cluster.getBrokers()).singleElement()
                 .extracting(broker -> broker.getDiskUsage())
                 .isEqualTo(62.5D);
+    }
+
+    @Test
+    void discoverClustersShouldParseDailyMessageCounters() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("msgPutTotalYesterdayMorning", "1000");
+        runtime.getTable().put("msgPutTotalTodayMorning", "1400");
+        runtime.getTable().put("msgPutTotalTodayNow", "2000");
+        runtime.getTable().put("msgGetTotalYesterdayMorning", "800");
+        runtime.getTable().put("msgGetTotalTodayMorning", "1200");
+        runtime.getTable().put("msgGetTotalTodayNow", "1500");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesYesterday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesYesterday)
+                .containsExactly(600L, 400L, 300L, 400L);
+    }
+
+    @Test
+    void discoverClustersShouldDefaultDailyMessageCountersWhenKeysAreMissing() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getPutMessagesYesterday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesToday,
+                        org.apache.rocketmq.studio.cluster.broker.BrokerVO::getGetMessagesYesterday)
+                .containsExactly(0L, 0L, 0L, 0L);
     }
 
     @Test
@@ -264,10 +307,12 @@ class RocketMQClusterProviderTest {
         List<ClusterVO> clusters = provider.discoverClusters();
 
         assertThat(clusters).hasSize(1);
-        assertThat(clusters.get(0).getProxies()).hasSize(2);
-        assertThat(clusters.get(0).getProxies().get(0).getAddr()).isEqualTo("10.0.3.5:8080");
-        assertThat(clusters.get(0).getProxies().get(0).getGrpcPort()).isEqualTo(8081);
-        assertThat(clusters.get(0).getProxies().get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
+        assertThat(clusters.get(0).getProxies()).isEmpty();
+        var proxies = provider.discoverProxies("prod");
+        assertThat(proxies).hasSize(2);
+        assertThat(proxies.get(0).getAddr()).isEqualTo("10.0.3.5:8080");
+        assertThat(proxies.get(0).getGrpcPort()).isEqualTo(8081);
+        assertThat(proxies.get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
     }
 
     @Test
@@ -287,7 +332,8 @@ class RocketMQClusterProviderTest {
 
         List<ClusterVO> clusters = provider.discoverClusters();
 
-        assertThat(clusters.get(0).getProxies()).singleElement()
+        assertThat(clusters.get(0).getProxies()).isEmpty();
+        assertThat(provider.discoverProxies("prod")).singleElement()
                 .extracting(proxy -> proxy.getAddr())
                 .isEqualTo("10.0.3.5:8080");
     }
@@ -298,7 +344,10 @@ class RocketMQClusterProviderTest {
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
-        return new RocketMQClusterProvider(adminFactory, properties, mock(RuntimeAdminClientResolver.class));
+        RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
+        org.mockito.Mockito.lenient().when(runtime.execute(anyString(), any())).thenAnswer(call ->
+                call.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
+        return new RocketMQClusterProvider(adminFactory, properties, runtime);
     }
 
     @Test
@@ -352,8 +401,10 @@ class RocketMQClusterProviderTest {
         credential.setSecretKey("admin-sk");
         adminProperties.getCredentials().put("cluster-admin", credential);
         RuntimeAdminClientResolver resolver =
-                new RuntimeAdminClientResolver(instanceRepository, adminFactory, adminProperties,
-                        org.mockito.Mockito.mock(org.apache.rocketmq.studio.cluster.broker.MqClientPool.class));
+                new RuntimeAdminClientResolver(new InstanceResolver(instanceRepository, mock(RocketMQDefaultClusterResolver.class)),
+                adminFactory,
+                adminProperties,
+                org.mockito.Mockito.mock(org.apache.rocketmq.studio.cluster.broker.MqClientPool.class));
         when(adminFactory.execute(eq("10.0.0.2:9876"), any(), eq("cluster-admin"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3)
                         .apply(adminExt));

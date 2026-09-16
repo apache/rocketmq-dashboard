@@ -70,6 +70,18 @@ class ClusterRepositoryImplTest {
     }
 
     @Test
+    void findByIdShouldPreserveBrokerDailyMessageCounters() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
+
+        BrokerVO broker = repository.findById("cluster-001").orElseThrow().getBrokers().get(0);
+
+        assertThat(broker.getPutMessagesToday()).isEqualTo(1500);
+        assertThat(broker.getPutMessagesYesterday()).isEqualTo(1200);
+        assertThat(broker.getGetMessagesToday()).isEqualTo(1300);
+        assertThat(broker.getGetMessagesYesterday()).isEqualTo(1000);
+    }
+
+    @Test
     void updateConfigShouldNotRetainCallerOwnedObject() {
         ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
         ClusterConfigVO config = ClusterConfigVO.builder()

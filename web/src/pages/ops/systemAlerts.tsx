@@ -399,13 +399,14 @@ const SystemAlertsPage = () => {
       return;
     }
     setSavingSilence(true);
+    let request: CreateAlertSilence;
     try {
       const recurrence = values.recurrence ?? 'ONCE';
       const convertTime = (value: string) =>
         recurrence === 'ONCE'
           ? localDateTimeToUtc(value)
           : zonedLocalDateTimeToUtc(value, values.timeZone!);
-      const request: CreateAlertSilence = {
+      request = {
         instanceId: values.instanceId,
         startsAt: convertTime(values.startsAt),
         endsAt: convertTime(values.endsAt),
@@ -421,6 +422,18 @@ const SystemAlertsPage = () => {
             ? convertTime(values.recurrenceUntil)
             : undefined,
       };
+    } catch (error) {
+      // client-side validation throws carry field-specific messages; no request was
+      // made, so the axios interceptor never surfaces them
+      message.error(
+        error instanceof Error && error.message
+          ? error.message
+          : t('sysAlerts.silenceCreateFailed'),
+      );
+      setSavingSilence(false);
+      return;
+    }
+    try {
       await createAlertSilence(request);
       silenceForm.resetFields();
       setSilencePage(1);
@@ -475,7 +488,7 @@ const SystemAlertsPage = () => {
         }
       />
 
-      <Flex gap={8} style={{ marginBottom: 16 }}>
+      <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
         {['all', 'error', 'warning', 'info'].map((level) => (
           <Button
             key={level}
@@ -518,7 +531,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.instanceFilter')}
           size="small"
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 150 }}
+          style={{ width: 150, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -529,7 +542,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.labelsFilter')}
           size="small"
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
@@ -540,7 +553,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.startTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={fromFilter}
           onChange={(event) => {
             setFromFilter(event.target.value);
@@ -551,7 +564,7 @@ const SystemAlertsPage = () => {
           aria-label={t('sysAlerts.endTimeFilter')}
           type="datetime-local"
           size="small"
-          style={{ width: 190 }}
+          style={{ width: 190, flex: 'none' }}
           value={toFilter}
           onChange={(event) => {
             setToFilter(event.target.value);
@@ -587,7 +600,11 @@ const SystemAlertsPage = () => {
             { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
           ]}
         />
-        {collectorStatus && <Tag color="success">{t('sysAlerts.nativeCollectionEnabled')}</Tag>}
+        {collectorStatus && (
+          <Tag color="success" style={{ marginInlineEnd: 0 }}>
+            {t('sysAlerts.nativeCollectionEnabled')}
+          </Tag>
+        )}
       </Flex>
 
       <Flex vertical gap={12}>
@@ -824,7 +841,10 @@ const SystemAlertsPage = () => {
       <Modal
         title={t('sysAlerts.maintenanceWindows')}
         open={silencesVisible}
-        onCancel={() => setSilencesVisible(false)}
+        onCancel={() => {
+          setSilencesVisible(false);
+          silenceForm.resetFields();
+        }}
         onOk={() => void createSilence()}
         okText={t('sysAlerts.create')}
         okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}

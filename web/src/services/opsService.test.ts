@@ -260,12 +260,18 @@ describe('ops service mock data', () => {
       id: 90003,
       clusterId: 'prod-other',
     };
-    insertedRecords.push(matching, otherCluster);
-    auditRecords.push(matching, otherCluster);
+    const otherTarget = {
+      ...matching,
+      id: 90005,
+      target: 'consumer-a-copy',
+    };
+    insertedRecords.push(matching, otherCluster, otherTarget);
+    auditRecords.push(matching, otherCluster, otherTarget);
 
     const options = await getAuditFilterOptions();
     const result = await listAuditRecords({
       resourceType: 'CONSUMER_GROUP',
+      target: 'consumer-a',
       clusterId: 'prod-filter',
       pageSize: 100,
     });
@@ -275,6 +281,34 @@ describe('ops service mock data', () => {
     expect(options.clusterIds).toEqual(expect.arrayContaining(['prod-filter', 'prod-other']));
     expect(options.results).toContain('PARTIAL');
     expect(result.items.map((record) => record.id)).toEqual([90002]);
+  });
+
+  it('keeps unscoped resource timelines separate from cluster-scoped records', async () => {
+    const unscoped = {
+      id: 90006,
+      timestamp: '2026-08-01 11:00:00',
+      operator: 'admin',
+      operationType: 'UPDATE_SETTINGS',
+      resourceType: 'SETTINGS',
+      target: 'general',
+      clusterId: null,
+      detail: 'updated settings',
+      result: 'SUCCESS',
+      errorMessage: '',
+    } as AuditRecord;
+    const clusterScoped = { ...unscoped, id: 90007, clusterId: 'prod-cn' };
+    insertedRecords.push(unscoped, clusterScoped);
+    auditRecords.push(unscoped, clusterScoped);
+
+    const result = await listAuditRecords({
+      resourceType: 'SETTINGS',
+      target: 'general',
+      clusterId: 'ignored-cluster',
+      clusterIdMissing: true,
+      pageSize: 100,
+    });
+
+    expect(result.items.map((record) => record.id)).toEqual([90006]);
   });
 
   it('exports filtered audit records as escaped CSV', async () => {

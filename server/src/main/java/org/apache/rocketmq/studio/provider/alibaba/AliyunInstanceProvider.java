@@ -54,6 +54,7 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -455,8 +456,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                                String tag, String key, Long startTime, Long endTime) {
+        return queryMessagesDetailed(instanceId, topic, msgId, tag, key, startTime, endTime).messages();
+    }
+
+    @Override
+    public MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
+                                                     String tag, String key, Long startTime, Long endTime) {
         Context ctx = resolve(instanceId);
         List<MessageRecordVO> records = new ArrayList<>();
+        int fetched = 0;
+        boolean mayBeTruncated = false;
         for (int page = 1; page <= AliyunConverters.MESSAGE_MAX_PAGES; page++) {
             ListMessagesRequest.Builder builder = ListMessagesRequest.builder()
                     .instanceId(ctx.cloudInstanceId())
@@ -486,6 +495,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
             if (list == null || list.isEmpty()) {
                 break;
             }
+            fetched += list.size();
             for (ListMessagesResponseBody.List item : list) {
                 if (item == null) {
                     continue;
@@ -495,11 +505,17 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     records.add(vo);
                 }
             }
-            if (list.size() < AliyunConverters.MESSAGE_PAGE_SIZE) {
+            Long totalCount = data.getTotalCount();
+            boolean shortPage = list.size() < AliyunConverters.MESSAGE_PAGE_SIZE;
+            boolean allFetched = totalCount != null && totalCount > 0L && fetched >= totalCount;
+            if (shortPage || allFetched) {
                 break;
             }
+            if (page == AliyunConverters.MESSAGE_MAX_PAGES) {
+                mayBeTruncated = true;
+            }
         }
-        return records;
+        return mayBeTruncated ? MessageQueryResult.truncated(records) : MessageQueryResult.complete(records);
     }
 
     @Override

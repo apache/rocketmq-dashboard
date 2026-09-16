@@ -33,7 +33,7 @@ public interface RmqAlertStateMapper extends BaseMapper<RmqAlertState> {
 
     @Update("UPDATE rmq_alert_state SET status = 'ACKED', gmt_modified = #{now}, version = version + 1 "
             + "WHERE rule_id = #{ruleId} AND fingerprint = #{fingerprint} AND status = 'FIRING' "
-            + "AND fired_at = #{firedAt}")
+            + "AND fired_at <= #{firedAt}")
     int acknowledgeFiring(@Param("ruleId") Long ruleId, @Param("fingerprint") String fingerprint,
             @Param("firedAt") LocalDateTime firedAt,
             @Param("now") LocalDateTime now);

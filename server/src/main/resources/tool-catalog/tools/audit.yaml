@@ -1,0 +1,97 @@
+version: 2.0.0
+tools:
+  - name: rmq.audit.list
+    cli:
+      resource: audit
+      verb: list
+    description: Query audit entries across the whole Studio deployment (platform-level, spanning all Instances).
+    riskLevel: L1
+    permission: audit:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        search:
+          type: string
+        operationType:
+          type: string
+        resourceType:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        result:
+          type: string
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type:
+                  - integer
+                  - 'null'
+              timestamp:
+                type:
+                  - string
+                  - 'null'
+              operator:
+                type:
+                  - string
+                  - 'null'
+              operationType:
+                type:
+                  - string
+                  - 'null'
+              resourceType:
+                type:
+                  - string
+                  - 'null'
+              target:
+                type:
+                  - string
+                  - 'null'
+              clusterId:
+                type:
+                  - string
+                  - 'null'
+              detail:
+                type:
+                  - string
+                  - 'null'
+              result:
+                type:
+                  - string
+                  - 'null'
+              errorMessage:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false

@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
-import { formatDateTime } from '../../../utils/format';
+import { formatUtcDateTime } from '../../../utils/format';
 import AlertsPage, { formatThresholdCondition, supportsUnavailableOperator } from '../alerts';
 import { listInstances } from '../../../services/instanceService';
 import {
@@ -31,6 +31,7 @@ import {
   listAlertRulesPage,
   listAlertRuleRuntime,
   listNativeAlertMetrics,
+  importAlertRulesTransfer,
   toggleAlertRule,
 } from '../../../services/opsService';
 
@@ -137,6 +138,18 @@ function getRuleRow(ruleName: string) {
   return row;
 }
 
+// antd's Spin keys its `.ant-spin-blur` class on an internal `spinning` state that follows the
+// Table's `loading` prop one commit behind (see the effect in antd/es/spin/index.js), and that
+// class sets `pointer-events: none` over the whole table body. Because antd keeps the previous
+// rows rendered while loading, `findByText` on a rule name resolves during that window, so a
+// click straight afterwards is rejected. Tests that poll anything else first absorb the extra
+// commit and never see it; these waits make the same guarantee explicit.
+async function expectRuleRowInteractive(ruleName: string) {
+  await waitFor(() =>
+    expect(getComputedStyle(getRuleRow(ruleName)).pointerEvents).not.toBe('none'),
+  );
+}
+
 function getSelectOption(label: string) {
   const option = screen
     .getAllByText(label)
@@ -205,8 +218,26 @@ describe('AlertsPage', () => {
 
     expect(screen.getByRole('button', { name: 'Test Run' })).toBeInTheDocument();
     expect(screen.getByText('Window aggregation')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Aggregation uses only metric snapshots currently retained locally. History outside the current retention period is unavailable; changing retention does not invalidate the rule.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('Consecutive samples')).toBeInTheDocument();
     expect(screen.queryByText('窗口聚合')).not.toBeInTheDocument();
+  });
+
+  it('explains the effective native aggregation window in Chinese', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    expect(
+      screen.getByText(
+        '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
@@ -217,8 +248,19 @@ describe('AlertsPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(formatDateTime(lastTriggered))).toBeInTheDocument();
+    expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
     expect(screen.queryByText(lastTriggered)).not.toBeInTheDocument();
+  });
+
+  it('interprets the last triggered timestamp as UTC, not the browser zone', async () => {
+    const lastTriggered = '2026-08-23T23:30:00';
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...cloneRule(alertRules[0]), lastTriggered }]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
   it('allows the unavailable operator only for availability metrics', () => {
@@ -437,6 +479,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
     await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
     await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledWith('local', 'CLUSTER'));
 
@@ -474,6 +517,7 @@ describe('AlertsPage', () => {
     renderPage('BUSINESS');
 
     await screen.findByText('Legacy disk usage');
+    await expectRuleRowInteractive('Legacy disk usage');
     await user.click(within(getRuleRow('Legacy disk usage')).getByRole('button', { name: '编辑' }));
 
     expect(await screen.findByRole('combobox', { name: '监控指标' })).toBeEnabled();
@@ -715,6 +759,29 @@ describe('AlertsPage', () => {
     );
   });
 
+  it('shows an actionable server error when alert rule import conflicts', async () => {
+    const serverMessage =
+      'An alert rule with the same evaluation conditions already exists: Existing rule';
+    vi.mocked(importAlertRulesTransfer).mockRejectedValue({
+      response: { data: { code: 409, message: serverMessage } },
+    });
+    const user = userEvent.setup();
+    const { container } = renderPage();
+    await screen.findByText('Broker disk usage');
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('Alert rule import input not found');
+    const file = new File(
+      [JSON.stringify({ version: 1, domain: 'CLUSTER', rules: [] })],
+      'cluster-alert-rules.json',
+      { type: 'application/json' },
+    );
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText(serverMessage)).toBeInTheDocument();
+    expect(screen.queryByText('导入失败，请选择当前页面导出的规则文件')).not.toBeInTheDocument();
+  });
+
   it('disables other alert rule mutations while a bulk action is running', async () => {
     let resolveToggle:
       | ((result: {
@@ -733,6 +800,7 @@ describe('AlertsPage', () => {
     renderPage();
 
     await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
     await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 

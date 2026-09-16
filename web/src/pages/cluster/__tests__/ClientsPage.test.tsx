@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -139,6 +139,17 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+const selectOption = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
+  const option = await waitFor(() => {
+    const match = [
+      ...document.querySelectorAll<HTMLElement>('.ant-select-item-option-content'),
+    ].find((element) => element.textContent === label);
+    if (!match) throw new Error(`Select option not found: ${label}`);
+    return match;
+  });
+  await user.click(option);
+};
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -175,6 +186,34 @@ describe('Clients page', () => {
     await screen.findByText('order-svc-0@10.0.1.12:49152');
     expect(connectionsService.listConnections).toHaveBeenCalledWith({
       namesrvAddr: 'namesrv-1:9876',
+    });
+  });
+
+  it('sends cluster and type filters to the backend', async () => {
+    const mixedConnections = [
+      { ...connection, clusterName: 'ns-prod', type: 'Producer' },
+      { ...connection, clusterName: 'ns-prod', type: 'Consumer' },
+    ];
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(mixedConnections);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('order-svc-0@10.0.1.12:49152');
+
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    const typeSelect = screen.getAllByLabelText('类型')[0];
+    fireEvent.mouseDown(typeSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'Consumer');
+
+    await waitFor(() => {
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+        type: 'Consumer',
+      });
     });
   });
 
@@ -247,14 +286,29 @@ describe('Clients page', () => {
 
   it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup();
-    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      Promise.resolve(
+        query?.clusterId === 'ns-prod'
+          ? connections.filter((item) => item.clusterName === 'ns-prod')
+          : connections,
+      ),
+    );
     renderWithProviders(<ClientsPage />);
 
-    await screen.findByText('audit-svc-0@10.0.2.10:49154');
-    await user.click(screen.getByRole('combobox', { name: '所属集群' }));
-    await user.click(
-      await screen.findByText('ns-prod', { selector: '.ant-select-item-option-content' }),
+    await screen.findAllByText('audit-svc-0@10.0.2.10:49154');
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+      }),
     );
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(within(screen.getByTestId('connection-total')).getByText('2')).toBeInTheDocument();
@@ -414,6 +468,63 @@ describe('Clients page', () => {
     expect(csv).not.toContain('order-svc-0@10.0.1.12:49152');
     expect(csv).toContain('payment-svc-0@10.0.1.13:49153');
     expect(csv).toContain('audit-svc-0@10.0.2.10:49154');
+  });
+
+  it('clears column filters when the nameserver changes', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:nameserver-switch-connections';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    const billingConnections: ClientConnection[] = [
+      {
+        clientId: 'billing-svc-0@10.0.3.10:49155',
+        type: 'Producer',
+        groupOrTopic: 'billing-producer',
+        protocol: 'gRPC',
+        address: '10.0.3.10:49155',
+        language: 'Java',
+        version: '5.0.7',
+        connectedAt: '2026-07-02 09:00:00',
+        clusterName: 'ns-audit',
+      },
+    ];
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      query?.namesrvAddr === 'namesrv-2:9876'
+        ? Promise.resolve(billingConnections)
+        : Promise.resolve(connections),
+    );
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    const filterTriggers = document.querySelectorAll<HTMLElement>('.ant-table-filter-trigger');
+    await user.click(filterTriggers[1]);
+    const filterDropdown = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+    expect(filterDropdown).not.toBeNull();
+    await user.click(within(filterDropdown!).getByText('Consumer'));
+    await user.click(within(filterDropdown!).getByRole('button', { name: 'OK' }));
+    expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await user.click(
+      await screen.findByText('rocketmq2 (namesrv-2:9876)', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByText('billing-svc-0@10.0.3.10:49155')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toContain('billing-svc-0@10.0.3.10:49155');
   });
 
   it('renders empty distributions when no connections are available', async () => {

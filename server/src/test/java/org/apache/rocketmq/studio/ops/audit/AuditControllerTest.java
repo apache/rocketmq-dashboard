@@ -16,13 +16,18 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
+import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.springframework.context.annotation.Import;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -42,7 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AuditController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class AuditControllerTest {
+@Import(LegacyJackson2Config.class)
+class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
@@ -50,7 +56,7 @@ class AuditControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private AuditService auditService;
 
     @Test
@@ -62,7 +68,8 @@ class AuditControllerTest {
                 .result("SUCCESS")
                 .build();
         when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("TOPIC"), eq("prod-cn"), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS")))
+                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
+                eq("2026-07-24"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 2, 10));
 
         mockMvc.perform(get("/api/audit-logs")
@@ -71,6 +78,7 @@ class AuditControllerTest {
                         .param("search", "topic")
                         .param("operationType", "DELETE")
                         .param("resourceType", "TOPIC")
+                        .param("target", "topic-a")
                         .param("clusterId", "prod-cn")
                         .param("startDate", "2026-07-01")
                         .param("endDate", "2026-07-24")
@@ -82,7 +90,8 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1));
 
         verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("TOPIC"), eq("prod-cn"), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS"));
+                eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
+                eq("2026-07-24"), eq("SUCCESS"));
     }
 
     @Test
@@ -162,7 +171,7 @@ class AuditControllerTest {
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
         when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull()))
+                isNull(), eq(false), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -172,19 +181,37 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.data.size").value(20));
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull());
+                isNull(), eq(false), isNull(), isNull(), isNull());
+    }
+
+    @Test
+    void queryLogsShouldForwardAnExplicitMissingClusterScopeTest() throws Exception {
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull()))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 20));
+
+        mockMvc.perform(get("/api/audit-logs")
+                        .param("resourceType", "SETTINGS")
+                        .param("target", "general")
+                        .param("clusterIdMissing", "true"))
+                .andExpect(status().isOk());
+
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull());
     }
 
     @Test
     void exportLogsShouldForwardFilters() throws Exception {
         String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
-        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
-                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"))).thenReturn(csv);
+        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+                eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"),
+                eq("SUCCESS"))).thenReturn(csv);
 
         mockMvc.perform(get("/api/audit-logs/export")
                         .param("search", "topic")
                         .param("operationType", "DELETE")
                         .param("resourceType", "TOPIC")
+                        .param("target", "topic-a")
                         .param("clusterId", "prod-cn")
                         .param("startDate", "2026-08-01")
                         .param("endDate", "2026-08-02")
@@ -193,8 +220,8 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value(csv));
 
-        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
-                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
+        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+                eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
     }
 
     @Test

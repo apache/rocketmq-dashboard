@@ -24,6 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -61,7 +63,7 @@ class RocketMQBrokerConfigServiceTest {
         config.setProperty("flushDiskType", "ASYNC_FLUSH");
         doNothing().when(adminExt).updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
+                .record(any(), any(), any(), any(), any(), any());
 
         brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
     }
@@ -72,7 +74,7 @@ class RocketMQBrokerConfigServiceTest {
         doThrow(new IllegalStateException("broker unavailable")).when(adminExt)
                 .updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), any(), anyString(), anyString());
+                .record(any(), any(), any(), any(), any(), any());
 
         assertThatThrownBy(() -> brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config))
                 .isInstanceOf(BusinessException.class)
@@ -86,9 +88,9 @@ class RocketMQBrokerConfigServiceTest {
 
         brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
 
-        verify(auditService).record(
-                "UPDATE_BROKER_CONFIG", "BROKER", "CLUSTER:cluster-a", "cluster-a",
-                "brokerAddr=broker-a:10911, config={}", "SUCCESS");
+        verify(auditService).record(eq("UPDATE_BROKER_CONFIG"), eq("BROKER"),
+                eq("CLUSTER:cluster-a"), eq("cluster-a"),
+                argThat(d -> d != null && d.contains("brokerAddr=broker-a:10911")), eq("SUCCESS"));
     }
 
     @Test

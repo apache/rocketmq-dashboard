@@ -59,6 +59,10 @@ import {
   parseAuditDetail,
 } from './auditPresentation';
 import AuditSummaryCards from './AuditSummaryCards';
+import AuditRiskInsights from './AuditRiskInsights';
+import ResourceOperationTimelineDrawer, {
+  type AuditTimelineResource,
+} from './ResourceOperationTimelineDrawer';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -105,6 +109,7 @@ const AuditPage: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
 
@@ -354,11 +359,30 @@ const AuditPage: React.FC = () => {
       width: 200,
       ellipsis: true,
       align: 'center',
-      render: (_: string, record) => (
-        <Tooltip title={describeAuditRecord(record, t)}>
-          <span>{record.target || '-'}</span>
-        </Tooltip>
-      ),
+      render: (_: string, record) => {
+        const target = record.target;
+        if (!target?.trim()) return <Text type="secondary">-</Text>;
+        return (
+          <Tooltip title={describeAuditRecord(record, t)}>
+            <Text
+              strong
+              role="button"
+              tabIndex={0}
+              aria-label={t('audit.timelineView', { target })}
+              style={{ fontSize: 14, cursor: 'pointer' }}
+              onClick={() =>
+                setTimelineResource({
+                  resourceType: record.resourceType,
+                  target,
+                  clusterId: record.clusterId || null,
+                })
+              }
+            >
+              {target}
+            </Text>
+          </Tooltip>
+        );
+      },
     },
     {
       title: t('audit.detail'),
@@ -489,6 +513,7 @@ const AuditPage: React.FC = () => {
       </Flex>
 
       <AuditSummaryCards summary={summary} loading={summaryLoading} />
+      <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}
       <Card styles={{ body: { padding: 0 } }}>
@@ -498,6 +523,7 @@ const AuditPage: React.FC = () => {
           dataSource={records}
           rowKey="id"
           loading={loading}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns) }}
           pagination={{
             current: page,
@@ -516,6 +542,14 @@ const AuditPage: React.FC = () => {
           }}
         />
       </Card>
+
+      {timelineResource && (
+        <ResourceOperationTimelineDrawer
+          open
+          resource={timelineResource}
+          onClose={() => setTimelineResource(null)}
+        />
+      )}
 
       {/* ─── Cleanup Modal ─── */}
       <Modal

@@ -22,6 +22,7 @@ import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -40,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
@@ -140,8 +142,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqTopic::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -160,8 +166,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
             String search, int page, int pageSize) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqTopic::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -221,8 +231,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqGroup::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName);
@@ -238,8 +252,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId, normalizeMetadataScope(instanceId))
+                .eq(instanceId != null, RmqGroup::getInstanceId,
+                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
+                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
@@ -447,6 +465,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             }
             return routes;
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // A record created in the metadata database without a broker route is a
+                // normal "not synced yet" state — surface an empty route list, not a 502.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return Collections.emptyList();
+            }
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
@@ -574,6 +598,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     .pageSize(pageSize)
                     .build();
         } catch (Exception e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                // Same as routes: a metadata record without a broker route is a normal
+                // "not synced yet" state, so the consumer page comes back empty.
+                log.info("Topic {} has no broker route yet: {}", name, e.getMessage());
+                return TopicConsumerPageVO.builder()
+                        .items(List.of())
+                        .total(0)
+                        .page(page)
+                        .pageSize(pageSize)
+                        .build();
+            }
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
@@ -709,8 +744,20 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return brokerException.getResponseCode()
                     == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
         }
+        // rocketmq-tools grades these business states as MQClientException, so the typed code
+        // only survives in the message text: examineConsumerConnectionInfo throws
+        // CONSUMER_NOT_ONLINE for a group whose clients all disconnected, and
+        // examineConsumeStats throws BROADCAST_CONSUMPTION for a broadcast group with an
+        // empty offset table. Both mean "no live data", not a connectivity failure
+        // (same grading as RocketMQClientProvider.isGroupConnectionAbsent).
+        if (MqResponseCodes.hasResponseCode(e,
+                org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
+                org.apache.rocketmq.remoting.protocol.ResponseCode.BROADCAST_CONSUMPTION)) {
+            return true;
+        }
         String message = e.getMessage();
-        return message != null && message.contains("not online");
+        return message != null && (message.contains("not online")
+                || message.contains("Not found the consumer group connection"));
     }
 
     // ── Helper methods ──────────────────────────────────────────────────

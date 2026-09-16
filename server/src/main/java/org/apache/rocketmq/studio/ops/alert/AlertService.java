@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.time.LocalDateTime;
@@ -226,12 +227,9 @@ public class AlertService {
     }
 
     private void rejectDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
-        String fingerprint = AlertRuleSemanticFingerprint.of(rule);
-        boolean duplicate = alertRepository.findAllRules().stream()
-                .filter(candidate -> !Objects.equals(candidate.getId(), excludedId))
-                .anyMatch(candidate -> AlertRuleSemanticFingerprint.of(candidate).equals(fingerprint));
-        if (duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+        AlertRuleVO duplicate = findDuplicateSemanticRule(rule, excludedId);
+        if (duplicate != null) {
+            throw duplicateRuleException(duplicate);
         }
     }
 
@@ -239,7 +237,7 @@ public class AlertService {
         try {
             return alertRepository.insertRule(rule);
         } catch (DuplicateKeyException duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+            throw duplicateRuleException(findDuplicateSemanticRule(rule, null));
         }
     }
 
@@ -247,8 +245,24 @@ public class AlertService {
         try {
             return alertRepository.replaceRule(rule);
         } catch (DuplicateKeyException duplicate) {
-            throw new BusinessException(409, "An alert rule with the same evaluation conditions already exists");
+            throw duplicateRuleException(findDuplicateSemanticRule(rule, rule.getId()));
         }
+    }
+
+    private AlertRuleVO findDuplicateSemanticRule(AlertRuleVO rule, Long excludedId) {
+        String fingerprint = AlertRuleSemanticFingerprint.of(rule);
+        return alertRepository.findAllRules().stream()
+                .filter(candidate -> !Objects.equals(candidate.getId(), excludedId))
+                .filter(candidate -> AlertRuleSemanticFingerprint.of(candidate).equals(fingerprint))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static BusinessException duplicateRuleException(AlertRuleVO existing) {
+        String suffix = existing != null && StringUtils.hasText(existing.getName())
+                ? ": " + existing.getName() : "";
+        return new BusinessException(409,
+                "An alert rule with the same evaluation conditions already exists" + suffix);
     }
 
     private void requireDomain(AlertDomain domain) {
@@ -570,8 +584,12 @@ public class AlertService {
         if (!alertRepository.acknowledgeAlert(alert)) {
             throw new BusinessException(404, "System alert not found: " + id);
         }
-        if ("FIRING".equalsIgnoreCase(alert.getTransition())
-                && alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null) {
+        // FIRING and REMINDER events belong to the same firing episode, so acknowledging
+        // either must ACK the active state; the repository only honors events whose time
+        // is not older than the current episode, which keeps stale events inert.
+        String transition = alert.getTransition();
+        if (alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null
+                && ("FIRING".equalsIgnoreCase(transition) || "REMINDER".equalsIgnoreCase(transition))) {
             alertStateRepository.acknowledge(new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
                     alert.getTime().toInstant(ZoneOffset.UTC));
         }
@@ -695,10 +713,46 @@ public class AlertService {
     }
 
     private String labelSelector(AlertRuleVO rule) {
+        Optional<String> semantic = scopeSemanticMetric(rule.getMetric());
         StringBuilder selector = new StringBuilder();
+        // cluster is spelled identically by both profiles. The broker dimension is node_id on the
+        // 5.x native profile, so use the profile's own name when it maps one; a metric no profile
+        // knows (a custom exporter rule) keeps the literal name, because dropping the scope would
+        // silently widen the rule.
         appendLabel(selector, "cluster", rule.getClusterName());
-        appendLabel(selector, "broker", rule.getBrokerName());
+        appendLabel(selector, resolveScopeLabel(semantic, "broker", "broker"), rule.getBrokerName());
+        appendScopeLabel(selector, semantic, "consumer_group", rule.getConsumerGroup());
+        appendScopeLabel(selector, semantic, "topic", rule.getTopic());
         return selector.isEmpty() ? "" : "{" + selector + "}";
+    }
+
+    /**
+     * Semantic metric the rule actually references — a native key through
+     * {@link #NATIVE_METRIC_SEMANTIC}, otherwise matched against the active profile's semantic keys
+     * and exporter names. Empty when no profile knows the metric: falling back to the consumer-lag
+     * mapping would borrow that metric's label names and emit, say, {@code consumer_group} on a
+     * series that carries no such label, silently matching an empty set.
+     */
+    private Optional<String> scopeSemanticMetric(String metric) {
+        String normalized = hasText(metric) ? metric.trim() : "";
+        return Optional.ofNullable(NATIVE_METRIC_SEMANTIC.get(normalized))
+                .or(() -> metricProfileService.resolveSemanticMetric(normalized));
+    }
+
+    private String resolveScopeLabel(Optional<String> semantic, String scope, String fallback) {
+        return semantic.flatMap(key -> metricProfileService.resolveCurrentScopeLabel(key, scope))
+                .orElse(fallback);
+    }
+
+    private void appendScopeLabel(StringBuilder selector, Optional<String> semantic, String scope, String value) {
+        if (!hasText(value) || "*".equals(value.trim())) {
+            return;
+        }
+        // A label name guessed for the wrong profile (e.g. "group" on a 5.x deployment)
+        // matches an empty series set and silently disables the alert, so the name must
+        // come from the active profile's mapping; an unmapped scope drops the selector.
+        semantic.flatMap(key -> metricProfileService.resolveCurrentScopeLabel(key, scope))
+                .ifPresent(label -> appendLabel(selector, label, value));
     }
 
     private void appendLabel(StringBuilder selector, String label, String value) {

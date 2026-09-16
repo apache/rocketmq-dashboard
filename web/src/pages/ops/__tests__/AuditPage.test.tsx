@@ -129,7 +129,7 @@ describe('Audit page', () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
     await waitFor(() =>
       expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
@@ -179,11 +179,55 @@ describe('Audit page', () => {
 
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('重载 Proxy 配置')).toBeInTheDocument();
-    expect(screen.getByText('Proxy')).toBeInTheDocument();
-    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(await screen.findAllByText('重载 Proxy 配置')).not.toHaveLength(0);
+    expect(screen.getAllByText('Proxy')).not.toHaveLength(0);
+    expect(screen.getAllByText('成功')).not.toHaveLength(0);
     expect(screen.getByText('topic: orders')).toBeInTheDocument();
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
+  });
+
+  it('opens a resource timeline from a non-empty audit target', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    await user.click(await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }));
+
+    expect(await screen.findByText('资源操作时间线')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenCalledWith({
+        page: 1,
+        pageSize: 20,
+        resourceType: 'TOPIC',
+        target: 'topic-a',
+        clusterId: 'prod-cn',
+      }),
+    );
+  });
+
+  it('does not offer a timeline action for an empty audit target', async () => {
+    vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+      items: [
+        {
+          id: 3,
+          timestamp: '2026-08-01 12:00:00',
+          operator: 'ops-user',
+          operationType: 'UPDATE_SETTINGS',
+          resourceType: 'SETTINGS',
+          target: '',
+          clusterId: null,
+          detail: 'updated settings',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AuditPage />);
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /操作时间线/ })).not.toBeInTheDocument();
   });
 
   it('loads a filtered server-side summary dashboard', async () => {
@@ -208,12 +252,12 @@ describe('Audit page', () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
     await user.click(screen.getByRole('combobox', { name: '操作类型' }));
     await user.click(
       await screen.findByText('创建 Topic', { selector: '.ant-select-item-option-content' }),
     );
-    expect(screen.getByText('成功')).toBeInTheDocument();
+    expect(screen.getAllByText('成功')).not.toHaveLength(0);
     await user.click(screen.getByRole('combobox', { name: '资源类型' }));
     await user.click(
       await screen.findByText('消费组', {

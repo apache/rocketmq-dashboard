@@ -23,7 +23,9 @@ import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfile;
 import org.apache.rocketmq.studio.cluster.metrics.MetricProfileService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricProfileVO;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -477,6 +479,159 @@ class AlertServiceTest {
                 .contains("- name: rocketmq-consumer.rules");
     }
 
+    private AlertService alertServiceWithProfile(String profileId) {
+        PrometheusProperties properties = new PrometheusProperties();
+        properties.setProfile(profileId);
+        return new AlertService(alertRepository, alertStateRepository, new AlertRuleAssetService(),
+                operationAuditService, new MetricProfileService(properties));
+    }
+
+    private MetricProfileVO.MetricMappingVO activeLagMapping(String profileId) {
+        PrometheusProperties properties = new PrometheusProperties();
+        properties.setProfile(profileId);
+        return new MetricProfileService(properties).listProfiles().get(0).getMetrics().stream()
+                .filter(metric -> "consumer_lag_messages".equals(metric.getSemanticMetric()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldKeepConsumerGroupScopeOnNativeProfileTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Orders Group Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(5000)
+                .consumerGroup("cg-orders")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        // The 5.x native profile labels consumer-group series "consumer_group"; a hardcoded
+        // "group" selector would match an empty series set and silently disable the alert.
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages{consumer_group=\"cg-orders\"} > 5000")
+                .doesNotContain("rocketmq_consumer_lag_messages{group=")
+                .doesNotContain("expr: rocketmq_consumer_lag_messages >");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldUseTheNativeBrokerLabelTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Broker Inbound TPS")
+                .metric("rocketmq_messages_in_total")
+                .operator(">")
+                .threshold(1000)
+                .brokerName("broker-a")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        // The 5.x native profile aggregates the broker dimension as node_id, so a literal
+        // broker="..." selector matches an empty series set and the rule never fires.
+        assertThat(result)
+                .contains("expr: rocketmq_messages_in_total{node_id=\"broker-a\"} > 1000")
+                .doesNotContain("rocketmq_messages_in_total{broker=");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldDropScopesTheReferencedMetricDoesNotCarryTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Payments Inbound TPS")
+                .metric("rocketmq_messages_in_total")
+                .operator(">")
+                .threshold(1000)
+                .consumerGroup("cg-payments")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        // rocketmq_messages_in_total series carry no consumer_group label. Borrowing the
+        // consumer-lag mapping's label names for an unrelated metric emits a selector that
+        // matches nothing, which silently disables the rule instead of failing loudly.
+        assertThat(result)
+                .contains("expr: rocketmq_messages_in_total > 1000")
+                .doesNotContain("consumer_group=");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldKeepConsumerGroupScopeOnExporterProfileTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Orders Group Lag")
+                .metric("consumer.lag.total")
+                .operator(">")
+                .threshold(5000)
+                .consumerGroup("cg-orders")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertServiceWithProfile(MetricProfile.ROCKETMQ_4_EXPORTER.getId())
+                .exportPrometheusRulesYaml();
+
+        // On the 4.x exporter profile the metric resolves to rocketmq_message_accumulation and
+        // the consumer-group dimension is the "group" label, per the profile's own mapping.
+        MetricProfileVO.MetricMappingVO lagMapping = activeLagMapping(MetricProfile.ROCKETMQ_4_EXPORTER.getId());
+        assertThat(lagMapping.getPrometheusMetric()).isEqualTo("rocketmq_message_accumulation");
+        assertThat(lagMapping.getScopeLabels()).containsEntry("consumer_group", "group");
+        assertThat(result)
+                .contains("expr: rocketmq_message_accumulation{group=\"cg-orders\"} > 5000")
+                .doesNotContain("consumer_group=\"")
+                .doesNotContain("expr: rocketmq_message_accumulation >");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldKeepTopicScopeOnBothProfilesTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Payments Backlog")
+                .metric("consumer.lag.total")
+                .operator(">")
+                .threshold(2000)
+                .clusterName("DefaultCluster")
+                .consumerGroup("cg-payments")
+                .topic("payments")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        // Both profiles spell the cluster and topic dimensions identically, so the same rule
+        // exports with the profile-correct metric name and consumer-group label either way.
+        assertThat(alertService.exportPrometheusRulesYaml())
+                .contains("expr: rocketmq_consumer_lag_messages{cluster=\"DefaultCluster\","
+                        + "consumer_group=\"cg-payments\",topic=\"payments\"} > 2000");
+        assertThat(alertServiceWithProfile(MetricProfile.ROCKETMQ_4_EXPORTER.getId())
+                .exportPrometheusRulesYaml())
+                .contains("expr: rocketmq_message_accumulation{cluster=\"DefaultCluster\","
+                        + "group=\"cg-payments\",topic=\"payments\"} > 2000");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldIgnoreWildcardGroupAndTopicScopeTest() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Any Group Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .consumerGroup("*")
+                .topic(" ")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages > 1000")
+                .doesNotContain("consumer_group=\"")
+                .doesNotContain("topic=\"");
+    }
+
     @Test
     void exportPrometheusRulesYamlShouldEmitEmptyGroupsWhenAllRulesUseUnexportableNativeMetricsTest() {
         AlertRuleVO rule = AlertRuleVO.builder()
@@ -841,7 +996,7 @@ class AlertServiceTest {
 
         assertThatThrownBy(() -> alertService.createRule(duplicate))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("An alert rule with the same evaluation conditions already exists")
+                .hasMessage("An alert rule with the same evaluation conditions already exists: Existing rule")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
 
         verify(alertRepository, never()).insertRule(any());
@@ -875,7 +1030,7 @@ class AlertServiceTest {
 
         assertThatThrownBy(() -> alertService.updateRule(update))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("An alert rule with the same evaluation conditions already exists")
+                .hasMessage("An alert rule with the same evaluation conditions already exists: Existing")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
 
         verify(alertRepository, never()).replaceRule(any());
@@ -1231,6 +1386,20 @@ class AlertServiceTest {
 
         verify(alertStateRepository).acknowledge(new AlertStateKey(7L, "fingerprint"),
                 LocalDateTime.of(2026, 8, 22, 12, 0).toInstant(ZoneOffset.UTC));
+    }
+
+    @Test
+    void acknowledgingReminderEventShouldAcknowledgeItsActiveRuleStateTest() {
+        SystemAlertVO alert = SystemAlertVO.builder().id(1L).ruleId(7L).fingerprint("fingerprint")
+                .time(LocalDateTime.of(2026, 8, 22, 12, 30))
+                .transition("REMINDER").acknowledged(false).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(alert));
+        when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
+
+        alertService.acknowledgeAlert(1L);
+
+        verify(alertStateRepository).acknowledge(new AlertStateKey(7L, "fingerprint"),
+                LocalDateTime.of(2026, 8, 22, 12, 30).toInstant(ZoneOffset.UTC));
     }
 
     @Test

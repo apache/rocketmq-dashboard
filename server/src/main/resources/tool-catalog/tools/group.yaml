@@ -1,0 +1,599 @@
+version: 2.0.0
+tools:
+  - name: rmq.group.list
+    cli:
+      resource: group
+      verb: list
+    description: List RocketMQ consumer groups in one Studio Instance.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          description: Fuzzy consumer group name filter.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - onlineInstances
+              - totalLag
+              - subscribedTopics
+              - retryMaxTimes
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+              clusterId:
+                type: string
+              subscriptionMode:
+                enum:
+                  - Push
+                  - Pop
+              consumeType:
+                enum:
+                  - CLUSTERING
+                  - BROADCASTING
+              onlineInstances:
+                type: integer
+              totalLag:
+                type: integer
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              retryMaxTimes:
+                type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.group.detail
+    cli:
+      resource: group
+      verb: detail
+    description: "Show full detail of one RocketMQ consumer group: configurations, health, subscriptions, client instances, queue-level consume progress and online clients. The optional topicName filters the progress and clients blocks; both blocks stay empty (without failing the call) when no consumer is online."
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        topicName:
+          type: string
+          description: Filter the progress and clients blocks by topic name.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - instanceId
+        - group
+        - onlineInstances
+        - totalLag
+        - subscribedTopics
+        - subscriptions
+        - delaySeconds
+        - health
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        group:
+          type: string
+          minLength: 1
+        subscriptionMode:
+          enum:
+            - Push
+            - Pop
+        consumeType:
+          enum:
+            - CLUSTERING
+            - BROADCASTING
+        onlineInstances:
+          type: integer
+          minimum: 0
+        totalLag:
+          type: integer
+          minimum: -1
+        subscribedTopics:
+          type: array
+          items:
+            type: string
+        subscriptionDataType:
+          type: string
+        deliveryOrderType:
+          type: string
+        retryMaxTimes:
+          type: integer
+          minimum: 0
+        delaySeconds:
+          type: integer
+          minimum: 0
+        subscriptions:
+          type: array
+          items:
+            type: object
+            required:
+              - topic
+            additionalProperties: false
+            properties:
+              topic:
+                type: string
+                minLength: 1
+              expression:
+                type: string
+              type:
+                type: string
+              filterMode:
+                type: string
+              consistency:
+                type: string
+        instances:
+          type: array
+          items:
+            type: object
+            required:
+              - protocol
+              - subscribedTopics
+              - topicLag
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+              protocol:
+                enum:
+                  - gRPC
+                  - Remoting
+                  - UNKNOWN
+              address:
+                type: string
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              lastHeartbeat:
+                type: string
+              topicLag:
+                type: object
+                additionalProperties:
+                  type: integer
+        health:
+          type: object
+          required:
+            - status
+            - reasons
+          additionalProperties: false
+          properties:
+            status:
+              enum:
+                - HEALTHY
+                - WARNING
+                - UNHEALTHY
+                - UNKNOWN
+            reasons:
+              type: array
+              items:
+                type: string
+        configurations:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - onlineInstances
+              - totalLag
+              - subscribedTopics
+              - retryMaxTimes
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                minLength: 1
+              clusterId:
+                type: string
+              subscriptionMode:
+                enum:
+                  - Push
+                  - Pop
+              consumeType:
+                enum:
+                  - CLUSTERING
+                  - BROADCASTING
+              onlineInstances:
+                type: integer
+              totalLag:
+                type: integer
+              subscribedTopics:
+                type: array
+                items:
+                  type: string
+              retryMaxTimes:
+                type: integer
+        progress:
+          type: object
+          description: Queue-level consume progress; empty queues when no consumer is online.
+          required:
+            - totalLag
+          additionalProperties: false
+          properties:
+            totalLag:
+              type: integer
+              minimum: -1
+            queues:
+              type: array
+              items:
+                type: object
+                required:
+                  - broker
+                  - queueId
+                  - brokerOffset
+                  - consumerOffset
+                  - lag
+                additionalProperties: false
+                properties:
+                  broker:
+                    type: string
+                  queueId:
+                    type: integer
+                    minimum: 0
+                  brokerOffset:
+                    type: integer
+                    minimum: -1
+                  consumerOffset:
+                    type: integer
+                    minimum: -1
+                  lag:
+                    type: integer
+                    minimum: -1
+        clients:
+          type: object
+          description: Online consumer clients; empty clients when no consumer is online.
+          required:
+            - totalClients
+          additionalProperties: false
+          properties:
+            totalClients:
+              type: integer
+              minimum: 0
+            clients:
+              type: array
+              items:
+                type: object
+                required:
+                  - protocol
+                  - subscribedTopics
+                  - topicLag
+                additionalProperties: false
+                properties:
+                  clientId:
+                    type: string
+                  protocol:
+                    enum:
+                      - gRPC
+                      - Remoting
+                      - UNKNOWN
+                  address:
+                    type: string
+                  language:
+                    type: string
+                  version:
+                    type: string
+                  active:
+                    type: boolean
+                  subscribedTopics:
+                    type: array
+                    items:
+                      type: string
+                  lastHeartbeat:
+                    type: string
+                  topicLag:
+                    type: object
+                    additionalProperties:
+                      type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.update
+    cli:
+      resource: group
+      verb: update
+    description: Update a RocketMQ consumer group.
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        subscriptionMode:
+          enum:
+            - Push
+            - Pop
+        consumeType:
+          enum:
+            - CLUSTERING
+            - BROADCASTING
+        subscriptionDataType:
+          type: string
+          minLength: 1
+        deliveryOrderType:
+          type: string
+          minLength: 1
+        retryMaxTimes:
+          type: integer
+          minimum: 0
+        delaySeconds:
+          type: integer
+          minimum: 0
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.reset_offset
+    cli:
+      resource: group
+      verb: reset-offset
+    description: Reset consumer offset for a group on a topic to a timestamp.
+    riskLevel: L2
+    permission: group:write
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+        - topicName
+        - timestamp
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        topicName:
+          type: string
+          minLength: 1
+        timestamp:
+          type: integer
+          description: Epoch milliseconds to reset to; rmqctl fills in the current time when the flag is not provided.
+          x-client-default: NOW
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - reset
+            - group
+            - topic
+            - timestamp
+          additionalProperties: false
+          properties:
+            reset:
+              type: boolean
+            group:
+              type: string
+            topic:
+              type: string
+            timestamp:
+              type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.group.delete
+    cli:
+      resource: group
+      verb: delete
+    description: "Delete a RocketMQ consumer group; the group's dead-letter topic (%DLQ%<group>) is deleted on a best-effort basis."
+    riskLevel: L3
+    permission: group:delete
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false

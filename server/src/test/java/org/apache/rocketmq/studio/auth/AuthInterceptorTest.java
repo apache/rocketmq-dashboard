@@ -18,8 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.junit.jupiter.api.AfterEach;
-import org.apache.rocketmq.studio.ops.ai.tool.ToolAccessPolicy;
-import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
@@ -315,6 +314,36 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/studio-users",
+        "/api/studio-users/",
+        "/api/studio-users/sessions/overview"
+    })
+    void shouldRejectStudioUserReadsForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("GET", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowStudioSessionOverviewForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/studio-users/sessions/overview", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
     @Test
     void shouldRejectLlmModelDiscoveryForNonAdminUser() throws Exception {
         TestSession session = login(false);
@@ -407,7 +436,7 @@ class AuthInterceptorTest {
     void shouldAllowReaderSafeAiToolExecutionForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
-                "POST", "/api/ai/tools/rmq.capabilities/execute", session.token());
+                "POST", "/api/ai/tools/rmq.instance.capabilities/execute", session.token());
 
         boolean allowed = session.interceptor().preHandle(
                 request, new MockHttpServletResponse(), new Object());
@@ -416,17 +445,15 @@ class AuthInterceptorTest {
     }
 
     @Test
-    void shouldRejectHighRiskAiToolExecutionForNonAdminUser() throws Exception {
+    void shouldAllowSafeMessageTraceForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
-                "POST", "/api/ai/tools/rmq.message.query/execute", session.token());
-        MockHttpServletResponse response = new MockHttpServletResponse();
+                "POST", "/api/ai/tools/rmq.message.trace/execute", session.token());
 
-        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
 
-        assertThat(allowed).isFalse();
-        assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getContentAsString()).contains("Admin permission required");
+        assertThat(allowed).isTrue();
     }
 
     @Test
@@ -595,7 +622,7 @@ class AuthInterceptorTest {
                 properties,
                 authService,
                 settingsRepository,
-                new ToolAccessPolicy(new ToolCatalog(new DefaultResourceLoader())));
+                new ToolCatalog(new DefaultResourceLoader()));
     }
 
     private MockHttpServletRequest authenticatedRequest(String method, String path, String token) {

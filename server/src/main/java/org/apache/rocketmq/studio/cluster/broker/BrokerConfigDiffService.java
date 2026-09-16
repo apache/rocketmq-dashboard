@@ -49,6 +49,11 @@ public class BrokerConfigDiffService {
     private final ClusterService clusterService;
     private final RocketMQBrokerConfigService brokerConfigService;
 
+    public BrokerConfigDiffVO compareForInstance(String instanceId) {
+        ClusterVO cluster = clusterService.requireSingleCluster(instanceId);
+        return compare(cluster.getId(), instanceId, collectBrokerTargets(cluster));
+    }
+
     public BrokerConfigDiffVO compare(String clusterId, String instanceId) {
         String normalizedClusterId = requireClusterId(clusterId);
         String normalizedInstanceId = normalizeInstanceId(instanceId);
@@ -56,6 +61,10 @@ public class BrokerConfigDiffService {
                 ? clusterService.getCluster(normalizedClusterId)
                 : clusterService.getCluster(normalizedClusterId, normalizedInstanceId);
         List<BrokerTarget> brokers = collectBrokerTargets(cluster);
+        return compare(normalizedClusterId, normalizedInstanceId, brokers);
+    }
+
+    private BrokerConfigDiffVO compare(String normalizedClusterId, String normalizedInstanceId, List<BrokerTarget> brokers) {
         if (brokers.isEmpty()) {
             throw new BusinessException(409, "Cluster has no broker endpoints: " + normalizedClusterId);
         }

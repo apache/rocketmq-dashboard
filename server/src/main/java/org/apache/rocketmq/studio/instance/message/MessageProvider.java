@@ -30,6 +30,13 @@ public interface MessageProvider {
                 startTime, endTime));
     }
 
+    /**
+     * Lookup by the client-generated unique key (UNIQ_KEY index). Without a time window the
+     * provider defaults to a recent 3-day range; no match returns an empty list.
+     */
+    List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                  Long startTime, Long endTime);
+
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 
     List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic);

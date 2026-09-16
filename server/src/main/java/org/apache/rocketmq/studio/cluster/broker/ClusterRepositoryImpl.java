@@ -121,6 +121,10 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .diskUsage(broker.getDiskUsage())
                 .tpsIn(broker.getTpsIn())
                 .tpsOut(broker.getTpsOut())
+                .putMessagesToday(broker.getPutMessagesToday())
+                .putMessagesYesterday(broker.getPutMessagesYesterday())
+                .getMessagesToday(broker.getGetMessagesToday())
+                .getMessagesYesterday(broker.getGetMessagesYesterday())
                 .runtimeStatsAvailable(broker.isRuntimeStatsAvailable())
                 .build();
     }
@@ -196,6 +200,10 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                                 .diskUsage(45.2)
                                 .tpsIn(1200)
                                 .tpsOut(800)
+                                .putMessagesToday(1500)
+                                .putMessagesYesterday(1200)
+                                .getMessagesToday(1300)
+                                .getMessagesYesterday(1000)
                                 .build(),
                         BrokerVO.builder()
                                 .name("broker-b")

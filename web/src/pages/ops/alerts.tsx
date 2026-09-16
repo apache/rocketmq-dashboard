@@ -65,7 +65,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatDateTime } from '../../utils/format';
+import { formatUtcDateTime } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -76,6 +76,7 @@ import {
   type AlertTemplatePreviewIssue,
 } from '../../utils/alertTemplatePreview';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
+import { describeApiError } from '../../utils/apiError';
 const { TextArea } = Input;
 
 const channelColors: Record<string, string> = {
@@ -448,8 +449,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       setPage(1);
       refreshRules();
       message.success(t('alerts.importSuccess', { count: imported.length }));
-    } catch {
-      message.error(t('alerts.importFailed'));
+    } catch (error) {
+      message.error(describeApiError(error, t('alerts.importFailed')));
     } finally {
       setTransferringRules(false);
     }
@@ -696,7 +697,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
-          formatDateTime(record.lastTriggered)
+          // The backend stamps lastTriggered with ZoneOffset.UTC without an offset suffix;
+          // parse it as UTC so the column matches the system alerts page in any browser TZ.
+          formatUtcDateTime(record.lastTriggered)
         ) : (
           <span style={{ color: '#999' }}>{t('alerts.neverTriggered')}</span>
         ),
@@ -1005,6 +1008,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           loading={loading}
           rowSelection={rowSelection}
           pagination={false}
+          tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
         />
         <Flex justify="flex-end" style={{ padding: '16px' }}>
@@ -1250,7 +1254,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="windowSeconds" label={t('alerts.windowSeconds')} initialValue={0}>
+            <Form.Item
+              name="windowSeconds"
+              label={t('alerts.windowSeconds')}
+              initialValue={0}
+              extra={t('alerts.windowRetentionHelp')}
+            >
               <InputNumber min={0} precision={0} style={{ width: '100%' }} />
             </Form.Item>
 

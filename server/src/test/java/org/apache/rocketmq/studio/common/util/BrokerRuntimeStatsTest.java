@@ -53,4 +53,40 @@ class BrokerRuntimeStatsTest {
         assertThat(BrokerRuntimeStats.outboundTps(new HashMap<>())).isNull();
         assertThat(BrokerRuntimeStats.outboundTps(null)).isNull();
     }
+
+    @Test
+    void dailyCounterDeltaSubtractsMorningSnapshotTest() {
+        Map<String, String> stats = new HashMap<>();
+        stats.put("msgPutTotalTodayMorning", "1400");
+        stats.put("msgPutTotalTodayNow", "2000");
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(stats,
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isEqualTo(600L);
+    }
+
+    @Test
+    void dailyCounterDeltaClampsRestartResetToZeroTest() {
+        Map<String, String> stats = new HashMap<>();
+        stats.put("msgPutTotalTodayMorning", "1400");
+        stats.put("msgPutTotalTodayNow", "300");
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(stats,
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isZero();
+    }
+
+    @Test
+    void dailyCounterDeltaReturnsZeroWhenMissingOrUnparseableTest() {
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(new HashMap<>(),
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isZero();
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(null,
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isZero();
+        Map<String, String> stats = new HashMap<>();
+        stats.put("msgPutTotalTodayMorning", "1400");
+        stats.put("msgPutTotalTodayNow", "not-a-number");
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(stats,
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isZero();
+        Map<String, String> negative = new HashMap<>();
+        negative.put("msgPutTotalTodayMorning", "-5");
+        negative.put("msgPutTotalTodayNow", "10");
+        assertThat(BrokerRuntimeStats.dailyCounterDelta(negative,
+                "msgPutTotalTodayMorning", "msgPutTotalTodayNow")).isZero();
+    }
 }

@@ -28,6 +28,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsRequest;
@@ -37,7 +38,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -45,6 +48,7 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -129,16 +133,35 @@ class AliyunInstanceProviderTest {
         assertThat(all).hasSize(3);
         assertThat(all.get(0).getName()).isEqualTo("topic-normal");
         assertThat(all.get(0).getType()).isEqualTo(TopicType.NORMAL);
+        assertThat(all.get(0).getPerm()).isEqualTo(TopicPerm.RW);
         assertThat(all.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(all.get(0).getWriteQueues()).isZero();
         assertThat(all.get(0).getReadQueues()).isZero();
         assertThat(all.get(0).getRemark()).isEqualTo("remark-topic-normal");
-        assertThat(all.get(2).getType()).isNull();
+        assertThat(all.get(2).getType()).isEqualTo(TopicType.NORMAL);
 
         List<TopicVO> fifos = provider.listTopics(STUDIO_INSTANCE_ID, "FIFO", null);
 
         assertThat(fifos).hasSize(1);
         assertThat(fifos.get(0).getType()).isEqualTo(TopicType.FIFO);
+    }
+
+    @Test
+    void listTopicsShouldGuaranteeTypeAndPermForAiToolProjectionTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                topicsResponse(
+                        topicRow("topic-untyped", null),
+                        topicRow("topic-unknown", "NEW_TYPE"))));
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, null, null);
+
+        assertThat(topics).hasSize(2);
+        assertThat(topics).allSatisfy(topic -> {
+            assertThat(topic.getType()).isEqualTo(TopicType.NORMAL);
+            assertThat(topic.getPerm()).isEqualTo(TopicPerm.RW);
+        });
     }
 
     @Test
@@ -222,6 +245,37 @@ class AliyunInstanceProviderTest {
         assertThat(groups.get(0).getName()).isEqualTo("GID_test");
         assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+    }
+
+    @Test
+    void listConsumerGroupsShouldFallBackWhenMessageModelMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.Arrays.asList(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_plain")
+                                        .status("RUNNING")
+                                        .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            // read paths (web detail, AI rmq.group.list) require both enums to be non-null
+            assertThat(group.getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+            assertThat(group.getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+        });
     }
 
     @Test
@@ -313,17 +367,41 @@ class AliyunInstanceProviderTest {
 
         List<QueueProgressVO> rows = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
 
-        assertThat(rows).hasSize(2);
+        // with a topic breakdown the aggregate total row is dropped, otherwise callers
+        // that sum the rows would report the same lag twice
+        assertThat(rows).hasSize(1);
         QueueProgressVO topicRow = rows.stream()
                 .filter(row -> "topic:topic-a".equals(row.getBroker()))
                 .findFirst()
                 .orElseThrow();
         assertThat(topicRow.getDiffTotal()).isEqualTo(42L);
-        QueueProgressVO totalRow = rows.stream()
-                .filter(row -> "total".equals(row.getBroker()))
-                .findFirst()
-                .orElseThrow();
-        assertThat(totalRow.getDiffTotal()).isEqualTo(100L);
+        assertThat(rows).noneMatch(row -> "total".equals(row.getBroker()));
+    }
+
+    @Test
+    void getGroupProgressShouldFallBackToTotalRowWithoutTopicBreakdownTest() {
+        stubInstance();
+        stubCallThrough();
+        GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetConsumerGroupLagResponseBody.builder()
+                        .data(GetConsumerGroupLagResponseBody.Data.builder()
+                                .consumerGroupId("GID_test")
+                                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder()
+                                        .readyCount(100L)
+                                        .build())
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.getConsumerGroupLag(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<QueueProgressVO> rows = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.getBroker()).isEqualTo("total");
+            assertThat(row.getDiffTotal()).isEqualTo(100L);
+        });
     }
 
     @Test
@@ -419,6 +497,73 @@ class AliyunInstanceProviderTest {
 
         assertThat(filtered).hasSize(1);
         assertThat(filtered.get(0).getMsgId()).isEqualTo("msg-2");
+    }
+
+    @Test
+    void queryMessagesDetailedShouldReportTruncationAtPageBudgetTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    101L, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "tagA"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(100);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(asyncClient, times(AliyunConverters.MESSAGE_MAX_PAGES)).listMessages(any());
+    }
+
+    @Test
+    void queryMessagesDetailedShouldPreserveTruncationAfterLocalTagFilterTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    null, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "other-tag"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void queryMessagesDetailedShouldRemainCompleteWhenTotalCountEndsAtBudgetTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenAnswer(invocation -> {
+            ListMessagesRequest request = invocation.getArgument(0);
+            return CompletableFuture.completedFuture(messagesResponse(
+                    100L, request.getPageNumber(), AliyunConverters.MESSAGE_PAGE_SIZE, "tagA"));
+        });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(100);
+        assertThat(result.mayBeTruncated()).isFalse();
+    }
+
+    @Test
+    void queryMessagesDetailedShouldRemainCompleteOnShortPageTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(null, 1, 3, "tagA")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).hasSize(3);
+        assertThat(result.mayBeTruncated()).isFalse();
+        verify(asyncClient).listMessages(any());
     }
 
     @Test
@@ -684,6 +829,27 @@ class AliyunInstanceProviderTest {
                 .topicName(name)
                 .messageType(messageType)
                 .remark("remark-" + name)
+                .build();
+    }
+
+    private static ListMessagesResponse messagesResponse(Long totalCount, int pageNumber, int count, String tag) {
+        List<ListMessagesResponseBody.List> rows = IntStream.range(0, count)
+                .mapToObj(index -> ListMessagesResponseBody.List.builder()
+                        .messageId("msg-" + pageNumber + "-" + index)
+                        .topicName("topic-a")
+                        .messageTag(tag)
+                        .build())
+                .toList();
+        return ListMessagesResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListMessagesResponseBody.builder()
+                        .data(ListMessagesResponseBody.Data.builder()
+                                .list(rows)
+                                .pageNumber((long) pageNumber)
+                                .pageSize((long) AliyunConverters.MESSAGE_PAGE_SIZE)
+                                .totalCount(totalCount)
+                                .build())
+                        .build())
                 .build();
     }
 

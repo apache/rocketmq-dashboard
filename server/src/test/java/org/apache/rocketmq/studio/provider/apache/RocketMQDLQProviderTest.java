@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -28,6 +29,7 @@ import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -386,6 +388,28 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listMessagesShouldCarryReconsumeTimes() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-msg-retry");
+        deadLetter.setTopic("orders");
+        deadLetter.setStoreTimestamp(1_700_000_000_000L);
+        deadLetter.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        deadLetter.setReconsumeTimes(3);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt())).thenReturn(pullResult);
+
+        PageResult<DLQMessageVO> page = provider.listMessages(
+                "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
+
+        assertThat(page.getItems()).hasSize(1);
+        assertThat(page.getItems().get(0).getReconsumeTimes()).isEqualTo(3);
+    }
+
+    @Test
     void resendSelectedMessagesResolvesInTopologyMsgIdNormally() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
@@ -472,6 +496,64 @@ class RocketMQDLQProviderTest {
                 isNull(),
                 contains("matched=0, resent=0, failed=0"),
                 eq("NO_MESSAGES"));
+    }
+
+    @Test
+    void listMessagesDegradesToEmptyWhenDlqTopicMissingTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getItems()).isEmpty();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesThrowsNotFoundWhenDlqTopicMissingTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void listMessagesDegradesToEmptyWhenClientReportsNoMessageTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        // NO_MESSAGE carries neither "can not find message queue" nor "no topic route info", so
+        // only the response-code check recognises it as a missing DLQ topic.
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+
+        assertThat(page.getTotal()).isZero();
+        assertThat(page.getItems()).isEmpty();
+        verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendMessagesThrowsNotFoundWhenClientReportsNoMessageTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
+                        "query message by key finished, but no message."));
+
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
     @Test

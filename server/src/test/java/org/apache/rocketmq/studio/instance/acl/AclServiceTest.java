@@ -23,7 +23,9 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
-import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
+import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,10 +68,13 @@ class AclServiceTest {
     private OperationAuditService operationAuditService;
 
     @Mock
-    private InstanceRepository instanceRepository;
+    private InstanceResolver instanceResolver;
 
     @Mock
     private TencentAclService tencentAclService;
+
+    @Mock
+    private ClusterProvider clusterProvider;
 
     @InjectMocks
     private AclService aclService;
@@ -94,16 +99,16 @@ class AclServiceTest {
                 AclRuleVO.builder().principal("user1").resource("topic-1").decision("ALLOW").build(),
                 AclRuleVO.builder().principal("user2").resource("topic-2").decision("DENY").build()
         );
-        when(aclRepository.findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5))
+        when(aclRepository.findRulePage("user1", "topic", "cluster", "ALLOW", null, 2, 5))
                 .thenReturn(PageResult.of(rules, 12, 2, 5));
 
         PageResult<AclRuleVO> result = aclService.listRules("user1", "topic", "cluster",
-                "ALLOW", "2.0", null, 2, 5);
+                "ALLOW", null, 2, 5);
 
         assertThat(result.getItems()).hasSize(2);
         assertThat(result.getItems().get(0).getPrincipal()).isEqualTo("user1");
         assertThat(result.getTotal()).isEqualTo(12);
-        verify(aclRepository).findRulePage("user1", "topic", "cluster", "ALLOW", "2.0", 2, 5);
+        verify(aclRepository).findRulePage("user1", "topic", "cluster", "ALLOW", null, 2, 5);
     }
 
     @Test
@@ -114,7 +119,7 @@ class AclServiceTest {
                 .type(InstanceType.DIRECT)
                 .build();
         instance.setId(1L);
-        when(instanceRepository.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
+        when(instanceResolver.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
 
         AclCapabilitiesVO capabilities = aclService.capabilities("instance-1");
 
@@ -128,7 +133,7 @@ class AclServiceTest {
 
     @Test
     void capabilitiesShouldRejectUnknownInstance() {
-        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
+        when(instanceResolver.findByIdentifier("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> aclService.capabilities("missing"))
                 .isInstanceOf(BusinessException.class)
@@ -141,7 +146,7 @@ class AclServiceTest {
                 .thenReturn(PageResult.empty(1, 20));
 
         PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
-                null, null, null);
+                null, null);
 
         assertThat(result.getItems()).isEmpty();
         verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
@@ -150,16 +155,16 @@ class AclServiceTest {
     @Test
     void listRulesShouldRejectInvalidPaginationBeforeQueryingRules() {
         assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
-                null, 0, 20))
+                0, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
-                null, 1, 0))
+                1, 0))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
         assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
-                null, 1, 101))
+                1, 101))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
 
@@ -171,19 +176,19 @@ class AclServiceTest {
         when(aclRepository.findRulePage(null, null, null, null, null, 1, 100))
                 .thenReturn(PageResult.empty(1, 100));
 
-        aclService.listRules(null, null, null, null, null, null, 1, 100);
+        aclService.listRules(null, null, null, null, null, 1, 100);
 
         verify(aclRepository).findRulePage(null, null, null, null, null, 1, 100);
     }
 
     @Test
     void listRulesShouldRejectInvalidPaginationBeforeTencentRuleDiscovery() {
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
                 "tencent-instance", 1, 101))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
 
-        verifyNoInteractions(instanceRepository);
+        verifyNoInteractions(instanceResolver);
         verifyNoInteractions(tencentAclService);
     }
 
@@ -211,7 +216,7 @@ class AclServiceTest {
         assertThat(result.getTotal()).isEqualTo(21);
         verify(aclRepository).findUserPage("orders", 2, 20);
         verify(aclRepository, never()).findUsers();
-        verifyNoInteractions(instanceRepository, tencentAclService);
+        verifyNoInteractions(instanceResolver, tencentAclService);
     }
 
     @Test
@@ -221,11 +226,11 @@ class AclServiceTest {
                 .vendor(InstanceVendor.TENCENT)
                 .type(InstanceType.CLOUD)
                 .build();
-        when(instanceRepository.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
         when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
                 AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
                 "tencent-instance", Integer.MAX_VALUE, 100);
 
         assertThat(result.getItems()).isEmpty();
@@ -322,7 +327,7 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL rule not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        assertThat(aclService.listRules(null, null, null, null, null, null, 1, 20).getItems()).isEmpty();
+        assertThat(aclService.listRules(null, null, null, null, null, 1, 20).getItems()).isEmpty();
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 
@@ -543,6 +548,21 @@ class AclServiceTest {
     }
 
     @Test
+    void updateUserShouldKeepTheExistingWhiteRemoteAddress() {
+        existingUser.setWhiteRemoteAddress("10.0.1.0/24");
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("1");
+        input.setUsername("renamed");
+
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
+
+        AclUserVO result = aclService.updateUser(input, null);
+
+        assertThat(result.getWhiteRemoteAddress()).isEqualTo("10.0.1.0/24");
+    }
+
+    @Test
     void updateUserShouldPreserveAdminWhenNotProvided() {
         AclUserVO adminUser = AclUserVO.builder()
                 .id(1L)
@@ -738,7 +758,6 @@ class AclServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
     }
-
 
     @ParameterizedTest
     @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
@@ -959,5 +978,133 @@ class AclServiceTest {
         assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("whiteSet entry is not a valid IP/CIDR range");
+    }
+
+    // ── ACL 2.0 broker version guard (§15) ─────────────────────────────
+
+    private InstanceVO apacheInstance(String identifier) {
+        InstanceVO instance = InstanceVO.builder()
+                .name(identifier)
+                .vendor(InstanceVendor.APACHE)
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(1L);
+        return instance;
+    }
+
+    @Test
+    void listRulesShouldRejectOldBrokerWithUpgradeHint() {
+        when(instanceResolver.findByIdentifier("apache-instance"))
+                .thenReturn(Optional.of(apacheInstance("apache-instance")));
+        when(clusterProvider.discoverBrokers("apache-instance", null))
+                .thenReturn(List.of(BrokerVO.builder().name("broker-a").version("V5_1_0").build()));
+
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
+                "apache-instance", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("ACL 2.0 requires broker >= 5.3.0")
+                .hasMessageContaining("please upgrade the broker")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(426));
+
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
+    void createRuleShouldRejectOldBrokerWithUpgradeHint() {
+        when(instanceResolver.findByIdentifier("apache-instance"))
+                .thenReturn(Optional.of(apacheInstance("apache-instance")));
+        when(clusterProvider.discoverBrokers("apache-instance", null))
+                .thenReturn(List.of(BrokerVO.builder().name("broker-a").version("5.2.0").build()));
+
+        AclRuleVO input = AclRuleVO.builder().principal("user1").resource("topic-1").build();
+
+        assertThatThrownBy(() -> aclService.createRule(input, "apache-instance"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("please upgrade the broker")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(426));
+
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
+    void listRulesShouldUseTheLowestBrokerVersionWhenSeveralBrokersExist() {
+        when(instanceResolver.findByIdentifier("apache-instance"))
+                .thenReturn(Optional.of(apacheInstance("apache-instance")));
+        when(clusterProvider.discoverBrokers("apache-instance", null))
+                .thenReturn(List.of(
+                        BrokerVO.builder().name("broker-a").version("V5_3_1").build(),
+                        BrokerVO.builder().name("broker-b").version("V5_2_9").build()));
+
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
+                "apache-instance", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("detected 5.2.9");
+    }
+
+    @Test
+    void listRulesShouldAllowModernBrokerVersion() {
+        when(instanceResolver.findByIdentifier("apache-instance"))
+                .thenReturn(Optional.of(apacheInstance("apache-instance")));
+        when(clusterProvider.discoverBrokers("apache-instance", null))
+                .thenReturn(List.of(BrokerVO.builder().name("broker-a").version("V5_3_0").build()));
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+                "apache-instance", 1, 20);
+
+        assertThat(result.getItems()).isEmpty();
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
+    }
+
+    @Test
+    void listRulesShouldPassWhenBrokerVersionCannotBeResolved() {
+        when(instanceResolver.findByIdentifier("apache-instance"))
+                .thenReturn(Optional.of(apacheInstance("apache-instance")));
+        when(clusterProvider.discoverBrokers("apache-instance", null))
+                .thenReturn(List.of(BrokerVO.builder().name("broker-a").version(null).build()));
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+                "apache-instance", 1, 20);
+
+        assertThat(result.getItems()).isEmpty();
+        verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
+    }
+
+    @Test
+    void listRulesShouldSkipVersionGuardForTencentInstances() {
+        InstanceVO tencent = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencent));
+        when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+                "tencent-instance", 1, 20);
+
+        assertThat(result.getItems()).hasSize(1);
+        verify(clusterProvider, never()).discoverBrokers(any(), any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("brokerVersionDescriptors")
+    void parseVersionShouldNormalizeBrokerVersionDescriptors(String raw, int[] expected) {
+        assertThat(AclService.parseVersion(raw)).isEqualTo(expected);
+    }
+
+    private static Stream<Arguments> brokerVersionDescriptors() {
+        return Stream.of(
+                Arguments.of("V5_3_3", new int[] {5, 3, 3}),
+                Arguments.of("5.3.0", new int[] {5, 3, 0}),
+                Arguments.of("V4_9_8", new int[] {4, 9, 8}),
+                Arguments.of("5.3", new int[] {5, 3, 0}),
+                Arguments.of(null, null),
+                Arguments.of("", null),
+                Arguments.of("unknown", null));
     }
 }

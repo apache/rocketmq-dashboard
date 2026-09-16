@@ -23,7 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
@@ -42,19 +42,19 @@ class NativeAlertEvaluationTransactionTest {
     private NativeAlertEvaluationService evaluationService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
-    @MockBean
+    @MockitoBean
     private AlertRuleEvaluator evaluator;
-    @MockBean
+    @MockitoBean
     private AlertStateMachine stateMachine;
-    @MockBean
+    @MockitoBean
     private AlertStateRepository stateRepository;
-    @MockBean
+    @MockitoBean
     private MetricSnapshotRepository snapshotRepository;
-    @MockBean
+    @MockitoBean
     private AlertRepository alertRepository;
-    @MockBean
+    @MockitoBean
     private NotificationOutboxService outbox;
-    @MockBean
+    @MockitoBean
     private AlertNotificationSuppressionService suppression;
 
     @BeforeEach
