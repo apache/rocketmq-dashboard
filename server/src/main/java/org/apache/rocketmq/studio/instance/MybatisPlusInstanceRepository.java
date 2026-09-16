@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -122,6 +123,14 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
             if (instanceMapper.updateById(entity) == 0) {
                 throw new BusinessException(409,
                         "Instance update was not applied: " + entity.getId());
+            }
+            if (instance.getAdminCredentialRef() == null) {
+                // updateById omits null entity fields, so a cleared reference has to be
+                // assigned explicitly; otherwise the stored reference survives an update that
+                // removed it.
+                instanceMapper.update(null, new UpdateWrapper<RmqInstance>()
+                        .eq("id", entity.getId())
+                        .set("admin_credential_ref", null));
             }
         } else {
             instanceMapper.insert(entity);
