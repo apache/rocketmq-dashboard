@@ -4,10 +4,10 @@ name: CI
 on:
   push:
     branches:
-      - rocketmq-studio
+      - master
   pull_request:
     branches:
-      - rocketmq-studio
+      - master
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -92,6 +92,6 @@ jobs:
         with:
           context: ./web
           push: false
-          tags: rocketmq-studio-web-ci:latest
+          tags: rocketmq-studio-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
