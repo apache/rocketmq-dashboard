@@ -189,7 +189,12 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).extracting(ConsumerGroupVO::getName).containsExactly("group-a", "group-b");
         assertThat(groups).extracting(ConsumerGroupVO::getOnlineInstances).containsExactly(0, 0);
-        assertThat(groups).extracting(ConsumerGroupVO::getTotalLag).containsExactly(0L, 0L);
+        assertThat(groups).extracting(ConsumerGroupVO::getTotalLag)
+                .containsExactly(ConsumerLagResolver.UNKNOWN, ConsumerLagResolver.UNKNOWN);
+        assertThat(groups).allSatisfy(group -> {
+            assertThat(group.isConsumeStatsAvailable()).isFalse();
+            assertThat(group.isConsumptionTimestampAvailable()).isFalse();
+        });
         verify(groupMapper).selectList(any());
         verifyNoInteractions(runtimeAdminClientResolver);
     }
@@ -801,6 +806,87 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getTotalLag()).isEqualTo(40);
         assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
+        assertThat(groups.get(0).isConsumeStatsAvailable()).isTrue();
+        assertThat(groups.get(0).isConsumptionTimestampAvailable()).isTrue();
+    }
+
+    @Test
+    void listConsumerGroupsShouldKeepEmptyConsumeStatsUnavailable() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-empty");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        connection.setConnectionSet(new java.util.HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-empty")).thenReturn(connection);
+        when(admin.examineConsumeStats("cg-empty")).thenReturn(new ConsumeStats());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        List<ConsumerGroupVO> groups = newLiveProvider(admin)
+                .listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.isConsumeStatsAvailable()).isFalse();
+            assertThat(group.isConsumptionTimestampAvailable()).isFalse();
+            assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        });
+    }
+
+    @Test
+    void listConsumerGroupsShouldKeepFailedConsumeStatsUnavailable() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-failed");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-failed"))
+                .thenReturn(new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection());
+        when(admin.examineConsumeStats("cg-failed"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        List<ConsumerGroupVO> groups = newLiveProvider(admin)
+                .listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.isConsumeStatsAvailable()).isFalse();
+            assertThat(group.isConsumptionTimestampAvailable()).isFalse();
+            assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        });
+    }
+
+    @Test
+    void listConsumerGroupsShouldPreserveARealZeroLag() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-zero");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-zero"))
+                .thenReturn(new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection());
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(new MessageQueue("studio-normal", "broker-a", 0), offset(10, 10));
+        when(admin.examineConsumeStats("cg-zero")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        List<ConsumerGroupVO> groups = newLiveProvider(admin)
+                .listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.isConsumeStatsAvailable()).isTrue();
+            assertThat(group.getTotalLag()).isZero();
+        });
     }
 
     @Test

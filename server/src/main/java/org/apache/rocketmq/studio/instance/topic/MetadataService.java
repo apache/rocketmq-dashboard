@@ -698,7 +698,7 @@ public class MetadataService {
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
-                    group.getOnlineInstances(), lagText(group.getTotalLag()), group.getDelaySeconds(),
+                    group.getOnlineInstances(), lagText(group), delayText(group),
                     group.getSubscriptionDataType(), group.getDeliveryOrderType(), group.getRetryMaxTimes(),
                     String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
                     group.getGmtCreate(), group.getGmtModified());
@@ -706,8 +706,14 @@ public class MetadataService {
         return csv.toString();
     }
 
-    private static String lagText(long totalLag) {
-        return totalLag == ConsumerLagResolver.UNKNOWN ? "unknown" : String.valueOf(totalLag);
+    private static String lagText(ConsumerGroupVO group) {
+        return !group.isConsumeStatsAvailable() || group.getTotalLag() == ConsumerLagResolver.UNKNOWN
+                ? "unknown" : String.valueOf(group.getTotalLag());
+    }
+
+    private static String delayText(ConsumerGroupVO group) {
+        return group.isConsumptionTimestampAvailable()
+                ? String.valueOf(group.getDelaySeconds()) : "unknown";
     }
 
     private String toText(Object value) {

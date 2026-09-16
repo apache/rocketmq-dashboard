@@ -297,6 +297,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         // (web detail, AI rmq.group.list) never see a null subscriptionMode.
         vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
         vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
+        vo.setTotalLag(ConsumerLagResolver.UNKNOWN);
         vo.setGmtCreate(entity.getGmtCreate());
         vo.setGmtModified(entity.getGmtModified());
         return vo;
@@ -343,10 +344,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             if (stats == null) {
                 return;
             }
-            vo.setConsumeStatsAvailable(true);
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
+            vo.setConsumeStatsAvailable(true);
             long totalLag = 0;
             boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
@@ -371,7 +372,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 vo.setConsumptionTimestampAvailable(true);
             }
         } catch (Exception e) {
-            // No consume stats (e.g. POP-only group without an offset table): keep zeros.
+            // No consume stats (e.g. an offline or POP-only group): keep availability false.
         }
     }
 

@@ -118,7 +118,7 @@ const { Text } = Typography;
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
 
-const lagColor = (lag: number): string => {
+const lagColor = (lag: number | null | undefined): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
   // as healthy (green) or backlogged.
   if (!isLagAvailable(lag)) return UNKNOWN_LAG_COLOR;
@@ -126,6 +126,14 @@ const lagColor = (lag: number): string => {
   if (lag >= 1_000) return '#faad14';
   return '#52c41a';
 };
+
+const groupLag = (group: ConsumerGroup): number | undefined =>
+  group.consumeStatsAvailable !== false && isLagAvailable(group.totalLag)
+    ? group.totalLag
+    : undefined;
+
+const groupDelayAvailable = (group: ConsumerGroup): boolean =>
+  group.consumptionTimestampAvailable !== false;
 
 /**
  * Format delay seconds into human-readable Chinese time.
@@ -950,13 +958,15 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
-      render: (lag: number) =>
-        isLagAvailable(lag) ? (
+      sorter: (a, b) => lagSortValue(groupLag(a)) - lagSortValue(groupLag(b)),
+      render: (_: number, record: ConsumerGroup) => {
+        const lag = groupLag(record);
+        return lag !== undefined ? (
           lag.toLocaleString()
         ) : (
           <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
-        ),
+        );
+      },
     },
     {
       title: '消费延迟',
@@ -964,8 +974,15 @@ const ConsumerPageContent = ({
       key: 'delaySeconds',
       width: 100,
       align: 'right',
-      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0),
+      sorter: (a, b) =>
+        (groupDelayAvailable(a) ? a.delaySeconds : Number.MAX_SAFE_INTEGER) -
+        (groupDelayAvailable(b) ? b.delaySeconds : Number.MAX_SAFE_INTEGER),
+      render: (_: number, record: ConsumerGroup) =>
+        groupDelayAvailable(record) ? (
+          formatDelay(record.delaySeconds)
+        ) : (
+          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+        ),
     },
     {
       title: '创建时间',
@@ -1656,19 +1673,21 @@ const ConsumerPageContent = ({
                         <Card
                           size="small"
                           style={{
-                            borderTop: `3px solid ${lagColor(selectedGroup.totalLag)}`,
+                            borderTop: `3px solid ${lagColor(groupLag(selectedGroup))}`,
                             borderRadius: 8,
                           }}
                         >
                           <Statistic
                             title="总堆积"
                             value={selectedGroup.totalLag}
-                            formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
+                            formatter={() =>
+                              formatLag(groupLag(selectedGroup), UNAVAILABLE_LAG_LABEL)
+                            }
                             prefix={
-                              <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
+                              <ArrowsClockwise size={18} color={lagColor(groupLag(selectedGroup))} />
                             }
                             valueStyle={{
-                              color: lagColor(selectedGroup.totalLag),
+                              color: lagColor(groupLag(selectedGroup)),
                             }}
                           />
                         </Card>
@@ -1728,7 +1747,11 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
+                        <Text strong>
+                          {groupDelayAvailable(selectedGroup)
+                            ? formatDelay(selectedGroup.delaySeconds)
+                            : UNAVAILABLE_LAG_LABEL}
+                        </Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次

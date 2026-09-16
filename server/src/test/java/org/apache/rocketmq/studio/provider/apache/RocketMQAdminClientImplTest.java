@@ -264,6 +264,29 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void getConsumerGroupKeepsEmptyConsumeStatsUnavailable() throws Exception {
+        when(adminExt.examineConsumeStats("orders")).thenReturn(new ConsumeStats());
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.isConsumeStatsAvailable()).isFalse();
+        assertThat(group.isConsumptionTimestampAvailable()).isFalse();
+        assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
+    void getConsumerGroupKeepsFailedConsumeStatsUnavailable() throws Exception {
+        when(adminExt.examineConsumeStats("orders"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.isConsumeStatsAvailable()).isFalse();
+        assertThat(group.isConsumptionTimestampAvailable()).isFalse();
+        assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
     void getConsumerGroupFillsOnlineInstanceListFromConnectionsTest() throws Exception {
         org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
                 new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
