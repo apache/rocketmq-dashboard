@@ -746,7 +746,7 @@ const TopicPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       render: (_: unknown, record: Topic) => (
         <Flex gap={6} onClick={(e) => e.stopPropagation()}>
           <Button
