@@ -25,6 +25,7 @@ export type InstanceCapability =
   | 'CONSUMER_GROUP_MANAGEMENT'
   | 'MESSAGE_QUERY'
   | 'MESSAGE_TRACE'
+  | 'DIRECT_MESSAGE_CONSUME'
   | 'ACL_MANAGEMENT'
   | 'DLQ_MANAGEMENT';
 

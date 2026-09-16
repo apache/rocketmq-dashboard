@@ -116,7 +116,9 @@ describe('instanceService mock instances', () => {
 
     const second = await getInstanceCapabilities('instance-direct-1');
 
-    expect(second.capabilities).toContain('DLQ_MANAGEMENT');
+    expect(second.capabilities).toEqual(
+      expect.arrayContaining(['DLQ_MANAGEMENT', 'DIRECT_MESSAGE_CONSUME']),
+    );
     await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
       'Instance not found: missing-instance',
     );
