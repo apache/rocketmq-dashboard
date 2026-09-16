@@ -879,6 +879,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重试当前页失败记录',
     en: 'Retry failed records on this page',
   },
+  'deliveries.retryMatchingFailures': {
+    zh: '重试筛选条件内失败记录',
+    en: 'Retry matching failures',
+  },
+  'deliveries.retryFilteredEmpty': {
+    zh: '当前筛选条件下没有可重试的失败记录',
+    en: 'No failed deliveries match the current filters.',
+  },
 
   // ─── General Settings ───
   'settings.generalLoadFailed': {

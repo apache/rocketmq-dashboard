@@ -29,6 +29,7 @@ import {
   listAlertDeliveriesPage,
   retryAlertDeliveries,
   retryAlertDelivery,
+  retryFilteredAlertDeliveries,
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
@@ -57,6 +58,8 @@ const NotificationDeliveriesPage = () => {
   const [retryingVisible, setRetryingVisible] = useState(false);
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
+  const [retryingFiltered, setRetryingFiltered] = useState(false);
+  const retryingFilteredInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = () => {
@@ -111,6 +114,36 @@ const NotificationDeliveriesPage = () => {
     } finally {
       retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
+    }
+  };
+
+  const retryFilteredFailures = async () => {
+    if (retryingFilteredInFlight.current) return;
+    retryingFilteredInFlight.current = true;
+    setRetryingFiltered(true);
+    try {
+      const result = await retryFilteredAlertDeliveries({
+        channel,
+        instanceId,
+        limit: 100,
+      });
+      const failed = Object.keys(result.failures).length;
+      if (result.succeededIds.length === 0 && failed === 0) {
+        message.info(t('deliveries.retryFilteredEmpty'));
+      } else {
+        message.success(
+          t('deliveries.bulkRetryQueued', {
+            succeeded: result.succeededIds.length,
+            failed: failed ? t('deliveries.bulkRetryFailures', { count: failed }) : '',
+          }),
+        );
+      }
+      refresh();
+    } catch {
+      message.error(t('deliveries.bulkRetryFailed'));
+    } finally {
+      retryingFilteredInFlight.current = false;
+      setRetryingFiltered(false);
     }
   };
 
@@ -240,6 +273,13 @@ const NotificationDeliveriesPage = () => {
               onClick={() => void retryVisibleFailures()}
             >
               {t('deliveries.retryCurrentPage')}
+            </Button>
+            <Button
+              icon={<ArrowClockwise size={18} />}
+              loading={retryingFiltered}
+              onClick={() => void retryFilteredFailures()}
+            >
+              {t('deliveries.retryMatchingFailures')}
             </Button>
             <Select
               allowClear
