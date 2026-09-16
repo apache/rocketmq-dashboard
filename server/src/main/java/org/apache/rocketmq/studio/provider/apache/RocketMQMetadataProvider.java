@@ -341,10 +341,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
             }
             if (stats == null) {
+                markGroupLiveStatsUnavailable(vo);
                 return;
             }
             vo.setConsumeStatsAvailable(true);
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
+                // An empty offset table is not a healthy zero backlog (offline / POP-only group).
+                markGroupLiveStatsUnavailable(vo);
                 return;
             }
             long totalLag = 0;
@@ -371,8 +374,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 vo.setConsumptionTimestampAvailable(true);
             }
         } catch (Exception e) {
-            // No consume stats (e.g. POP-only group without an offset table): keep zeros.
+            // Failed live stats must not look like a healthy zero backlog in the inventory.
+            markGroupLiveStatsUnavailable(vo);
         }
+    }
+
+    private static void markGroupLiveStatsUnavailable(ConsumerGroupVO vo) {
+        vo.setConsumeStatsAvailable(false);
+        vo.setConsumptionTimestampAvailable(false);
+        vo.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        vo.setDelaySeconds(0);
     }
 
     private ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
