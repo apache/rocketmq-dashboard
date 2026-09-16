@@ -279,6 +279,28 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void getConsumerGroupShouldResolveUnknownQueueLagThroughProxyTest() throws Exception {
+        ConsumerConnection connection = new ConsumerConnection();
+        connection.setConnectionSet(new HashSet<>());
+        when(adminExt.examineConsumerConnectionInfo("orders")).thenReturn(connection);
+        MessageQueue queue = new MessageQueue("orders-topic", "broker-a", 0);
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(queue, offsetWrapper(0L, 1L));
+        when(adminExt.examineConsumeStats("orders")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        when(resolver.queryLag("instance-a", "orders", queue)).thenReturn(18L);
+        org.springframework.test.util.ReflectionTestUtils.setField(adminClient, "proxyConsumerResolver", resolver);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup("instance-a", "orders");
+
+        assertThat(group.getTotalLag()).isEqualTo(18L);
+        verify(resolver).queryLag("instance-a", "orders", queue);
+    }
+
+    @Test
     void getConsumerGroupFillsOnlineInstanceListFromConnectionsTest() throws Exception {
         org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
                 new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();

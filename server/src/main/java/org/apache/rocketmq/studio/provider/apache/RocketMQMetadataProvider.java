@@ -119,13 +119,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
 
-    /**
-     * Default proxy stats source until a real proxy transport is wired in. It reports the unknown
-     * sentinel ({@link ConsumerLagResolver#UNKNOWN}) so a {@code -1} gRPC lag is surfaced instead of
-     * being silently clamped to zero.
-     */
-    private final ProxyStatsProvider proxyStatsProvider = new NoopProxyStatsProvider();
-
     /** Whether a default NameServer is configured and live queries are therefore possible. */
     private boolean hasAdmin() {
         return StringUtils.hasText(properties.getNamesrvAddr());
@@ -350,8 +343,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             long totalLag = 0;
             boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
-            for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
-                long queueDiff = resolveDiff(wrapper.getBrokerOffset(), wrapper.getConsumerOffset());
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                MessageQueue queue = entry.getKey();
+                OffsetWrapper wrapper = entry.getValue();
+                long queueDiff = resolveDiff(instanceId, vo.getName(), queue,
+                        wrapper.getBrokerOffset(), wrapper.getConsumerOffset());
                 if (queueDiff == ConsumerLagResolver.UNKNOWN) {
                     // a queue with the -1 sentinel (5.0 gRPC consumers) must not be summed
                     // away as zero lag; report the whole total as unknown instead
@@ -511,15 +507,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId,
-                    admin -> getTopicConsumersPage(admin, name, page, pageSize));
+                    admin -> getTopicConsumersPage(admin, instanceId, name, page, pageSize));
         }
         if (!hasAdmin()) {
             return TopicConsumerPageVO.builder().items(List.of()).total(0).page(page).pageSize(pageSize).build();
         }
-        return adminExecute(admin -> getTopicConsumersPage(admin, name, page, pageSize));
+        return adminExecute(admin -> getTopicConsumersPage(admin, null, name, page, pageSize));
     }
 
-    private TopicConsumerPageVO getTopicConsumersPage(MQAdminExt admin, String name, int page, int pageSize) {
+    private TopicConsumerPageVO getTopicConsumersPage(MQAdminExt admin, String instanceId,
+            String name, int page, int pageSize) {
         try {
             // Ask the broker who consumes this topic instead of scanning every subscription
             // group, which floods the result with system groups.
@@ -548,7 +545,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     if (stats != null && stats.getOffsetTable() != null) {
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
-                            long queueDiff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                            long queueDiff = resolveDiff(instanceId, group, entry.getKey(),
+                                    ow.getBrokerOffset(), ow.getConsumerOffset());
                             if (queueDiff == ConsumerLagResolver.UNKNOWN) {
                                 diffTotal = ConsumerLagResolver.UNKNOWN;
                                 break;
@@ -621,15 +619,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String name) {
         if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, admin -> getGroupProgress(admin, name));
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> getGroupProgress(admin, instanceId, name));
         }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
-        return adminExecute(admin -> getGroupProgress(admin, name));
+        return adminExecute(admin -> getGroupProgress(admin, null, name));
     }
 
-    private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
+    private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String instanceId, String name) {
         try {
             ensureRetryTopicExists(admin, name);
             ConsumeStats stats = admin.examineConsumeStats(name);
@@ -641,7 +640,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                 MessageQueue mq = entry.getKey();
                 OffsetWrapper ow = entry.getValue();
-                long diff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                long diff = resolveDiff(instanceId, name, mq,
+                        ow.getBrokerOffset(), ow.getConsumerOffset());
 
                 progress.add(QueueProgressVO.builder()
                         .topic(mq.getTopic())
@@ -811,8 +811,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
      * sentinel to zero. A negative raw diff (typical for RocketMQ 5.0 gRPC consumers) is passed
      * through {@link ConsumerLagResolver} so the unknown state stays visible.
      */
-    private long resolveDiff(long brokerOffset, long consumerOffset) {
-        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, proxyStatsProvider);
+    private long resolveDiff(String instanceId, String consumerGroup, MessageQueue queue,
+            long brokerOffset, long consumerOffset) {
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset,
+                instanceId, consumerGroup, queue, proxyConsumerResolver);
     }
 
     private boolean isSystemTopic(String topicName, Set<String> brokerNames) {

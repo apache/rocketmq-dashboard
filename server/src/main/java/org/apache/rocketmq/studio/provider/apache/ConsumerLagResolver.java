@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.common.message.MessageQueue;
+
 /**
  * Resolves the consumer lag (diff between broker offset and consumer offset) without masking the
  * {@code -1} "unknown" sentinel that RocketMQ 5.0 gRPC consumers report.
@@ -37,15 +39,19 @@ public final class ConsumerLagResolver {
 
     /**
      * @param brokerDiff raw brokerOffset - consumerOffset (may be negative for 5.0 gRPC consumers)
+     * @param instanceId selected Studio instance, or {@code null} for the default NameServer
+     * @param consumerGroup consumer group whose offset is requested
+     * @param queue queue routing context required by the Proxy remoting protocol
      * @param proxy      optional proxy stats source; may be {@code null}
      * @return the resolved lag, or {@link #UNKNOWN} when it cannot be determined
      */
-    public static long resolve(long brokerDiff, ProxyStatsProvider proxy) {
+    public static long resolve(long brokerDiff, String instanceId, String consumerGroup,
+            MessageQueue queue, ProxyStatsProvider proxy) {
         if (brokerDiff >= 0) {
             return brokerDiff;
         }
         if (proxy != null) {
-            return proxy.queryLag();
+            return proxy.queryLag(instanceId, consumerGroup, queue);
         }
         return UNKNOWN;
     }

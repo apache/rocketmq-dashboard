@@ -154,7 +154,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
             }
         }
-        fillConsumeStats(admin, vo, name);
+        fillConsumeStats(admin, vo, instanceId, name);
         return vo;
     }
 
@@ -170,7 +170,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
      * frontier). Using the oldest timestamp is misleading for POP groups, where untouched
      * queues keep frozen stale timestamps.
      */
-    private void fillConsumeStats(MQAdminExt admin, ConsumerGroupVO vo, String name) {
+    private void fillConsumeStats(MQAdminExt admin, ConsumerGroupVO vo, String instanceId, String name) {
         try {
             ConsumeStats stats = admin.examineConsumeStats(name);
             if (stats == null) {
@@ -183,9 +183,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             long totalLag = 0;
             boolean lagUnknown = false;
             long newestConsumedTimestamp = 0;
-            for (OffsetWrapper wrapper : stats.getOffsetTable().values()) {
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                MessageQueue queue = entry.getKey();
+                OffsetWrapper wrapper = entry.getValue();
                 long queueDiff = ConsumerLagResolver.resolve(
-                        wrapper.getBrokerOffset() - wrapper.getConsumerOffset(), null);
+                        wrapper.getBrokerOffset() - wrapper.getConsumerOffset(),
+                        instanceId, name, queue, proxyConsumerResolver);
                 if (queueDiff == ConsumerLagResolver.UNKNOWN) {
                     // a queue with the -1 sentinel (5.0 gRPC consumers) must not be summed
                     // away as zero lag; report the whole total as unknown instead

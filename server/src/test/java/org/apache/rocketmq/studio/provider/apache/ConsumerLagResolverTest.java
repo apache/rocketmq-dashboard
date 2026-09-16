@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -24,36 +25,43 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ConsumerLagResolverTest {
 
+    private static final MessageQueue QUEUE = new MessageQueue("orders", "broker-a", 3);
+
     @Test
     void positiveBrokerDiffIsReturnedAsIs() {
-        assertThat(ConsumerLagResolver.resolve(100, null)).isEqualTo(100);
-        assertThat(ConsumerLagResolver.resolve(0, null)).isEqualTo(0);
+        assertThat(ConsumerLagResolver.resolve(100, "instance-a", "cg-orders", QUEUE, null)).isEqualTo(100);
+        assertThat(ConsumerLagResolver.resolve(0, "instance-a", "cg-orders", QUEUE, null)).isEqualTo(0);
     }
 
     @Test
     void negativeBrokerDiffWithoutProxyReturnsUnknown() {
-        assertThat(ConsumerLagResolver.resolve(-1, null))
+        assertThat(ConsumerLagResolver.resolve(-1, "instance-a", "cg-orders", QUEUE, null))
                 .isEqualTo(ConsumerLagResolver.UNKNOWN);
     }
 
     @Test
     void negativeBrokerDiffWithProxyReturnsProxyValue() {
         ProxyStatsProvider proxy = Mockito.mock(ProxyStatsProvider.class);
-        Mockito.when(proxy.queryLag()).thenReturn(42L);
-        assertThat(ConsumerLagResolver.resolve(-1, proxy)).isEqualTo(42);
+        Mockito.when(proxy.queryLag("instance-a", "cg-orders", QUEUE)).thenReturn(42L);
+
+        assertThat(ConsumerLagResolver.resolve(-1, "instance-a", "cg-orders", QUEUE, proxy)).isEqualTo(42);
+
+        Mockito.verify(proxy).queryLag("instance-a", "cg-orders", QUEUE);
     }
 
     @Test
     void negativeBrokerDiffWithNoopProxyReturnsUnknown() {
         ProxyStatsProvider proxy = new NoopProxyStatsProvider();
-        assertThat(ConsumerLagResolver.resolve(-1, proxy))
+        assertThat(ConsumerLagResolver.resolve(-1, "instance-a", "cg-orders", QUEUE, proxy))
                 .isEqualTo(ConsumerLagResolver.UNKNOWN);
     }
 
     @Test
     void positiveBrokerDiffIgnoresProxy() {
         ProxyStatsProvider proxy = Mockito.mock(ProxyStatsProvider.class);
-        Mockito.when(proxy.queryLag()).thenReturn(999L);
-        assertThat(ConsumerLagResolver.resolve(7, proxy)).isEqualTo(7);
+
+        assertThat(ConsumerLagResolver.resolve(7, "instance-a", "cg-orders", QUEUE, proxy)).isEqualTo(7);
+
+        Mockito.verifyNoInteractions(proxy);
     }
 }
