@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -44,6 +45,14 @@ import java.util.stream.Collectors;
 public class MybatisPlusSettingsRepository implements SettingsRepository {
 
     private static final String GENERAL_SETTINGS_KEY = "general";
+
+    /**
+     * Matches the {@code type} field inside the stored data-source JSON. The surrounding quotes and
+     * {@code %} are the pattern the code means; the caller's own {@code %}, {@code _} and {@code \}
+     * are escaped before they are bound, and the clause names the escape character.
+     */
+    private static final String DATA_SOURCE_TYPE_PREDICATE =
+            "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')" + SqlLikeUtils.LIKE_ESCAPE_CLAUSE;
 
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
@@ -147,9 +156,10 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         String normalizedType = type == null || type.isBlank() ? null : type.trim();
         QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
-                .like(normalizedSearch != null, "json", normalizedSearch)
-                .apply(normalizedType != null,
-                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
+                .apply(normalizedSearch != null, SqlLikeUtils.likePredicate("json"),
+                        SqlLikeUtils.contains(normalizedSearch))
+                .apply(normalizedType != null, DATA_SOURCE_TYPE_PREDICATE,
+                        SqlLikeUtils.escape(normalizedType))
                 .orderByDesc("gmt_modified", "id");
         Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),
