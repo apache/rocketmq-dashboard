@@ -254,6 +254,34 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('reuses the selected range when the instance prop changes', async () => {
+    const user = userEvent.setup();
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByText('6h'));
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(queryMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({ start: 1_799_978_400, step: '2m' }),
+    );
+
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+
+    // The instance switch re-runs the profiles effect; wait for the reload call
+    // to actually land, then assert it reused the picked 6h window instead of
+    // silently falling back to the default 1h window.
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(3));
+    expect(queryMetrics).toHaveBeenLastCalledWith(
+      expect.objectContaining({ start: 1_799_978_400, step: '2m' }),
+    );
+  });
+
   it('renders one panel per metric in the selected profile', async () => {
     vi.mocked(listMetricProfiles).mockResolvedValue([
       {
@@ -329,6 +357,41 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
+  });
+
+  it('re-runs the committed custom query when the dashboard instance changes', async () => {
+    const user = userEvent.setup();
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-11" />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(1),
+    );
+
+    // The dashboard keeps the explorer mounted and only swaps the instanceId prop;
+    // the profile panels re-run via loadAll, so the custom panel must re-run too
+    // instead of keeping the previous instance's chart on screen.
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-22" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(2),
+    );
   });
 
   it('refreshes profile panels and the custom query independently', async () => {

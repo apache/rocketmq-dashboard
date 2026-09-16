@@ -23,6 +23,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   BrokerConfigDiffResult,
+  ClusterConfigPreviewResult,
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
@@ -413,6 +414,78 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('keeps the latest broker config preview after a superseded response finishes last', async () => {
+    const user = userEvent.setup();
+    const stalePreview = deferred<ClusterConfigPreviewResult>();
+    const latestPreview = deferred<ClusterConfigPreviewResult>();
+    clusterServiceMocks.previewClusterConfig
+      .mockReturnValueOnce(stalePreview.promise)
+      .mockReturnValueOnce(latestPreview.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const openConfigDialog = async () => {
+      const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+      fireEvent.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+      return screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    };
+    let dialog = await openConfigDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1));
+
+    // Cancel while the first preview is still in flight, reopen and preview again.
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+    dialog = await openConfigDialog();
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '24');
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      latestPreview.resolve({
+        cluster: buildCluster(),
+        currentConfig: buildCluster().config!,
+        proposedConfig: { ...buildCluster().config!, writeQueueNums: 24 },
+        targetBrokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911' }],
+        brokerProperties: { defaultTopicQueueNums: '24' },
+        changes: [
+          {
+            field: 'writeQueueNums',
+            currentValue: '8',
+            proposedValue: '24',
+            brokerProperty: 'defaultTopicQueueNums',
+          },
+        ],
+        changed: true,
+      });
+      await latestPreview.promise;
+    });
+    expect(within(dialog).getByText('defaultTopicQueueNums=24')).toBeInTheDocument();
+
+    // The stale first response must not overwrite the newer preview.
+    await act(async () => {
+      stalePreview.resolve({
+        cluster: buildCluster(),
+        currentConfig: buildCluster().config!,
+        proposedConfig: { ...buildCluster().config!, writeQueueNums: 16 },
+        targetBrokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911' }],
+        brokerProperties: { defaultTopicQueueNums: '16' },
+        changes: [
+          {
+            field: 'writeQueueNums',
+            currentValue: '8',
+            proposedValue: '16',
+            brokerProperty: 'defaultTopicQueueNums',
+          },
+        ],
+        changed: true,
+      });
+      await stalePreview.promise;
+    });
+    expect(within(dialog).getByText('defaultTopicQueueNums=24')).toBeInTheDocument();
+    expect(within(dialog).queryByText('defaultTopicQueueNums=16')).not.toBeInTheDocument();
   });
 
   it('renders per-broker daily message counters in the broker tab', async () => {

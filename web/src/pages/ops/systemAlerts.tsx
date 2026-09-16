@@ -399,13 +399,14 @@ const SystemAlertsPage = () => {
       return;
     }
     setSavingSilence(true);
+    let request: CreateAlertSilence;
     try {
       const recurrence = values.recurrence ?? 'ONCE';
       const convertTime = (value: string) =>
         recurrence === 'ONCE'
           ? localDateTimeToUtc(value)
           : zonedLocalDateTimeToUtc(value, values.timeZone!);
-      const request: CreateAlertSilence = {
+      request = {
         instanceId: values.instanceId,
         startsAt: convertTime(values.startsAt),
         endsAt: convertTime(values.endsAt),
@@ -421,6 +422,18 @@ const SystemAlertsPage = () => {
             ? convertTime(values.recurrenceUntil)
             : undefined,
       };
+    } catch (error) {
+      // client-side validation throws carry field-specific messages; no request was
+      // made, so the axios interceptor never surfaces them
+      message.error(
+        error instanceof Error && error.message
+          ? error.message
+          : t('sysAlerts.silenceCreateFailed'),
+      );
+      setSavingSilence(false);
+      return;
+    }
+    try {
       await createAlertSilence(request);
       silenceForm.resetFields();
       setSilencePage(1);
@@ -828,7 +841,10 @@ const SystemAlertsPage = () => {
       <Modal
         title={t('sysAlerts.maintenanceWindows')}
         open={silencesVisible}
-        onCancel={() => setSilencesVisible(false)}
+        onCancel={() => {
+          setSilencesVisible(false);
+          silenceForm.resetFields();
+        }}
         onOk={() => void createSilence()}
         okText={t('sysAlerts.create')}
         okButtonProps={{ style: { display: canManageSilences ? undefined : 'none' } }}

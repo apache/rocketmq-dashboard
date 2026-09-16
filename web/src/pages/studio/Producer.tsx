@@ -118,15 +118,22 @@ const ProducerPage = () => {
     };
   }, []);
 
-  const handleInstanceChange = (instanceId: string) => {
+  // Invalidates any in-flight connection query and drops its visible results,
+  // shared by every scope change (instance / topic) so a slow response can never
+  // repopulate results that belong to a different scope.
+  const resetConnectionQuery = () => {
     queryRequestIdRef.current += 1;
     queryInFlightRef.current = null;
-    setSelectedInstanceId(instanceId);
-    setTopicList([]);
-    setProducerGroups([]);
     setConnectionList([]);
     setConnectionSummary(null);
     setLoading(false);
+  };
+
+  const handleInstanceChange = (instanceId: string) => {
+    resetConnectionQuery();
+    setSelectedInstanceId(instanceId);
+    setTopicList([]);
+    setProducerGroups([]);
     form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
   };
 
@@ -160,6 +167,7 @@ const ProducerPage = () => {
   }, [fetchTopicFailedMessage, form, message, selectedInstanceId]);
 
   const handleTopicChange = () => {
+    resetConnectionQuery();
     producerGroupRequestIdRef.current += 1;
     setProducerGroups([]);
     form.setFieldValue('producerGroup', undefined);

@@ -511,6 +511,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const dataSourceCredentialsRef = useRef<DataSourceCredentials | null>(null);
   const dataSourceNamesRef = useRef<Map<string, string>>(new Map());
   const pendingAuthReplayRef = useRef<PendingAuthReplay | null>(null);
+  // Keeps the latest range readable from the mount effect so an instance-switch
+  // reload uses the user's picked range instead of a stale initial value.
+  const rangeIdRef = useRef(rangeId);
+  useEffect(() => {
+    rangeIdRef.current = rangeId;
+  }, [rangeId]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -655,7 +661,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
-        void loadAll(initialProfile, RANGE_OPTIONS[0]);
+        // The effect re-runs when the instance prop changes (via loadAll's runQuery
+        // dependency). Reuse the selected range there; resetting to RANGE_OPTIONS[0]
+        // would query 1h while the Segmented control still shows the picked range.
+        const selectedRange =
+          RANGE_OPTIONS.find((range) => range.value === rangeIdRef.current) ?? RANGE_OPTIONS[0];
+        void loadAll(initialProfile, selectedRange);
       })
       .catch(() => {
         if (!cancelled) setProfileError(true);
@@ -842,6 +853,30 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     selectedProfile,
     selectedRange,
     appliedCustomPromql,
+  ]);
+
+  // The dashboard keeps this explorer mounted and only swaps the instanceId prop. The
+  // reload effect re-runs the profile panels via loadAll, but nothing re-runs the custom
+  // query panel, so it would keep showing the previous instance's chart (or error) under
+  // the new instance. Re-run the committed custom query on the instance transition; when
+  // the selected data source drops out of the new instance's scope, the fallback effect
+  // above already re-runs both flows, so skip to avoid duplicating its request.
+  const lastInstanceIdRef = useRef(instanceId);
+  useEffect(() => {
+    if (lastInstanceIdRef.current === instanceId) return;
+    lastInstanceIdRef.current = instanceId;
+    if (!appliedCustomPromql) return;
+    if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
+      return;
+    }
+    void runCustomQuery(appliedCustomPromql, selectedRange);
+  }, [
+    instanceId,
+    appliedCustomPromql,
+    runCustomQuery,
+    selectedRange,
+    dataSourceKey,
+    availableDataSources,
   ]);
 
   const pendingAuthMode = pendingDataSource
