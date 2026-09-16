@@ -145,6 +145,7 @@ class ApacheAclReadServiceTest {
         verify(admin).listAcl("broker-a:10911", null, null);
         assertThat(result.getPoliciesByBroker()).containsOnlyKeys("broker-a:10911");
         assertThat(result.getFailuresByBroker()).isEmpty();
+        assertThat(result.isPartial()).isFalse();
     }
 
     @Test
@@ -173,12 +174,14 @@ class ApacheAclReadServiceTest {
         MQAdminExt admin = mock(MQAdminExt.class);
         when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo("broker-a:10911"));
         when(admin.listAcl("broker-a:10911", null, null))
-                .thenThrow(new IllegalStateException("outer", new RuntimeException("root cause")));
+                .thenThrow(new IllegalStateException("outer",
+                        new RuntimeException("middle", new RuntimeException("root cause"))));
         executeWith(resolver, admin);
 
         RemoteAclReadResult result = new ApacheAclReadService(resolver).listRules("instance-1", null, null);
 
         assertThat(result.getFailuresByBroker()).containsEntry("broker-a:10911", "root cause");
+        assertThat(result.isPartial()).isTrue();
     }
 
     @Test

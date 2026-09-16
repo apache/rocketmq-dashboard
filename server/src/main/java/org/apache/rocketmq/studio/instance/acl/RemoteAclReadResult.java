@@ -29,7 +29,12 @@ public class RemoteAclReadResult {
     Map<String, List<RemoteAclPolicyVO>> policiesByBroker;
     Map<String, String> failuresByBroker;
 
+    /**
+     * Whether the read did not cover every broker successfully. Any recorded per-broker failure
+     * makes the result partial, including the case where no broker answered at all: an empty
+     * {@code policiesByBroker} then means "nothing was read", not "everything was read".
+     */
     public boolean isPartial() {
-        return !failuresByBroker.isEmpty() && !policiesByBroker.isEmpty();
+        return !failuresByBroker.isEmpty();
     }
 }
