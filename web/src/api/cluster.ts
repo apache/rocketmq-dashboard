@@ -167,6 +167,28 @@ export interface ClusterProbeResult {
   message: string;
 }
 
+export interface LifecycleOperationResult {
+  operation: string;
+  clusterId: string;
+  target: string;
+  requestId: string;
+  accepted: boolean;
+  message: string;
+}
+
+export interface NameServerCreateRequest {
+  clusterId: string;
+  addr: string;
+  version?: string;
+}
+
+export interface NameServerUpdateRequest {
+  clusterId: string;
+  addr: string;
+  newAddr: string;
+  version?: string;
+}
+
 export interface K8sCertInfo {
   id: number;
   k8sId: string;
@@ -260,7 +282,7 @@ export async function getBrokerConfigDiff(clusterId: string, instanceId?: string
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {
-  const res = await client.post<{ data: { success: boolean; message: string } }>(
+  const res = await client.post<{ data: LifecycleOperationResult }>(
     `/clusters/${pathSegment(clusterId)}/brokers/${pathSegment(brokerName)}/restart`,
   );
   return res.data.data;
@@ -306,7 +328,8 @@ export async function deleteNameserverRegistry(id: number) {
 }
 
 export async function restartNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/restart', data);
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/restart', data);
+  return res.data.data;
 }
 
 export async function upgradeNameServer(data: {
@@ -314,23 +337,27 @@ export async function upgradeNameServer(data: {
   addr: string;
   version: string;
 }) {
-  await client.post('/nameservers/upgrade', data);
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/upgrade', {
+    clusterId: data.clusterId,
+    addr: data.addr,
+    targetVersion: data.version,
+  });
+  return res.data.data;
 }
 
 export async function deleteNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/delete', data);
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/delete', data);
+  return res.data.data;
 }
 
-export async function createNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/create', data);
+export async function createNameServer(data: NameServerCreateRequest) {
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/create', data);
+  return res.data.data;
 }
 
-export async function updateNameServer(data: {
-  clusterId: string;
-  addr: string;
-  newAddr?: string;
-}) {
-  await client.post('/nameservers/update', data);
+export async function updateNameServer(data: NameServerUpdateRequest) {
+  const res = await client.post<{ data: LifecycleOperationResult }>('/nameservers/update', data);
+  return res.data.data;
 }
 
 export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
@@ -342,7 +369,8 @@ export async function getNameServerConfigDiff(clusterId: string, instanceId?: st
 
 // ─── Proxy ──────────────────────────────────────────────────────
 export async function restartProxy(data: { clusterId: string; addr: string }) {
-  await client.post('/proxies/restart', data);
+  const res = await client.post<{ data: LifecycleOperationResult }>('/proxies/restart', data);
+  return res.data.data;
 }
 
 // ─── K8s Certs ──────────────────────────────────────────────────

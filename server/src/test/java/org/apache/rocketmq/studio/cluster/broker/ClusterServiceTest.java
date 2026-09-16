@@ -20,6 +20,9 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationExecutor;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
@@ -74,6 +77,9 @@ class ClusterServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private LifecycleOperationExecutor lifecycleOperationExecutor;
 
     @InjectMocks
     private ClusterService clusterService;
@@ -586,11 +592,20 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartBrokerShouldThrowUnsupportedWhenBrokerExists() {
+    void restartBrokerShouldDispatchLifecycleOperationWhenBrokerExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.BROKER_RESTART, "broker-0");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
 
-        assertUnsupportedOperation(() -> clusterService.restartBroker("cluster-1", "broker-0"),
-                "Broker restart is not implemented");
+        assertThat(clusterService.restartBroker("cluster-1", "broker-0")).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.BROKER_RESTART
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("broker-0")
+                        && request.targetAddress().equals("10.0.0.1:10911")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+        verify(auditService).record(eq("RESTART_BROKER"), eq("BROKER"), eq("broker-0"),
+                eq("cluster-1"), org.mockito.ArgumentMatchers.contains("requestId="), eq("SUCCESS"));
     }
 
     @Test
@@ -613,24 +628,106 @@ class ClusterServiceTest {
     }
 
     @Test
-    void createNameServerShouldThrowUnsupportedWhenClusterExists() {
+    void createNameServerShouldDispatchOnlyAValidatedNewAddress() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_CREATE,
+                "10.0.0.21:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         CreateNameServerDTO command = CreateNameServerDTO.builder()
                 .clusterId("cluster-1")
-                .addr("10.0.0.21:9876")
+                .addr(" 10.0.0.21:9876 ")
+                .version("5.5.0")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.createNameServer(command),
-                "NameServer create is not implemented");
+        assertThat(clusterService.createNameServer(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_CREATE
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("10.0.0.21:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion().equals("5.5.0")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+        verify(auditService).record(eq("CREATE_NAMESERVER"), eq("NAMESERVER"),
+                eq("10.0.0.21:9876"), eq("cluster-1"),
+                org.mockito.ArgumentMatchers.contains("requestId="), eq("SUCCESS"));
     }
 
     @Test
-    void nameServerOperationsShouldThrowUnsupportedWhenNameServerExists() {
+    void updateNameServerShouldDispatchOldAndNewAddressesSeparately() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
-        UpdateNameServerDTO update = UpdateNameServerDTO.builder()
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_UPDATE,
+                "10.0.0.20:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
+        UpdateNameServerDTO command = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.20:9876")
+                .newAddr(" 10.0.0.22:9876 ")
+                .version("5.5.0")
                 .build();
+
+        assertThat(clusterService.updateNameServer(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_UPDATE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress().equals("10.0.0.22:9876")
+                        && request.targetVersion().equals("5.5.0")
+                        && request.requestId() != null && !request.requestId().isBlank()));
+    }
+
+    @Test
+    void newNameServerAddressMustNotExistOrContainMultipleEndpoints() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("new:9876,other:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("--unsafe:9876").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("new:9876").version("--unsafe").build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verifyNoInteractions(lifecycleOperationExecutor);
+    }
+
+    @Test
+    void updateNameServerMustHaveDistinctNonConflictingReplacementAddress() {
+        sampleCluster.setNameServers(List.of(
+                NameServerVO.builder().addr("10.0.0.20:9876").build(),
+                NameServerVO.builder().addr("10.0.0.21:9876").build()));
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpdateNameServerDTO versionOnly = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").version("5.5.0").build();
+        UpdateNameServerDTO unchanged = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").newAddr("10.0.0.20:9876").build();
+        UpdateNameServerDTO duplicate = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1").addr("10.0.0.20:9876").newAddr("10.0.0.21:9876").build();
+
+        assertThatThrownBy(() -> clusterService.updateNameServer(versionOnly))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.updateNameServer(unchanged))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.updateNameServer(duplicate))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+        verifyNoInteractions(lifecycleOperationExecutor);
+    }
+
+    @Test
+    void nameServerLifecycleOperationsShouldDispatchValidatedRequests() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_RESTART,
+                "10.0.0.20:9876");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         RestartNameServerDTO restart = RestartNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.20:9876")
@@ -645,14 +742,40 @@ class ClusterServiceTest {
                 .addr("10.0.0.20:9876")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.updateNameServer(update),
-                "NameServer update is not implemented");
-        assertUnsupportedOperation(() -> clusterService.restartNameServer(restart),
-                "NameServer restart is not implemented");
-        assertUnsupportedOperation(() -> clusterService.upgradeNameServer(upgrade),
-                "NameServer upgrade is not implemented");
-        assertUnsupportedOperation(() -> clusterService.deleteNameServer(delete),
-                "NameServer delete is not implemented");
+        assertThat(clusterService.restartNameServer(restart)).isSameAs(accepted);
+        assertThat(clusterService.upgradeNameServer(upgrade)).isSameAs(accepted);
+        assertThat(clusterService.deleteNameServer(delete)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_RESTART
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_UPGRADE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion().equals("5.3.0")));
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.NAMESERVER_DELETE
+                        && request.target().equals("10.0.0.20:9876")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
+    }
+
+    @Test
+    void upgradeNameServerShouldRejectUnsafeVersionBeforeDispatch() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpgradeNameServerDTO command = UpgradeNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .targetVersion("--unsafe")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.upgradeNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("targetVersion is invalid")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verifyNoInteractions(lifecycleOperationExecutor);
     }
 
     @Test
@@ -682,15 +805,46 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartProxyShouldThrowUnsupportedWhenProxyExists() {
+    void restartProxyShouldDispatchLifecycleOperationWhenProxyExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.PROXY_RESTART,
+                "10.0.0.10:8081");
+        when(lifecycleOperationExecutor.execute(any())).thenReturn(accepted);
         RestartProxyDTO command = RestartProxyDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.10:8081")
                 .build();
 
-        assertUnsupportedOperation(() -> clusterService.restartProxy(command),
-                "Proxy restart is not implemented");
+        assertThat(clusterService.restartProxy(command)).isSameAs(accepted);
+        verify(lifecycleOperationExecutor).execute(argThat(request ->
+                request.operation() == LifecycleOperation.PROXY_RESTART
+                        && request.clusterId().equals("cluster-1")
+                        && request.target().equals("10.0.0.10:8081")
+                        && request.targetAddress() == null
+                        && request.targetVersion() == null));
+    }
+
+    @Test
+    void restartProxyShouldRejectNullCommand() {
+        assertThatThrownBy(() -> clusterService.restartProxy(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(clusterRepository, lifecycleOperationExecutor);
+    }
+
+    @Test
+    void lifecycleFailureShouldBeAuditedAndPropagated() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        BusinessException timeout = new BusinessException(504, "Lifecycle operation timed out");
+        when(lifecycleOperationExecutor.execute(any())).thenThrow(timeout);
+
+        assertThatThrownBy(() -> clusterService.restartBroker("cluster-1", "broker-0"))
+                .isSameAs(timeout);
+        verify(auditService).record(eq("RESTART_BROKER"), eq("BROKER"), eq("broker-0"),
+                eq("cluster-1"), org.mockito.ArgumentMatchers.contains("Lifecycle operation timed out"),
+                eq("FAILED"));
     }
 
     @Test
@@ -699,6 +853,7 @@ class ClusterServiceTest {
         UpdateNameServerDTO command = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
                 .addr("missing:9876")
+                .newAddr("10.0.0.22:9876")
                 .build();
 
         assertThatThrownBy(() -> clusterService.updateNameServer(command))
@@ -801,6 +956,11 @@ class ClusterServiceTest {
                 .hasMessageContaining(message)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
+
+    private static LifecycleOperationResult acceptedResult(LifecycleOperation operation, String target) {
+        return new LifecycleOperationResult(operation, "cluster-1", target, "request-1", true, "accepted");
+    }
+
     @Test
     void instanceConfigUpdateUsesDiscoveredPhysicalClusterAndSelectedConnection() {
         sampleCluster.setId("DefaultCluster");

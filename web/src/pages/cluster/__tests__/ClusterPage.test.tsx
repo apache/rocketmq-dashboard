@@ -40,6 +40,7 @@ const clusterServiceMocks = vi.hoisted(() => ({
   listNameserverRegistry: vi.fn(),
   listRegistryClusters: vi.fn(),
   previewClusterConfig: vi.fn(),
+  restartBroker: vi.fn(),
   restartProxy: vi.fn(),
   testClusterConnection: vi.fn(),
   updateClusterConfig: vi.fn(),
@@ -298,6 +299,14 @@ describe('Cluster page', () => {
         gmtModified: '2026-08-17 19:15:37',
       },
     ]);
+    clusterServiceMocks.restartBroker.mockReset().mockResolvedValue({
+      operation: 'BROKER_RESTART',
+      clusterId: 'cluster-prod',
+      target: 'rocketmq-prod-0',
+      requestId: 'request-broker-restart',
+      accepted: true,
+      message: '',
+    });
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.testClusterConnection.mockReset();
     clusterServiceMocks.previewClusterConfig.mockReset().mockImplementation(async (request) => {
@@ -500,6 +509,28 @@ describe('Cluster page', () => {
     expect(screen.getByText('1,100')).toBeInTheDocument();
     expect(screen.getByText('980')).toBeInTheDocument();
     expect(screen.getByText('900')).toBeInTheDocument();
+  });
+
+  it('submits a Broker restart through the lifecycle service', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      expect(String(config.content)).toContain('rocketmq-prod-0');
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderWithProviders(<ClusterPage />);
+    const row = await screen.findByRole('row', { name: /rocketmq-prod-0/ });
+
+    await user.click(within(row).getByRole('button', { name: /重\s*启/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.restartBroker).toHaveBeenCalledWith(
+        'cluster-prod',
+        'rocketmq-prod-0',
+      ),
+    );
+    expect(await screen.findByText('Broker 重启已提交: rocketmq-prod-0')).toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {

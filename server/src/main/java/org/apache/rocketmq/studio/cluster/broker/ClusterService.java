@@ -21,11 +21,15 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigPreviewVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperation;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationExecutor;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationRequest;
+import org.apache.rocketmq.studio.cluster.lifecycle.LifecycleOperationResult;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
-import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
+import org.apache.rocketmq.studio.cluster.nameserver.NamesrvAddrParser;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
@@ -49,6 +53,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -64,6 +69,7 @@ public class ClusterService {
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
     private final NameserverRegistryService registryService;
+    private final LifecycleOperationExecutor lifecycleOperationExecutor;
 
     // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
     private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(
@@ -567,74 +573,147 @@ public class ClusterService {
         }
     }
 
-    public boolean restartBroker(String clusterId, String brokerName) {
+    public LifecycleOperationResult restartBroker(String clusterId, String brokerName) {
         log.info("Restarting broker: {} in cluster: {}", brokerName, clusterId);
         ClusterVO cluster = clusterRepository.findById(clusterId)
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
-        if (cluster.getBrokers() == null || cluster.getBrokers().stream()
-                .noneMatch(broker -> brokerName.equals(broker.getName()))) {
+        BrokerVO broker = cluster.getBrokers() == null ? null : cluster.getBrokers().stream()
+                .filter(candidate -> brokerName.equals(candidate.getName()))
+                .findFirst()
+                .orElse(null);
+        if (broker == null) {
             throw new BusinessException(404, "Broker not found: " + brokerName);
         }
-        throw unsupportedOperation("Broker restart");
+        return dispatchLifecycle(LifecycleOperation.BROKER_RESTART, clusterId, brokerName,
+                broker.getAddr(), null);
     }
 
-    public NameServerVO createNameServer(CreateNameServerDTO command) {
+    public LifecycleOperationResult createNameServer(CreateNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Creating NameServer for cluster: {}", command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
-        throw unsupportedOperation("NameServer create");
+        String address = normalizeLifecycleAddress(command.getAddr(), "addr");
+        if (hasNameServerAddress(cluster, address)) {
+            throw new BusinessException(409, "NameServer already exists: " + address);
+        }
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_CREATE, command.getClusterId(),
+                address, null, optionalVersion(command.getVersion()));
     }
 
-    public void updateNameServer(UpdateNameServerDTO command) {
+    public LifecycleOperationResult updateNameServer(UpdateNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Updating NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
-        requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer update");
+        String oldAddress = normalizeLifecycleAddress(command.getAddr(), "addr");
+        if (!hasNameServerAddress(cluster, oldAddress)) {
+            throw new BusinessException(404, "NameServer not found: " + command.getAddr());
+        }
+        String newAddress = normalizeLifecycleAddress(command.getNewAddr(), "newAddr");
+        if (oldAddress.equals(newAddress)) {
+            throw new BusinessException(400, "newAddr must differ from addr");
+        }
+        if (hasNameServerAddress(cluster, newAddress)) {
+            throw new BusinessException(409, "NameServer already exists: " + newAddress);
+        }
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_UPDATE, command.getClusterId(),
+                oldAddress, newAddress, optionalVersion(command.getVersion()));
     }
 
-    public boolean restartNameServer(RestartNameServerDTO command) {
+    public LifecycleOperationResult restartNameServer(RestartNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Restarting NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer restart");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_RESTART, command.getClusterId(),
+                command.getAddr(), null, null);
     }
 
-    public boolean upgradeNameServer(UpgradeNameServerDTO command) {
+    public LifecycleOperationResult upgradeNameServer(UpgradeNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Upgrading NameServer: {} to version: {} in cluster: {}",
                 command.getAddr(), command.getTargetVersion(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer upgrade");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_UPGRADE, command.getClusterId(),
+                command.getAddr(), null, requiredVersion(command.getTargetVersion(), "targetVersion"));
     }
 
-    public boolean deleteNameServer(DeleteNameServerDTO command) {
+    public LifecycleOperationResult deleteNameServer(DeleteNameServerDTO command) {
         requireNameServerCommand(command);
         log.info("Deleting NameServer: {} from cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        throw unsupportedOperation("NameServer delete");
+        return dispatchLifecycle(LifecycleOperation.NAMESERVER_DELETE, command.getClusterId(),
+                command.getAddr(), null, null);
     }
 
-    public boolean restartProxy(RestartProxyDTO command) {
+    public LifecycleOperationResult restartProxy(RestartProxyDTO command) {
+        if (command == null) {
+            throw new BusinessException(400, "Proxy request is required");
+        }
         log.info("Restarting Proxy: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireProxy(cluster, command.getAddr());
-        throw unsupportedOperation("Proxy restart");
+        return dispatchLifecycle(LifecycleOperation.PROXY_RESTART, command.getClusterId(),
+                command.getAddr(), null, null);
     }
 
     private void requireNameServerCommand(Object command) {
         if (command == null) {
             throw new BusinessException(400, "NameServer request is required");
         }
+    }
+
+    private static String normalizeLifecycleAddress(String rawAddress, String field) {
+        if (rawAddress == null || rawAddress.isBlank()) {
+            throw new BusinessException(400, field + " is required");
+        }
+        String normalized = NamesrvAddrParser.normalize(rawAddress);
+        if (normalized.contains(",") || normalized.startsWith("-")) {
+            throw new BusinessException(400, field + " must contain exactly one NameServer address");
+        }
+        return normalized;
+    }
+
+    private static boolean hasNameServerAddress(ClusterVO cluster, String normalized) {
+        return cluster.getNameServers() != null && cluster.getNameServers().stream()
+                .anyMatch(candidate -> candidate != null && isSameAddress(candidate.getAddr(), normalized));
+    }
+
+    private static boolean isSameAddress(String discovered, String normalized) {
+        if (discovered == null || discovered.isBlank()) {
+            return false;
+        }
+        try {
+            return normalized.equals(normalizeLifecycleAddress(discovered, "addr"));
+        } catch (BusinessException exception) {
+            return false;
+        }
+    }
+
+    private static String optionalVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return null;
+        }
+        return requiredVersion(version, "version");
+    }
+
+    private static String requiredVersion(String version, String field) {
+        if (version == null || version.isBlank()) {
+            throw new BusinessException(400, field + " is required");
+        }
+        String normalized = version.trim();
+        if (normalized.startsWith("-") || normalized.length() > 128
+                || normalized.chars().anyMatch(ch -> Character.isWhitespace(ch) || Character.isISOControl(ch))) {
+            throw new BusinessException(400, field + " is invalid");
+        }
+        return normalized;
     }
 
     private void requireNameServer(ClusterVO cluster, String addr) {
@@ -651,7 +730,44 @@ public class ClusterService {
         }
     }
 
-    private BusinessException unsupportedOperation(String operation) {
-        return new BusinessException(501, operation + " is not implemented by the current cluster provider");
+    private LifecycleOperationResult dispatchLifecycle(LifecycleOperation operation, String clusterId,
+                                                       String target, String targetAddress,
+                                                       String targetVersion) {
+        String requestId = UUID.randomUUID().toString();
+        LifecycleOperationRequest request = new LifecycleOperationRequest(
+                operation, clusterId, target, targetAddress, targetVersion, requestId);
+        try {
+            LifecycleOperationResult result = lifecycleOperationExecutor.execute(request);
+            recordLifecycleAudit(operation, clusterId, target, requestId, result.message(),
+                    result.accepted() ? "SUCCESS" : "FAILED");
+            return result;
+        } catch (BusinessException exception) {
+            recordLifecycleAudit(operation, clusterId, target, requestId, exception.getMessage(), "FAILED");
+            throw exception;
+        } catch (RuntimeException exception) {
+            String message = rootMessage(exception);
+            recordLifecycleAudit(operation, clusterId, target, requestId, message, "FAILED");
+            throw new BusinessException(502, "Lifecycle operation failed: " + message);
+        }
+    }
+
+    private void recordLifecycleAudit(LifecycleOperation operation, String clusterId, String target,
+                                      String requestId, String message, String result) {
+        try {
+            auditService.record(operation.auditOperation(), operation.resourceType(), target, clusterId,
+                    "requestId=" + requestId + ", message=" + (message == null ? "" : message), result);
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record lifecycle audit for {} {}: {}", operation, target,
+                    auditFailure.getMessage());
+        }
+    }
+
+    private static String rootMessage(Throwable failure) {
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null || current.getMessage().isBlank()
+                ? current.getClass().getSimpleName() : current.getMessage();
     }
 }

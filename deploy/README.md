@@ -82,6 +82,50 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
+## 生命周期操作执行器
+
+Broker 重启、NameServer 创建/地址更新/重启/升级/删除和 Proxy 重启需要部署控制面参与，RocketMQ Admin 协议本身
+不负责进程生命周期。Studio 支持通过服务端配置调用一个部署侧可执行文件；默认关闭，未配置时相关
+接口会返回 501。
+
+```env
+STUDIO_LIFECYCLE_ENABLED=true
+STUDIO_LIFECYCLE_EXECUTABLE=/opt/rocketmq/bin/studio-lifecycle
+STUDIO_LIFECYCLE_TIMEOUT=PT30S
+STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES=8192
+STUDIO_LIFECYCLE_ALLOWED_OPERATIONS=BROKER_RESTART,NAMESERVER_CREATE,NAMESERVER_UPDATE,NAMESERVER_RESTART,NAMESERVER_UPGRADE,NAMESERVER_DELETE,PROXY_RESTART
+```
+
+Studio 使用无 shell 的固定参数启动该文件。部署侧执行器负责 Docker Compose、Kubernetes、SSH 或其他
+运维平台的实际编排，参数如下：
+
+| allowlist 值 | 子命令 | 目标参数 |
+| --- | --- | --- |
+| `BROKER_RESTART` | `broker-restart` | `--target <broker-name> --target-address <broker-address>` |
+| `NAMESERVER_CREATE` | `nameserver-create` | `--target <new-nameserver-address> [--target-version <version>]` |
+| `NAMESERVER_UPDATE` | `nameserver-update` | `--target <existing-nameserver-address> --target-address <new-nameserver-address> [--target-version <version>]` |
+| `NAMESERVER_RESTART` | `nameserver-restart` | `--target <nameserver-address>` |
+| `NAMESERVER_UPGRADE` | `nameserver-upgrade` | `--target <nameserver-address> --target-version <version>` |
+| `NAMESERVER_DELETE` | `nameserver-delete` | `--target <nameserver-address>` |
+| `PROXY_RESTART` | `proxy-restart` | `--target <proxy-address>` |
+
+固定参数顺序为 `子命令 --cluster-id <cluster> --target <目标> [--target-address <地址>]
+[--target-version <版本>] --request-id <uuid>`，各参数均作为独立 token 传递，不经 shell 解析。
+创建时目标是新地址；地址更新时目标是已发现的旧地址，`--target-address` 是替换的新地址。版本仅是
+部署元数据；只升级版本应使用 `NAMESERVER_UPGRADE`。标准输出和标准错误会合并，最多保留
+`STUDIO_LIFECYCLE_MAX_OUTPUT_BYTES` 字节，并返回给管理员和写入审计记录；适配器不得输出密钥或令牌。
+
+`/api/nameservers/create` 和 `/api/nameservers/update` 返回带 `requestId` 的派发结果，而不是一个
+已运行的 NameServer。两者均不修改 Studio 的 NameServer 注册表；`/api/nameservers/registry/*`
+只管理地址目录，不创建或更新进程。部署适配器需将集群和地址映射至自己控制的资源清单，拒绝未知
+目标并处理幂等、部署位置和回滚，不能把请求地址当作命令执行。重试可能再次派发，不能假定恰好执行一次。
+
+退出码 0 只表示操作已被部署控制面接受，不代表新地址可用或健康；健康检查、滚动策略和回滚由执行器负责。未启用、未配置或未
+加入 allowlist 时返回 501；进程启动失败或非零退出返回 502；超时返回 504，并终止适配器进程树。请只
+允许管理员访问这些接口，并把执行文件安装在 Studio 服务运行环境中。开启登录保护时，全局
+`AuthInterceptor` 会拒绝 reader 对全部生命周期 POST 接口的访问；`studio.auth.login-required=false`
+是显式关闭鉴权的本地开发模式，不提供管理员边界。
+
 ## 前置条件
 
 - 本地安装 Docker

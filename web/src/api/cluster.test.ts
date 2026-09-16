@@ -117,11 +117,22 @@ describe('K8s certificate API', () => {
       .onPost('/clusters/cloud%2Fprod%20cluster%3A1/brokers/broker%2Fmain%3A10911/restart')
       .reply(200, {
         code: 200,
-        data: { success: true, message: 'restarted' },
+        data: {
+          operation: 'BROKER_RESTART',
+          clusterId: 'cloud/prod cluster:1',
+          target: 'broker/main:10911',
+          requestId: 'request-1',
+          accepted: true,
+          message: 'restarted',
+        },
       });
 
     await expect(restartBroker('cloud/prod cluster:1', 'broker/main:10911')).resolves.toEqual({
-      success: true,
+      operation: 'BROKER_RESTART',
+      clusterId: 'cloud/prod cluster:1',
+      target: 'broker/main:10911',
+      requestId: 'request-1',
+      accepted: true,
       message: 'restarted',
     });
   });
@@ -171,25 +182,60 @@ describe('K8s certificate API', () => {
     const target = { clusterId: 'cluster-1', addr: '127.0.0.1:9876' };
     const requests = [
       ['/nameservers/restart', target],
-      ['/nameservers/upgrade', { ...target, version: '5.4.0' }],
-      ['/nameservers/create', target],
-      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876' }],
+      ['/nameservers/upgrade', { ...target, targetVersion: '5.4.0' }],
+      ['/nameservers/create', { ...target, version: '5.4.0' }],
+      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876', version: '5.4.0' }],
       ['/nameservers/delete', target],
     ] as const;
     requests.forEach(([url, body]) => {
       mock.onPost(url).reply((config) => {
         expect(JSON.parse(config.data)).toEqual(body);
-        return [200, { code: 200, data: null }];
+        const operation = url.endsWith('/restart')
+          ? 'NAMESERVER_RESTART'
+          : url.endsWith('/upgrade')
+            ? 'NAMESERVER_UPGRADE'
+            : url.endsWith('/delete')
+              ? 'NAMESERVER_DELETE'
+              : url.endsWith('/create')
+                ? 'NAMESERVER_CREATE'
+                : 'NAMESERVER_UPDATE';
+        return [200, {
+          code: 200,
+          data: {
+            operation,
+            clusterId: 'cluster-1',
+            target: '127.0.0.1:9876',
+            requestId: 'request-1',
+            accepted: true,
+            message: 'accepted',
+          },
+        }];
       });
     });
 
-    await expect(restartNameServer(target)).resolves.toBeUndefined();
-    await expect(upgradeNameServer({ ...target, version: '5.4.0' })).resolves.toBeUndefined();
-    await expect(createNameServer(target)).resolves.toBeUndefined();
+    await expect(restartNameServer(target)).resolves.toMatchObject({
+      operation: 'NAMESERVER_RESTART',
+      accepted: true,
+    });
+    await expect(upgradeNameServer({ ...target, version: '5.4.0' })).resolves.toMatchObject({
+      operation: 'NAMESERVER_UPGRADE',
+      accepted: true,
+    });
+    await expect(createNameServer({ ...target, version: '5.4.0' })).resolves.toMatchObject({
+      operation: 'NAMESERVER_CREATE',
+      accepted: true,
+    });
     await expect(
-      updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
-    ).resolves.toBeUndefined();
-    await expect(deleteNameServer(target)).resolves.toBeUndefined();
+      updateNameServer({ ...target, newAddr: '127.0.0.2:9876', version: '5.4.0' }),
+    ).resolves.toMatchObject({
+      operation: 'NAMESERVER_UPDATE',
+      target: '127.0.0.1:9876',
+      accepted: true,
+    });
+    await expect(deleteNameServer(target)).resolves.toMatchObject({
+      operation: 'NAMESERVER_DELETE',
+      accepted: true,
+    });
   });
 
   it('loads NameServer configuration drift for the selected cluster', async () => {
@@ -267,9 +313,22 @@ describe('K8s certificate API', () => {
     const target = { clusterId: 'cluster-1', addr: '127.0.0.1:8081' };
     mock.onPost('/proxies/restart').reply((config) => {
       expect(JSON.parse(config.data)).toEqual(target);
-      return [200, { code: 200, data: null }];
+      return [200, {
+        code: 200,
+        data: {
+          operation: 'PROXY_RESTART',
+          clusterId: 'cluster-1',
+          target: '127.0.0.1:8081',
+          requestId: 'request-1',
+          accepted: true,
+          message: 'accepted',
+        },
+      }];
     });
 
-    await expect(restartProxy(target)).resolves.toBeUndefined();
+    await expect(restartProxy(target)).resolves.toMatchObject({
+      operation: 'PROXY_RESTART',
+      accepted: true,
+    });
   });
 });

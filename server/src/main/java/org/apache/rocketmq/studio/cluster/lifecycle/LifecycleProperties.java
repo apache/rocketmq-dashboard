@@ -14,27 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.nameserver;
+package org.apache.rocketmq.studio.cluster.lifecycle;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class UpdateNameServerDTO {
-    @NotBlank(message = "clusterId is required")
-    private String clusterId;
+import java.time.Duration;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
-    @NotBlank(message = "addr is required")
-    private String addr;
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "studio.lifecycle")
+public class LifecycleProperties {
 
-    @NotBlank(message = "newAddr is required")
-    private String newAddr;
-
-    private String version;
+    private boolean enabled;
+    private String executable;
+    private String workingDirectory;
+    private Duration timeout = Duration.ofSeconds(30);
+    private int maxOutputBytes = 8_192;
+    private Set<LifecycleOperation> allowedOperations = new LinkedHashSet<>();
 }
