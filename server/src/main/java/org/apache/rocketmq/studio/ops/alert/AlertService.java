@@ -201,10 +201,11 @@ public class AlertService {
         validateRuleId(id);
         NativeAlertRulePolicy.validate(rule);
         rejectDuplicateSemanticRule(rule, id);
+        AlertRuleVO existing = alertRepository.findRuleById(id).orElse(null);
         if (!replaceRuleWithoutDuplicate(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        clearStateOnlyWhenEvaluationConditionsChange(existing, rule);
         auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
@@ -272,6 +273,26 @@ public class AlertService {
     }
 
 
+    /**
+     * Drops evaluation state only when the fields that decide firing change. Cosmetic edits
+     * (name, description, channels, notification template) must not reset FIRING/ACK or the
+     * operator loses the active episode and ACK status.
+     */
+    private void clearStateOnlyWhenEvaluationConditionsChange(AlertRuleVO existing, AlertRuleVO updated) {
+        if (existing == null
+                || !AlertRuleSemanticFingerprint.of(existing).equals(AlertRuleSemanticFingerprint.of(updated))) {
+            alertStateRepository.deleteByRuleId(updated.getId());
+        }
+    }
+
+    /** Disabling a rule must drop its FIRING/ACK episode so re-enable starts from a clean state. */
+    private void clearStateWhenDisabling(Long id, boolean enabled) {
+        if (!enabled) {
+            alertStateRepository.deleteByRuleId(id);
+        }
+    }
+
+
     @Transactional
     public AlertRuleVO toggleRule(Long id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
@@ -282,7 +303,7 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        clearStateWhenDisabling(id, enabled);
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -295,7 +316,7 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
-        alertStateRepository.deleteByRuleId(id);
+        clearStateWhenDisabling(id, enabled);
         auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
         return rule;
     }
@@ -344,7 +365,7 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
+                clearStateWhenDisabling(id, enabled);
                 auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
                 updated.add(rule);
@@ -433,7 +454,9 @@ public class AlertService {
                     failures.put(id, "Alert rule not found");
                     continue;
                 }
-                alertStateRepository.deleteByRuleId(id);
+                if (!rule.isEnabled()) {
+                    alertStateRepository.deleteByRuleId(id);
+                }
                 auditRule(auditOperation, rule, auditDetail);
                 succeeded.add(id);
                 updated.add(rule);

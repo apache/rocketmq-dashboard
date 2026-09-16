@@ -184,7 +184,7 @@ class AlertServiceTest {
         assertThat(updated.isEnabled()).isTrue();
         verify(alertRepository).replaceRule(cluster);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(2L);
+        verify(alertStateRepository, never()).deleteByRuleId(2L);
     }
 
     @Test
@@ -196,6 +196,57 @@ class AlertServiceTest {
         alertService.updateRule(rule);
 
         verify(alertStateRepository).deleteByRuleId(4L);
+    }
+
+    @Test
+    void updatingRuleNameWithoutChangingEvaluationConditionsKeepsStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
+                .operator(">").threshold(100).instanceId("local").build();
+        AlertRuleVO updated = AlertRuleVO.builder().id(4L).name("Consumer lag (renamed)")
+                .metric("consumer.lag.total").operator(">").threshold(100).instanceId("local")
+                .description("cosmetic description").build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(updated)).thenReturn(true);
+
+        alertService.updateRule(updated);
+
+        verify(alertStateRepository, never()).deleteByRuleId(4L);
+    }
+
+    @Test
+    void updatingRuleThresholdResetsEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
+                .operator(">").threshold(100).instanceId("local").build();
+        AlertRuleVO updated = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
+                .operator(">").threshold(250).instanceId("local").build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(updated)).thenReturn(true);
+
+        alertService.updateRule(updated);
+
+        verify(alertStateRepository).deleteByRuleId(4L);
+    }
+
+    @Test
+    void disablingRuleClearsEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(true).build();
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(existing)).thenReturn(true);
+
+        alertService.toggleRule(1L, false);
+
+        verify(alertStateRepository).deleteByRuleId(1L);
+    }
+
+    @Test
+    void enablingRuleKeepsEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(1L).name("CPU Alert").enabled(false).build();
+        when(alertRepository.findRuleById(1L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(existing)).thenReturn(true);
+
+        alertService.toggleRule(1L, true);
+
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
     }
 
     @Test
@@ -1212,7 +1263,7 @@ class AlertServiceTest {
                 .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
         verify(alertRepository).replaceRule(rule);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(1L);
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
     }
 
     @Test
@@ -1226,7 +1277,7 @@ class AlertServiceTest {
         alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L), true);
         alertService.bulkDeleteRules(AlertDomain.CLUSTER, List.of(1L));
 
-        verify(alertStateRepository, org.mockito.Mockito.times(2)).deleteByRuleId(1L);
+        verify(alertStateRepository, org.mockito.Mockito.times(1)).deleteByRuleId(1L);
         verify(alertRepository, never()).findAllRules();
     }
 
