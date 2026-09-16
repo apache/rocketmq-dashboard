@@ -177,7 +177,9 @@ const parseTemplate = (
   VARIABLE_PATTERN.lastIndex = 0;
   while ((match = VARIABLE_PATTERN.exec(template)) !== null) {
     const [placeholder, rawVariable] = match;
-    const variable = rawVariable.trim();
+    // Match the server's placeholder spelling exactly; whitespace inside a
+    // placeholder is literal text, not an alias for a documented variable.
+    const variable = rawVariable;
     appendTextToken(tokens, template.slice(cursor, match.index));
 
     if (!knownVariables.has(variable)) {
@@ -246,7 +248,7 @@ export function previewAlertNotificationTemplate(
   const template = normalizeTemplate(templateInput);
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
   const values = buildAlertTemplatePreviewContext(context);
-  const parsed = parseTemplate(template, values);
+  const parsed = parseTemplate(template.trim() ? template.trim() : template, values);
   const unusedContextVariables = collectUnusedContextVariables(parsed.usedVariables, values);
   const issues: AlertTemplatePreviewIssue[] = [];
 

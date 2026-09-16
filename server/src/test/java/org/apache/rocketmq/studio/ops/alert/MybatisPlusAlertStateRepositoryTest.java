@@ -127,6 +127,35 @@ class MybatisPlusAlertStateRepositoryTest {
     }
 
     @Test
+    void findsActiveStatesForRulesWithPaddedStoredInstanceIdsTest() {
+        // NativeAlertProcessor keeps rules whose stored instanceId has surrounding whitespace
+        // (legacy rows) by trimming before the scope comparison, exactly like the metric filter
+        // above; findActive must apply the same normalization or a genuinely firing rule reports
+        // no active state and the stale FIRING/ACKED row is never reconciled.
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        RmqAlertState state = new RmqAlertState();
+        state.setRuleId(6L);
+        state.setFingerprint("fingerprint");
+        state.setStatus(AlertStateStatus.FIRING.name());
+        state.setConsecutiveHits(2);
+        state.setCurrentValue(10D);
+        when(mapper.selectList(any())).thenReturn(List.of(state));
+        RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
+        when(alertMapper.selectList(any())).thenReturn(List.of(
+                alert(6L, "fingerprint", "local", "{\"consumerGroup\":\"orders\"}")));
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
+        AlertRuleVO rule = AlertRuleVO.builder().id(6L).domain(AlertDomain.BUSINESS).enabled(true)
+                .instanceId(" local ").metric("consumer.lag.total").build();
+
+        List<ActiveAlertState> active = repository.findActive(new MetricCollectionScope(AlertDomain.BUSINESS,
+                "local", Set.of("consumer.lag.total")), List.of(rule));
+
+        assertThat(active).singleElement().satisfies(item -> {
+            assertThat(item.key()).isEqualTo(new AlertStateKey(6L, "fingerprint"));
+            assertThat(item.state().status()).isEqualTo(AlertStateStatus.FIRING);
+        });
+    }
+    @Test
     void findsActiveStatesWithOneLatestAlertMetadataQueryTest() {
         RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
         RmqAlertState first = activeState(4L, "fingerprint-a", AlertStateStatus.FIRING);
