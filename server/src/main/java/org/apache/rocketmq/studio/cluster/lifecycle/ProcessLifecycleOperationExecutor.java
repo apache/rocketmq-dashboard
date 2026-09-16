@@ -116,6 +116,16 @@ public class ProcessLifecycleOperationExecutor implements LifecycleOperationExec
         if (request.operation() == LifecycleOperation.NAMESERVER_UPDATE) {
             requireText(request.targetAddress(), "targetAddress");
         }
+        if (StringUtils.hasText(request.targetVersion())) {
+            validateVersion(request.targetVersion());
+        }
+    }
+
+    private static void validateVersion(String version) {
+        if (version.startsWith("-") || version.length() > 128
+                || version.chars().anyMatch(ch -> Character.isWhitespace(ch) || Character.isISOControl(ch))) {
+            throw new BusinessException(400, "targetVersion is invalid");
+        }
     }
 
     private static void requireText(String value, String field) {

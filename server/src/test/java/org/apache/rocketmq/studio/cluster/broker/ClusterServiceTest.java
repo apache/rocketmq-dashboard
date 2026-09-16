@@ -31,7 +31,6 @@ import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
-import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
@@ -40,7 +39,6 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -87,11 +85,6 @@ class ClusterServiceTest {
     private ClusterService clusterService;
 
     private ClusterVO sampleCluster;
-
-    @AfterEach
-    void clearUserContext() {
-        AuthenticatedUserContext.clear();
-    }
 
     @BeforeEach
     void setUp() {
@@ -636,7 +629,6 @@ class ClusterServiceTest {
 
     @Test
     void createNameServerShouldDispatchOnlyAValidatedNewAddress() {
-        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_CREATE,
                 "10.0.0.21:9876");
@@ -662,7 +654,6 @@ class ClusterServiceTest {
 
     @Test
     void updateNameServerShouldDispatchOldAndNewAddressesSeparately() {
-        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         LifecycleOperationResult accepted = acceptedResult(LifecycleOperation.NAMESERVER_UPDATE,
                 "10.0.0.20:9876");
@@ -685,7 +676,6 @@ class ClusterServiceTest {
 
     @Test
     void newNameServerAddressMustNotExistOrContainMultipleEndpoints() {
-        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
 
         assertThatThrownBy(() -> clusterService.createNameServer(CreateNameServerDTO.builder()
@@ -709,7 +699,6 @@ class ClusterServiceTest {
 
     @Test
     void updateNameServerMustHaveDistinctNonConflictingReplacementAddress() {
-        AuthenticatedUserContext.setUser("admin", true);
         sampleCluster.setNameServers(List.of(
                 NameServerVO.builder().addr("10.0.0.20:9876").build(),
                 NameServerVO.builder().addr("10.0.0.21:9876").build()));
@@ -731,24 +720,6 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
         verifyNoInteractions(lifecycleOperationExecutor);
-    }
-
-    @Test
-    void nonAdminMustNotProvisionOrUpdateNameServers() {
-        AuthenticatedUserContext.setUser("reader", false);
-        CreateNameServerDTO create = CreateNameServerDTO.builder()
-                .clusterId("cluster-1").addr("10.0.0.21:9876").build();
-        UpdateNameServerDTO update = UpdateNameServerDTO.builder()
-                .clusterId("cluster-1").addr("10.0.0.20:9876")
-                .newAddr("10.0.0.22:9876").build();
-
-        assertThatThrownBy(() -> clusterService.createNameServer(create))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(403));
-        assertThatThrownBy(() -> clusterService.updateNameServer(update))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(403));
-        verifyNoInteractions(clusterRepository, lifecycleOperationExecutor);
     }
 
     @Test
@@ -789,6 +760,22 @@ class ClusterServiceTest {
                         && request.target().equals("10.0.0.20:9876")
                         && request.targetAddress() == null
                         && request.targetVersion() == null));
+    }
+
+    @Test
+    void upgradeNameServerShouldRejectUnsafeVersionBeforeDispatch() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpgradeNameServerDTO command = UpgradeNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .targetVersion("--unsafe")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.upgradeNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("targetVersion is invalid")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verifyNoInteractions(lifecycleOperationExecutor);
     }
 
     @Test
@@ -862,7 +849,6 @@ class ClusterServiceTest {
 
     @Test
     void updateNameServerShouldThrowWhenNameServerNotFound() {
-        AuthenticatedUserContext.setUser("admin", true);
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         UpdateNameServerDTO command = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")

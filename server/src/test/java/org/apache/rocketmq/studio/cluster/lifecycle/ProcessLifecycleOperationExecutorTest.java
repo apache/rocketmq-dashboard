@@ -210,6 +210,29 @@ class ProcessLifecycleOperationExecutorTest {
                 .hasMessageContaining("targetVersion");
     }
 
+    @Test
+    void rejectsAnUnsafeVersionBeforeStartingTheAdapter() {
+        LifecycleProperties properties = enabledProperties(LifecycleOperation.NAMESERVER_UPGRADE);
+        java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
+        LifecycleProcessRunner runner = (command, workingDirectory, timeout, maxOutputBytes) -> {
+            started.set(true);
+            return LifecycleProcessResult.success("unexpected");
+        };
+        LifecycleOperationRequest request = new LifecycleOperationRequest(
+                LifecycleOperation.NAMESERVER_UPGRADE,
+                "cluster-1",
+                "10.0.0.20:9876",
+                null,
+                "--unsafe",
+                "request-1");
+
+        assertThatThrownBy(() -> new ProcessLifecycleOperationExecutor(properties, runner).execute(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400))
+                .hasMessage("targetVersion is invalid");
+        assertThat(started).isFalse();
+    }
+
     private static LifecycleProperties enabledProperties(LifecycleOperation operation) {
         LifecycleProperties properties = new LifecycleProperties();
         properties.setEnabled(true);

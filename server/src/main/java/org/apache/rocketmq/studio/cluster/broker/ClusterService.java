@@ -38,7 +38,6 @@ import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import jakarta.annotation.PreDestroy;
@@ -591,7 +590,6 @@ public class ClusterService {
 
     public LifecycleOperationResult createNameServer(CreateNameServerDTO command) {
         requireNameServerCommand(command);
-        requireLifecycleAdmin();
         log.info("Creating NameServer for cluster: {}", command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -605,7 +603,6 @@ public class ClusterService {
 
     public LifecycleOperationResult updateNameServer(UpdateNameServerDTO command) {
         requireNameServerCommand(command);
-        requireLifecycleAdmin();
         log.info("Updating NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -642,7 +639,7 @@ public class ClusterService {
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
         return dispatchLifecycle(LifecycleOperation.NAMESERVER_UPGRADE, command.getClusterId(),
-                command.getAddr(), null, command.getTargetVersion());
+                command.getAddr(), null, requiredVersion(command.getTargetVersion(), "targetVersion"));
     }
 
     public LifecycleOperationResult deleteNameServer(DeleteNameServerDTO command) {
@@ -670,12 +667,6 @@ public class ClusterService {
     private void requireNameServerCommand(Object command) {
         if (command == null) {
             throw new BusinessException(400, "NameServer request is required");
-        }
-    }
-
-    private static void requireLifecycleAdmin() {
-        if (!AuthenticatedUserContext.currentUserIsAdmin()) {
-            throw new BusinessException(403, "NameServer provisioning requires an authenticated administrator");
         }
     }
 
@@ -710,10 +701,17 @@ public class ClusterService {
         if (version == null || version.isBlank()) {
             return null;
         }
+        return requiredVersion(version, "version");
+    }
+
+    private static String requiredVersion(String version, String field) {
+        if (version == null || version.isBlank()) {
+            throw new BusinessException(400, field + " is required");
+        }
         String normalized = version.trim();
         if (normalized.startsWith("-") || normalized.length() > 128
                 || normalized.chars().anyMatch(ch -> Character.isWhitespace(ch) || Character.isISOControl(ch))) {
-            throw new BusinessException(400, "version is invalid");
+            throw new BusinessException(400, field + " is invalid");
         }
         return normalized;
     }

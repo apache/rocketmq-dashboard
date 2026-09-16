@@ -408,6 +408,28 @@ class AuthInterceptorTest {
         assertThat(response.getContentAsString()).contains("Admin permission required");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/clusters/cluster-1/brokers/broker-0/restart",
+        "/api/nameservers/create",
+        "/api/nameservers/update",
+        "/api/nameservers/restart",
+        "/api/nameservers/upgrade",
+        "/api/nameservers/delete",
+        "/api/proxies/restart"
+    })
+    void shouldRejectLifecycleMutationsForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("POST", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
     @Test
     void shouldAllowMutatingPostForAdminUser() throws Exception {
         TestSession session = login(true);
