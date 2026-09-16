@@ -75,6 +75,13 @@ public final class MessagePropertyDisplay {
         if (value == null || value.length() <= MAX_PROPERTY_VALUE_CHARS) {
             return value;
         }
-        return value.substring(0, MAX_PROPERTY_VALUE_CHARS) + "...";
+        int end = MAX_PROPERTY_VALUE_CHARS;
+        // Cap counts UTF-16 chars, so a cut between a surrogate pair would emit a lone
+        // high surrogate. Walk back to the previous code point boundary instead.
+        if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))
+                && end < value.length() && Character.isLowSurrogate(value.charAt(end))) {
+            end--;
+        }
+        return value.substring(0, end) + "...";
     }
 }

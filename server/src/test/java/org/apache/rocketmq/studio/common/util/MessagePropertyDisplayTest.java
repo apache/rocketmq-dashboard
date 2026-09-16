@@ -59,6 +59,19 @@ class MessagePropertyDisplayTest {
     }
 
     @Test
+    void limitPropertiesShouldNotSplitSupplementaryCharactersTest() {
+        // Place U+1F600 so its high surrogate lands at index MAX_PROPERTY_VALUE_CHARS - 1.
+        String value = "x".repeat(MessagePropertyDisplay.MAX_PROPERTY_VALUE_CHARS - 1) + "😀" + "tail";
+        Map<String, String> limited = MessagePropertyDisplay.limitProperties(Map.of("big", value));
+        String abbreviated = limited.get("big");
+        assertThat(abbreviated).isNotNull();
+        assertThat(abbreviated).endsWith("...");
+        String core = abbreviated.substring(0, abbreviated.length() - 3);
+        assertThat(Character.isHighSurrogate(core.charAt(core.length() - 1))).isFalse();
+        assertThat(core).doesNotContain("😀");
+    }
+
+    @Test
     void hasOversizedPropertyShouldDetectLongValuesTest() {
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("big", "x".repeat(1500)))).isTrue();
         assertThat(MessagePropertyDisplay.hasOversizedProperty(Map.of("k", "short"))).isFalse();
