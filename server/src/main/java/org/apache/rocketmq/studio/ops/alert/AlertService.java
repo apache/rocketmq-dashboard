@@ -570,6 +570,7 @@ public class AlertService {
     }
 
 
+    @Transactional
     public SystemAlertVO acknowledgeAlert(Long id) {
         log.info("Acknowledging system alert id={}", id);
         if (id == null) {
