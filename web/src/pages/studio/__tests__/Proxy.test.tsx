@@ -114,6 +114,21 @@ describe('ProxyPage', () => {
     }
   });
 
+  it('clears the stored cluster id when the input is cleared', async () => {
+    localStorage.setItem('clusterId', 'custom-cluster');
+    const user = userEvent.setup();
+    const firstRender = renderPage();
+
+    const clusterInput = await screen.findByDisplayValue('custom-cluster');
+    await user.clear(clusterInput);
+
+    expect(localStorage.getItem('clusterId')).toBeNull();
+    firstRender.unmount();
+
+    renderPage();
+    expect(await screen.findByDisplayValue('DefaultCluster')).toBeInTheDocument();
+  });
+
   it('loads Proxy nodes once after the page mounts', async () => {
     renderPage();
 
