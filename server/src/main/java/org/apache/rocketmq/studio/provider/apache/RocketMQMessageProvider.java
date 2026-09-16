@@ -827,6 +827,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .storeTime(messageExt.getStoreTimestamp())
                 .bornHost(String.valueOf(messageExt.getBornHost()))
                 .storeHost(String.valueOf(messageExt.getStoreHost()))
+                .reconsumeTimes(messageExt.getReconsumeTimes())
                 .properties(displayProperties)
                 .propertiesTruncated(properties != null && (displayProperties.size() < properties.size()
                         || MessagePropertyDisplay.hasOversizedProperty(properties)))

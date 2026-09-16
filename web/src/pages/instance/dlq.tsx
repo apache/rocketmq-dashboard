@@ -544,6 +544,15 @@ const DLQPage = () => {
       render: (offset: number) => <Text style={{ fontFamily: 'monospace' }}>{offset}</Text>,
     },
     {
+      title: '重投次数',
+      dataIndex: 'reconsumeTimes',
+      key: 'reconsumeTimes',
+      width: 90,
+      render: (reconsumeTimes?: number) => (
+        <Text style={{ fontFamily: 'monospace' }}>{reconsumeTimes ?? '-'}</Text>
+      ),
+    },
+    {
       title: '入队时间',
       dataIndex: 'storeTime',
       key: 'storeTime',
@@ -782,7 +791,7 @@ const DLQPage = () => {
          ═══════════════════════════════════════════ */}
       <Drawer
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1080}
+        width={1180}
         open={detailOpen}
         onClose={() => {
           detailRequestIdRef.current += 1;

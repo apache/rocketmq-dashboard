@@ -894,6 +894,9 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label="大小">{formatSize(selectedMsg.size)}</Descriptions.Item>
+            <Descriptions.Item label="重投次数">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
+            </Descriptions.Item>
             <Descriptions.Item label="Born Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.bornHost}</span>
             </Descriptions.Item>
@@ -902,6 +905,15 @@ const MessagePageContent = ({
             </Descriptions.Item>
             <Descriptions.Item label="存储时间" span={2}>
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Broker">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.brokerName ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue ID">
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueId ?? '-'}</span>
+            </Descriptions.Item>
+            <Descriptions.Item label="Queue Offset" span={2}>
+              <span style={{ fontFamily: 'monospace' }}>{selectedMsg.queueOffset ?? '-'}</span>
             </Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>

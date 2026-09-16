@@ -41,6 +41,7 @@ public class MessageRecordVO {
     private long storeTime;
     private String bornHost;
     private String storeHost;
+    private Integer reconsumeTimes;
     private Map<String, String> properties;
     private boolean propertiesTruncated;
     private int size;
