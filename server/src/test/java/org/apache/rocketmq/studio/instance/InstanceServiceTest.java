@@ -34,6 +34,9 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.apache.rocketmq.studio.settings.SettingsService;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.junit.jupiter.api.Test;
@@ -93,6 +96,12 @@ class InstanceServiceTest {
 
     @Mock
     private SettingsRepository settingsRepository;
+
+    @Mock
+    private CacheManager cacheManager;
+
+    @Mock
+    private Cache dataSourceCache;
 
     @Mock
     private RegionNames regionNames;
@@ -1006,7 +1015,7 @@ class InstanceServiceTest {
     }
 
     @Test
-    void deleteInstanceShouldDeferEndpointReleaseUntilAfterCommitTest() {
+    void deleteInstanceShouldDeferCleanupUntilAfterCommitTest() {
         InstanceVO existing = InstanceVO.builder()
                 .name("to-delete")
                 .endpoint("namesrv:9876")
@@ -1016,6 +1025,7 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(List.of());
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
+        when(cacheManager.getCache(SettingsService.DATA_SOURCE_CACHE)).thenReturn(dataSourceCache);
 
         TransactionSynchronizationManager.initSynchronization();
         try {
@@ -1023,6 +1033,7 @@ class InstanceServiceTest {
 
             verify(adminFactory, never()).release(any());
             verify(clientPool, never()).release(any());
+            verify(dataSourceCache, never()).clear();
 
             for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
                 sync.afterCommit();
@@ -1033,6 +1044,7 @@ class InstanceServiceTest {
 
         verify(adminFactory).release("namesrv:9876");
         verify(clientPool).release("namesrv:9876");
+        verify(dataSourceCache).clear();
     }
 
     @Test
@@ -1048,11 +1060,13 @@ class InstanceServiceTest {
         when(instanceRepository.deleteById(1L)).thenReturn(true);
         when(settingsRepository.findAllDataSources()).thenReturn(List.of(dataSource));
         when(settingsRepository.replaceDataSource(dataSource)).thenReturn(true);
+        when(cacheManager.getCache(SettingsService.DATA_SOURCE_CACHE)).thenReturn(dataSourceCache);
 
         instanceService.deleteInstance(1L);
 
         assertThat(dataSource.getInstanceIds()).containsExactly("inst-2");
         verify(settingsRepository).replaceDataSource(dataSource);
+        verify(dataSourceCache).clear();
     }
 
     @Test
