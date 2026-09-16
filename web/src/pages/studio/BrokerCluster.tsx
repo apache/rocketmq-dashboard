@@ -31,6 +31,7 @@ import type { ClusterInfo } from '../../api/cluster';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
+import BrokerHaDialog from '../../components/BrokerHaDialog';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -190,6 +191,7 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
+  const [haTarget, setHaTarget] = useState<{ instanceId: string; brokerName: string } | null>(null);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
@@ -325,6 +327,25 @@ const BrokerClusterPage = () => {
     (activeTab === 'broker' && brokerData.length === 0);
 
   const brokerColumns = [
+    {
+      title: 'Replication',
+      key: 'replication',
+      render: (_: unknown, record: BrokerRecord) => (
+        <Button
+          size="small"
+          disabled={!selectedInstanceId || isMockMode()}
+          onClick={() =>
+            selectedInstanceId &&
+            setHaTarget({
+              instanceId: selectedInstanceId,
+              brokerName: record.brokerName,
+            })
+          }
+        >
+          HA status
+        </Button>
+      ),
+    },
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -521,7 +542,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setHaTarget(null);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
@@ -614,6 +638,14 @@ const BrokerClusterPage = () => {
           />
         </Card>
       </Spin>
+      {haTarget && haTarget.instanceId === selectedInstanceId && (
+        <BrokerHaDialog
+          key={haTarget.instanceId + haTarget.brokerName}
+          instanceId={haTarget.instanceId}
+          brokerName={haTarget.brokerName}
+          onClose={() => setHaTarget(null)}
+        />
+      )}
     </div>
   );
 };
