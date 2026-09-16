@@ -404,16 +404,126 @@ describe('Cluster page', () => {
       expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'cluster-prod',
-          instanceId: 'instance-1',
           writeQueueNums: 16,
           maxMessageSize: 4 * 1024 * 1024,
         }),
       ),
     );
+    expect(clusterServiceMocks.previewClusterConfig.mock.calls[0][0]).not.toHaveProperty(
+      'instanceId',
+    );
     expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('routes registry config actions through the backend without an instanceId', async () => {
+    const user = userEvent.setup();
+    // The registry row was probed from ns-b:9876; no configured instance shares that
+    // endpoint, so endpoint text could never identify an owner. The route instance
+    // (instance-1) must not be attached either.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      { ...buildCluster(), endpoint: 'ns-b:9876' },
+    ]);
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-1');
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '16');
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalled());
+    expect(clusterServiceMocks.previewClusterConfig.mock.calls[0][0]).not.toHaveProperty(
+      'instanceId',
+    );
+    expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalled());
+    expect(clusterServiceMocks.updateClusterConfig.mock.calls[0][0]).not.toHaveProperty(
+      'instanceId',
+    );
+  });
+
+  it('keeps registry config actions available when several instances share the NameServer', async () => {
+    const user = userEvent.setup();
+    // One cluster may host several instances and several clusters may share a
+    // NameServer, so an ambiguous endpoint is a legitimate state — never a
+    // frontend rejection.
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-1',
+        endpoint: 'ns-shared:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-2',
+        endpoint: 'ns-shared:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      { ...buildCluster(), endpoint: 'ns-shared:9876' },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalled());
+    expect(clusterServiceMocks.previewClusterConfig.mock.calls[0][0]).not.toHaveProperty(
+      'instanceId',
+    );
+  });
+
+  it('resolves config diffs server-side from the cluster id', async () => {
+    const user = userEvent.setup();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [
+          { addr: 'rocketmq1-nameserver:9876', status: 'healthy' },
+          { addr: 'rocketmq1-nameserver-1:9876', status: 'healthy' },
+        ],
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配置差异/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.getBrokerConfigDiff).toHaveBeenCalledWith('cluster-prod'),
+    );
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const nsRow = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(nsRow).getByRole('button', { name: /配置差异/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith('cluster-prod'),
+    );
   });
 
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
@@ -629,10 +739,7 @@ describe('Cluster page', () => {
     await user.click(within(row).getByRole('button', { name: /配置差异/ }));
 
     await waitFor(() =>
-      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
-        'cluster-prod',
-        'instance-1',
-      ),
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith('cluster-prod'),
     );
     const dialog = await screen.findByRole('dialog', {
       name: /NameServer 配置差异 - rocketmq1/,
@@ -688,10 +795,7 @@ describe('Cluster page', () => {
     await user.click(within(brokerRow).getByRole('button', { name: /配置差异/ }));
 
     await waitFor(() =>
-      expect(clusterServiceMocks.getBrokerConfigDiff).toHaveBeenCalledWith(
-        'cluster-prod',
-        'instance-1',
-      ),
+      expect(clusterServiceMocks.getBrokerConfigDiff).toHaveBeenCalledWith('cluster-prod'),
     );
     const dialog = await screen.findByRole('dialog', {
       name: /Broker 配置差异 - ns-prod/,

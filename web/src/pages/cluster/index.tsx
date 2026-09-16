@@ -372,6 +372,10 @@ const ClusterPage = () => {
 
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      // Registry rows carry no owner column: 0, 1, or many instances may share a
+      // NameServer endpoint, so the route instance would silently target the wrong
+      // cluster. Omit instanceId and let the backend resolve the target from the
+      // clusterId (ClusterService.getCluster(id) → the configured NameServer).
       const requestId = nsConfigDiffRequest.begin();
       setNsConfigDiffState({
         open: true,
@@ -380,7 +384,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getNameServerConfigDiff(cluster.id);
         if (!nsConfigDiffRequest.isCurrent(requestId)) return;
         setNsConfigDiffState({
           open: true,
@@ -399,6 +403,8 @@ const ClusterPage = () => {
 
   const openBrokerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
+      // Same as the NameServer diff: no instanceId — the backend resolves the
+      // cluster from its id; endpoint text cannot identify an owner.
       const requestId = brokerConfigDiffRequest.begin();
       setBrokerConfigDiffState({
         open: true,
@@ -407,7 +413,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getBrokerConfigDiff(cluster.id);
         if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
         setBrokerConfigDiffState({
           open: true,
@@ -673,9 +679,11 @@ const ClusterPage = () => {
   ): ClusterConfigRequest | null => {
     if (!selectedCluster) return null;
     const { maxMessageSizeMB, ...configValues } = values;
+    // No instanceId: broker rows come from the global NameServer registry and may be
+    // reachable from several instances, so the backend resolves the write target from
+    // the cluster id (ClusterService.resolveCluster) instead of trusting the client.
     return {
       id: selectedCluster.id,
-      instanceId: selectedInstanceIdRef.current,
       ...(selectedCluster.config ?? {}),
       ...configValues,
       maxMessageSize: maxMessageSizeMB * 1048576,
