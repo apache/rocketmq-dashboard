@@ -68,6 +68,7 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
@@ -400,6 +401,10 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const [directConsumeCapability, setDirectConsumeCapability] = useState<{
+    instanceId: string;
+    supported: boolean;
+  } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
@@ -415,6 +420,37 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    const instanceId = selectedInstanceId;
+    if (!instanceId) return;
+
+    let active = true;
+    void getInstanceCapabilities(instanceId)
+      .then((result) => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({
+            instanceId,
+            supported: result.capabilities.includes('DIRECT_MESSAGE_CONSUME'),
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({ instanceId, supported: false });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const directConsumeSupported =
+    directConsumeCapability !== null &&
+    directConsumeCapability.instanceId === selectedInstanceId &&
+    directConsumeCapability.supported;
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
@@ -668,6 +704,7 @@ const MessagePageContent = ({
   };
 
   const openDirectConsume = () => {
+    if (!directConsumeSupported) return;
     setDirectConsumeGroup('');
     setDirectConsumeClientId('');
     setDirectConsumeOpen(true);

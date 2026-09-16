@@ -40,6 +40,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -53,6 +56,8 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -114,6 +119,7 @@ class AliyunInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -161,6 +167,76 @@ class AliyunInstanceProviderTest {
         assertThatThrownBy(() -> provider.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("send denied");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldCallAliyunVerifyApiTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(true)
+                        .message("accepted")
+                        .requestId("aliyun-request-1")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyConsumeMessageRequest> captor =
+                ArgumentCaptor.forClass(VerifyConsumeMessageRequest.class);
+        verify(asyncClient).verifyConsumeMessage(captor.capture());
+        VerifyConsumeMessageRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopicName()).isEqualTo("orders");
+        assertThat(request.getMessageId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroupId()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).contains("accepted", "aliyun-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldPreserveAliyunBusinessFailureTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(false)
+                        .message("client offline")
+                        .requestId("aliyun-request-2")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_FAILED");
+        assertThat(result.getRemark()).contains("client offline", "aliyun-request-2");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyAliyunResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Aliyun direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
@@ -886,6 +962,16 @@ class AliyunInstanceProviderTest {
             Function<AsyncClient, CompletableFuture<Object>> action = invocation.getArgument(2);
             return action.apply(asyncClient).join();
         });
+    }
+
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
     }
 
     private static ListTopicsResponse topicsResponse(ListTopicsResponseBody.List... rows) {

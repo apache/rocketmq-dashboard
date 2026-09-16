@@ -46,6 +46,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -62,6 +64,8 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -94,6 +98,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
@@ -150,6 +155,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -684,6 +690,32 @@ public class TencentInstanceProvider implements InstanceProvider {
             }
         }
         return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
+    }
+
+    @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        Context context = resolve(request.getInstanceId());
+        VerifyMessageConsumptionRequest verifyRequest = new VerifyMessageConsumptionRequest();
+        verifyRequest.setInstanceId(context.cloudInstanceId());
+        verifyRequest.setTopic(request.getTopic());
+        verifyRequest.setMsgId(request.getMsgId());
+        verifyRequest.setConsumerGroup(request.getConsumerGroup());
+        verifyRequest.setClientId(request.getClientId());
+        long startedAt = System.nanoTime();
+        VerifyMessageConsumptionResponse response = clientFactory.call(
+                context.credentialId(), context.regionId(), client -> client.VerifyMessageConsumption(verifyRequest));
+        long spentTimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        if (response == null) {
+            throw new BusinessException(502, "Tencent direct consume returned an empty response");
+        }
+        String requestId = response.getRequestId();
+        return DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_SUCCESS")
+                .remark(StringUtils.hasText(requestId) ? "requestId=" + requestId : null)
+                .spentTimeMillis(spentTimeMillis)
+                .order(false)
+                .autoCommit(false)
+                .build();
     }
 
     @Override
