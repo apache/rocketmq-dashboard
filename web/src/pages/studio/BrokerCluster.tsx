@@ -24,6 +24,9 @@ import {
   DownloadSimple,
   PlugsConnected,
 } from '@phosphor-icons/react';
+import BrokerRocksdbCheckDialog from '../../components/BrokerRocksdbCheckDialog';
+import type { RocksdbCheckTarget } from '../../api/brokerRocksdbCheck';
+import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
 import { isMockMode } from '../../services/dataMode';
@@ -189,6 +192,7 @@ const BrokerClusterPage = () => {
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [rocksdbTarget, setRocksdbTarget] = useState<RocksdbCheckTarget>();
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
@@ -324,7 +328,7 @@ const BrokerClusterPage = () => {
     (activeTab === 'proxy' && proxyData.length === 0) ||
     (activeTab === 'broker' && brokerData.length === 0);
 
-  const brokerColumns = [
+  const brokerColumns: ColumnsType<BrokerRecord> = [
     {
       title: t('brokerCluster.k8sCluster'),
       dataIndex: 'k8sCluster',
@@ -387,6 +391,26 @@ const BrokerClusterPage = () => {
       sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
     },
   ];
+
+  brokerColumns.push({
+    title: 'Storage diagnostics',
+    key: 'rocksdbCheck',
+    render: (_: unknown, record: BrokerRecord) =>
+      !isMockMode() && selectedInstanceId ? (
+        <Button
+          size="small"
+          onClick={() =>
+            setRocksdbTarget({
+              instanceId: selectedInstanceId,
+              brokerName: record.brokerName,
+              address: record.address,
+            })
+          }
+        >
+          RocksDB check
+        </Button>
+      ) : null,
+  });
 
   const nsColumns = [
     {
@@ -521,7 +545,10 @@ const BrokerClusterPage = () => {
           <Select
             aria-label="选择实例"
             value={selectedInstanceId}
-            onChange={setSelectedInstanceId}
+            onChange={(value) => {
+              setRocksdbTarget(undefined);
+              setSelectedInstanceId(value);
+            }}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
@@ -614,6 +641,13 @@ const BrokerClusterPage = () => {
           />
         </Card>
       </Spin>
+      {rocksdbTarget && rocksdbTarget.instanceId === selectedInstanceId && (
+        <BrokerRocksdbCheckDialog
+          key={`${rocksdbTarget.instanceId}/${rocksdbTarget.address}`}
+          target={rocksdbTarget}
+          onClose={() => setRocksdbTarget(undefined)}
+        />
+      )}
     </div>
   );
 };
