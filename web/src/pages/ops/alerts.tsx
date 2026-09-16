@@ -1253,7 +1253,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 }))}
               />
             </Form.Item>
-            <Form.Item name="windowSeconds" label={t('alerts.windowSeconds')} initialValue={0}>
+            <Form.Item
+              name="windowSeconds"
+              label={t('alerts.windowSeconds')}
+              initialValue={0}
+              extra={t('alerts.windowRetentionHelp')}
+            >
               <InputNumber min={0} precision={0} style={{ width: '100%' }} />
             </Form.Item>
 
