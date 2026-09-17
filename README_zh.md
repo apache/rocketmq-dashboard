@@ -70,7 +70,7 @@ cd .. && docker compose up -d --build
 
 ## 开发规范
 
-- **分支说明** — `master` 是开发主干，请基于它切分支、提 PR；`master_archive` 是原 dashboard 的历史归档，不用于开发；完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)
+- **分支说明** — `rocketmq-studio` 是开发主干，请基于它切分支、提 PR；`master_archive` 是原 dashboard 的历史归档，不用于开发；完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - **代码风格** — 前端通过 ESLint + Prettier 统一格式，Husky pre-commit hook 自动检查
 - **Commit 格式** — 遵循 Conventional Commits（`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`）
 - **架构测试** — 后端 `mvn test` 自动运行 ArchUnit 六边形架构约束检查

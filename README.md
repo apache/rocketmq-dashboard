@@ -80,7 +80,7 @@ development.
 
 ## Development Guidelines
 
-- **Branches** — `master` is the development trunk: base your branches and pull requests on it. `master_archive` keeps the legacy dashboard history and is not used for development. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow
+- **Branches** — `rocketmq-studio` is the development trunk: base your branches and pull requests on it. `master_archive` keeps the legacy dashboard history and is not used for development. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow
 - **Code Style** — ESLint + Prettier for frontend, Husky pre-commit hook for auto-check
 - **Commit Format** — Conventional Commits (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`)
 - **Architecture Tests** — `mvn test` runs ArchUnit hexagonal architecture constraint checks
