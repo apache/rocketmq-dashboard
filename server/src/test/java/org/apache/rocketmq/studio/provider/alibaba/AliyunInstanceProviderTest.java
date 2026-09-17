@@ -20,6 +20,12 @@ import com.aliyun.sdk.service.rocketmq20220801.AsyncClient;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteTopicResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.DataTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
@@ -37,6 +43,8 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -574,7 +582,7 @@ class AliyunInstanceProviderTest {
                 .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
                         .toBuilder()
                         .statusCode(200)
-                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .body(CreateConsumerGroupResponseBody.builder().success(true).data(true).build())
                         .build()));
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("GID_new");
@@ -785,6 +793,120 @@ class AliyunInstanceProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(400);
+    }
+
+    @Test
+    void createTopicShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createTopic(any())).thenReturn(CompletableFuture.completedFuture(
+                CreateTopicResponse.create().toBuilder().statusCode(200)
+                        .body(CreateTopicResponseBody.builder().success(false).data(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+
+        assertThatThrownBy(() -> provider.createTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void createTopicShouldRejectFalseDataEvenWhenSuccessIsTrueTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createTopic(any())).thenReturn(CompletableFuture.completedFuture(
+                CreateTopicResponse.create().toBuilder().statusCode(200)
+                        .body(CreateTopicResponseBody.builder().success(true).data(false)
+                                .code("Rejected").message("not applied").build()).build()));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+
+        assertThatThrownBy(() -> provider.createTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void updateTopicShouldRejectNullResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.updateTopic(any())).thenReturn(CompletableFuture.completedFuture(null));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("incomplete response");
+    }
+
+    @Test
+    void updateTopicShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.updateTopic(any())).thenReturn(CompletableFuture.completedFuture(
+                UpdateTopicResponse.create().toBuilder().statusCode(200)
+                        .body(UpdateTopicResponseBody.builder().success(false).data(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void deleteTopicShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.deleteTopic(any())).thenReturn(CompletableFuture.completedFuture(
+                DeleteTopicResponse.create().toBuilder().statusCode(200)
+                        .body(DeleteTopicResponseBody.builder().success(false).data(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.deleteTopic(STUDIO_INSTANCE_ID, "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void createConsumerGroupShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any())).thenReturn(CompletableFuture.completedFuture(
+                CreateConsumerGroupResponse.create().toBuilder().statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().success(false).data(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_orders");
+
+        assertThatThrownBy(() -> provider.createConsumerGroup(STUDIO_INSTANCE_ID, group))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void deleteConsumerGroupShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.deleteConsumerGroup(any())).thenReturn(CompletableFuture.completedFuture(
+                DeleteConsumerGroupResponse.create().toBuilder().statusCode(200)
+                        .body(DeleteConsumerGroupResponseBody.builder().success(false).data(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.deleteConsumerGroup(STUDIO_INSTANCE_ID, "GID_orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+    @Test
+    void resetOffsetShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.resetConsumeOffset(any())).thenReturn(CompletableFuture.completedFuture(
+                ResetConsumeOffsetResponse.create().toBuilder().statusCode(200)
+                        .body(ResetConsumeOffsetResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.resetOffset(STUDIO_INSTANCE_ID, "GID_orders", 0L, "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
     private void stubInstance() {
