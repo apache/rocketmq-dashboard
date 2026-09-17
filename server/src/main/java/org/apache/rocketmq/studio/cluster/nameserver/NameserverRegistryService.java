@@ -38,6 +38,16 @@ public class NameserverRegistryService {
                 .toList();
     }
 
+    public String requireRegisteredAddress(String rawAddress) {
+        String normalized = NamesrvAddrParser.normalize(rawAddress);
+        Long matches = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
+                .eq("namesrv_addr", normalized));
+        if (matches == null || matches == 0L) {
+            throw new BusinessException(404, "NameServer endpoint is not registered: " + normalized);
+        }
+        return normalized;
+    }
+
     public NameserverRegistryVO create(CreateNameserverRegistryDTO command) {
         String name = normalizeName(command.getName());
         Long existing = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()

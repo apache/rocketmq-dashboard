@@ -77,6 +77,35 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void requireRegisteredAddressShouldNormalizeBeforeLookupTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(1L);
+
+        String result = service.requireRegisteredAddress(" NS1:9876 ; ns2:9876 ");
+
+        assertThat(result).isEqualTo("ns1:9876,ns2:9876");
+        verify(nameserverMapper).selectCount(any());
+    }
+
+    @Test
+    void requireRegisteredAddressShouldRejectUnregisteredEndpointTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.requireRegisteredAddress(" NS1:9876 ; ns2:9876 "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer endpoint is not registered: ns1:9876,ns2:9876")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void requireRegisteredAddressShouldRejectMalformedEndpointBeforeDatabaseLookupTest() {
+        assertThatThrownBy(() -> service.requireRegisteredAddress("ns1"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(nameserverMapper, never()).selectCount(any());
+    }
+
+    @Test
     void createShouldPersistAndReturnStoredEntryTest() {
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
         when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {

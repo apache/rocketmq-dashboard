@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.client;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -36,6 +37,9 @@ class ClientServiceTest {
 
     @Mock
     private ClientProvider clientProvider;
+
+    @Mock
+    private NameserverRegistryService nameserverRegistryService;
 
     @InjectMocks
     private ClientService clientService;
@@ -74,15 +78,31 @@ class ClientServiceTest {
     }
 
     @Test
-    void listConnectionsAtShouldTrimAndDelegateToProvider() {
-        when(clientProvider.findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null))
+    void listConnectionsAtShouldUseRegisteredNormalizedAddressTest() {
+        when(nameserverRegistryService.requireRegisteredAddress(" NS1:9876 ; ns2:9876 "))
+                .thenReturn("ns1:9876,ns2:9876");
+        when(clientProvider.findConnectionsAt("ns1:9876,ns2:9876", "DefaultCluster", null))
                 .thenReturn(List.of());
 
         List<ClientConnectionVO> result =
-                clientService.listConnectionsAt(" 10.0.1.31:9876 ", " DefaultCluster ", " ");
+                clientService.listConnectionsAt(" NS1:9876 ; ns2:9876 ", " DefaultCluster ", " ");
 
         assertThat(result).isEmpty();
-        verify(clientProvider).findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null);
+        verify(nameserverRegistryService).requireRegisteredAddress(" NS1:9876 ; ns2:9876 ");
+        verify(clientProvider).findConnectionsAt("ns1:9876,ns2:9876", "DefaultCluster", null);
+    }
+
+    @Test
+    void listConnectionsAtShouldRejectUnregisteredAddressBeforeProviderTest() {
+        when(nameserverRegistryService.requireRegisteredAddress("10.0.9.9:9876"))
+                .thenThrow(new BusinessException(404,
+                        "NameServer endpoint is not registered: 10.0.9.9:9876"));
+
+        assertThatThrownBy(() -> clientService.listConnectionsAt("10.0.9.9:9876", null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verifyNoInteractions(clientProvider);
     }
 
     @Test
