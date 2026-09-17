@@ -305,6 +305,38 @@ describe('TopicPage', () => {
     expect(await screen.findByText(/更新成功/)).toBeInTheDocument();
   });
 
+  it('invalidates an open Topic edit when the selected instance changes', async () => {
+    const user = userEvent.setup();
+    const topicA = { ...buildTopics(1)[0], name: 'topic-a', instanceId: 'instance-a' };
+    const topicB = { ...buildTopics(1)[0], name: 'topic-b', instanceId: 'instance-b' };
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      { ...selectedInstance, id: 1, name: 'instance-a', endpoint: '127.0.0.1:9876' },
+      { ...selectedInstance, id: 2, name: 'instance-b', endpoint: '127.0.0.2:9876' },
+    ]);
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => ({
+      items: [params?.instanceId === 'instance-b' ? topicB : topicA],
+      total: 1,
+      page: 1,
+      size: 20,
+    }));
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    const row = within(getTableBody()).getByText('topic-a').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: /配\s*置/ }));
+    const editDialog = await screen.findByRole('dialog');
+    expect(within(editDialog).getByText('编辑 Topic')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(await screen.findByText('topic-b')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('编辑 Topic')).not.toBeInTheDocument());
+    expect(topicServiceMocks.updateTopic).not.toHaveBeenCalled();
+  });
+
   it('edits cloud topics without the broker-only fields', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       { ...selectedInstance, vendor: 'ALIYUN' },
