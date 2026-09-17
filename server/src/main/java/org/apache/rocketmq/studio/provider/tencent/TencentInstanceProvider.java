@@ -515,7 +515,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .queueId(0)
                     .brokerOffset(0L)
                     .consumerOffset(0L)
-                    .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                    .diffTotal(toConsumerLag(subscription.getConsumerLag()))
                     .build());
         }
         return rows;
@@ -930,11 +930,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         if (!StringUtils.hasText(messageModel)) {
             messageModel = subscription.getConsumeType();
         }
+        long consumerLag = toConsumerLag(subscription.getConsumerLag());
         return TopicConsumerVO.builder()
                 .group(subscription.getConsumerGroup())
                 .consumeType(toConsumeType(subscription.getConsumeType(), messageModel))
                 .messageModel(messageModel)
-                .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                .diffTotal(consumerLag)
+                .metricsAvailable(consumerLag >= 0)
                 .build();
     }
 
@@ -1011,6 +1013,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         return deliveryOrderType != null
                 && (deliveryOrderType.toUpperCase(Locale.ROOT).contains("FIFO")
                 || deliveryOrderType.toUpperCase(Locale.ROOT).contains("ORDER"));
+    }
+
+    private static long toConsumerLag(Long value) {
+        // Tencent documents a null ConsumerLag as "no valid value can be obtained".
+        return value == null ? -1L : value;
     }
 
     private static int toInt(Long value) {

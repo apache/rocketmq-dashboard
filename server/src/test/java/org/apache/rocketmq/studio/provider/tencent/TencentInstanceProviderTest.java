@@ -464,6 +464,25 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldMarkMissingLagUnavailableTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup("GID_orders");
+        subscription.setConsumeType("CLUSTERING");
+        subscription.setMessageModel("CLUSTERING");
+        subscription.setConsumerLag(null);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getDiffTotal()).isEqualTo(-1L);
+            assertThat(consumer.isMetricsAvailable()).isFalse();
+        });
+    }
+
+    @Test
     void getTopicConsumersShouldReadEverySubscriptionPageTest() throws Exception {
         DescribeTopicResponse firstPage = new DescribeTopicResponse();
         firstPage.setSubscriptionCount(101L);
@@ -635,6 +654,21 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+    }
+
+    @Test
+    void getGroupProgressShouldPreserveMissingLagAsUnknownTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(null);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test"))
+                .singleElement()
+                .extracting(QueueProgressVO::getDiffTotal)
+                .isEqualTo(-1L);
     }
 
     @Test
