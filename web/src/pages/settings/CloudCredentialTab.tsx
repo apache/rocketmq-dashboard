@@ -30,7 +30,13 @@ import {
   Tag,
   message,
 } from 'antd';
-import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -45,6 +51,7 @@ import {
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
+import CloudCredentialUsageDrawer from './CloudCredentialUsageDrawer';
 
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
@@ -76,6 +83,7 @@ export const CloudCredentialTab = () => {
   const [form] = Form.useForm<CredentialFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [usageDrawerOpen, setUsageDrawerOpen] = useState(false);
   const requestSeqRef = useRef(0);
   const submitInFlightRef = useRef(false);
 
@@ -304,6 +312,9 @@ export const CloudCredentialTab = () => {
           />
         </Flex>
         <Flex gap={8}>
+          <Button icon={<ApartmentOutlined />} onClick={() => setUsageDrawerOpen(true)}>
+            {t('settings.credentialUsageAction')}
+          </Button>
           <Button
             icon={<DownloadOutlined />}
             loading={exporting}
@@ -432,6 +443,11 @@ export const CloudCredentialTab = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <CloudCredentialUsageDrawer
+        open={usageDrawerOpen}
+        onClose={() => setUsageDrawerOpen(false)}
+      />
     </>
   );
 };
