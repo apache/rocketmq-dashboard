@@ -60,6 +60,18 @@ class NamesrvAddrParserTest {
     }
 
     @Test
+    void preservesIpv6NamedZoneIdentifierCaseTest() {
+        assertThat(NamesrvAddrParser.normalize("[FE80::1%ProdNIC]:9876"))
+                .isEqualTo("[fe80::1%ProdNIC]:9876");
+    }
+
+    @Test
+    void keepsIpv6NumericScopeTest() {
+        assertThat(NamesrvAddrParser.normalize("[FE80::1%12]:9876"))
+                .isEqualTo("[fe80::1%12]:9876");
+    }
+
+    @Test
     void rejectsBlankInputTest() {
         assertThatThrownBy(() -> NamesrvAddrParser.normalize("   "))
                 .isInstanceOf(BusinessException.class)

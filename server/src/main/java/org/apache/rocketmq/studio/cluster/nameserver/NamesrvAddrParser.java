@@ -65,7 +65,7 @@ public final class NamesrvAddrParser {
             if (!isValidIpv6Literal(ipv6)) {
                 throw new BusinessException(400, "namesrvAddr segment has a malformed IPv6 literal: " + segment);
             }
-            normalizedHost = "[" + ipv6.toLowerCase(Locale.ROOT) + "]";
+            normalizedHost = "[" + normalizeIpv6Literal(ipv6) + "]";
         } else {
             if (host.isEmpty()) {
                 throw new BusinessException(400, "namesrvAddr segment is missing a host: " + segment);
@@ -85,6 +85,14 @@ public final class NamesrvAddrParser {
             throw new BusinessException(400, "namesrvAddr port is out of range 1-65535: " + segment);
         }
         return normalizedHost + ":" + port;
+    }
+
+    private static String normalizeIpv6Literal(String ipv6) {
+        int zoneStart = ipv6.indexOf('%');
+        if (zoneStart < 0) {
+            return ipv6.toLowerCase(Locale.ROOT);
+        }
+        return ipv6.substring(0, zoneStart).toLowerCase(Locale.ROOT) + ipv6.substring(zoneStart);
     }
 
     private static boolean isValidIpv6Literal(String ipv6) {

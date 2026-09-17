@@ -176,6 +176,30 @@ class NameserverRegistryServiceTest {
     }
 
     @Test
+    void createShouldPreserveIpv6NamedZoneCaseBeforePersistTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(20L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(20L);
+        stored.setName("prod");
+        stored.setNamesrvAddr("[fe80::1%ProdNIC]:9876");
+        when(nameserverMapper.selectById(20L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("[FE80::1%ProdNIC]:9876")
+                .build());
+
+        ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
+        verify(nameserverMapper).insert(captor.capture());
+        assertThat(captor.getValue().getNamesrvAddr()).isEqualTo("[fe80::1%ProdNIC]:9876");
+    }
+
+    @Test
     void createShouldRejectMalformedAddrTest() {
         assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
                 .name("prod")
@@ -237,6 +261,24 @@ class NameserverRegistryServiceTest {
         assertThat(updated.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
         verify(nameserverMapper).updateById(existing);
         assertThat(existing.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
+    }
+
+    @Test
+    void updateShouldPreserveIpv6NamedZoneCaseBeforePersistTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(21L);
+        existing.setName("prod");
+        when(nameserverMapper.selectById(21L)).thenReturn(existing).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(21L)
+                .name("prod")
+                .namesrvAddr("[FE80::2%StorageNIC]:9876")
+                .build());
+
+        assertThat(existing.getNamesrvAddr()).isEqualTo("[fe80::2%StorageNIC]:9876");
     }
 
     @Test
