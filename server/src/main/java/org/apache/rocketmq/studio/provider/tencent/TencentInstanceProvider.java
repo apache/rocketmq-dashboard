@@ -623,6 +623,12 @@ public class TencentInstanceProvider implements InstanceProvider {
             // been collected. Like the Aliyun provider, the short-page check is the primary signal
             // so we do not rely on TotalCount, which may not be populated for every query.
             int returned = data == null ? 0 : data.length;
+            if (returned == 0 && total > result.size()) {
+                String requestId = response == null ? null : response.getRequestId();
+                String suffix = StringUtils.hasText(requestId) ? " (requestId=" + requestId + ")" : "";
+                throw new BusinessException(502,
+                        "Tencent message query returned no data before the reported total was exhausted" + suffix);
+            }
             // Stop on the last page (returned fewer rows than requested) or once all results have
             // been collected. Like the Aliyun provider, the short-page check is the primary signal
             // so we do not rely on TotalCount, which may not be populated for every query.
