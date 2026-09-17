@@ -109,6 +109,27 @@ class PlatformClusterResolverTest {
     }
 
     @Test
+    void requireShouldRejectClusterNameManagedByMultipleInstancesTest() throws Exception {
+        InstanceVO first = apacheInstance("instance-a", "ns-a:9876");
+        InstanceVO second = apacheInstance("instance-b", "ns-b:9876");
+        when(instanceRepository.findAll()).thenReturn(List.of(second, first));
+        admins.put("instance-a", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-a")),
+                Map.of("broker-a", brokerData(
+                        "DefaultCluster", "broker-a", 0L, "10.0.0.1:10911")))));
+        admins.put("instance-b", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-b")),
+                Map.of("broker-b", brokerData(
+                        "DefaultCluster", "broker-b", 0L, "10.0.0.2:10911")))));
+
+        assertThatThrownBy(() -> resolver.require("DefaultCluster"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cluster name is ambiguous across instances: DefaultCluster (instance-a, instance-b)")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                        .isEqualTo(409));
+    }
+
+    @Test
     void requireShouldRejectBlankClusterNameTest() {
         assertThatThrownBy(() -> resolver.require(" "))
                 .isInstanceOf(BusinessException.class)

@@ -114,16 +114,28 @@ public class PlatformClusterResolver {
         return collect(true);
     }
 
-    /** First instance that manages the given physical cluster; 404 when no instance owns it. */
+    /** Unique instance that manages the given physical cluster; 404 when no instance owns it. */
     public ManagedCluster require(String clusterName) {
         if (!StringUtils.hasText(clusterName)) {
             throw new BusinessException(400, "clusterName is required");
         }
         String normalized = clusterName.trim();
-        return scan().stream()
+        List<ManagedCluster> matches = collectAll(false).stream()
                 .filter(cluster -> normalized.equals(cluster.clusterName()))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + normalized));
+                .toList();
+        if (matches.isEmpty()) {
+            throw new BusinessException(404, "Cluster not found: " + normalized);
+        }
+        if (matches.size() > 1) {
+            String instances = matches.stream()
+                    .map(ManagedCluster::instanceId)
+                    .distinct()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .collect(Collectors.joining(", "));
+            throw new BusinessException(409,
+                    "Cluster name is ambiguous across instances: " + normalized + " (" + instances + ")");
+        }
+        return matches.getFirst();
     }
 
     public String resolveInstanceId(String clusterName) {
@@ -143,16 +155,22 @@ public class PlatformClusterResolver {
 
     private List<ManagedCluster> collect(boolean withVersions) {
         Map<String, ManagedCluster> unique = new LinkedHashMap<>();
+        collectAll(withVersions).forEach(cluster -> unique.putIfAbsent(cluster.clusterName(), cluster));
+        return List.copyOf(unique.values());
+    }
+
+    private List<ManagedCluster> collectAll(boolean withVersions) {
+        List<ManagedCluster> clusters = new ArrayList<>();
         for (InstanceVO instance : manageableInstances()) {
             try {
                 runtimeAdminClientResolver.execute(instance, admin -> inspect(instance, admin, withVersions))
-                        .forEach(cluster -> unique.putIfAbsent(cluster.clusterName(), cluster));
+                        .forEach(clusters::add);
             } catch (Exception e) {
                 log.warn("Skipping instance {} during platform cluster scan: {}",
                         instance.getName(), e.getMessage());
             }
         }
-        return List.copyOf(unique.values());
+        return List.copyOf(clusters);
     }
 
     private List<ManagedCluster> inspect(
