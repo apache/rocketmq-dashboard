@@ -169,8 +169,8 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
-verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull());
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -179,15 +179,16 @@ verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNu
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
 
-verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
                 isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
     void exportLogsShouldForwardFilters() throws Exception {
         String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
-        when(auditService.exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
-                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"))).thenReturn(csv);
+        when(auditService.exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+                eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"),
+                eq("SUCCESS"))).thenReturn(csv);
 
         mockMvc.perform(get("/api/audit-logs/export")
                         .param("search", "topic")
@@ -203,8 +204,8 @@ verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNu
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value(csv));
 
-        verify(auditService).exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
-                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
+        verify(auditService).exportLogs(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic-a"),
+                eq("prod-cn"), eq(false), eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
     }
 
     @Test
