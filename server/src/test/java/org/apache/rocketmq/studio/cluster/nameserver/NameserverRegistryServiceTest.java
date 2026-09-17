@@ -21,6 +21,8 @@ import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -151,8 +153,12 @@ class NameserverRegistryServiceTest {
         verify(nameserverMapper, never()).insert(any(RmqNameserver.class));
     }
 
-    @Test
-    void createShouldNormalizeAddrBeforePersistTest() {
+    @ParameterizedTest
+    @CsvSource({
+        "' NS1:9876 ; ns2:9876 ', 'ns1:9876,ns2:9876'",
+        "'[FE80::ABCD%ProdNIC]:9876', '[fe80::abcd%ProdNIC]:9876'"
+    })
+    void createShouldNormalizeAddrBeforePersistTest(String input, String expected) {
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
         when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
             RmqNameserver entity = invocation.getArgument(0);
@@ -162,17 +168,17 @@ class NameserverRegistryServiceTest {
         RmqNameserver stored = new RmqNameserver();
         stored.setId(11L);
         stored.setName("prod");
-        stored.setNamesrvAddr("ns1:9876,ns2:9876");
+        stored.setNamesrvAddr(expected);
         when(nameserverMapper.selectById(11L)).thenReturn(stored);
 
         service.create(CreateNameserverRegistryDTO.builder()
                 .name("prod")
-                .namesrvAddr(" NS1:9876 ; ns2:9876 ")
+                .namesrvAddr(input)
                 .build());
 
         ArgumentCaptor<RmqNameserver> captor = ArgumentCaptor.forClass(RmqNameserver.class);
         verify(nameserverMapper).insert(captor.capture());
-        assertThat(captor.getValue().getNamesrvAddr()).isEqualTo("ns1:9876,ns2:9876");
+        assertThat(captor.getValue().getNamesrvAddr()).isEqualTo(expected);
     }
 
     @Test
@@ -218,8 +224,12 @@ class NameserverRegistryServiceTest {
                 .hasMessageContaining("deleted concurrently");
     }
 
-    @Test
-    void updateShouldPersistAndReturnStoredEntryTest() {
+    @ParameterizedTest
+    @CsvSource({
+        "rocketmq1-nameserver.svc:9876, rocketmq1-nameserver.svc:9876",
+        "[FE80::ABCD%ProdNIC]:9876, [fe80::abcd%ProdNIC]:9876"
+    })
+    void updateShouldPersistAndReturnStoredEntryTest(String input, String expected) {
         RmqNameserver existing = new RmqNameserver();
         existing.setId(1L);
         existing.setName("rocketmq1");
@@ -230,13 +240,13 @@ class NameserverRegistryServiceTest {
         NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
                 .name("rocketmq1")
-                .namesrvAddr("rocketmq1-nameserver.svc:9876")
+                .namesrvAddr(input)
                 .k8sNamespace("rocketmq1")
                 .build());
 
-        assertThat(updated.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
+        assertThat(updated.getNamesrvAddr()).isEqualTo(expected);
         verify(nameserverMapper).updateById(existing);
-        assertThat(existing.getNamesrvAddr()).isEqualTo("rocketmq1-nameserver.svc:9876");
+        assertThat(existing.getNamesrvAddr()).isEqualTo(expected);
     }
 
     @Test
