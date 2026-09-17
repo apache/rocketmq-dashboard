@@ -15,6 +15,7 @@ import { formatUtcDateTime } from '../../../utils/format';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
+  clearAcknowledgedAlerts,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
@@ -259,6 +260,29 @@ describe('SystemAlertsPage', () => {
         pageSize: 20,
       }),
     );
+  });
+
+  it('hides stale alerts while a filtered page is pending', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /^确认$/ })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: '清除已确认' })).toBeEnabled());
+    const initialRequestCount = vi.mocked(listSystemAlertsPage).mock.calls.length;
+    vi.mocked(listSystemAlertsPage).mockImplementationOnce(() => new Promise(() => {}));
+
+    await user.click(screen.getByRole('button', { name: /严重/ }));
+
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenCalledTimes(initialRequestCount + 1),
+    );
+    await waitFor(() => expect(container.querySelector('.ant-card-loading')).not.toBeNull());
+    expect(screen.queryByText('Broker unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Consumer lag')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^确认$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '清除已确认' })).toBeDisabled();
+    expect(clearAcknowledgedAlerts).not.toHaveBeenCalled();
   });
 
   it('forwards instance, resource label, and time filters to the event feed', async () => {
