@@ -145,17 +145,30 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         MessageExt messageExt = null;
+        Exception primaryFailure = null;
         if (StringUtils.hasText(topic)) {
+            if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
+                return Collections.emptyList();
+            }
             try {
-                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
-                    messageExt = adminExt.viewMessage(topic, msgId);
-                }
+                messageExt = adminExt.viewMessage(topic, msgId);
             } catch (Exception e) {
+                if (isMessageLookupAbsent(e)) {
+                    return Collections.emptyList();
+                }
+                primaryFailure = e;
                 log.warn("viewMessage(topic={}, msgId={}) failed: {}", topic, msgId, e.getMessage());
             }
         }
         if (messageExt == null) {
-            messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
+            OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+            messageExt = lookup.message();
+            if (messageExt == null && lookup.failure() != null) {
+                throw messageLookupFailure(lookup.failure());
+            }
+        }
+        if (messageExt == null && primaryFailure != null) {
+            throw messageLookupFailure(primaryFailure);
         }
         if (messageExt == null) {
             return Collections.emptyList();
@@ -168,20 +181,50 @@ public class RocketMQMessageProvider implements MessageProvider {
      * msgId, then querying that broker directly.
      */
     private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+        OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+        if (lookup.failure() != null) {
+            log.warn("viewMessage by decoded offset id failed for msgId={}: {}",
+                    msgId, lookup.failure().getMessage());
+        }
+        return lookup.message();
+    }
+
+    private OffsetMessageLookup lookupMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+        MessageId messageId;
         try {
-            MessageId messageId = MessageDecoder.decodeMessageId(msgId);
+            messageId = MessageDecoder.decodeMessageId(msgId);
+        } catch (Exception exception) {
+            return OffsetMessageLookup.empty();
+        }
+        try {
             String brokerAddr = BrokerTopologyGuards.validatedBrokerAddr(adminExt, msgId, messageId);
             if (!StringUtils.hasText(brokerAddr)) {
-                return null;
+                return OffsetMessageLookup.empty();
             }
-            return adminExt.getDefaultMQAdminExtImpl()
+            MessageExt message = adminExt.getDefaultMQAdminExtImpl()
                     .getMqClientInstance()
                     .getMQClientAPIImpl()
                     .viewMessage(brokerAddr, topic, messageId.getOffset(), VIEW_MESSAGE_TIMEOUT_MILLIS);
-        } catch (Exception e) {
-            log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
-            return null;
+            return new OffsetMessageLookup(message, null);
+        } catch (Exception exception) {
+            if (isMessageLookupAbsent(exception)) {
+                return OffsetMessageLookup.empty();
+            }
+            return new OffsetMessageLookup(null, exception);
         }
+    }
+
+    private static boolean isMessageLookupAbsent(Throwable throwable) {
+        return MqResponseCodes.hasResponseCode(throwable, ResponseCode.TOPIC_NOT_EXIST,
+                ResponseCode.NO_MESSAGE, ResponseCode.QUERY_NOT_FOUND);
+    }
+
+    private static BusinessException messageLookupFailure(Throwable throwable) {
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            message = throwable.getClass().getSimpleName();
+        }
+        return new BusinessException(502, "Failed to query message by id: " + message);
     }
 
     private MessageQueryResult queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
@@ -861,6 +904,12 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private boolean isUtf8ContinuationByte(byte value) {
         return (value & 0xC0) == 0x80;
+    }
+
+    private record OffsetMessageLookup(MessageExt message, Throwable failure) {
+        private static OffsetMessageLookup empty() {
+            return new OffsetMessageLookup(null, null);
+        }
     }
 
     private record DisplayBody(String value, String encoding, boolean truncated) {

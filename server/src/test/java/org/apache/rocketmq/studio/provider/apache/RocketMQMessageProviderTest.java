@@ -386,6 +386,22 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByMsgIdSurfacesOffsetFallbackFailureTest() throws Exception {
+        String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        when(adminExt.viewMessage("TopicA", msgId))
+                .thenThrow(new IllegalStateException("primary lookup failed"));
+        when(clientApi.viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query message by id: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void queryByMsgIdIgnoresUnrelatedTimeBounds() throws Exception {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-1");
@@ -441,9 +457,10 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
-    void queryByMsgIdPassesNonOffsetIdsThroughToViewMessage() throws Exception {
+    void queryByMsgIdTreatsKnownNonOffsetAbsenceAsEmptyTest() throws Exception {
         when(adminExt.viewMessage("TopicA", "uniq-key-1"))
-                .thenThrow(new IllegalStateException("unique key lookup handled by MQAdminImpl"));
+                .thenThrow(new MQClientException(ResponseCode.QUERY_NOT_FOUND,
+                        "query message by key finished, but no message"));
 
         List<MessageRecordVO> result = provider.queryMessages(
                 "instance-a", "TopicA", "uniq-key-1", null, null, 100L, 200L);
@@ -451,6 +468,18 @@ class RocketMQMessageProviderTest {
         assertThat(result).isEmpty();
         verify(adminExt).viewMessage("TopicA", "uniq-key-1");
         verify(adminExt, never()).examineBrokerClusterInfo();
+    }
+
+    @Test
+    void queryByMsgIdSurfacesNonOffsetLookupFailureTest() throws Exception {
+        when(adminExt.viewMessage("TopicA", "uniq-key-failure"))
+                .thenThrow(new IllegalStateException("nameserver unavailable"));
+
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", "uniq-key-failure", null, null, 100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query message by id: nameserver unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
