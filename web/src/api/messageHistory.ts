@@ -47,6 +47,12 @@ export interface QueryHistorySummary {
   latestQueryAt?: string;
 }
 
+export interface QueryHistoryDeleteResult {
+  messageQueries: number;
+  traceQueries: number;
+  total: number;
+}
+
 export async function listMessageQueryHistory(params: {
   clusterId?: string;
   queryType?: string;
@@ -76,6 +82,21 @@ export async function listTraceQueryHistory(params: {
 
 export async function getQueryHistorySummary(clusterId?: string) {
   const response = await client.get<{ data: QueryHistorySummary }>('/query-history/summary', {
+    params: clusterId ? { clusterId } : undefined,
+  });
+  return response.data.data;
+}
+
+export async function deleteMessageQueryHistory(id: number) {
+  await client.delete(`/query-history/messages/${id}`);
+}
+
+export async function deleteTraceQueryHistory(id: number) {
+  await client.delete(`/query-history/traces/${id}`);
+}
+
+export async function clearQueryHistory(clusterId?: string) {
+  const response = await client.delete<{ data: QueryHistoryDeleteResult }>('/query-history', {
     params: clusterId ? { clusterId } : undefined,
   });
   return response.data.data;
