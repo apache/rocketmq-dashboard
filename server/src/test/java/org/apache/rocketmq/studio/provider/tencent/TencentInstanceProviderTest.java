@@ -939,6 +939,37 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldRejectIncompleteProviderPageTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(1L);
+        response.setData(null);
+        response.setRequestId("request-1");
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(502);
+    }
+
+    @Test
+    void queryMessagesShouldKeepConfirmedEmptyProviderPageCompleteTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(0L);
+        response.setData(null);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isFalse();
+    }
+
+    @Test
     void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
         // A full first page and a large TotalCount mean the provider stopped because it reached
         // its result budget, not because Tencent returned the final page.
