@@ -1102,6 +1102,42 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateConsumerGroupSettingsShouldReadAllBrokersBeforeWritingTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("cg-orders");
+        when(adminExt.examineSubscriptionGroupConfig(anyString(), eq("cg-orders")))
+                .thenReturn(config)
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> adminClient.updateConsumerGroupSettings(null, "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("broker unavailable");
+
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        verifyNoInteractions(groupMapper);
+    }
+
+    @Test
+    void updateConsumerGroupSettingsShouldNotWriteWhenLaterBrokerConfigIsMissingTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("cg-orders");
+        when(adminExt.examineSubscriptionGroupConfig(anyString(), eq("cg-orders")))
+                .thenReturn(config)
+                .thenReturn(null);
+
+        assertThatThrownBy(() -> adminClient.updateConsumerGroupSettings(null, "cg-orders",
+                new ConsumerGroupSettingsCommand(2, 8, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Consumer group not found");
+
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        verifyNoInteractions(groupMapper);
+    }
+
+    @Test
     void updateConsumerGroupSettingsPreservesBrokerConfiguration() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
