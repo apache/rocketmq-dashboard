@@ -356,6 +356,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                                 .eq(RmqTopic::getClusterId, clusterName)
                                 .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
                                 .eq(RmqTopic::getName, topicName));
+                if (existing == null) {
+                    throw new BusinessException(404, "Topic not found: " + topicName);
+                }
                 // Preserve the existing queue counts when the update request does not change them,
                 // matching the perm semantics below; defaulting to 8 would silently resize the
                 // topic on partial updates (e.g. perm or remark only).
