@@ -860,10 +860,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "No consume offset data found for topic " + topic);
             }
 
-            long currentTotalLag = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum();
-            long projectedTotalLag = queues.stream()
-                    .mapToLong(ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
-                    .sum();
+            long currentTotalLag = aggregateResetPreviewLag(queues, false);
+            long projectedTotalLag = aggregateResetPreviewLag(queues, true);
             long totalOffsetDelta = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum();
             int rewindQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
             int fastForwardQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
@@ -999,6 +997,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (rewindQueueCount > 0) {
             warnings.add(rewindQueueCount + " queue(s) will move backward and may replay consumed messages");
         }
+        if (queues.stream().anyMatch(queue -> queue.getCurrentLag() == ConsumerLagResolver.UNKNOWN
+                || queue.getProjectedLag() == ConsumerLagResolver.UNKNOWN)) {
+            warnings.add("At least one queue has unavailable lag; affected backlog totals are unavailable");
+        }
         if (queues.stream().anyMatch(queue -> queue.getMinOffset() >= 0
                 && queue.getTargetOffset() == queue.getMinOffset())) {
             warnings.add("At least one queue will reset to the minimum retained offset");
@@ -1010,8 +1012,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return warnings;
     }
 
+    private long aggregateResetPreviewLag(List<ResetConsumerOffsetQueuePreviewVO> queues, boolean projected) {
+        long total = 0L;
+        for (ResetConsumerOffsetQueuePreviewVO queue : queues) {
+            long lag = projected ? queue.getProjectedLag() : queue.getCurrentLag();
+            if (lag == ConsumerLagResolver.UNKNOWN) {
+                return ConsumerLagResolver.UNKNOWN;
+            }
+            total += lag;
+        }
+        return total;
+    }
+
     private long resolveLag(long brokerOffset, long consumerOffset) {
-        return Math.max(0L, brokerOffset - consumerOffset);
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, null);
     }
 
     private long clampOffset(long offset, long minOffset, long maxOffset) {
