@@ -225,13 +225,33 @@ class RocketMQAdminClientImplTest {
         subscription.setTopic("studio-normal");
         table.put("studio-normal", subscription);
         viaProxy.setSubscriptionTable(table);
-        when(resolver.resolveConsumerConnection("instance-a", "orders")).thenReturn(viaProxy);
+        when(resolver.resolveConsumerConnectionStatus("instance-a", "orders"))
+                .thenReturn(ProxyConsumerResolver.ConsumerConnectionResolution.available(viaProxy));
         org.springframework.test.util.ReflectionTestUtils.setField(adminClient, "proxyConsumerResolver", resolver);
 
         ConsumerGroupVO group = adminClient.getConsumerGroup("instance-a", "orders");
 
         assertThat(group.getOnlineInstances()).isEqualTo(1);
         assertThat(group.getSubscribedTopics()).containsExactly("studio-normal");
+    }
+
+    @Test
+    void getConsumerGroupShouldMarkConnectionsUnknownWhenProxyFallbackIsUnavailableTest() throws Exception {
+        when(adminExt.examineConsumerConnectionInfo("orders"))
+                .thenThrow(new MQClientException(
+                        "CODE: 206  DESC: the consumer group[orders] not online BROKER: 10.0.4.69:10911",
+                        (Throwable) null));
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        when(resolver.resolveConsumerConnectionStatus("instance-a", "orders"))
+                .thenReturn(ProxyConsumerResolver.ConsumerConnectionResolution.unavailable());
+        org.springframework.test.util.ReflectionTestUtils.setField(adminClient, "proxyConsumerResolver", resolver);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup("instance-a", "orders");
+
+        assertThat(group.getOnlineInstances()).isEqualTo(-1);
+        assertThat(group.getInstances()).isEmpty();
     }
 
     @Test

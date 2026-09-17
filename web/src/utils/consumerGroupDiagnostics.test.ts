@@ -89,6 +89,18 @@ describe('consumer group diagnostics', () => {
     expect(diagnostics.issues).toEqual([]);
   });
 
+  it('does not treat unavailable connection data as zero online clients', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ onlineInstances: -1, totalLag: 2400, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: 2400 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+    expect(diagnostics.issues.map((item) => item.code)).toContain('CONNECTION_STATUS_UNKNOWN');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('NO_ACTIVE_CLIENTS_WITH_LAG');
+    expect(diagnostics.summary.onlineInstances).toBe(-1);
+  });
+
   it('flags critical subscription, queue and runtime risks', () => {
     const diagnostics = analyzeConsumerGroupHealth(
       group({

@@ -17,6 +17,9 @@
 
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
+import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -33,6 +36,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -113,25 +119,52 @@ class ProxyConsumerResolverTest {
     }
 
     @Test
-    void resolveConsumerConnectionShouldReturnNullWhenNoProxyDiscoveredTest() throws Exception {
+    void resolveConsumerConnectionStatusShouldMarkDiscoveryFailureUnavailableTest() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
-                .thenThrow(new IllegalStateException("syncer group missing"));
+                .thenThrow(new IllegalStateException("nameserver unavailable"));
 
-        assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
+        ProxyConsumerResolver.ConsumerConnectionResolution result =
+                resolver.resolveConsumerConnectionStatus("instance-a", "cg-orders");
+
+        assertThat(result.available()).isFalse();
+        assertThat(result.connection()).isNull();
     }
 
     @Test
-    void resolveConsumerConnectionShouldReturnNullWhenProxyQueryFailsTest() throws Exception {
+    void resolveConsumerConnectionStatusShouldTreatNoProxiesAsKnownOfflineTest() throws Exception {
         ConsumerConnection syncer = new ConsumerConnection();
-        HashSet<Connection> connections = new HashSet<>();
-        Connection proxyA = new Connection();
-        proxyA.setClientId("proxy-a");
-        proxyA.setClientAddr("192.0.2.1:10911");
-        connections.add(proxyA);
-        syncer.setConnectionSet(connections);
+        syncer.setConnectionSet(new HashSet<>());
         when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
 
-        // 192.0.2.1 (TEST-NET) is unreachable, so the remoting query must degrade to null
-        assertThat(resolver.resolveConsumerConnection("instance-a", "cg-orders")).isNull();
+        ProxyConsumerResolver.ConsumerConnectionResolution result =
+                resolver.resolveConsumerConnectionStatus("instance-a", "cg-orders");
+
+        assertThat(result.available()).isTrue();
+        assertThat(result.connection()).isNull();
     }
+
+    @Test
+    void resolveConsumerConnectionStatusShouldDistinguishOfflineFromProxyFailureTest() throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection proxy = new Connection();
+        proxy.setClientAddr("192.0.2.1:10911");
+        syncer.setConnectionSet(new HashSet<>(List.of(proxy)));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        resolver.setRemotingClientForTest(client);
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "not online"))
+                .thenReturn(null);
+
+        ProxyConsumerResolver.ConsumerConnectionResolution offline =
+                resolver.resolveConsumerConnectionStatus("instance-a", "cg-orders");
+        ProxyConsumerResolver.ConsumerConnectionResolution unavailable =
+                resolver.resolveConsumerConnectionStatus("instance-a", "cg-orders");
+
+        assertThat(offline.available()).isTrue();
+        assertThat(offline.connection()).isNull();
+        assertThat(unavailable.available()).isFalse();
+        assertThat(unavailable.connection()).isNull();
+    }
+
 }

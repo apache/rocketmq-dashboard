@@ -117,6 +117,8 @@ const { Text } = Typography;
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
+const formatOnlineInstances = (value: number) =>
+  Number.isFinite(value) && value >= 0 ? value.toLocaleString() : UNAVAILABLE_LAG_LABEL;
 
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
@@ -940,6 +942,7 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'center',
       sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
+      render: (value: number) => formatOnlineInstances(value),
     },
     {
       title: '总堆积量',
@@ -1644,6 +1647,7 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="在线实例"
                             value={selectedGroup.onlineInstances}
+                            formatter={(value) => formatOnlineInstances(Number(value))}
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
                           />
@@ -1953,11 +1957,14 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="客户端"
                             value={selectedGroupHealth.summary.onlineInstances}
+                            formatter={(value) => formatOnlineInstances(Number(value))}
                           />
                           <Text type="secondary">
-                            {selectedGroupHealth.summary.staleClientCount > 0
-                              ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                              : '心跳状态正常'}
+                            {selectedGroupHealth.summary.onlineInstances < 0
+                              ? '客户端连接信息不可用'
+                              : selectedGroupHealth.summary.staleClientCount > 0
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
+                                : '心跳状态正常'}
                           </Text>
                         </Card>
                       </Col>
