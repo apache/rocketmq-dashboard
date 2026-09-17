@@ -239,7 +239,15 @@ class ToolOutputSchemaContractTest {
         GroupListItem groupItem = new GroupListItem(
                 "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 16, 2, 100L, List.of("orders"));
-        samples.put("rmq.group.list", List.of(new ListOutput<>(List.of(groupItem))));
+        // onlineInstances carries a -1 sentinel when the connection inventory is unavailable.
+        // ToolValidationFilter validates every tool result, so a schema that rejects -1 would
+        // fail the whole call at runtime instead of reporting the unknown state.
+        GroupListItem unknownConnectionsItem = new GroupListItem(
+                "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                16, -1, 100L, List.of("orders"));
+        samples.put("rmq.group.list", List.of(
+                new ListOutput<>(List.of(groupItem)),
+                new ListOutput<>(List.of(unknownConnectionsItem))));
         samples.put("rmq.group.detail", List.of(new GroupDetailOutput(
                 INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 2, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
@@ -256,7 +264,18 @@ class ToolOutputSchemaContractTest {
                         new GroupDetailOutput.Client(
                                 "client-1", "gRPC", "127.0.0.1:50000", "JAVA", "5.0.7",
                                 true, List.of("orders"), "2026-08-22T09:30:00",
-                                Map.of("orders", 10L)))))));
+                                Map.of("orders", 10L))))),
+                new GroupDetailOutput(
+                        INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                        -1, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
+                        List.of(new GroupDetailOutput.Subscription(
+                                "orders", "*", "TAG", "STANDARD", "CONSISTENT")),
+                        List.of(),
+                        new GroupDetailOutput.Health(
+                                "UNKNOWN", List.of("Consumer connection information is unavailable.")),
+                        List.of(unknownConnectionsItem),
+                        null,
+                        null)));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));
         samples.put("rmq.group.reset_offset", List.of(

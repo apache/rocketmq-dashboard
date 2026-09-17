@@ -21,6 +21,7 @@ import { isLagAvailable } from './consumerLag';
 export type ConsumerGroupHealthStatus = 'healthy' | 'warning' | 'critical';
 
 export type ConsumerGroupHealthIssueCode =
+  | 'CONNECTION_STATUS_UNKNOWN'
   | 'NO_ACTIVE_CLIENTS_WITH_LAG'
   | 'NO_SUBSCRIPTION_DATA'
   | 'SUBSCRIPTION_INCONSISTENT'
@@ -298,7 +299,16 @@ const runtimeIssues = (
   >,
 ): ConsumerGroupHealthIssue[] => {
   const issues: ConsumerGroupHealthIssue[] = [];
-  if ((group.onlineInstances ?? 0) === 0 && (lag ?? 0) > 0) {
+  if (group.onlineInstances < 0) {
+    issues.push(
+      issue(
+        'CONNECTION_STATUS_UNKNOWN',
+        'warning',
+        '客户端连接状态不可用',
+        '无法确认当前在线客户端数量，请先检查 Broker/Proxy 连接信息查询。',
+      ),
+    );
+  } else if ((group.onlineInstances ?? 0) === 0 && (lag ?? 0) > 0) {
     issues.push(
       issue(
         'NO_ACTIVE_CLIENTS_WITH_LAG',
@@ -350,7 +360,11 @@ const runtimeIssues = (
 const recommendations = (issues: ConsumerGroupHealthIssue[]): string[] => {
   const codes = new Set(issues.map((item) => item.code));
   const result: string[] = [];
-  if (codes.has('NO_ACTIVE_CLIENTS_WITH_LAG') || codes.has('STALE_HEARTBEAT')) {
+  if (
+    codes.has('CONNECTION_STATUS_UNKNOWN') ||
+    codes.has('NO_ACTIVE_CLIENTS_WITH_LAG') ||
+    codes.has('STALE_HEARTBEAT')
+  ) {
     result.push('先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。');
   }
   if (codes.has('SUBSCRIPTION_INCONSISTENT') || codes.has('SUBSCRIPTION_UNKNOWN')) {
