@@ -185,6 +185,64 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void getSessionShouldSurfaceBacklogReadFailureTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1))
+                .thenThrow(new IllegalStateException("backlog unavailable"));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldSurfaceConsumedOffsetReadFailureTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(5));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
+                .thenThrow(new IllegalStateException("offset unavailable"));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldRejectMissingBacklogBodyTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(0, System.currentTimeMillis()));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldKeepZeroConsumedWhenNoOffsetIsCommittedTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(0));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
+                .thenReturn(new GetLiteGroupInfoResponseBody());
+
+        LiteTopicSession session = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+
+        assertThat(session.getPendingMessages()).isZero();
+        assertThat(session.getConsumedMessages()).isZero();
+        assertThat(session.getTotalMessages()).isZero();
+    }
+
+    @Test
     void getSessionFailsWhenNoBrokerReportsTheClient() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(anyString(), anyString(), anyString(), anyString()))
