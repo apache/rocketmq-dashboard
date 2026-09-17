@@ -188,6 +188,12 @@ const AclPageContent = ({
   useEffect(() => {
     let mounted = true;
 
+    void Promise.resolve().then(() => {
+      if (!mounted) return;
+      setRulesLoading(true);
+      setUsersLoading(true);
+    });
+
     void listAclRules({
       instanceId: selectedInstanceId,
       principal: rulePrincipalFilter || undefined,
