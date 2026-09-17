@@ -217,7 +217,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (proxyConsumerResolver == null) {
             return;
         }
-        ConsumerConnection viaProxy = proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+        ProxyConsumerResolver.ConsumerConnectionResolution resolution =
+                proxyConsumerResolver.resolveConsumerConnectionStatus(instanceId, group);
+        if (!resolution.available()) {
+            vo.setOnlineInstances(-1);
+            return;
+        }
+        ConsumerConnection viaProxy = resolution.connection();
         if (viaProxy == null) {
             return;
         }

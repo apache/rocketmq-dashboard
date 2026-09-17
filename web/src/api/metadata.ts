@@ -99,6 +99,7 @@ export interface ConsumerGroup {
   instanceId?: string;
   subscriptionMode: string;
   consumeType: string;
+  /** Confirmed online clients; -1 means the connection inventory is unavailable. */
   onlineInstances: number;
   totalLag: number;
   subscribedTopics: string[];
