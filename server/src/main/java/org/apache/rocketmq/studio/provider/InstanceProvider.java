@@ -30,6 +30,8 @@ import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -174,6 +176,10 @@ public interface InstanceProvider {
     }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    default SendMessageVO sendMessage(SendMessageDTO request) {
+        throw new UnsupportedOperationException("Message sending is not supported");
+    }
 
     default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         throw new UnsupportedOperationException("Direct message consumption is not supported");
