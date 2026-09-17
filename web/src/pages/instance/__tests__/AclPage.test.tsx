@@ -131,6 +131,67 @@ describe('ACL page', () => {
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the rules table loading state while a filtered page is pending', async () => {
+    const pendingRules = deferred<Awaited<ReturnType<typeof aclService.listAclRules>>>();
+    const { container } = renderWithProviders(<AclPage />);
+
+    const currentRule = await screen.findByText('remote-user');
+    const rulesTable = currentRule.closest('.ant-table-wrapper');
+    expect(rulesTable).not.toBeNull();
+    vi.mocked(aclService.listAclRules).mockReturnValueOnce(pendingRules.promise);
+
+    fireEvent.change(screen.getByPlaceholderText('搜索主体'), {
+      target: { value: 'orders-service' },
+    });
+
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(rulesTable?.querySelector('.ant-spin-spinning')).not.toBeNull());
+    const ruleRow = currentRule.closest('tr');
+    if (!ruleRow) throw new Error('ACL rule row not found');
+    expect(within(ruleRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(within(ruleRow).getByRole('button', { name: /删除/ })).toBeDisabled();
+
+    await act(async () => {
+      pendingRules.resolve({ items: [], total: 0, page: 1, size: 20 });
+    });
+    await waitFor(() =>
+      expect(container.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('shows the users table loading state while a keyword page is pending', async () => {
+    const pendingUsers = deferred<Awaited<ReturnType<typeof aclService.pageAclUsers>>>();
+    const { container } = renderWithProviders(<AclPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByText('用户管理'));
+    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
+    const currentUser = await within(userPanel).findByText('remote-admin');
+    const usersTable = currentUser.closest('.ant-table-wrapper');
+    expect(usersTable).not.toBeNull();
+    vi.mocked(aclService.pageAclUsers).mockReturnValueOnce(pendingUsers.promise);
+
+    fireEvent.change(within(userPanel).getByRole('searchbox'), {
+      target: { value: 'orders-service' },
+    });
+
+    await waitFor(() => expect(aclService.pageAclUsers).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(usersTable?.querySelector('.ant-spin-spinning')).not.toBeNull());
+    const userRow = currentUser.closest('tr');
+    if (!userRow) throw new Error('ACL user row not found');
+    expect(within(userRow).getByRole('switch')).toBeDisabled();
+    expect(within(userRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(within(userRow).getByRole('button', { name: /删除/ })).toBeDisabled();
+    expect(userRow.querySelector('button.ant-btn-text')).toBeDisabled();
+
+    await act(async () => {
+      pendingUsers.resolve({ items: [], total: 0, page: 1, size: 20 });
+    });
+    await waitFor(() =>
+      expect(container.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+  });
+
   it('reloads the server rule page after deleting one ACL rule', async () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {

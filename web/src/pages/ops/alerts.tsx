@@ -360,6 +360,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   useEffect(() => {
     let cancelled = false;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep stale rules masked for the new query.
+    setLoading(true);
+
     void listAlertRulesPage(domain, {
       page,
       pageSize,
@@ -401,6 +404,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const hasSelectedRules = selectedCount > 0;
   const isBulkRunning = bulkAction !== null;
   const isActionRunning = actionId !== null || isBulkRunning;
+  const isRuleActionBlocked = loading || isActionRunning;
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -519,7 +523,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   };
 
   const handleToggle = async (rule: AlertRule, enabled: boolean) => {
-    if (isActionRunning) return;
+    if (isRuleActionBlocked) return;
     setActionId(`toggle-${rule.id}`);
     try {
       const updated = await (domain === 'CLUSTER'
@@ -534,7 +538,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   };
 
   const handleDelete = async (rule: AlertRule) => {
-    if (isActionRunning) return;
+    if (isRuleActionBlocked) return;
     setActionId(`delete-${rule.id}`);
     try {
       await (domain === 'CLUSTER' ? deleteAlertRule(rule.id) : deleteAlertRule(rule.id, domain));
@@ -551,7 +555,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const handleBulkToggle = async (enabled: boolean) => {
     const targetIds = selectedRuleIds.map(Number);
-    if (targetIds.length === 0 || isActionRunning) return;
+    if (targetIds.length === 0 || isRuleActionBlocked) return;
 
     setBulkAction(enabled ? 'enable' : 'disable');
     try {
@@ -600,7 +604,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const handleBulkDelete = () => {
     const targetIds = selectedRuleIds.map(Number);
-    if (targetIds.length === 0 || isActionRunning) return;
+    if (targetIds.length === 0 || isRuleActionBlocked) return;
     Modal.confirm({
       title: t('alerts.bulkDeleteConfirm', { count: targetIds.length }),
       okButtonProps: { danger: true },
@@ -636,7 +640,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     selectedRowKeys: selectedRuleIds,
     onChange: (keys) => setSelectedRuleIds(keys),
     getCheckboxProps: () => ({
-      disabled: isActionRunning,
+      disabled: isRuleActionBlocked,
     }),
   };
 
@@ -698,7 +702,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         <Switch
           checked={record.enabled}
           loading={actionId === `toggle-${record.id}`}
-          disabled={isActionRunning}
+          disabled={isRuleActionBlocked}
           onChange={(enabled) => void handleToggle(record, enabled)}
         />
       ),
@@ -746,7 +750,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           <Button
             size="small"
             icon={<Pencil size={14} />}
-            disabled={isActionRunning}
+            disabled={isRuleActionBlocked}
             style={{ borderColor: '#1890ff', color: '#1890ff' }}
             onClick={() => openEditModal(record)}
           >
@@ -755,7 +759,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           <Button
             size="small"
             icon={<Copy size={14} />}
-            disabled={isActionRunning}
+            disabled={isRuleActionBlocked}
             onClick={() => openDuplicateModal(record)}
           >
             {t('alerts.duplicate')}
@@ -771,7 +775,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               icon={<Trash size={14} />}
               danger
               loading={actionId === `delete-${record.id}`}
-              disabled={isActionRunning}
+              disabled={isRuleActionBlocked}
               style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             >
               {t('common.delete')}
@@ -990,7 +994,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             />
             <Button
               size="small"
-              disabled={!hasSelectedRules || isActionRunning}
+              disabled={!hasSelectedRules || isRuleActionBlocked}
               loading={bulkAction === 'enable'}
               onClick={() => void handleBulkToggle(true)}
             >
@@ -998,7 +1002,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             </Button>
             <Button
               size="small"
-              disabled={!hasSelectedRules || isActionRunning}
+              disabled={!hasSelectedRules || isRuleActionBlocked}
               loading={bulkAction === 'disable'}
               onClick={() => void handleBulkToggle(false)}
             >
@@ -1007,7 +1011,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             <Button
               danger
               size="small"
-              disabled={!hasSelectedRules || isActionRunning}
+              disabled={!hasSelectedRules || isRuleActionBlocked}
               loading={bulkAction === 'delete'}
               onClick={handleBulkDelete}
             >
