@@ -1021,6 +1021,34 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldFlagIncompleteProviderPageTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(1L);
+        response.setData(null);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client).DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldKeepConfirmedEmptyProviderPageCompleteTest() throws Exception {
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(0L);
+        response.setData(null);
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isFalse();
+    }
+
+    @Test
     void queryMessagesShouldReportTheProviderResultBudget() throws Exception {
         // A full first page and a large TotalCount mean the provider stopped because it reached
         // its result budget, not because Tencent returned the final page.
@@ -1152,4 +1180,45 @@ class TencentInstanceProviderTest {
         assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.pending);
     }
+    @Test
+    void queryMessagesShouldPreserveRowsFromIncompleteShortPageTest() throws Exception {
+        MessageItem item = new MessageItem();
+        item.setMsgId("kept");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setTotalCount(2L);
+        response.setData(new MessageItem[]{item});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo("kept");
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(client).DescribeMessageList(any());
+    }
+
+    @Test
+    void queryMessagesShouldKeepEarlierPageAndTaskIdWhenNextPageIsIncompleteTest() throws Exception {
+        MessageItem[] items = java.util.stream.IntStream.range(0, TencentInstanceProvider.MESSAGE_LIMIT)
+                .mapToObj(i -> {
+                    MessageItem item = new MessageItem();
+                    item.setMsgId("msg-" + i);
+                    return item;
+                })
+                .toArray(MessageItem[]::new);
+        DescribeMessageListResponse first = new DescribeMessageListResponse();
+        first.setData(items);
+        first.setTotalCount((long) items.length + 1);
+        first.setTaskRequestId("same-task");
+        DescribeMessageListResponse second = new DescribeMessageListResponse();
+        second.setTotalCount((long) items.length + 1);
+        when(client.DescribeMessageList(any())).thenReturn(first, second);
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "orders", null, null, null, 1600000000000L, 1600001000000L);
+        assertThat(result.messages()).hasSize(items.length);
+        assertThat(result.mayBeTruncated()).isTrue();
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        assertThat(captor.getAllValues().get(1).getTaskRequestId()).isEqualTo("same-task");
+        assertThat(captor.getAllValues().get(1).getOffset()).isEqualTo((long) items.length);
+    }
+
 }

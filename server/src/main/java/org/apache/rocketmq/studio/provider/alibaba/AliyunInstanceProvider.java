@@ -522,7 +522,13 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListMessagesResponseBody body = response == null ? null : response.getBody();
             ListMessagesResponseBody.Data data = body == null ? null : body.getData();
             List<ListMessagesResponseBody.List> list = data == null ? null : data.getList();
+            int returned = list == null ? 0 : list.size();
+            Long totalCount = data == null ? null : data.getTotalCount();
+            // Use unfiltered provider row counts, not the records retained by the local tag filter.
+            boolean incomplete = Pagination.isIncompletePage(
+                    fetched, returned, AliyunConverters.MESSAGE_PAGE_SIZE, totalCount);
             if (list == null || list.isEmpty()) {
+                mayBeTruncated = incomplete;
                 break;
             }
             fetched += list.size();
@@ -535,10 +541,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     records.add(vo);
                 }
             }
-            Long totalCount = data.getTotalCount();
             boolean shortPage = list.size() < AliyunConverters.MESSAGE_PAGE_SIZE;
             boolean allFetched = totalCount != null && totalCount > 0L && fetched >= totalCount;
             if (shortPage || allFetched) {
+                mayBeTruncated = incomplete;
                 break;
             }
             if (page == AliyunConverters.MESSAGE_MAX_PAGES) {
