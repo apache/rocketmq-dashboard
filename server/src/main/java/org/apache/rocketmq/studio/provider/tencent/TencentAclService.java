@@ -70,16 +70,19 @@ public class TencentAclService {
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompleteRolePage(offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
-            fetched += data.length;
+            fetched += returned;
             for (RoleItem role : data) {
                 if (role != null && StringUtils.hasText(role.getRoleName())) {
                     users.add(toUser(role, context.cloudInstanceId()));
                 }
             }
-            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
+            if (isLastRolePage(returned, fetched, totalCount)) {
                 break;
             }
         }
@@ -94,10 +97,13 @@ public class TencentAclService {
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompleteRolePage(offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
-            fetched += data.length;
+            fetched += returned;
             for (RoleItem role : data) {
                 if (role == null || !StringUtils.hasText(role.getRoleName())) {
                     continue;
@@ -108,7 +114,7 @@ public class TencentAclService {
                 }
                 rules.add(toRule(role));
             }
-            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
+            if (isLastRolePage(returned, fetched, totalCount)) {
                 break;
             }
         }
@@ -175,16 +181,19 @@ public class TencentAclService {
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeRoleListResponse response = describeRoles(context, offset);
             RoleItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompleteRolePage(offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
-            fetched += data.length;
+            fetched += returned;
             for (RoleItem role : data) {
                 if (role != null && roleName.equals(role.getRoleName())) {
                     return role;
                 }
             }
-            if (isLastRolePage(data.length, fetched, response.getTotalCount())) {
+            if (isLastRolePage(returned, fetched, totalCount)) {
                 break;
             }
         }
@@ -200,8 +209,15 @@ public class TencentAclService {
                 context.regionId(), client -> client.DescribeRoleList(request));
     }
 
+    private static void requireCompleteRolePage(long offset, int returned, Long totalCount) {
+        if (totalCount != null && totalCount >= 0L
+                && returned < PAGE_SIZE && offset + returned < totalCount) {
+            throw new BusinessException(502, "Tencent Cloud ACL role catalog returned an incomplete page");
+        }
+    }
+
     private static boolean isLastRolePage(int returned, long fetched, Long totalCount) {
-        return returned < PAGE_SIZE || totalCount != null && totalCount >= 0L && fetched >= totalCount;
+        return totalCount != null && totalCount >= 0L ? fetched >= totalCount : returned < PAGE_SIZE;
     }
 
     public void deleteUser(String instanceId, String username) {

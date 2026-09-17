@@ -114,6 +114,38 @@ class TencentAclServiceTest {
     }
 
     @Test
+    void listUsersShouldRejectIncompleteRolePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listUsers(INSTANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void listRulesShouldRejectIncompleteRolePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listRules(INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void updateUserShouldRejectIncompleteRolePageInsteadOfReportingNotFoundTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.updateUser(INSTANCE_ID, AclUserVO.builder()
+                .username("role-b")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void listUsersShouldFetchExactlyTenThousandTencentRolesTest() throws Exception {
         when(client.DescribeRoleList(any())).thenAnswer(invocation -> {
             DescribeRoleListRequest request = invocation.getArgument(0);
@@ -273,6 +305,15 @@ class TencentAclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Tencent Cloud roles only support ALLOW ACL rules")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    private static DescribeRoleListResponse incompleteRolePage() {
+        RoleItem role = new RoleItem();
+        role.setRoleName("role-a");
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setTotalCount(2L);
+        response.setData(new RoleItem[]{role});
+        return response;
     }
 
     private static RoleItem[] rolePage(Long offset, Long limit, int total) {
