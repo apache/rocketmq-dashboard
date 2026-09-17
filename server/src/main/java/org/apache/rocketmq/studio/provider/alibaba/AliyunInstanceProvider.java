@@ -117,6 +117,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopics(request));
         ListTopicsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("topic listing", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         ListTopicsResponseBody.Data data = body == null ? null : body.getData();
         Long totalCount = data == null ? null : data.getTotalCount();
         return totalCount == null || totalCount < 0
@@ -135,6 +139,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listConsumerGroups(request));
         ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("consumer group listing", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
         Long totalCount = data == null ? null : data.getTotalCount();
         return totalCount == null || totalCount < 0
@@ -182,6 +190,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopics(request));
         ListTopicsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("topic listing", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         return body == null ? null : body.getData();
     }
 
@@ -284,6 +296,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListTopicSubscriptionsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listTopicSubscriptions(request));
         ListTopicSubscriptionsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("topic subscription query", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         List<ListTopicSubscriptionsResponseBody.Data> data = body == null ? null : body.getData();
         List<TopicConsumerVO> consumers = new ArrayList<>();
         if (data == null) {
@@ -314,6 +330,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                     client -> client.listConsumerGroups(request));
             ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
+            if (body != null) {
+                requireReadSuccess("consumer group listing", body.getSuccess(),
+                        body.getCode(), body.getMessage());
+            }
             ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
             List<ListConsumerGroupsResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
@@ -403,6 +423,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetConsumerGroupLagResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.getConsumerGroupLag(request));
         GetConsumerGroupLagResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("consumer lag query", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         GetConsumerGroupLagResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
             return new ArrayList<>();
@@ -420,6 +444,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ListConsumerGroupSubscriptionsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.listConsumerGroupSubscriptions(request));
         ListConsumerGroupSubscriptionsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("consumer subscription query", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         List<ListConsumerGroupSubscriptionsResponseBody.Data> data = body == null ? null : body.getData();
         List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
         if (data == null) {
@@ -490,6 +518,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListMessagesResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                     client -> client.listMessages(request));
             ListMessagesResponseBody body = response == null ? null : response.getBody();
+            if (body != null) {
+                requireReadSuccess("message query", body.getSuccess(),
+                        body.getCode(), body.getMessage());
+            }
             ListMessagesResponseBody.Data data = body == null ? null : body.getData();
             List<ListMessagesResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
@@ -529,11 +561,24 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
                 client -> client.getTrace(request));
         GetTraceResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireReadSuccess("message trace query", body.getSuccess(),
+                    body.getCode(), body.getMessage());
+        }
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
             return emptyTraceRecord();
         }
         return AliyunConverters.toTraceRecord(data);
+    }
+
+    private static void requireReadSuccess(String operation, Boolean success, String code, String message) {
+        if (Boolean.TRUE.equals(success)) {
+            return;
+        }
+        String detail = StringUtils.hasText(message) ? message
+                : StringUtils.hasText(code) ? code : "incomplete response";
+        throw new BusinessException(502, "Aliyun " + operation + " failed: " + detail);
     }
 
     private static TraceRecordVO emptyTraceRecord() {
