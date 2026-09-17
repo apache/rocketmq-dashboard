@@ -349,6 +349,7 @@ const TopicPage = () => {
   } = useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
+  const canSendTestMessage = (topic: Topic) => !isCloudInstance || topic.type === 'NORMAL';
   const hasSelectedInstance = Boolean(selectedInstanceId);
 
   // ─── State ─────────────────────────────────────────────────────
@@ -765,7 +766,7 @@ const TopicPage = () => {
           >
             配置
           </Button>
-          {!isCloudInstance && (
+          {canSendTestMessage(record) && (
             <Button
               size="small"
               icon={<SendOutlined />}

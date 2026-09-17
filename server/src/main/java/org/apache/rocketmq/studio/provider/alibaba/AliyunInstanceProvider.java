@@ -43,6 +43,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -57,6 +60,8 @@ import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
@@ -103,6 +108,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.MESSAGE_SEND,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -451,6 +457,30 @@ public class AliyunInstanceProvider implements InstanceProvider {
         }
         ResetConsumeOffsetRequest request = builder.build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.resetConsumeOffset(request));
+    }
+
+    @Override
+    public SendMessageVO sendMessage(SendMessageDTO request) {
+        Context ctx = resolve(request.getInstanceId());
+        VerifySendMessageRequest apiRequest = VerifySendMessageRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .topicName(request.getTopic())
+                .message(request.getBody())
+                .messageTag(request.getTag())
+                .messageKey(request.getKey())
+                .messageGroup(request.getMessageGroup())
+                .deliveryTimeStamp(request.getDeliveryTimestamp())
+                .userProperties(request.getProperties())
+                .build();
+        VerifySendMessageResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.verifySendMessage(apiRequest));
+        VerifySendMessageResponseBody body = response == null ? null : response.getBody();
+        if (body == null || !Boolean.TRUE.equals(body.getSuccess()) || !StringUtils.hasText(body.getData())) {
+            String detail = body == null ? "empty response" : (StringUtils.hasText(body.getMessage())
+                    ? body.getMessage() : body.getCode());
+            throw new BusinessException(502, "Aliyun test message send failed: " + detail);
+        }
+        return SendMessageVO.builder().msgId(body.getData()).sendTime(System.currentTimeMillis()).build();
     }
 
     @Override

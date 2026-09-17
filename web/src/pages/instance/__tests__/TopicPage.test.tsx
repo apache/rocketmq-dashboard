@@ -337,6 +337,32 @@ describe('TopicPage', () => {
     );
   });
 
+  it('sends a normal test message from an Aliyun cloud topic', async () => {
+    const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      { ...selectedInstance, type: 'CLOUD', vendor: 'ALIYUN' },
+    ]);
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    fireEvent.change(within(dialog).getByLabelText('消息体 Body'), {
+      target: { value: 'cloud-test-payload' },
+    });
+    await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith({
+      topic: 'topic-01',
+      instanceId: 'instance-proxy-1',
+      tag: undefined,
+      key: undefined,
+      body: 'cloud-test-payload',
+      properties: {},
+    });
+  });
+
   it('opens a clean create dialog after a cancelled edit', async () => {
     const user = userEvent.setup();
     renderWithProviders();

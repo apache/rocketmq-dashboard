@@ -37,6 +37,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -52,6 +55,8 @@ import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
@@ -108,8 +113,54 @@ class AliyunInstanceProviderTest {
         assertThat(provider.capabilities())
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.MESSAGE_SEND,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Test
+    void sendMessageShouldMapAliyunTestSendFieldsTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifySendMessageResponse response = VerifySendMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifySendMessageResponseBody.builder()
+                        .success(true).data("MSG-ALI-1").requestId("req-1").build())
+                .build();
+        when(asyncClient.verifySendMessage(any())).thenReturn(CompletableFuture.completedFuture(response));
+        SendMessageDTO request = SendMessageDTO.builder().instanceId(STUDIO_INSTANCE_ID).topic("orders")
+                .tag("paid").key("order-1").body("payload").properties(Map.of("tenant", "alpha"))
+                .messageGroup("order-1").deliveryTimestamp(1700000000000L).build();
+        SendMessageVO result = provider.sendMessage(request);
+        ArgumentCaptor<VerifySendMessageRequest> captor = ArgumentCaptor.forClass(VerifySendMessageRequest.class);
+        verify(asyncClient).verifySendMessage(captor.capture());
+        VerifySendMessageRequest sent = captor.getValue();
+        assertThat(sent.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(sent.getTopicName()).isEqualTo("orders");
+        assertThat(sent.getMessage()).isEqualTo("payload");
+        assertThat(sent.getMessageTag()).isEqualTo("paid");
+        assertThat(sent.getMessageKey()).isEqualTo("order-1");
+        assertThat(sent.getMessageGroup()).isEqualTo("order-1");
+        assertThat(sent.getDeliveryTimeStamp()).isEqualTo(1700000000000L);
+        assertThat(sent.getUserProperties()).containsKey("tenant");
+        assertThat(sent.getUserProperties().get("tenant")).isEqualTo("alpha");
+        assertThat(result.getMsgId()).isEqualTo("MSG-ALI-1");
+    }
+
+    @Test
+    void sendMessageShouldRejectUnsuccessfulAliyunResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifySendMessageResponse response = VerifySendMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifySendMessageResponseBody.builder().success(false).message("send denied").build())
+                .build();
+        when(asyncClient.verifySendMessage(any())).thenReturn(CompletableFuture.completedFuture(response));
+        SendMessageDTO request = SendMessageDTO.builder().instanceId(STUDIO_INSTANCE_ID)
+                .topic("orders").body("payload").build();
+        assertThatThrownBy(() -> provider.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("send denied");
     }
 
     @Test

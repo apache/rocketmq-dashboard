@@ -122,7 +122,7 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         SendMessageVO result = metadataService.redeliverMessage(
@@ -130,7 +130,7 @@ class MetadataServiceTest {
 
         assertThat(result.getMsgId()).isEqualTo("msg-new");
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("orders-retry");
         assertThat(request.getValue().getTag()).isEqualTo("paid");
         assertThat(request.getValue().getKey()).isEqualTo("order-1");
@@ -148,13 +148,13 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
 
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
     }
 
@@ -182,13 +182,13 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", "orders-copy");
 
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getProperties())
                 .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha"));
         assertThat(request.getValue().getTag()).isEqualTo("paid");
@@ -399,7 +399,7 @@ class MetadataServiceTest {
                 .key("order-1")
                 .body("hello")
                 .build();
-        when(adminClient.sendMessage(message)).thenReturn(SendMessageVO.builder().msgId("msg-1").build());
+        when(apacheProvider.sendMessage(message)).thenReturn(SendMessageVO.builder().msgId("msg-1").build());
 
         metadataService.updateTopic(topic);
         metadataService.deleteTopic("instance-a", " orders ");
@@ -708,13 +708,13 @@ class MetadataServiceTest {
                 .offsetMsgId("offset-001")
                 .build();
 
-        when(adminClient.sendMessage(request)).thenReturn(expectedResult);
+        when(apacheProvider.sendMessage(request)).thenReturn(expectedResult);
 
         SendMessageVO result = metadataService.sendMessage(request);
 
         assertThat(result.getMsgId()).isEqualTo("msg-001");
         assertThat(result.getOffsetMsgId()).isEqualTo("offset-001");
-        verify(adminClient).sendMessage(request);
+        verify(apacheProvider).sendMessage(request);
         verifyNoInteractions(operationAuditService);
     }
 

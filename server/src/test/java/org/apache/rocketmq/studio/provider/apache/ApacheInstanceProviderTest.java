@@ -81,6 +81,7 @@ class ApacheInstanceProviderTest {
                 InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.MESSAGE_SEND,
                 InstanceCapability.ACL_MANAGEMENT,
                 InstanceCapability.DLQ_MANAGEMENT);
     }

@@ -42,6 +42,8 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.Filter;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
+import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
+import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -63,6 +65,8 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
@@ -144,6 +148,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.MESSAGE_SEND,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -553,6 +558,30 @@ public class TencentInstanceProvider implements InstanceProvider {
             request.setResetTimestamp(System.currentTimeMillis());
         }
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.ResetConsumerGroupOffset(request));
+    }
+
+    @Override
+    public SendMessageVO sendMessage(SendMessageDTO request) {
+        if (request.getProperties() != null && !request.getProperties().isEmpty()) {
+            throw new BusinessException(400, "Tencent Cloud test sending does not support user properties");
+        }
+        if (StringUtils.hasText(request.getMessageGroup()) || request.getDeliveryTimestamp() != null) {
+            throw new BusinessException(400,
+                    "Tencent Cloud test sending supports normal messages only; FIFO and delayed fields are unsupported");
+        }
+        Context context = resolve(request.getInstanceId());
+        SendMessageRequest apiRequest = new SendMessageRequest();
+        apiRequest.setInstanceId(context.cloudInstanceId());
+        apiRequest.setTopic(request.getTopic());
+        apiRequest.setMsgBody(request.getBody());
+        apiRequest.setMsgKey(request.getKey());
+        apiRequest.setMsgTag(request.getTag());
+        SendMessageResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.SendMessage(apiRequest));
+        if (response == null || !StringUtils.hasText(response.getMsgId())) {
+            throw new BusinessException(502, "Tencent Cloud test message send returned no message id");
+        }
+        return SendMessageVO.builder().msgId(response.getMsgId()).sendTime(System.currentTimeMillis()).build();
     }
 
     @Override
