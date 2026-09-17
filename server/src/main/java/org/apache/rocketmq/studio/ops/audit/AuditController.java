@@ -50,7 +50,7 @@ public class AuditController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-return Result.ok(auditService.queryLogs(page, pageSize, search, operator, operationType,
+        return Result.ok(auditService.queryLogs(page, pageSize, search, operator, operationType,
                 resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 
@@ -85,7 +85,7 @@ return Result.ok(auditService.queryLogs(page, pageSize, search, operator, operat
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-return Result.ok(auditService.exportLogs(search, operator, operationType, resourceType,
+        return Result.ok(auditService.exportLogs(search, operator, operationType, resourceType,
                 target, clusterId, clusterIdMissing, startDate, endDate, result));
     }
 

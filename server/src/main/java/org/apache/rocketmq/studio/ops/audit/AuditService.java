@@ -56,7 +56,7 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operator={}, operationType={}, result={}",
                 page, pageSize, search, operator, operationType, result);
 
-return findPage(search, operator, operationType, resourceType, target, clusterId,
+        return findPage(search, operator, operationType, resourceType, target, clusterId,
                 clusterIdMissing,
                 startDate, endDate, result, page, pageSize);
     }
@@ -72,7 +72,7 @@ return findPage(search, operator, operationType, resourceType, target, clusterId
                 range.start(), range.end(), result);
     }
 
-public String exportLogs(String search, String operator, String operationType, String resourceType,
+    public String exportLogs(String search, String operator, String operationType, String resourceType,
                              String target, String clusterId, boolean clusterIdMissing, String startDate,
                              String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
@@ -160,7 +160,7 @@ public String exportLogs(String search, String operator, String operationType, S
         }
     }
 
-private PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
+    private PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                                String resourceType, String target, String clusterId,
                                                boolean clusterIdMissing,
                                                String startDate, String endDate,

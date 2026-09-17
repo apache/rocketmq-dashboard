@@ -170,7 +170,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
         when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull()))
+                isNull(), eq(false), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -180,7 +180,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.size").value(20));
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull());
+                isNull(), eq(false), isNull(), isNull(), isNull());
     }
 
     @Test
