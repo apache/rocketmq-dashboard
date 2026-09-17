@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -29,6 +30,10 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerConnectionListRequestHeader;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerRunningInfoRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.GetMaxOffsetRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.GetMaxOffsetResponseHeader;
+import org.apache.rocketmq.remoting.protocol.header.QueryConsumerOffsetRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.QueryConsumerOffsetResponseHeader;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +60,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProxyConsumerResolver {
+public class ProxyConsumerResolver implements ProxyStatsProvider {
 
     private static final String HEARTBEAT_SYNCER_CONSUMER_GROUP = "CID_DefaultHeartBeatSyncerTopic";
     private static final int PROXY_REMOTING_PORT = 8080;
@@ -73,6 +78,74 @@ public class ProxyConsumerResolver {
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
     private final AtomicBoolean clientStarted = new AtomicBoolean(false);
     private volatile NettyRemotingClient remotingClient;
+
+    @Override
+    public long queryLag(String instanceId, String consumerGroup, MessageQueue queue) {
+        if (!StringUtils.hasText(consumerGroup) || queue == null) {
+            return ConsumerLagResolver.UNKNOWN;
+        }
+        for (String addr : discoverProxyAddresses(instanceId)) {
+            try {
+                long lag = queryProxyLag(addr, consumerGroup, queue);
+                if (lag != ConsumerLagResolver.UNKNOWN) {
+                    return lag;
+                }
+            } catch (Exception e) {
+                log.debug("Proxy consumer lag query failed for {}/{} via {}: {}",
+                        consumerGroup, queue, addr, e.getMessage());
+            }
+        }
+        return ConsumerLagResolver.UNKNOWN;
+    }
+
+    long queryProxyLag(String proxyAddr, String consumerGroup, MessageQueue queue) throws Exception {
+        GetMaxOffsetRequestHeader maxOffsetHeader = new GetMaxOffsetRequestHeader();
+        maxOffsetHeader.setTopic(queue.getTopic());
+        maxOffsetHeader.setQueueId(queue.getQueueId());
+        maxOffsetHeader.setBrokerName(queue.getBrokerName());
+        maxOffsetHeader.setCommitted(true);
+        RemotingCommand maxOffsetRequest =
+                RemotingCommand.createRequestCommand(RequestCode.GET_MAX_OFFSET, maxOffsetHeader);
+        RemotingCommand maxOffsetResponse =
+                remotingClient().invokeSync(proxyAddr, maxOffsetRequest, PROXY_QUERY_TIMEOUT_MILLIS);
+        Long maxOffset = decodeMaxOffset(maxOffsetResponse);
+        if (maxOffset == null || maxOffset < 0) {
+            return ConsumerLagResolver.UNKNOWN;
+        }
+
+        QueryConsumerOffsetRequestHeader consumerOffsetHeader = new QueryConsumerOffsetRequestHeader();
+        consumerOffsetHeader.setConsumerGroup(consumerGroup);
+        consumerOffsetHeader.setTopic(queue.getTopic());
+        consumerOffsetHeader.setQueueId(queue.getQueueId());
+        consumerOffsetHeader.setBrokerName(queue.getBrokerName());
+        consumerOffsetHeader.setSetZeroIfNotFound(false);
+        RemotingCommand consumerOffsetRequest =
+                RemotingCommand.createRequestCommand(RequestCode.QUERY_CONSUMER_OFFSET, consumerOffsetHeader);
+        RemotingCommand consumerOffsetResponse =
+                remotingClient().invokeSync(proxyAddr, consumerOffsetRequest, PROXY_QUERY_TIMEOUT_MILLIS);
+        Long consumerOffset = decodeConsumerOffset(consumerOffsetResponse);
+        if (consumerOffset == null || consumerOffset < 0 || consumerOffset > maxOffset) {
+            return ConsumerLagResolver.UNKNOWN;
+        }
+        return maxOffset - consumerOffset;
+    }
+
+    private Long decodeMaxOffset(RemotingCommand response) throws Exception {
+        if (response == null || response.getCode() != ResponseCode.SUCCESS) {
+            return null;
+        }
+        GetMaxOffsetResponseHeader header = response.decodeCommandCustomHeader(GetMaxOffsetResponseHeader.class);
+        return header == null ? null : header.getOffset();
+    }
+
+    private Long decodeConsumerOffset(RemotingCommand response) throws Exception {
+        if (response == null || response.getCode() != ResponseCode.SUCCESS) {
+            return null;
+        }
+        QueryConsumerOffsetResponseHeader header =
+                response.decodeCommandCustomHeader(QueryConsumerOffsetResponseHeader.class);
+        return header == null ? null : header.getOffset();
+    }
 
     /**
      * Queries the proxies of the given instance for the consumer connection info of the group.

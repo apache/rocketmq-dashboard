@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -529,6 +530,32 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldResolveUnknownQueueLagThroughProxyTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        GroupList groupList = new GroupList();
+        groupList.setGroupList(new HashSet<>(List.of("cg-orders")));
+        when(admin.queryTopicConsumeByWho("TopicA")).thenReturn(groupList);
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 2);
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(queue, offset(0, 1));
+        when(admin.examineConsumeStats("cg-orders", "TopicA")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        ProxyConsumerResolver resolver = mock(ProxyConsumerResolver.class);
+        when(resolver.queryLag("instance-a", "cg-orders", queue)).thenReturn(12L);
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+
+        TopicConsumerPageVO result = provider.getTopicConsumersPage("instance-a", "TopicA", 1, 10);
+
+        assertThat(result.getItems()).singleElement()
+                .extracting(TopicConsumerVO::getDiffTotal)
+                .isEqualTo(12L);
+        verify(resolver).queryLag("instance-a", "cg-orders", queue);
+    }
+
+    @Test
     void getTopicConsumersStillSumsKnownQueueLags() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         mockTopicConsumeStats(admin, offset(20, 10), offset(7, 4));
@@ -576,6 +603,29 @@ class RocketMQMetadataProviderTest {
                                 + "the consumer is under the broadcast mode"));
 
         assertThat(newLiveProvider(admin).getGroupProgress(null, "group-broadcast")).isEmpty();
+    }
+
+    @Test
+    void getGroupProgressShouldResolveUnknownQueueLagThroughProxyTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 2);
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(queue, offset(0, 1));
+        when(admin.examineConsumeStats("group-a")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        ProxyConsumerResolver resolver = mock(ProxyConsumerResolver.class);
+        when(resolver.queryLag("instance-a", "group-a", queue)).thenReturn(9L);
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+
+        List<QueueProgressVO> progress = provider.getGroupProgress("instance-a", "group-a");
+
+        assertThat(progress).singleElement()
+                .extracting(QueueProgressVO::getDiffTotal)
+                .isEqualTo(9L);
+        verify(resolver).queryLag("instance-a", "group-a", queue);
     }
 
     @Test
@@ -861,6 +911,37 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).isConsumeStatsAvailable()).isTrue();
         assertThat(groups.get(0).getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
+    void listConsumerGroupsShouldResolveUnknownQueueLagThroughProxyTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-proxy");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ConsumerConnection connection = new ConsumerConnection();
+        connection.setConnectionSet(new HashSet<>());
+        when(admin.examineConsumerConnectionInfo("cg-proxy")).thenReturn(connection);
+        MessageQueue queue = new MessageQueue("studio-normal", "broker-a", 0);
+        ConsumeStats stats = new ConsumeStats();
+        stats.getOffsetTable().put(queue, offset(0, 1));
+        when(admin.examineConsumeStats("cg-proxy")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        ProxyConsumerResolver resolver = mock(ProxyConsumerResolver.class);
+        when(resolver.queryLag("instance-a", "cg-proxy", queue)).thenReturn(15L);
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement()
+                .extracting(ConsumerGroupVO::getTotalLag)
+                .isEqualTo(15L);
+        verify(resolver).queryLag("instance-a", "cg-proxy", queue);
     }
 
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {

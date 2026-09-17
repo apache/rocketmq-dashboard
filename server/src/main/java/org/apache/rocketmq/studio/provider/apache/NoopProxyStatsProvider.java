@@ -17,17 +17,16 @@
 
 package org.apache.rocketmq.studio.provider.apache;
 
-import org.springframework.stereotype.Component;
+import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
- * Default {@link ProxyStatsProvider} used when no proxy transport is wired in. It reports the
- * unknown sentinel so a {@code -1} lag is surfaced instead of being silently treated as zero.
+ * Fallback {@link ProxyStatsProvider} for callers without a Proxy transport. It reports the unknown
+ * sentinel so a {@code -1} lag is surfaced instead of being silently treated as zero.
  */
-@Component
 public class NoopProxyStatsProvider implements ProxyStatsProvider {
 
     @Override
-    public long queryLag() {
+    public long queryLag(String instanceId, String consumerGroup, MessageQueue queue) {
         return ConsumerLagResolver.UNKNOWN;
     }
 }
