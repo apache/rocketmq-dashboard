@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -93,6 +94,11 @@ public class PlatformClusterResolver {
         }
     }
 
+    private record PhysicalClusterIdentity(
+            List<String> nameServerAddrs,
+            List<String> brokerAddrs) {
+    }
+
     /** Apache instances with a usable endpoint, ordered by name for deterministic resolution. */
     public List<InstanceVO> manageableInstances() {
         return instanceRepository.findAll().stream()
@@ -114,16 +120,27 @@ public class PlatformClusterResolver {
         return collect(true);
     }
 
-    /** First instance that manages the given physical cluster; 404 when no instance owns it. */
+    /**
+     * Representative instance for one physical cluster; 404 when no instance owns it,
+     * or 409 when the name identifies multiple physical clusters.
+     */
     public ManagedCluster require(String clusterName) {
         if (!StringUtils.hasText(clusterName)) {
             throw new BusinessException(400, "clusterName is required");
         }
         String normalized = clusterName.trim();
-        return scan().stream()
+        List<ManagedCluster> matches = collectAll(false).stream()
                 .filter(cluster -> normalized.equals(cluster.clusterName()))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + normalized));
+                .toList();
+        if (matches.isEmpty()) {
+            throw new BusinessException(404, "Cluster not found: " + normalized);
+        }
+        if (hasDistinctPhysicalClusters(matches)) {
+            throw new BusinessException(409,
+                    "Cluster name is ambiguous across physical clusters: " + normalized
+                            + " (instances: " + instanceIds(matches) + ")");
+        }
+        return matches.getFirst();
     }
 
     public String resolveInstanceId(String clusterName) {
@@ -143,16 +160,69 @@ public class PlatformClusterResolver {
 
     private List<ManagedCluster> collect(boolean withVersions) {
         Map<String, ManagedCluster> unique = new LinkedHashMap<>();
+        collectAll(withVersions).forEach(cluster -> unique.putIfAbsent(cluster.clusterName(), cluster));
+        return List.copyOf(unique.values());
+    }
+
+    private List<ManagedCluster> collectAll(boolean withVersions) {
+        List<ManagedCluster> clusters = new ArrayList<>();
         for (InstanceVO instance : manageableInstances()) {
             try {
                 runtimeAdminClientResolver.execute(instance, admin -> inspect(instance, admin, withVersions))
-                        .forEach(cluster -> unique.putIfAbsent(cluster.clusterName(), cluster));
+                        .forEach(clusters::add);
             } catch (Exception e) {
                 log.warn("Skipping instance {} during platform cluster scan: {}",
                         instance.getName(), e.getMessage());
             }
         }
-        return List.copyOf(unique.values());
+        warnOnAmbiguousClusterNames(clusters);
+        return List.copyOf(clusters);
+    }
+
+    private void warnOnAmbiguousClusterNames(List<ManagedCluster> clusters) {
+        Map<String, List<ManagedCluster>> clustersByName = clusters.stream()
+                .collect(Collectors.groupingBy(
+                        ManagedCluster::clusterName, LinkedHashMap::new, Collectors.toList()));
+        clustersByName.forEach((clusterName, matches) -> {
+            if (hasDistinctPhysicalClusters(matches)) {
+                log.warn("Cluster name {} is ambiguous across physical clusters exposed by instances: {}",
+                        clusterName, instanceIds(matches));
+            }
+        });
+    }
+
+    private static boolean hasDistinctPhysicalClusters(List<ManagedCluster> clusters) {
+        return clusters.stream()
+                .map(PlatformClusterResolver::physicalIdentity)
+                .distinct()
+                .limit(2)
+                .count() > 1;
+    }
+
+    private static PhysicalClusterIdentity physicalIdentity(ManagedCluster cluster) {
+        return new PhysicalClusterIdentity(
+                canonicalAddresses(cluster.nameServerAddrs()),
+                canonicalAddresses(cluster.brokers().stream()
+                        .map(ManagedBroker::address)
+                        .toList()));
+    }
+
+    private static List<String> canonicalAddresses(List<String> addresses) {
+        return addresses.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .map(address -> address.toLowerCase(Locale.ROOT))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private static String instanceIds(List<ManagedCluster> clusters) {
+        return clusters.stream()
+                .map(ManagedCluster::instanceId)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .collect(Collectors.joining(", "));
     }
 
     private List<ManagedCluster> inspect(
