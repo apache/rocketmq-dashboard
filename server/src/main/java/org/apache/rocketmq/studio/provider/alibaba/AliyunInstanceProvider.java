@@ -17,9 +17,17 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateConsumerGroupResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.CreateTopicResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteConsumerGroupResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.DeleteTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.DeleteTopicResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
@@ -42,10 +50,14 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponseBody;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -247,7 +259,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .messageType(topic.getType().name())
                 .remark(topic.getRemark())
                 .build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createTopic(request));
+        CreateTopicResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.createTopic(request));
+        CreateTopicResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("topic creation", body == null ? null : body.getSuccess(),
+                body == null ? null : body.getData(), body == null ? null : body.getCode(),
+                body == null ? null : body.getMessage(), true);
         topic.setInstanceId(instanceId);
         topic.setGmtCreate(java.time.LocalDateTime.now());
         topic.setGmtModified(java.time.LocalDateTime.now());
@@ -265,7 +282,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .topicName(topic.getName())
                 .remark(topic.getRemark())
                 .build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.updateTopic(request));
+        UpdateTopicResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.updateTopic(request));
+        UpdateTopicResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("topic update", body == null ? null : body.getSuccess(),
+                body == null ? null : body.getData(), body == null ? null : body.getCode(),
+                body == null ? null : body.getMessage(), true);
         topic.setInstanceId(instanceId);
         return topic;
     }
@@ -277,7 +299,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .instanceId(ctx.cloudInstanceId())
                 .topicName(topicName)
                 .build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.deleteTopic(request));
+        DeleteTopicResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.deleteTopic(request));
+        DeleteTopicResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("topic deletion", body == null ? null : body.getSuccess(),
+                body == null ? null : body.getData(), body == null ? null : body.getCode(),
+                body == null ? null : body.getMessage(), true);
     }
 
     @Override
@@ -365,7 +392,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .deliveryOrderType(deliveryOrderType)
                 .consumeRetryPolicy(retryPolicy.build())
                 .build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createConsumerGroup(request));
+        CreateConsumerGroupResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.createConsumerGroup(request));
+        CreateConsumerGroupResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("consumer group creation", body == null ? null : body.getSuccess(),
+                body == null ? null : body.getData(), body == null ? null : body.getCode(),
+                body == null ? null : body.getMessage(), true);
         group.setInstanceId(instanceId);
         group.setDeliveryOrderType(deliveryOrderType);
         group.setRetryMaxTimes(maxRetryTimes);
@@ -396,7 +428,12 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .instanceId(ctx.cloudInstanceId())
                 .consumerGroupId(groupName)
                 .build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.deleteConsumerGroup(request));
+        DeleteConsumerGroupResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.deleteConsumerGroup(request));
+        DeleteConsumerGroupResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("consumer group deletion", body == null ? null : body.getSuccess(),
+                body == null ? null : body.getData(), body == null ? null : body.getCode(),
+                body == null ? null : body.getMessage(), true);
     }
 
     @Override
@@ -456,7 +493,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
             builder.resetType(RESET_TYPE_LATEST_OFFSET);
         }
         ResetConsumeOffsetRequest request = builder.build();
-        clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.resetConsumeOffset(request));
+        ResetConsumeOffsetResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.resetConsumeOffset(request));
+        ResetConsumeOffsetResponseBody body = response == null ? null : response.getBody();
+        requireMutationSuccess("consumer offset reset", body == null ? null : body.getSuccess(), null,
+                body == null ? null : body.getCode(), body == null ? null : body.getMessage(), false);
     }
 
     @Override
@@ -564,6 +605,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
             return emptyTraceRecord();
         }
         return AliyunConverters.toTraceRecord(data);
+    }
+
+    private static void requireMutationSuccess(String operation, Boolean success, Boolean data,
+                                               String code, String message, boolean requireData) {
+        if (Boolean.TRUE.equals(success) && (!requireData || Boolean.TRUE.equals(data))) {
+            return;
+        }
+        String detail = StringUtils.hasText(message) ? message
+                : StringUtils.hasText(code) ? code : "incomplete response";
+        throw new BusinessException(502, "Aliyun " + operation + " failed: " + detail);
     }
 
     private static TraceRecordVO emptyTraceRecord() {
