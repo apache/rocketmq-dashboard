@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { ArrowClockwise, Eye } from '@phosphor-icons/react';
+import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -26,12 +26,14 @@ import type { Instance } from '../../api/instance';
 import type { NotificationDeliveryRecord } from '../../api/ops';
 import { listInstances } from '../../services/instanceService';
 import {
+  exportAlertDeliveries,
   listAlertDeliveriesPage,
   retryAlertDeliveries,
   retryAlertDelivery,
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { downloadBlob } from '../../utils/download';
 
 const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   PENDING: 'default',
@@ -58,10 +60,30 @@ const NotificationDeliveriesPage = () => {
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const refresh = () => {
     setLoading(true);
     setRefreshNonce((current) => current + 1);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const blob = await exportAlertDeliveries({
+        channel,
+        status,
+        instanceId,
+      });
+      downloadBlob(
+        blob,
+        `rocketmq-notification-deliveries-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+    } catch {
+      message.error(t('deliveries.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
@@ -240,6 +262,13 @@ const NotificationDeliveriesPage = () => {
               onClick={() => void retryVisibleFailures()}
             >
               {t('deliveries.retryCurrentPage')}
+            </Button>
+            <Button
+              icon={<DownloadSimple size={18} />}
+              loading={exporting}
+              onClick={() => void handleExport()}
+            >
+              {t('common.export')}
             </Button>
             <Select
               allowClear

@@ -458,6 +458,29 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void exportsDeliveryRecordsWithNormalizedFiltersAndSafeCsvCellsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        NotificationDeliveryPageVO delivery = NotificationDeliveryPageVO.builder().id(8L).alertId(9L)
+                .channel("dingtalk").status(NotificationOutboxStatus.FAILED).attemptCount(3)
+                .alertTitle("Disk usage high").alertDomain(AlertDomain.CLUSTER).transition("FIRING")
+                .instanceId("Local").lastError("Webhook rejected \"keywords\"")
+                .createdAt(LocalDateTime.of(2026, 9, 5, 10, 0)).build();
+        when(mapper.findExportPage("dingtalk", "FAILED", "Local", 10_000))
+                .thenReturn(List.of(delivery));
+
+        String csv = new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class), mock(OperationAuditService.class))
+                .exportDeliveries(" DingTalk ", "failed", "Local");
+
+        assertThat(csv).startsWith("\uFEFFdeliveryId,alertId,alertTitle,alertDomain,transition")
+                .contains("\"8\"")
+                .contains("\"9\"")
+                .contains("\"Disk usage high\"")
+                .contains("\"Webhook rejected \"\"keywords\"\"\"")
+                .doesNotContain("messageContent");
+    }
+
+    @Test
     void normalizesDeliveryFiltersIndependentlyOfTheDefaultLocaleTest() {
         Locale previous = Locale.getDefault();
         try {
