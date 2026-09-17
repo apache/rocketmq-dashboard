@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -36,6 +38,9 @@ class ClientServiceTest {
 
     @Mock
     private ClientProvider clientProvider;
+
+    @Mock
+    private NameserverRegistryService registryService;
 
     @InjectMocks
     private ClientService clientService;
@@ -75,6 +80,9 @@ class ClientServiceTest {
 
     @Test
     void listConnectionsAtShouldTrimAndDelegateToProvider() {
+        when(registryService.list()).thenReturn(List.of(NameserverRegistryVO.builder()
+                .namesrvAddr("10.0.1.31:9876")
+                .build()));
         when(clientProvider.findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null))
                 .thenReturn(List.of());
 
@@ -83,6 +91,32 @@ class ClientServiceTest {
 
         assertThat(result).isEmpty();
         verify(clientProvider).findConnectionsAt("10.0.1.31:9876", "DefaultCluster", null);
+    }
+
+    @Test
+    void listConnectionsAtShouldNormalizeRegisteredAddressBeforeQueryingProvider() {
+        when(registryService.list()).thenReturn(List.of(NameserverRegistryVO.builder()
+                .namesrvAddr("ns1:9876,ns2:9876")
+                .build()));
+
+        clientService.listConnectionsAt(" NS1:9876 ; ns2:9876 ", null, null);
+
+        verify(clientProvider).findConnectionsAt("ns1:9876,ns2:9876", null, null);
+    }
+
+    @Test
+    void listConnectionsAtShouldRejectUnregisteredAddressBeforeQueryingProvider() {
+        when(registryService.list()).thenReturn(List.of(NameserverRegistryVO.builder()
+                .namesrvAddr("registered-ns:9876")
+                .build()));
+
+        assertThatThrownBy(() -> clientService.listConnectionsAt("other-ns:9876", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer address is not registered: other-ns:9876")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                        .isEqualTo(404));
+
+        verifyNoInteractions(clientProvider);
     }
 
     @Test
