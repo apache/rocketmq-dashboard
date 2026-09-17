@@ -198,6 +198,10 @@ const SystemAlertsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoading(true);
+    });
+
     void listSystemAlertsPage({
       ...currentQuery(),
       page,
@@ -479,7 +483,7 @@ const SystemAlertsPage = () => {
             <Button
               icon={<Trash size={14} />}
               onClick={handleClearAcked}
-              disabled={!alerts.some((a) => a.acknowledged)}
+              disabled={loading || !alerts.some((a) => a.acknowledged)}
               loading={clearing}
             >
               {t('sysAlerts.clearAcked')}
