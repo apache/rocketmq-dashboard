@@ -64,6 +64,9 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         ListRegionsResponse response = clientFactory.call(credentialId, DEFAULT_REGION,
                 client -> client.listRegions(ListRegionsRequest.builder().build()));
         ListRegionsResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireCatalogSuccess("region listing", body.getSuccess(), body.getCode(), body.getMessage());
+        }
         List<ListRegionsResponseBody.Data> data = body == null ? null : body.getData();
         List<CloudRegionVO> regions = new ArrayList<>();
         if (data == null) {
@@ -110,6 +113,9 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         GetInstanceResponse response = clientFactory.call(credentialId, normalizedRegionId,
                 client -> client.getInstance(request));
         GetInstanceResponseBody body = response == null ? null : response.getBody();
+        if (body != null) {
+            requireCatalogSuccess("instance lookup", body.getSuccess(), body.getCode(), body.getMessage());
+        }
         GetInstanceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
             throw new BusinessException(404, "Aliyun instance not found: " + normalizedCloudInstanceId);
@@ -127,6 +133,9 @@ public class AliyunCatalogService implements CloudCatalogProvider {
             ListInstancesResponse response = clientFactory.call(credentialId, regionId,
                     client -> client.listInstances(request));
             ListInstancesResponseBody body = response == null ? null : response.getBody();
+            if (body != null) {
+                requireCatalogSuccess("instance listing", body.getSuccess(), body.getCode(), body.getMessage());
+            }
             ListInstancesResponseBody.Data data = body == null ? null : body.getData();
             List<ListInstancesResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
@@ -144,6 +153,15 @@ public class AliyunCatalogService implements CloudCatalogProvider {
             }
         }
         return all;
+    }
+
+    private static void requireCatalogSuccess(String operation, Boolean success, String code, String message) {
+        if (Boolean.TRUE.equals(success)) {
+            return;
+        }
+        String detail = message != null && !message.isBlank() ? message
+                : code != null && !code.isBlank() ? code : "incomplete response";
+        throw new BusinessException(502, "Aliyun catalog " + operation + " failed: " + detail);
     }
 
     private static boolean matchesSearch(String search, CloudInstanceOptionVO vo) {
