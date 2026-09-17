@@ -89,33 +89,33 @@ class AuditServiceTest {
     @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
-        when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
+        when(auditRepository.findPage(eq("topic-a"), eq("admin"), eq("CREATE"), eq("TOPIC"), eq("orders"),
                 eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20)))
                 .thenReturn(PageResult.of(List.of(record), 21, 2, 20));
 
         PageResult<AuditRecordVO> result = auditService.queryLogs(
-                2, 20, "topic-a", "CREATE", "TOPIC", "orders", "prod-cn", false,
+                2, 20, "topic-a", "admin", "CREATE", "TOPIC", "orders", "prod-cn", false,
                 null, null, "SUCCESS");
 
         assertThat(result.getItems()).containsExactly(record);
         assertThat(result.getTotal()).isEqualTo(21);
-        verify(auditRepository).findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
+        verify(auditRepository).findPage(eq("topic-a"), eq("admin"), eq("CREATE"), eq("TOPIC"), eq("orders"),
                 eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20));
     }
 
     @Test
     void queryLogsParsesDateRangeBeforeDelegating() {
-        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
                 isNull(), eq(1), eq(10)))
                 .thenReturn(PageResult.empty(1, 10));
 
-        auditService.queryLogs(1, 10, null, null, null, null, null, false,
+        auditService.queryLogs(1, 10, null, null, null, null, null, null, false,
                 "2026-08-01", "2026-08-02", null);
 
         ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(auditRepository).findPage(isNull(), isNull(), isNull(), isNull(),
+        verify(auditRepository).findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), start.capture(), end.capture(), isNull(), eq(1), eq(10));
         assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
@@ -123,11 +123,11 @@ class AuditServiceTest {
 
     @Test
     void queryLogsRejectsInvalidPageBounds() {
-        assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null,
+        assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null, null,
                 null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be greater than 0");
-        assertThatThrownBy(() -> auditService.queryLogs(1, 101, null, null, null, null,
+        assertThatThrownBy(() -> auditService.queryLogs(1, 101, null, null, null, null, null,
                 null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("pageSize must be between 1 and 100");
@@ -135,7 +135,7 @@ class AuditServiceTest {
 
     @Test
     void queryLogsRejectsInvalidDateRange() {
-        assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null,
+        assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null, null,
                 null, false, "2026-08-02", "2026-08-01", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate must not be after endDate");
@@ -154,12 +154,12 @@ class AuditServiceTest {
                 .result("FAILED")
                 .errorMessage("=denied")
                 .build();
-        when(auditRepository.findPage(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic,a"),
+        when(auditRepository.findPage(eq("topic"), eq("admin"), eq("DELETE"), eq("TOPIC"), eq("topic,a"),
                 eq("prod-cn"), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
                 eq("FAILED"), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
-        String csv = auditService.exportLogs("topic", "DELETE", "TOPIC", "topic,a", "prod-cn", false,
+        String csv = auditService.exportLogs("topic", "admin", "DELETE", "TOPIC", "topic,a", "prod-cn", false,
                 "2026-08-01", "2026-08-02", "FAILED");
 
         assertThat(csv).contains("resourceType,target,clusterId,detail,result,errorMessage")
@@ -177,7 +177,7 @@ class AuditServiceTest {
                 .target("topic-a")
                 .result("SUCCESS")
                 .build();
-        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), eq(false),
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(false),
                 any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
@@ -186,12 +186,12 @@ class AuditServiceTest {
             // The stored base is server-local and stays unconverted; only the column name
             // tells the consumer which zone the values are in.
             TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
-            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+            assertThat(auditService.exportLogs(null, null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
                     .startsWith("\uFEFFtimestamp(UTC+08:00),operator,")
                     .contains("\"2026-08-01T09:30\"");
 
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+            assertThat(auditService.exportLogs(null, null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
                     .startsWith("\uFEFFtimestamp(UTC),operator,");
         } finally {
             TimeZone.setDefault(originalZone);
@@ -200,12 +200,12 @@ class AuditServiceTest {
 
     @Test
     void exportLogsRejectsResultsBeyondBound() {
-        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq(false), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
 
         assertThatThrownBy(() -> auditService.exportLogs(
-                null, null, null, null, null, false, null, null, null))
+                null, null, null, null, null, null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Audit log export exceeds the maximum of 10000 records; narrow the filters");
     }
@@ -227,16 +227,16 @@ class AuditServiceTest {
     @Test
     void summarizeParsesAndForwardsTheSharedFilterRangeTest() {
         AuditSummaryVO summary = AuditSummaryVO.builder().total(12).successful(10).failed(2).build();
-        when(auditRepository.summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+        when(auditRepository.summarize(eq("topic"), eq("admin"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
                 any(LocalDateTime.class), any(LocalDateTime.class), eq("FAILED"))).thenReturn(summary);
 
-        AuditSummaryVO actual = auditService.summarize("topic", "DELETE_TOPIC", "TOPIC", "prod-cn",
+        AuditSummaryVO actual = auditService.summarize("topic", "admin", "DELETE_TOPIC", "TOPIC", "prod-cn",
                 "2026-08-01", "2026-08-02", "FAILED");
 
         assertThat(actual).isSameAs(summary);
         ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(auditRepository).summarize(eq("topic"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
+        verify(auditRepository).summarize(eq("topic"), eq("admin"), eq("DELETE_TOPIC"), eq("TOPIC"), eq("prod-cn"),
                 start.capture(), end.capture(), eq("FAILED"));
         assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));

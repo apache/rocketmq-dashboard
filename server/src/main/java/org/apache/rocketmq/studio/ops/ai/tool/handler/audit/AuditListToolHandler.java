@@ -52,7 +52,7 @@ public class AuditListToolHandler implements ToolHandler<AuditListInput, PageOut
     public PageOutput<AuditItem> execute(AuditListInput input, ToolExecutionContext context) {
         PageResult<AuditRecordVO> result = auditService.queryLogs(
                 input.page().page(), input.page().pageSize(),
-                input.search(), input.operationType(), input.resourceType(),
+                input.search(), null, input.operationType(), input.resourceType(),
                 null, null, false, input.startDate(), input.endDate(), input.result());
         return PageOutput.from(result, AuditItem::from);
     }
