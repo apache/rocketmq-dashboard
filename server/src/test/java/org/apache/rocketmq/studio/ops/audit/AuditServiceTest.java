@@ -106,14 +106,18 @@ class AuditServiceTest {
 
     @Test
     void queryLogsParsesDateRangeBeforeDelegating() {
-verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull());
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
+                isNull(), eq(1), eq(10)))
+                .thenReturn(PageResult.empty(1, 10));
+
+        auditService.queryLogs(1, 10, null, null, null, null, null, null, false,
                 "2026-08-01", "2026-08-02", null);
 
         ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
-verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull());
+        verify(auditRepository).findPage(isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), eq(false), start.capture(), end.capture(), isNull(), eq(1), eq(10));
         assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
     }
@@ -182,12 +186,12 @@ verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNu
             // The stored base is server-local and stays unconverted; only the column name
             // tells the consumer which zone the values are in.
             TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
-            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+            assertThat(auditService.exportLogs(null, null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
                     .startsWith("\uFEFFtimestamp(UTC+08:00),operator,")
                     .contains("\"2026-08-01T09:30\"");
 
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-            assertThat(auditService.exportLogs(null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
+            assertThat(auditService.exportLogs(null, null, null, null, null, null, false, "2026-08-01", "2026-08-02", null))
                     .startsWith("\uFEFFtimestamp(UTC),operator,");
         } finally {
             TimeZone.setDefault(originalZone);
@@ -196,8 +200,12 @@ verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNu
 
     @Test
     void exportLogsRejectsResultsBeyondBound() {
-verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull(),
-                isNull(), isNull(), isNull(), isNull());
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(() -> auditService.exportLogs(
+                null, null, null, null, null, null, false, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Audit log export exceeds the maximum of 10000 records; narrow the filters");
     }
