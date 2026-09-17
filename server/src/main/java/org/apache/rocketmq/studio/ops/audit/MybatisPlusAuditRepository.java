@@ -53,7 +53,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     private volatile CachedFilterOptions cachedFilterOptions;
 
     @Override
-public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
+    public PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
@@ -108,7 +108,7 @@ public PageResult<AuditRecordVO> findPage(String search, String operator, String
                                     LocalDateTime startDate, LocalDateTime endDate,
                                     String result) {
         Consumer<QueryWrapper<RmqOperationAudit>> filters = query -> applyFilters(query, search,
-operator, operationType, resourceType, null, clusterId, false, startDate, endDate, result);
+            operator, operationType, resourceType, null, clusterId, false, startDate, endDate, result);
 
         // One GROUP BY result query computes total / SUCCESS / FAILED / PARTIAL in a single
         // round trip instead of four separate COUNT(*) statements. Note that when the caller
@@ -194,7 +194,7 @@ operator, operationType, resourceType, null, clusterId, false, startDate, endDat
      * hotspot queries so a card can never disagree with the rows it describes.
      */
     private void applyFilters(QueryWrapper<RmqOperationAudit> query, String search,
-String operator, String operationType, String resourceType, String target,
+        String operator, String operationType, String resourceType, String target,
                               String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
         query.and(StringUtils.hasText(search), w -> w

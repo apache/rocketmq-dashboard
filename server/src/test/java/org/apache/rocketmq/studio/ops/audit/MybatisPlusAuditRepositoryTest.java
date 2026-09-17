@@ -68,7 +68,7 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "admin", "DELETE_TOPIC", "TOPIC", "prod-cn", null, null, "FAILED", 2, 25);
+                "orders", "admin", "DELETE_TOPIC", "TOPIC", null, "prod-cn", false, null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
