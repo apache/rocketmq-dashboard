@@ -61,6 +61,48 @@ class CloudRocketMqBusinessMetricsCollectorTest {
     }
 
     @Test
+    void marksUnknownCloudLagUnavailableWithoutDiscardingKnownTopicsTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("tencent").vendor(InstanceVendor.TENCENT).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cloud-t");
+        when(registry.byInstanceId("tencent")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("tencent", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("tencent", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("known-topic").diffTotal(12).build(),
+                QueueProgressVO.builder().topic("unknown-topic").diffTotal(-1).build()));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.total"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.clusterId()).isEqualTo("cloud-t");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.max_queue"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.clusterId()).isEqualTo("cloud-t");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total")
+                        && "known-topic".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(12D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total")
+                        && "unknown-topic".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.clusterId()).isEqualTo("cloud-t");
+                });
+    }
+
+    @Test
     void skipsApacheInstancesHandledByTheApacheCollectorTest() {
         InstanceVO instance = InstanceVO.builder().name("local").vendor(InstanceVendor.APACHE).build();
 

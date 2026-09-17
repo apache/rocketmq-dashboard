@@ -87,26 +87,37 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
         Map<String, String> labels = Map.of("consumerGroup", group.getName());
         try {
             List<QueueProgressVO> progress = provider.getGroupProgress(instance.getName(), group.getName());
-            double totalLag = progress.stream().mapToDouble(row -> Math.max(0L, row.getDiffTotal())).sum();
-            double maxQueueLag = progress.stream().mapToDouble(row -> Math.max(0L, row.getDiffTotal())).max()
-                    .orElse(0D);
+            boolean lagUnknown = progress.stream().anyMatch(row -> row.getDiffTotal() < 0);
             List<MetricSample> samples = new ArrayList<>();
-            samples.add(available(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, totalLag, collectedAt));
-            samples.add(available(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, maxQueueLag,
-                    collectedAt));
+            if (lagUnknown) {
+                samples.add(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, collectedAt));
+                samples.add(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt));
+            } else {
+                double totalLag = progress.stream().mapToDouble(QueueProgressVO::getDiffTotal).sum();
+                double maxQueueLag = progress.stream().mapToDouble(QueueProgressVO::getDiffTotal).max().orElse(0D);
+                samples.add(available(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, totalLag, collectedAt));
+                samples.add(available(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, maxQueueLag,
+                        collectedAt));
+            }
             progress.stream().filter(row -> row.getTopic() != null && !row.getTopic().isBlank())
-                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic,
-                            java.util.stream.Collectors.summingLong(
-                                    row -> Math.max(0, row.getDiffTotal()))))
-                    .forEach((topic, lag) -> samples.add(available(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(),
-                            Map.of("consumerGroup", group.getName(), "topic", topic), lag, collectedAt)));
+                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic))
+                    .forEach((topic, rows) -> {
+                        Map<String, String> topicLabels = Map.of("consumerGroup", group.getName(), "topic", topic);
+                        if (rows.stream().anyMatch(row -> row.getDiffTotal() < 0)) {
+                            samples.add(unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), topicLabels, collectedAt));
+                            return;
+                        }
+                        long topicLag = rows.stream().mapToLong(QueueProgressVO::getDiffTotal).sum();
+                        samples.add(available(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(),
+                                topicLabels, topicLag, collectedAt));
+                    });
             return samples;
         } catch (RuntimeException error) {
             log.warn("Failed to collect cloud consumer lag for group {} on instance {}: {}", group.getName(),
                     instance.getName(), error.getMessage());
-            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, labels, collectedAt),
-                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt),
-                    unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt));
+            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), labels, collectedAt));
         }
     }
 
@@ -118,7 +129,12 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
 
     private static MetricSample unavailable(String metric, InstanceVO instance, Map<String, String> labels,
             Instant collectedAt) {
-        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), null, labels, null,
+        return unavailable(metric, instance, null, labels, collectedAt);
+    }
+
+    private static MetricSample unavailable(String metric, InstanceVO instance, String clusterId,
+            Map<String, String> labels, Instant collectedAt) {
+        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), clusterId, labels, null,
                 MetricAvailability.UNAVAILABLE, collectedAt);
     }
 }
