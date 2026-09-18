@@ -16,22 +16,26 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.Data;
-import lombok.ToString;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 
-/**
- * LLM runtime settings supplied through the environment. Tokens and inherited
- * CLI environment values must never be persisted or logged.
- */
-@Data
-@ConfigurationProperties(prefix = "studio.llm")
-public class LlmProperties {
-    @ToString.Exclude
-    private String token;
-    private String anthropicBaseUrl;
-    private List<String> cliAllowedEnvironment = new ArrayList<>();
+import static org.assertj.core.api.Assertions.assertThat;
+
+class LlmPropertiesTest {
+
+    @Test
+    void toStringShouldNotExposeTheProviderToken() {
+        LlmProperties properties = new LlmProperties();
+        properties.setToken("studio-llm-provider-token");
+        properties.setAnthropicBaseUrl("https://llm.example");
+        properties.setCliAllowedEnvironment(List.of("ANTHROPIC_AUTH_TOKEN"));
+
+        String value = properties.toString();
+
+        assertThat(value)
+                .contains("anthropicBaseUrl=https://llm.example")
+                .contains("cliAllowedEnvironment=[ANTHROPIC_AUTH_TOKEN]")
+                .doesNotContain("studio-llm-provider-token");
+    }
 }
