@@ -18,6 +18,10 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import jakarta.annotation.PreDestroy;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
@@ -189,6 +193,30 @@ public class ProxyConsumerResolver {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
         return adminFactory.execute(properties.getNamesrvAddr(), null, action);
+    }
+
+    /**
+     * Discovers proxies through a broker in the selected topology, using the caller's pooled
+     * admin (and credentials). Callers cache this only within their current inventory request;
+     * the legacy instance cache must not mix NameServers or clusters with identical group names.
+     */
+    List<String> discoverProxyAddresses(MQAdminExt admin, String brokerAddress)
+            throws MQClientException, MQBrokerException, RemotingException, InterruptedException {
+        ConsumerConnection syncer = admin.examineConsumerConnectionInfo(
+                HEARTBEAT_SYNCER_CONSUMER_GROUP, brokerAddress);
+        if (syncer == null || syncer.getConnectionSet() == null) {
+            return List.of();
+        }
+        Set<String> addresses = new LinkedHashSet<>();
+        for (Connection connection : syncer.getConnectionSet()) {
+            String address = connection == null ? null : connection.getClientAddr();
+            if (address != null && !address.isBlank()) {
+                int separator = address.lastIndexOf(':');
+                addresses.add((separator > 0 ? address.substring(0, separator) : address)
+                        + ":" + PROXY_REMOTING_PORT);
+            }
+        }
+        return List.copyOf(addresses);
     }
 
     private NettyRemotingClient remotingClient() {

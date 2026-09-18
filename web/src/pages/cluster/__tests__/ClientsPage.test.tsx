@@ -350,6 +350,43 @@ describe('Clients page', () => {
     expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).toBeNull();
   });
 
+  it('renders missing Proxy metadata in the table, distributions and details', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        type: 'Consumer',
+        protocol: null,
+        language: null,
+        version: null,
+        partial: true,
+      },
+      { ...connections[2], clusterName: 'ns-prod' },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    const rows = await screen.findAllByRole('row', { name: /order-svc-0@10\.0\.1\.12:49152/ });
+    const row = rows.find((candidate) =>
+      within(candidate).queryByRole('button', { name: /详情/ }),
+    )!;
+    expect(within(row).getAllByText('-')).toHaveLength(3);
+    expect(within(row).queryByText('gRPC')).not.toBeInTheDocument();
+    expect(within(row).queryByText('Remoting')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('-: 1'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('language-version-distribution')).getByText('- -: 1'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('客户端连接列表不完整：部分查询失败或达到了扫描上限。'),
+    ).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText('-')).toHaveLength(3);
+    expect(within(dialog).queryByText('null')).not.toBeInTheDocument();
+  });
+
   it('keeps incomplete client metadata searchable by address', async () => {
     const user = userEvent.setup();
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
