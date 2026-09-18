@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.remoting.exception.RemotingConnectException;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -29,6 +31,13 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
+import org.apache.rocketmq.studio.cluster.client.ClientController;
+import org.apache.rocketmq.studio.cluster.client.ClientService;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -72,8 +81,11 @@ class RocketMQClientProviderTest {
     private RocketMQClientProvider provider;
 
     @BeforeEach
-    void setUp() {
-        provider = new RocketMQClientProvider(runtimeAdminClientResolver, adminFactory);
+    void setUp() throws Exception {
+        lenient().when(adminExt.examineConsumerConnectionInfo(anyString(), anyString()))
+                .thenReturn(new ConsumerConnection());
+        provider = new RocketMQClientProvider(runtimeAdminClientResolver, adminFactory,
+                new ProxyConsumerResolver(adminFactory, runtimeAdminClientResolver, new RocketMQProperties()));
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
@@ -81,6 +93,207 @@ class RocketMQClientProviderTest {
                 .thenAnswer(invocation ->
                         invocation.<MqAdminExtFactory.AdminAction<Object>>
                                 getArgument(2).apply(adminExt));
+    }
+
+    @Test
+    void clientsEndpointShowsProxyConsumersFromSelectedNameserverTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE, "offline"));
+        when(adminExt.examineConsumerConnectionInfo(
+                "CID_DefaultHeartBeatSyncerTopic", "127.0.0.1:10911"))
+                .thenReturn(consumerConnections(connection("syncer", "10.0.0.8:40000")));
+        Connection proxyClient = connection("proxy-client", "10.0.0.9:50000");
+        proxyClient.setVersion(org.apache.rocketmq.common.MQVersion.Version.V5_0_0.ordinal());
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenReturn(consumerConnections(proxyClient));
+
+        MockMvcBuilders.standaloneSetup(new ClientController(new ClientService(provider))).build()
+                .perform(get("/api/clients").param("namesrvAddr", "selected:9876")
+                        .param("clusterId", "cluster-a").param("type", "Consumer"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].clientId").value("proxy-client"))
+                .andExpect(jsonPath("$.data[0].clusterName").value("cluster-a"))
+                .andExpect(jsonPath("$.data[0].language").value("Java"))
+                .andExpect(jsonPath("$.data[0].protocol").doesNotExist())
+                .andExpect(jsonPath("$.data[0].version").doesNotExist());
+        verify(adminFactory).execute(eq("selected:9876"), any(), any(MqAdminExtFactory.AdminAction.class));
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void consumerScanMergesDirectAndAllProxyConnectionsTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8", "10.0.0.9");
+        Connection direct = connection("direct", "10.0.0.1:40000");
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenReturn(consumerConnections(direct));
+        Connection unknown = connection("proxy-two", "10.0.0.3:40000");
+        unknown.setLanguage(null);
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenReturn(consumerConnections(direct, connection("proxy-one", "10.0.0.2:40000")));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.9:8080"))
+                .thenReturn(consumerConnections(unknown));
+
+        List<ClientConnectionVO> rows = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(rows).extracting(ClientConnectionVO::getClientId)
+                .containsExactlyInAnyOrder("direct", "proxy-one", "proxy-two");
+        assertThat(rows).filteredOn(row -> row.getClientId().equals("direct")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getProtocol()).isEqualTo(org.apache.rocketmq.studio.common.domain.enums.Protocol.Remoting);
+                    assertThat(row.getVersion()).isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(direct.getVersion()));
+                });
+        assertThat(rows).filteredOn(row -> row.getClientId().equals("proxy-two")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getLanguage()).isNull();
+                    assertThat(row.getProtocol()).isNull();
+                    assertThat(row.getVersion()).isNull();
+                    assertThat(row.isPartial()).isFalse();
+                });
+    }
+
+    @Test
+    void proxyDiscoveryCannotLeakAcrossNameserversSharingBrokerAddressesTest() throws Exception {
+        DefaultMQAdminExt other = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        prepareProxyGroup(other, "127.0.0.1:10911", "10.1.0.8");
+        when(adminFactory.execute(eq("other:9876"), any(), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(other));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenReturn(consumerConnections(connection("selected-client", "10.0.0.1:40000")));
+        when(other.examineConsumerConnectionInfo("group-a", "10.1.0.8:8080"))
+                .thenReturn(consumerConnections(connection("other-client", "10.1.0.1:40000")));
+
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .extracting(ClientConnectionVO::getClientId).containsExactly("selected-client");
+        assertThat(provider.findConnectionsAt("other:9876", null, "Consumer"))
+                .extracting(ClientConnectionVO::getClientId).containsExactly("other-client");
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .extracting(ClientConnectionVO::getClientId).containsExactly("selected-client");
+    }
+
+    @Test
+    void proxyScanPreservesSameGroupInDifferentClustersAndFiltersTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a", "127.0.0.2:10911", "cluster-b")));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.2:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a"));
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "127.0.0.2:10911"))
+                .thenReturn(consumerConnections(connection("syncer-b", "10.1.0.8:40000")));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenReturn(consumerConnections(connection("client-a", "10.0.0.1:40000")));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.1.0.8:8080"))
+                .thenReturn(consumerConnections(connection("client-b", "10.1.0.1:40000")));
+
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .extracting(ClientConnectionVO::getClusterName).containsExactlyInAnyOrder("cluster-a", "cluster-b");
+        assertThat(provider.findConnectionsAt("selected:9876", "cluster-b", "Consumer")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getClientId()).isEqualTo("client-b");
+                    assertThat(row.getClusterName()).isEqualTo("cluster-b");
+                });
+        verify(adminExt, times(1)).examineConsumerConnectionInfo("group-a", "10.0.0.8:8080");
+    }
+
+    @Test
+    void proxyFailureKeepsPartialRowsButCannotClaimOfflineTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenThrow(new RemotingConnectException("proxy down"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenReturn(consumerConnections(connection("direct", "10.0.0.1:40000")))
+                .thenThrow(new MQBrokerException(ResponseCode.CONSUMER_NOT_ONLINE, "offline"));
+
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getClientId()).isEqualTo("direct");
+                    assertThat(row.isPartial()).isTrue();
+                });
+        assertThatThrownBy(() -> provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .isInstanceOf(BusinessException.class).hasMessage("Failed to query consumer connections from all groups");
+        org.mockito.Mockito.doThrow(new MQBrokerException(ResponseCode.CONSUMER_NOT_ONLINE, "offline"))
+                .when(adminExt).examineConsumerConnectionInfo("group-a", "10.0.0.8:8080");
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer")).isEmpty();
+    }
+
+    @Test
+    void proxyDiscoveryRetriesFailuresAndIsSharedOnlyWithinRequestTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", "127.0.0.1:10911"))
+                .thenThrow(new RemotingConnectException("discovery down"))
+                .thenReturn(consumerConnections(connection("syncer", "10.0.0.8:40000")));
+        assertThatThrownBy(() -> provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .isInstanceOf(BusinessException.class);
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a", "group-b"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenReturn(consumerConnections(connection("proxy-client", "10.0.0.1:40000")));
+        assertThat(provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .extracting(ClientConnectionVO::getClientId).containsExactly("proxy-client");
+        verify(adminExt, times(2)).examineConsumerConnectionInfo(
+                "CID_DefaultHeartBeatSyncerTopic", "127.0.0.1:10911");
+    }
+
+    @Test
+    void directConsumerOnAnotherBrokerInTheClusterRemainsVisibleTest() throws Exception {
+        ClusterInfo topology = clusterInfo("127.0.0.1:10911", "127.0.0.2:10911");
+        String lastBroker = new java.util.ArrayList<>(topology.getBrokerAddrTable().values())
+                .getLast().selectBrokerAddr();
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(topology);
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(subscriptionGroups("group-a"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", lastBroker))
+                .thenReturn(consumerConnections(connection("direct", "10.0.0.1:40000")));
+        assertThat(provider.findConnectionsAt("selected:9876", "cluster-a", "Consumer"))
+                .extracting(ClientConnectionVO::getClientId).containsExactly("direct");
+    }
+
+    @Test
+    void emptyPartialProxyInventoryIsAnErrorTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a", "group-b"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenThrow(new RemotingConnectException("proxy down"));
+        assertThatThrownBy(() -> provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void proxyQueriesPreserveInterruptsAndDoNotSwallowProgrammingErrorsTest() throws Exception {
+        prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
+        when(adminExt.examineConsumerConnectionInfo("group-a", "10.0.0.8:8080"))
+                .thenThrow(new InterruptedException("cancelled"))
+                .thenThrow(new IllegalArgumentException("invalid state"));
+        try {
+            assertThatThrownBy(() -> provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                    .isInstanceOf(BusinessException.class).hasMessage("Consumer connection query interrupted");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+        assertThatThrownBy(() -> provider.findConnectionsAt("selected:9876", null, "Consumer"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("invalid state");
+    }
+
+    private void prepareProxyGroup(DefaultMQAdminExt admin, String broker, String... proxies) throws Exception {
+        lenient().when(admin.examineConsumerConnectionInfo(anyString(), anyString()))
+                .thenReturn(new ConsumerConnection());
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo(broker));
+        when(admin.getAllSubscriptionGroup(broker, 5000L)).thenReturn(subscriptionGroups("group-a"));
+        Connection[] syncers = java.util.Arrays.stream(proxies)
+                .map(proxy -> connection("syncer-" + proxy, proxy + ":40000")).toArray(Connection[]::new);
+        when(admin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic", broker))
+                .thenReturn(consumerConnections(syncers));
+    }
+
+    private static ConsumerConnection consumerConnections(Connection... connections) {
+        ConsumerConnection result = new ConsumerConnection();
+        result.setConnectionSet(new HashSet<>(List.of(connections)));
+        return result;
     }
 
     @Test
@@ -400,7 +613,7 @@ class RocketMQClientProviderTest {
                 .thenReturn(subscriptionGroups("group-b"));
         ConsumerConnection consumerConnection = new ConsumerConnection();
         consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-b", "10.0.0.2:1000"))));
-        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+        when(adminExt.examineConsumerConnectionInfo("group-b", "127.0.0.2:10911")).thenReturn(consumerConnection);
 
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-b", "Consumer");
 
@@ -438,7 +651,7 @@ class RocketMQClientProviderTest {
         consumerConnection.setConnectionSet(connectionSet);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
-        when(adminExt.examineConsumerConnectionInfo("group-a")).thenReturn(consumerConnection);
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911")).thenReturn(consumerConnection);
 
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 
@@ -464,8 +677,8 @@ class RocketMQClientProviderTest {
         SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
-        when(adminExt.examineConsumerConnectionInfo(anyString()))
-                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.examineConsumerConnectionInfo(anyString(), anyString()))
+                .thenThrow(new RemotingConnectException("broker unavailable"));
 
         assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Consumer"))
                 .isInstanceOf(BusinessException.class)
@@ -482,7 +695,7 @@ class RocketMQClientProviderTest {
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 
         assertThat(connections).isEmpty();
-        verify(adminExt, never()).examineConsumerConnectionInfo(anyString());
+        verify(adminExt, never()).examineConsumerConnectionInfo(anyString(), anyString());
     }
 
     @Test
@@ -492,9 +705,9 @@ class RocketMQClientProviderTest {
         consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-client", "10.0.0.2:1000"))));
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
-        when(adminExt.examineConsumerConnectionInfo("group-a"))
-                .thenThrow(new IllegalStateException("broker unavailable"));
-        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenThrow(new RemotingConnectException("broker unavailable"));
+        when(adminExt.examineConsumerConnectionInfo("group-b", "127.0.0.1:10911")).thenReturn(consumerConnection);
 
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 
@@ -509,7 +722,7 @@ class RocketMQClientProviderTest {
         SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
-        when(adminExt.examineConsumerConnectionInfo(anyString())).thenThrow(new MQClientException(
+        when(adminExt.examineConsumerConnectionInfo(anyString(), anyString())).thenThrow(new MQClientException(
                 206, "Not found the consumer group connection"));
 
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", null);
@@ -524,9 +737,9 @@ class RocketMQClientProviderTest {
         consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-client", "10.0.0.2:1000"))));
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
-        when(adminExt.examineConsumerConnectionInfo("group-a")).thenThrow(new MQClientException(
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911")).thenThrow(new MQClientException(
                 206, "Not found the consumer group connection"));
-        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+        when(adminExt.examineConsumerConnectionInfo("group-b", "127.0.0.1:10911")).thenReturn(consumerConnection);
 
         List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 

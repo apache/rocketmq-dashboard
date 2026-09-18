@@ -118,12 +118,14 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
 
 type ClientTableFilters = Parameters<NonNullable<TableProps<ClientConnection>['onChange']>>[1];
 
-const countBy = (values: string[]) =>
+const countBy = (values: Array<string | null>) =>
   [
-    ...values.reduce(
-      (counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1),
-      new Map<string, number>(),
-    ),
+    ...values
+      .map(displayMetadata)
+      .reduce(
+        (counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1),
+        new Map<string, number>(),
+      ),
   ]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
@@ -298,7 +300,10 @@ const ClientsPage = () => {
       consumers: instances.filter((connection) => connection.type === 'Consumer').length,
       protocols: countBy(instances.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map((connection) => `${connection.language} ${connection.version}`),
+        instances.map(
+          (connection) =>
+            `${displayMetadata(connection.language)} ${displayMetadata(connection.version)}`,
+        ),
       ),
     };
   }, [clusterConnections]);
@@ -352,7 +357,7 @@ const ClientsPage = () => {
   );
 
   const exportConnections = useMemo(() => {
-    const matches = (key: string, value: string) => {
+    const matches = (key: string, value: string | null) => {
       const selected = columnFilters[key];
       return !selected?.length || selected.some((filterValue) => String(filterValue) === value);
     };
@@ -449,8 +454,11 @@ const ClientsPage = () => {
       ],
       filteredValue: columnFilters.protocol ?? null,
       onFilter: (value, record) => record.protocol === value,
-      render: (protocol: string) => {
-        const cfg = protocolConfig[protocol] ?? { color: 'default', label: protocol };
+      render: (protocol: string | null) => {
+        const cfg = protocolConfig[protocol ?? ''] ?? {
+          color: 'default',
+          label: displayMetadata(protocol),
+        };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
@@ -474,8 +482,11 @@ const ClientsPage = () => {
       })),
       filteredValue: columnFilters.language ?? null,
       onFilter: (value, record) => record.language === value,
-      render: (lang: string) => {
-        const cfg = languageConfig[lang] ?? { color: 'default', label: lang };
+      render: (lang: string | null) => {
+        const cfg = languageConfig[lang ?? ''] ?? {
+          color: 'default',
+          label: displayMetadata(lang),
+        };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
@@ -484,6 +495,7 @@ const ClientsPage = () => {
       dataIndex: 'version',
       key: 'version',
       width: 90,
+      render: displayMetadata,
     },
     {
       title: t('cluster.heartbeat'),
@@ -691,7 +703,7 @@ const ClientsPage = () => {
         <Alert
           showIcon
           type="warning"
-          message="Producer connections are sampled because the topic scan limit was reached."
+          message={t('clients.partialScan')}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -961,8 +973,9 @@ const ClientsPage = () => {
               {selectedConnection.groupOrTopic}
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.protocol')}>
-              <Tag color={protocolConfig[selectedConnection.protocol]?.color ?? 'default'}>
-                {protocolConfig[selectedConnection.protocol]?.label ?? selectedConnection.protocol}
+              <Tag color={protocolConfig[selectedConnection.protocol ?? '']?.color ?? 'default'}>
+                {protocolConfig[selectedConnection.protocol ?? '']?.label ??
+                  displayMetadata(selectedConnection.protocol)}
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t('common.address')}>
@@ -971,12 +984,13 @@ const ClientsPage = () => {
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.language')}>
-              <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>
-                {languageConfig[selectedConnection.language]?.label ?? selectedConnection.language}
+              <Tag color={languageConfig[selectedConnection.language ?? '']?.color ?? 'default'}>
+                {languageConfig[selectedConnection.language ?? '']?.label ??
+                  displayMetadata(selectedConnection.language)}
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t('common.version')}>
-              {selectedConnection.version}
+              {displayMetadata(selectedConnection.version)}
             </Descriptions.Item>
             <Descriptions.Item label={t('cluster.heartbeat')}>
               {selectedConnection.connectedAt ?? '-'}
