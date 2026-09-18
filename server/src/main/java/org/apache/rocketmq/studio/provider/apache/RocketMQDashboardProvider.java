@@ -31,7 +31,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
-import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
@@ -66,10 +66,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             "DefaultCluster", "broker-a", "broker-b"
     );
 
-    private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final InstanceRepository instanceRepository;
+    private final OpsDefaultClient defaultClient;
 
     @Override
     public DashboardDataVO getDashboardData() {
@@ -78,12 +78,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .sorted(Comparator.comparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
         if (apacheInstances.isEmpty()) {
-            String namesrvAddr = properties.getNamesrvAddr();
+            OpsDefaultClient.Selection defaultSelection = defaultClient.select(properties.getNamesrvAddr());
+            String namesrvAddr = defaultSelection.namesrvAddr();
             if (!StringUtils.hasText(namesrvAddr)) {
                 log.warn("NameServer address not configured, returning empty dashboard");
                 return unavailableTopologyDashboard();
             }
-            return adminFactory.execute(namesrvAddr, null,
+            return defaultSelection.execute(null, "anonymous",
                     admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
         }
         return aggregateInstances(apacheInstances);

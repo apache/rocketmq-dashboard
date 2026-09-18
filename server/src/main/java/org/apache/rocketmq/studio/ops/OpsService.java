@@ -17,10 +17,14 @@
 
 package org.apache.rocketmq.studio.ops;
 
+import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -30,10 +34,122 @@ public class OpsService {
     private static final String OPS_SETTINGS_UNAVAILABLE =
             "Ops settings are not connected to the cluster admin configuration";
 
+    private final OpsRuntimeConnection runtimeConnection;
+    private final OpsRuntimeProperties runtimeProperties;
+    private final OperationAuditService auditService;
+    private final OpsDefaultClient defaultClient;
+
+    public OpsService(OpsRuntimeConnection runtimeConnection, OpsRuntimeProperties runtimeProperties,
+                      OperationAuditService auditService, OpsDefaultClient defaultClient) {
+        this.runtimeConnection = runtimeConnection;
+        this.runtimeProperties = runtimeProperties;
+        this.auditService = auditService;
+        this.defaultClient = defaultClient;
+    }
+
     public synchronized OpsHomeVO getHomePage() {
+        if (!runtimeProperties.isEnabled()) {
+            return unavailableHomePage(OPS_SETTINGS_UNAVAILABLE);
+        }
+        try {
+            OpsConnectionSettings settings = runtimeConnection.current();
+            if (settings.currentNamesrv().isEmpty()) {
+                return unavailableHomePage("namesrvAddr is required");
+            }
+            return OpsHomeVO.builder()
+                    .configurationAvailable(true)
+                    .namesvrAddrList(settings.addresses())
+                    .currentNamesrv(settings.currentNamesrv())
+                    .useVIPChannel(settings.useVIPChannel())
+                    .useTLS(settings.useTLS())
+                    .build();
+        } catch (BusinessException exception) {
+            return unavailableHomePage(exception.getMessage());
+        }
+    }
+
+    public synchronized void updateNameServer(String namesrvAddr) {
+        ensureRuntimeEnabled();
+        ensureAdmin();
+        String normalized = normalizeNameServer(namesrvAddr);
+        OpsConnectionSettings updated = runtimeConnection.update(settings -> {
+            if (!settings.addresses().contains(normalized)) {
+                throw new BusinessException(400, "namesrvAddr is not managed: " + normalized);
+            }
+            return new OpsConnectionSettings(settings.addresses(), normalized,
+                    settings.useVIPChannel(), settings.useTLS());
+        });
+        defaultClient.releaseInactiveManagedDefaults(updated);
+        audit("UPDATE_OPS_NAMESERVER", updated.currentNamesrv(),
+                "currentNamesrv=" + updated.currentNamesrv());
+    }
+
+    public synchronized void addNameServer(String namesrvAddr) {
+        ensureRuntimeEnabled();
+        ensureAdmin();
+        String normalized = normalizeNameServer(namesrvAddr);
+        OpsConnectionSettings updated = runtimeConnection.update(settings -> {
+            if (settings.addresses().contains(normalized)) {
+                throw new BusinessException(400, "namesrvAddr already exists: " + normalized);
+            }
+            List<String> addresses = new ArrayList<>(settings.addresses());
+            addresses.add(normalized);
+            return new OpsConnectionSettings(addresses, settings.currentNamesrv(),
+                    settings.useVIPChannel(), settings.useTLS());
+        });
+        defaultClient.releaseInactiveManagedDefaults(updated);
+        audit("ADD_OPS_NAMESERVER", normalized, "namesrvAddr=" + normalized
+                + ",total=" + updated.addresses().size());
+    }
+
+    public synchronized void deleteNameServer(String namesrvAddr) {
+        ensureRuntimeEnabled();
+        ensureAdmin();
+        String normalized = normalizeNameServer(namesrvAddr);
+        OpsConnectionSettings updated = runtimeConnection.update(settings -> {
+            if (!settings.addresses().contains(normalized)) {
+                throw new BusinessException(400, "namesrvAddr is not managed: " + normalized);
+            }
+            if (settings.addresses().size() <= 1) {
+                throw new BusinessException(400, "Cannot delete the last NameServer address");
+            }
+            if (normalized.equals(settings.currentNamesrv())) {
+                throw new BusinessException(400, "Cannot delete the selected NameServer address");
+            }
+            List<String> addresses = new ArrayList<>(settings.addresses());
+            addresses.remove(normalized);
+            return new OpsConnectionSettings(addresses, settings.currentNamesrv(),
+                    settings.useVIPChannel(), settings.useTLS());
+        });
+        defaultClient.releaseInactiveManagedDefaults(updated);
+        audit("DELETE_OPS_NAMESERVER", normalized, "namesrvAddr=" + normalized
+                + ",total=" + updated.addresses().size());
+    }
+
+    public synchronized void updateVipChannel(boolean enabled) {
+        ensureRuntimeEnabled();
+        ensureAdmin();
+        OpsConnectionSettings updated = runtimeConnection.update(settings ->
+                new OpsConnectionSettings(settings.addresses(), requireNameServer(settings),
+                        enabled, settings.useTLS()));
+        defaultClient.releaseInactiveManagedDefaults(updated);
+        audit("UPDATE_OPS_VIP_CHANNEL", "default", "useVIPChannel=" + updated.useVIPChannel());
+    }
+
+    public synchronized void updateUseTLS(boolean enabled) {
+        ensureRuntimeEnabled();
+        ensureAdmin();
+        OpsConnectionSettings updated = runtimeConnection.update(settings ->
+                new OpsConnectionSettings(settings.addresses(), requireNameServer(settings),
+                        settings.useVIPChannel(), enabled));
+        defaultClient.releaseInactiveManagedDefaults(updated);
+        audit("UPDATE_OPS_TLS", "default", "useTLS=" + updated.useTLS());
+    }
+
+    private OpsHomeVO unavailableHomePage(String reason) {
         return OpsHomeVO.builder()
                 .configurationAvailable(false)
-                .unavailableReason(OPS_SETTINGS_UNAVAILABLE)
+                .unavailableReason(reason)
                 .namesvrAddrList(List.of())
                 .currentNamesrv("")
                 .useVIPChannel(false)
@@ -41,38 +157,49 @@ public class OpsService {
                 .build();
     }
 
-    public synchronized void updateNameServer(String namesrvAddr) {
-        normalizeNameServer(namesrvAddr);
-        throw settingsUnavailable();
-    }
-
-    public synchronized void addNameServer(String namesrvAddr) {
-        normalizeNameServer(namesrvAddr);
-        throw settingsUnavailable();
-    }
-
-    public synchronized void deleteNameServer(String namesrvAddr) {
-        normalizeNameServer(namesrvAddr);
-        throw settingsUnavailable();
-    }
-
-    public synchronized void updateVipChannel(boolean enabled) {
-        throw settingsUnavailable();
-    }
-
-    public synchronized void updateUseTLS(boolean enabled) {
-        throw settingsUnavailable();
-    }
-
     private String normalizeNameServer(String namesrvAddr) {
         if (namesrvAddr == null || namesrvAddr.trim().isEmpty()) {
             throw new BusinessException(400, "namesrvAddr is required");
         }
-        return namesrvAddr.trim();
+        try {
+            return OpsConnectionSettings.normalizeSingleAddress(namesrvAddr);
+        } catch (BusinessException exception) {
+            if (exception.getMessage().contains("must not be blank")) {
+                throw new BusinessException(400, "namesrvAddr is required");
+            }
+            throw exception;
+        }
+    }
+
+    private String requireNameServer(OpsConnectionSettings settings) {
+        if (settings.currentNamesrv().isEmpty()) {
+            throw new BusinessException(400, "namesrvAddr is required before transport settings can be updated");
+        }
+        return settings.currentNamesrv();
+    }
+
+    private void ensureRuntimeEnabled() {
+        if (!runtimeProperties.isEnabled()) {
+            throw settingsUnavailable();
+        }
+    }
+
+    private void ensureAdmin() {
+        if (!AuthenticatedUserContext.currentUserIsAdmin()) {
+            throw new BusinessException(403, "Ops runtime settings require an authenticated administrator");
+        }
     }
 
     private BusinessException settingsUnavailable() {
         log.warn(OPS_SETTINGS_UNAVAILABLE);
         return new BusinessException(501, OPS_SETTINGS_UNAVAILABLE);
+    }
+
+    private void audit(String operation, String resourceName, String detail) {
+        try {
+            auditService.record(operation, "OPS_CONNECTION", resourceName, null, detail, "SUCCESS", null);
+        } catch (RuntimeException exception) {
+            log.warn("Failed to record Ops runtime settings audit: {}", exception.getMessage());
+        }
     }
 }

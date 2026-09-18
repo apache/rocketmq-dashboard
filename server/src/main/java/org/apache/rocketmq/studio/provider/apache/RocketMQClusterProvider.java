@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
@@ -71,6 +72,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final OpsDefaultClient defaultClient;
 
     @Override
     public List<ClusterVO> discoverClusters() {
@@ -79,12 +81,13 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public List<ClusterVO> discoverClusters(String instanceId) {
-        String namesrvAddr = resolveNamesrvAddr(instanceId);
+        OpsDefaultClient.Selection defaultSelection = defaultSelection(instanceId);
+        String namesrvAddr = resolveNamesrvAddr(instanceId, defaultSelection);
         if (!StringUtils.hasText(namesrvAddr)) {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
         }
-        List<ClusterVO> clusters = discoverClustersAt(namesrvAddr, instanceId);
+        List<ClusterVO> clusters = discoverClustersAt(namesrvAddr, instanceId, defaultSelection);
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         return configuredCluster == null ? clusters : clusters.stream()
@@ -93,15 +96,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public List<ClusterVO> discoverClustersAt(String namesrvAddr) {
-        return discoverClustersAt(namesrvAddr, null);
+        return discoverClustersAt(namesrvAddr, null, null);
     }
 
-    private List<ClusterVO> discoverClustersAt(String namesrvAddr, String instanceId) {
+    private List<ClusterVO> discoverClustersAt(String namesrvAddr, String instanceId,
+                                               OpsDefaultClient.Selection defaultSelection) {
         if (!StringUtils.hasText(namesrvAddr)) {
             return Collections.emptyList();
         }
         try {
-            return executeAdmin(instanceId, namesrvAddr, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, defaultSelection, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return Collections.<ClusterVO>emptyList();
@@ -138,14 +142,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public ClusterVO refreshClusterDetail(String clusterId, String instanceId) {
-        String namesrvAddr = resolveNamesrvAddr(instanceId);
+        OpsDefaultClient.Selection defaultSelection = defaultSelection(instanceId);
+        String namesrvAddr = resolveNamesrvAddr(instanceId, defaultSelection);
         if (!StringUtils.hasText(namesrvAddr)) {
             log.debug("NameServer address not configured, cannot refresh cluster detail");
             return null;
         }
 
         try {
-            return executeAdmin(instanceId, namesrvAddr, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, defaultSelection, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return null;
@@ -348,17 +353,25 @@ public class RocketMQClusterProvider implements ClusterProvider {
         return 0;
     }
 
-    private String resolveNamesrvAddr(String instanceId) {
+    private OpsDefaultClient.Selection defaultSelection(String instanceId) {
+        return StringUtils.hasText(instanceId) ? null : defaultClient.select(properties.getNamesrvAddr());
+    }
+
+    private String resolveNamesrvAddr(String instanceId, OpsDefaultClient.Selection defaultSelection) {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.resolveEndpoint(instanceId);
         }
-        return properties.getNamesrvAddr();
+        return defaultSelection.namesrvAddr();
     }
 
     private <T> T executeAdmin(String instanceId, String namesrvAddr,
+                               OpsDefaultClient.Selection defaultSelection,
                                MqAdminExtFactory.AdminAction<T> action) {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        if (defaultSelection != null) {
+            return defaultSelection.execute(null, "anonymous", action);
         }
         return adminFactory.execute(namesrvAddr, null, action);
     }

@@ -21,8 +21,10 @@ import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -32,6 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -41,7 +45,18 @@ class RocketMQClusterResolverTest {
     private final RocketMQProperties properties = new RocketMQProperties();
     private final MqAdminProperties credentials = new MqAdminProperties();
     private final MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
-    private final RocketMQDefaultClusterResolver service = new RocketMQDefaultClusterResolver(properties, credentials, factory);
+    private final OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+    private final OpsDefaultClient.Selection defaultSelection = mock(OpsDefaultClient.Selection.class);
+    private final RocketMQDefaultClusterResolver service =
+            new RocketMQDefaultClusterResolver(properties, credentials, defaultClient);
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(defaultClient.select(any()))
+                .thenReturn(defaultSelection);
+        lenient().when(defaultSelection.namesrvAddr())
+                .thenAnswer(invocation -> properties.getNamesrvAddr() == null ? null : properties.getNamesrvAddr().trim());
+    }
 
     @Test
     void disabledConfigurationDoesNotContactNameServer() {
@@ -60,7 +75,7 @@ class RocketMQClusterResolverTest {
         clusters.put("SecondCluster", Set.of("broker-b"));
         info.setClusterAddrTable(clusters);
         when(admin.examineBrokerClusterInfo()).thenReturn(info);
-        when(factory.execute(eq("configured:9876"), eq(null), any()))
+        when(defaultSelection.execute(isNull(), eq("anonymous"), any()))
                 .thenAnswer(call -> call.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
         assertThat(service.find("SecondCluster")).get().satisfies(instance -> {
             assertThat(instance.getId()).isNull();
@@ -78,7 +93,7 @@ class RocketMQClusterResolverTest {
         credential.setSecretKey("sk");
         credentials.getCredentials().put("admin", credential);
         service.execute(admin -> null);
-        verify(factory).execute(eq("configured:9876"), any(AclClientRPCHook.class), eq("admin"), any());
+        verify(defaultSelection).execute(any(AclClientRPCHook.class), eq("admin"), any());
         credentials.getCredentials().clear();
         assertThatThrownBy(() -> service.execute(admin -> null)).isInstanceOf(BusinessException.class);
     }

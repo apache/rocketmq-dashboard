@@ -82,6 +82,41 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 且用户表为空，后端会拒绝登录以避免误签发会话。
 `studio.auth.login-required=false` 仅用于本地开发场景跳过 `/api/**` 拦截。
 
+## Ops 默认 RocketMQ 连接运行时管理
+
+`studio.ops.runtime.enabled` 默认关闭。关闭时，Ops 页仍会报告配置不可用，并且 `/api/ops/*`
+写接口保持 fail-closed，不会伪装成已经更新了 RocketMQ 客户端。
+
+需要允许管理员在 Ops 页调整 Studio 默认 Apache RocketMQ 连接时，在 `deploy/.env` 中显式开启：
+
+```env
+STUDIO_OPS_RUNTIME_ENABLED=true
+STUDIO_AUTH_LOGIN_REQUIRED=true
+# 可选；未设置时使用外部配置的默认 NameServer 地址。
+STUDIO_OPS_RUNTIME_NAMESRV_ADDR=namesrv-a:9876,namesrv-b:9876
+STUDIO_OPS_RUNTIME_MAX_NAMESRV_ADDRESSES=32
+```
+
+设置保存在独立的 `ops-connection` 数据库行中，后续默认客户端调用读取当前设置，重启后继续生效。
+实例专属 endpoint、ACL 凭据和 NameServer 注册表不受影响；不能删除当前选中或最后一个地址。
+数据库不可用时 Ops 报告不可用并拒绝写入。
+
+该功能只持久化 NameServer 地址列表、当前默认地址、VIP 模式和 TLS 模式；不会把 RocketMQ
+访问凭据、TLS key/cert/trust 内容写入数据库、日志或响应。TLS 只能在部署已关闭 RocketMQ TLS
+test mode、开启服务端认证并配置可读 trust cert path 时启用。
+
+在启动 Studio JVM 前由部署提供以下系统属性，不要把证书、密钥或口令提交到仓库：
+
+```text
+-Dtls.test.mode.enable=false
+-Dtls.client.authServer=true
+-Dtls.client.trustCertPath=/opt/rocketmq/certs/ca.pem
+```
+
+Compose 可通过 `STUDIO_JAVA_TOOL_OPTIONS` 将这些属性传给后端容器；CA 文件也必须安装或挂载到
+容器内的相同路径。即使登录保护关闭，受管 Ops 写接口仍会拒绝非管理员和匿名调用。
+NameServer 和 Broker 也必须支持 TLS，否则开启后默认客户端可能无法连接。
+
 ## 前置条件
 
 - 本地安装 Docker

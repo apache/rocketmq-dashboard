@@ -16,12 +16,12 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
-import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Optional;
 
 @Component
-@RequiredArgsConstructor
 public class RocketMQDefaultClusterResolver {
 
     /**
@@ -47,23 +46,38 @@ public class RocketMQDefaultClusterResolver {
 
     private final RocketMQProperties properties;
     private final MqAdminProperties adminProperties;
-    private final MqAdminExtFactory adminFactory;
+    private final OpsDefaultClient defaultClient;
+
+    public RocketMQDefaultClusterResolver(RocketMQProperties properties,
+                                          MqAdminProperties adminProperties,
+                                          OpsDefaultClient defaultClient) {
+        this.properties = properties;
+        this.adminProperties = adminProperties;
+        this.defaultClient = defaultClient;
+    }
 
     public Optional<InstanceVO> find(String cluster) {
-        if (!StringUtils.hasText(cluster) || !StringUtils.hasText(properties.getNamesrvAddr())) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        String endpoint = namesrvAddr(defaultSelection);
+        if (!StringUtils.hasText(cluster) || !StringUtils.hasText(endpoint)) {
             return Optional.empty();
         }
-        return names().contains(cluster) ? Optional.of(instance(cluster)) : Optional.empty();
+        return names(defaultSelection).contains(cluster) ? Optional.of(instance(cluster, endpoint)) : Optional.empty();
     }
 
     public List<String> names() {
-        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
+        if (!StringUtils.hasText(namesrvAddr(defaultSelection))) {
             return List.of();
         }
+        return names(defaultSelection);
+    }
+
+    private List<String> names(OpsDefaultClient.Selection defaultSelection) {
         // Discovery runs before any instance is resolved and must keep working on deployments
         // without ACL, so it falls back to an anonymous admin connection when no default admin
         // credential is configured. Every other entry point fails closed instead.
-        return execute(admin -> {
+        return execute(defaultSelection, admin -> {
             var info = admin.examineBrokerClusterInfo();
             return info == null || info.getClusterAddrTable() == null ? List.of()
                     : info.getClusterAddrTable().keySet().stream().sorted().toList();
@@ -72,6 +86,10 @@ public class RocketMQDefaultClusterResolver {
 
     public InstanceVO instance(String cluster) {
         String endpoint = requireEndpoint();
+        return instance(cluster, endpoint);
+    }
+
+    private InstanceVO instance(String cluster, String endpoint) {
         return InstanceVO.builder().name(cluster).vendor(InstanceVendor.APACHE).type(InstanceType.DIRECT)
                 .endpoint(endpoint)
                 // Advertise the configured default admin credential so RuntimeAdminClientResolver
@@ -87,22 +105,24 @@ public class RocketMQDefaultClusterResolver {
      * absent or incomplete this fails with 422 instead of reconnecting anonymously.
      */
     public <T> T execute(MqAdminExtFactory.AdminAction<T> action) {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection();
         MqAdminProperties.Credential credential = configuredAdminCredential();
         if (credential == null) {
             throw new BusinessException(422,
                     "Admin credential reference is not configured: " + DEFAULT_ADMIN_CREDENTIAL_REF);
         }
-        return execute(action, credential);
+        return execute(defaultSelection, action, credential);
     }
 
-    private <T> T execute(MqAdminExtFactory.AdminAction<T> action, MqAdminProperties.Credential credential) {
-        String endpoint = requireEndpoint();
+    private <T> T execute(OpsDefaultClient.Selection defaultSelection, MqAdminExtFactory.AdminAction<T> action,
+                          MqAdminProperties.Credential credential) {
+        requireEndpoint(defaultSelection);
         if (credential == null) {
-            return adminFactory.execute(endpoint, null, action);
+            return defaultSelection.execute(null, "anonymous", action);
         }
         RPCHook hook = new AclClientRPCHook(new SessionCredentials(
                 credential.getAccessKey().trim(), credential.getSecretKey().trim()));
-        return adminFactory.execute(endpoint, hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
+        return defaultSelection.execute(hook, DEFAULT_ADMIN_CREDENTIAL_REF, action);
     }
 
     /** Returns the usable default admin credential, or {@code null} when ACL is not configured. */
@@ -116,10 +136,22 @@ public class RocketMQDefaultClusterResolver {
     }
 
     private String requireEndpoint() {
-        String namesrvAddr = properties.getNamesrvAddr();
+        return requireEndpoint(defaultSelection());
+    }
+
+    private String requireEndpoint(OpsDefaultClient.Selection defaultSelection) {
+        String namesrvAddr = namesrvAddr(defaultSelection);
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return namesrvAddr.trim();
+    }
+
+    private OpsDefaultClient.Selection defaultSelection() {
+        return defaultClient.select(properties.getNamesrvAddr());
+    }
+
+    private String namesrvAddr(OpsDefaultClient.Selection defaultSelection) {
+        return defaultSelection.namesrvAddr();
     }
 }

@@ -21,6 +21,9 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
+import org.apache.rocketmq.studio.ops.OpsRuntimeConnection;
+import org.apache.rocketmq.studio.ops.OpsRuntimeProperties;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class RealClusterProviderTest {
@@ -48,21 +53,39 @@ class RealClusterProviderTest {
 
     private final MqAdminProperties properties = new MqAdminProperties();
 
+    private OpsRuntimeConnection runtimeConnection;
+    private OpsRuntimeProperties runtimeProperties;
     private RealClusterProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new RealClusterProvider(adminFactory, properties);
+        runtimeConnection = mock(OpsRuntimeConnection.class);
+        runtimeProperties = new OpsRuntimeProperties();
+        provider = new RealClusterProvider(adminFactory, properties,
+                new OpsDefaultClient(runtimeConnection, runtimeProperties, adminFactory,
+                        mock(MqClientPool.class)));
     }
 
     @SuppressWarnings("unchecked")
     private void stubClusterInfo(String namesrvAddr, ClusterInfo info) throws Exception {
         MQAdminExt admin = org.mockito.Mockito.mock(MQAdminExt.class);
         when(admin.examineBrokerClusterInfo()).thenReturn(info);
-        when(adminFactory.execute(eq(namesrvAddr), isNull(), any())).thenAnswer(invocation -> {
-            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(2);
-            return action.apply(admin);
-        });
+        when(adminFactory.execute(eq(namesrvAddr), isNull(), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(2);
+                    return action.apply(admin);
+                });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stubDefaultClusterInfo(String namesrvAddr, ClusterInfo info) throws Exception {
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminFactory.execute(eq(namesrvAddr), isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(3);
+                    return action.apply(admin);
+                });
     }
 
     private ClusterInfo sampleClusterInfo() {
@@ -178,7 +201,7 @@ class RealClusterProviderTest {
     @Test
     void discoverClustersShouldUseConfiguredNamesrv() throws Exception {
         properties.setNamesrvAddr("10.0.0.1:9876");
-        stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
+        stubDefaultClusterInfo("10.0.0.1:9876", sampleClusterInfo());
 
         List<ClusterVO> clusters = provider.discoverClusters();
 
@@ -187,9 +210,59 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void managedDefaultDiscoveryUsesSelectedAddressButExplicitProbeKeepsItsTarget() throws Exception {
+        properties.setNamesrvAddr("env-namesrv:9876");
+        runtimeProperties.setEnabled(true);
+        OpsConnectionSettings settings = new OpsConnectionSettings(
+                List.of("env-namesrv:9876", "managed-namesrv:9876"),
+                "managed-namesrv:9876", true, false);
+        when(runtimeConnection.current()).thenReturn(settings);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sampleClusterInfo());
+        when(adminFactory.executeDefault(eq(settings), isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(3);
+                    return action.apply(admin);
+                });
+        stubClusterInfo("explicit-namesrv:9876", sampleClusterInfo());
+
+        List<ClusterVO> discovered = provider.discoverClusters();
+        ClusterVO explicit = provider.describeCluster("explicit-namesrv:9876");
+
+        assertThat(discovered).extracting(ClusterVO::getEndpoint)
+                .containsExactly("managed-namesrv:9876");
+        assertThat(explicit.getEndpoint()).isEqualTo("explicit-namesrv:9876");
+        verify(adminFactory).executeDefault(eq(settings), isNull(), eq("anonymous"), any());
+    }
+
+    @Test
+    void managedDiscoveryLabelsTheSameEndpointItActuallyConnectsTo() throws Exception {
+        properties.setNamesrvAddr("env-namesrv:9876");
+        runtimeProperties.setEnabled(true);
+        OpsConnectionSettings first = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "first:9876", false, false);
+        OpsConnectionSettings second = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "second:9876", false, false);
+        when(runtimeConnection.current()).thenReturn(first, second);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sampleClusterInfo());
+        when(adminFactory.executeDefault(eq(first), isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(3);
+                    return action.apply(admin);
+                });
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).extracting(ClusterVO::getEndpoint).containsExactly("first:9876");
+        verify(adminFactory).executeDefault(eq(first), isNull(), eq("anonymous"), any());
+        org.mockito.Mockito.verify(runtimeConnection).current();
+    }
+
+    @Test
     void discoversAndRefreshesEachClusterWithOnlyItsOwnBrokers() throws Exception {
         properties.setNamesrvAddr("10.0.0.1:9876");
-        stubClusterInfo("10.0.0.1:9876", multiClusterInfo());
+        stubDefaultClusterInfo("10.0.0.1:9876", multiClusterInfo());
 
         List<ClusterVO> clusters = provider.discoverClusters();
 
@@ -208,7 +281,7 @@ class RealClusterProviderTest {
     @Test
     void rejectsUnknownClusterRefreshes() throws Exception {
         properties.setNamesrvAddr("10.0.0.1:9876");
-        stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
+        stubDefaultClusterInfo("10.0.0.1:9876", sampleClusterInfo());
 
         assertThatThrownBy(() -> provider.refreshClusterDetail("missing"))
                 .isInstanceOf(BusinessException.class)

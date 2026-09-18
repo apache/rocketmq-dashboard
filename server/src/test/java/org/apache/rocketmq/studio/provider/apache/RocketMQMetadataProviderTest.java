@@ -23,6 +23,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
@@ -69,6 +70,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -93,8 +95,12 @@ class RocketMQMetadataProviderTest {
      * DB-backed listings work while live enrichment is skipped.
      */
     private RocketMQMetadataProvider newProvider() {
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        lenient().when(defaultClient.select(any())).thenReturn(selection);
+        lenient().when(selection.namesrvAddr()).thenReturn("");
         return new RocketMQMetadataProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(),
-                topicMapper, groupMapper, runtimeAdminClientResolver);
+                topicMapper, groupMapper, runtimeAdminClientResolver, defaultClient);
     }
 
     @Test
@@ -265,6 +271,42 @@ class RocketMQMetadataProviderTest {
 
         assertThat(provider.getTopicRoutes("instance-a", "orders")).containsExactlyElementsOf(routes);
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void getTopicRoutesShouldUseOpsDefaultClientForDefaultLiveQuery() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        RocketMQProperties liveProperties = new RocketMQProperties();
+        liveProperties.setNamesrvAddr("10.0.0.1:9876");
+        when(defaultClient.select("10.0.0.1:9876")).thenReturn(selection);
+        when(selection.namesrvAddr()).thenReturn("10.0.0.9:9876");
+        when(selection.execute(isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-a");
+        queueData.setReadQueueNums(4);
+        queueData.setWriteQueueNums(2);
+        queueData.setPerm(6);
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-a");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.11:10911")));
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        routeData.setBrokerDatas(List.of(brokerData));
+        when(admin.examineTopicRouteInfo("TopicA")).thenReturn(routeData);
+
+        RocketMQMetadataProvider provider = new RocketMQMetadataProvider(factory, liveProperties,
+                topicMapper, groupMapper, runtimeAdminClientResolver, defaultClient);
+
+        assertThat(provider.getTopicRoutes(null, "TopicA")).singleElement()
+                .extracting(BrokerRouteVO::getBrokerAddr)
+                .isEqualTo("10.0.0.11:10911");
+        verify(selection).execute(isNull(), eq("anonymous"), any());
+        verifyNoInteractions(factory);
     }
 
     @ParameterizedTest
@@ -869,8 +911,14 @@ class RocketMQMetadataProviderTest {
         liveProperties.setNamesrvAddr("10.0.0.1:9876");
         lenient().when(factory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        lenient().when(defaultClient.select(anyString())).thenReturn(selection);
+        lenient().when(selection.namesrvAddr()).thenReturn(liveProperties.getNamesrvAddr());
+        lenient().when(selection.execute(any(), anyString(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
         return new RocketMQMetadataProvider(factory, liveProperties, topicMapper, groupMapper,
-                runtimeAdminClientResolver);
+                runtimeAdminClientResolver, defaultClient);
     }
 
     private void mockTopicConsumeStats(DefaultMQAdminExt admin, OffsetWrapper... queueOffsets) throws Exception {

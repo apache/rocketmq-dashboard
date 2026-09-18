@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
 
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -47,10 +48,11 @@ public class MqClientPool {
 
     private enum Kind { PULL_CONSUMER, PRODUCER }
 
-    private record ClientKey(String namesrvAddr, String authenticationIdentity, Kind kind) {
+    private record ClientKey(String namesrvAddr, String authenticationIdentity, Kind kind,
+                             boolean managedDefault, boolean vipChannel, boolean useTLS) {
     }
 
-    private final Map<ClientKey, Object> cache = new ConcurrentHashMap<>();
+    private final Map<ClientKey, ClientLease<Object>> cache = new ConcurrentHashMap<>();
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -61,14 +63,36 @@ public class MqClientPool {
 
     public <T> T withPullConsumer(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                                   ClientAction<DefaultMQPullConsumer, T> action) {
-        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity), Kind.PULL_CONSUMER),
+        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity),
+                        Kind.PULL_CONSUMER, false, false, false),
                 rpcHook, this::createPullConsumer, action);
     }
 
     public <T> T withProducer(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                               ClientAction<DefaultMQProducer, T> action) {
-        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity), Kind.PRODUCER),
+        return execute(new ClientKey(normalize(namesrvAddr), identity(authenticationIdentity),
+                        Kind.PRODUCER, false, false, false),
                 rpcHook, this::createProducer, action);
+    }
+
+    public <T> T withPullConsumerDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                         String authenticationIdentity,
+                                         ClientAction<DefaultMQPullConsumer, T> action) {
+        return execute(defaultKey(settings, authenticationIdentity, Kind.PULL_CONSUMER),
+                rpcHook, this::createPullConsumer, action);
+    }
+
+    public <T> T withProducerDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                     String authenticationIdentity,
+                                     ClientAction<DefaultMQProducer, T> action) {
+        return execute(defaultKey(settings, authenticationIdentity, Kind.PRODUCER),
+                rpcHook, this::createProducer, action);
+    }
+
+    private static ClientKey defaultKey(OpsConnectionSettings settings, String authenticationIdentity,
+                                        Kind kind) {
+        return new ClientKey(normalize(settings.currentNamesrv()), identity(authenticationIdentity),
+                kind, true, settings.useVIPChannel(), settings.useTLS());
     }
 
     private <C, T> T execute(ClientKey cacheKey, RPCHook rpcHook,
@@ -79,15 +103,22 @@ public class MqClientPool {
         if (closed) {
             throw new BusinessException(503, "RocketMQ client pool is shutting down");
         }
-        @SuppressWarnings("unchecked")
-        C client = (C) cache.computeIfAbsent(cacheKey, key -> {
-            // Re-check under the cache lock so a request that passed the initial closed check
-            // cannot create a fresh connection while the pool is shutting down.
-            if (closed) {
-                throw new BusinessException(503, "RocketMQ client pool is shutting down");
+        ClientLease<Object> lease;
+        while (true) {
+            lease = cache.computeIfAbsent(cacheKey, key -> {
+                // Re-check under the cache lock so shutdown cannot create a fresh connection.
+                if (closed) {
+                    throw new BusinessException(503, "RocketMQ client pool is shutting down");
+                }
+                return new ClientLease<Object>(creator.create(key, rpcHook), this::safeShutdown);
+            });
+            if (lease.acquire()) {
+                break;
             }
-            return creator.create(key.namesrvAddr(), rpcHook);
-        });
+            cache.remove(cacheKey, lease);
+        }
+        @SuppressWarnings("unchecked")
+        C client = (C) lease.client();
         try {
             return action.apply(client);
         } catch (BusinessException ex) {
@@ -95,6 +126,8 @@ public class MqClientPool {
         } catch (Exception ex) {
             log.warn("RocketMQ client action failed against namesrv {}: {}", cacheKey.namesrvAddr(), ex.getMessage());
             throw new BusinessException(502, "RocketMQ client call failed: " + rootMessage(ex));
+        } finally {
+            lease.release();
         }
     }
 
@@ -108,10 +141,25 @@ public class MqClientPool {
             if (!entry.getKey().namesrvAddr().equals(normalized)) {
                 return false;
             }
-            safeShutdown(entry.getValue());
+            entry.getValue().retire();
             return true;
         });
         log.info("Released pooled RocketMQ clients for namesrv {}", normalized);
+    }
+
+    /** Evicts obsolete Ops-managed clients without touching clients owned by an Instance. */
+    public void releaseInactiveManagedDefaults(OpsConnectionSettings current) {
+        String selected = normalize(current.currentNamesrv());
+        cache.entrySet().removeIf(entry -> {
+            ClientKey key = entry.getKey();
+            boolean stillCurrent = key.namesrvAddr().equals(selected)
+                    && key.vipChannel() == current.useVIPChannel() && key.useTLS() == current.useTLS();
+            if (!key.managedDefault() || stillCurrent) {
+                return false;
+            }
+            entry.getValue().retire();
+            return true;
+        });
     }
 
     /** Stops one credential-scoped client without interrupting other identities on the endpoint. */
@@ -121,10 +169,11 @@ public class MqClientPool {
             return;
         }
         for (Kind kind : Kind.values()) {
-            ClientKey key = new ClientKey(normalized, identity(authenticationIdentity), kind);
-            Object client = cache.remove(key);
-            if (client != null) {
-                safeShutdown(client);
+            ClientKey key = new ClientKey(normalized, identity(authenticationIdentity),
+                    kind, false, false, false);
+            ClientLease<Object> lease = cache.remove(key);
+            if (lease != null) {
+                lease.retire();
             }
         }
         log.info("Released pooled RocketMQ clients for namesrv {} and identity {}", normalized,
@@ -133,12 +182,25 @@ public class MqClientPool {
 
     @FunctionalInterface
     private interface ClientCreator<C> {
-        C create(String namesrvAddr, RPCHook rpcHook);
+        C create(ClientKey key, RPCHook rpcHook);
     }
 
-    private DefaultMQPullConsumer createPullConsumer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+    protected DefaultMQPullConsumer newPullConsumer(RPCHook rpcHook) {
+        return new DefaultMQPullConsumer(PULL_CONSUMER_GROUP, rpcHook);
+    }
+
+    protected DefaultMQProducer newProducer(RPCHook rpcHook) {
+        return new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
+    }
+
+    private DefaultMQPullConsumer createPullConsumer(ClientKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
+        DefaultMQPullConsumer consumer = newPullConsumer(rpcHook);
         consumer.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            consumer.setVipChannelEnabled(key.vipChannel());
+            consumer.setUseTLS(key.useTLS());
+        }
         consumer.setInstanceName(buildInstanceName(namesrvAddr));
         try {
             consumer.start();
@@ -151,9 +213,14 @@ public class MqClientPool {
         }
     }
 
-    private DefaultMQProducer createProducer(String namesrvAddr, RPCHook rpcHook) {
-        DefaultMQProducer producer = new DefaultMQProducer(PRODUCER_GROUP, rpcHook);
+    private DefaultMQProducer createProducer(ClientKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
+        DefaultMQProducer producer = newProducer(rpcHook);
         producer.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            producer.setVipChannelEnabled(key.vipChannel());
+            producer.setUseTLS(key.useTLS());
+        }
         producer.setInstanceName(buildInstanceName(namesrvAddr));
         producer.setSendMsgTimeout((int) PRODUCER_SEND_TIMEOUT_MILLIS);
         producer.setRetryTimesWhenSendFailed(2);
@@ -212,7 +279,7 @@ public class MqClientPool {
     @PreDestroy
     public void shutdown() {
         closed = true;
-        cache.values().forEach(this::safeShutdown);
+        cache.values().forEach(ClientLease::retire);
         cache.clear();
         log.info("Shut down all pooled RocketMQ clients");
     }

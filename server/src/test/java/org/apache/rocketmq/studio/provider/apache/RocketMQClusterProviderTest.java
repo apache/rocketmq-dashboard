@@ -26,7 +26,9 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -34,6 +36,9 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
+import org.apache.rocketmq.studio.ops.OpsRuntimeConnection;
+import org.apache.rocketmq.studio.ops.OpsRuntimeProperties;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
@@ -52,7 +57,9 @@ import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RocketMQClusterProviderTest {
@@ -168,6 +175,88 @@ class RocketMQClusterProviderTest {
         assertThat(cluster.getTpsHistory()).isNotNull().isEmpty();
         assertThat(cluster.getNameServers()).hasSize(1);
         assertThat(cluster.getNameServers().get(0).getAddr()).isEqualTo("10.0.0.1:9876");
+    }
+
+    @Test
+    void discoverClustersShouldUseOpsDefaultClientForDefaultConnection() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        when(defaultClient.select("10.0.0.1:9876")).thenReturn(selection);
+        when(selection.namesrvAddr()).thenReturn("10.0.0.9:9876");
+        when(selection.execute(isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        List<ClusterVO> clusters =
+                new RocketMQClusterProvider(adminFactory, properties, runtime, defaultClient).discoverClusters();
+
+        assertThat(clusters).singleElement().satisfies(cluster ->
+                assertThat(cluster.getNameServers()).singleElement()
+                        .extracting(ns -> ns.getAddr())
+                        .isEqualTo("10.0.0.9:9876"));
+        verify(selection).execute(isNull(), eq("anonymous"), any());
+        verifyNoInteractions(adminFactory);
+    }
+
+    @Test
+    void discoverClustersShouldUseOneOpsSelectionWhenRuntimeChanges() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory opsAdminFactory = mock(MqAdminExtFactory.class);
+        OpsRuntimeConnection runtimeConnection = mock(OpsRuntimeConnection.class);
+        OpsRuntimeProperties runtimeProperties = new OpsRuntimeProperties();
+        runtimeProperties.setEnabled(true);
+        OpsConnectionSettings first = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "first:9876", false, false);
+        OpsConnectionSettings second = new OpsConnectionSettings(
+                List.of("first:9876", "second:9876"), "second:9876", false, false);
+        when(runtimeConnection.current()).thenReturn(first, second);
+        when(opsAdminFactory.executeDefault(eq(first), isNull(), eq("anonymous"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(3).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("external:9876");
+        OpsDefaultClient defaultClient = new OpsDefaultClient(runtimeConnection, runtimeProperties,
+                opsAdminFactory, mock(MqClientPool.class));
+
+        List<ClusterVO> clusters = new RocketMQClusterProvider(mock(MqAdminExtFactory.class), properties,
+                mock(RuntimeAdminClientResolver.class), defaultClient).discoverClusters();
+
+        assertThat(clusters).singleElement().satisfies(cluster ->
+                assertThat(cluster.getNameServers()).singleElement()
+                        .extracting(ns -> ns.getAddr())
+                        .isEqualTo("first:9876"));
+        verify(opsAdminFactory).executeDefault(eq(first), isNull(), eq("anonymous"), any());
+        verify(opsAdminFactory, never()).executeDefault(eq(second), isNull(), eq("anonymous"), any());
+        verify(runtimeConnection, times(1)).current();
+    }
+
+    @Test
+    void discoverClustersAtShouldKeepExplicitEndpointOffOpsDefaultClient() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        when(adminFactory.execute(eq("10.0.0.8:9876"), isNull(), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        List<ClusterVO> clusters =
+                new RocketMQClusterProvider(adminFactory, properties, runtime, defaultClient)
+                        .discoverClustersAt("10.0.0.8:9876");
+
+        assertThat(clusters).hasSize(1);
+        verify(adminFactory).execute(eq("10.0.0.8:9876"), isNull(), any());
+        verifyNoInteractions(defaultClient);
     }
 
     @Test
@@ -347,7 +436,14 @@ class RocketMQClusterProviderTest {
         RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
         org.mockito.Mockito.lenient().when(runtime.execute(anyString(), any())).thenAnswer(call ->
                 call.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
-        return new RocketMQClusterProvider(adminFactory, properties, runtime);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        org.mockito.Mockito.lenient().when(defaultClient.select(anyString())).thenReturn(selection);
+        org.mockito.Mockito.lenient().when(selection.namesrvAddr()).thenReturn(properties.getNamesrvAddr());
+        org.mockito.Mockito.lenient().when(selection.execute(any(), anyString(), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        return new RocketMQClusterProvider(adminFactory, properties, runtime, defaultClient);
     }
 
     @Test
@@ -410,7 +506,14 @@ class RocketMQClusterProviderTest {
                         .apply(adminExt));
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
-        return new RocketMQClusterProvider(adminFactory, properties, resolver);
+        OpsDefaultClient defaultClient = mock(OpsDefaultClient.class);
+        OpsDefaultClient.Selection selection = mock(OpsDefaultClient.Selection.class);
+        org.mockito.Mockito.lenient().when(defaultClient.select(anyString())).thenReturn(selection);
+        org.mockito.Mockito.lenient().when(selection.namesrvAddr()).thenReturn(properties.getNamesrvAddr());
+        org.mockito.Mockito.lenient().when(selection.execute(any(), anyString(), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        return new RocketMQClusterProvider(adminFactory, properties, resolver, defaultClient);
     }
 
     @Test

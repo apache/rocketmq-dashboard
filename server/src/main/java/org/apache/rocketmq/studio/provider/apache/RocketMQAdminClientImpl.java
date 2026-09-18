@@ -34,6 +34,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
+import org.apache.rocketmq.studio.cluster.broker.OpsDefaultClient;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -88,20 +89,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private static final String RISK_WARNING = "WARNING";
     private static final String RISK_ERROR = "ERROR";
 
-    private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
-    private final MqClientPool clientPool;
+    private final OpsDefaultClient defaultClient;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
 
     @Override
     public TopicVO getTopic(String name) {
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
+        return executeForInstance(null, admin -> {
             try {
                 var routeData = admin.examineTopicRouteInfo(name);
                 if (routeData == null || routeData.getQueueDatas() == null || routeData.getQueueDatas().isEmpty()) {
@@ -129,7 +129,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId, admin -> getConsumerGroup(admin, instanceId, name));
         }
-        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroup(admin, null, name));
+        return executeForInstance(null, admin -> getConsumerGroup(admin, null, name));
     }
 
     private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String instanceId, String name) {
@@ -444,8 +444,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public void deleteTopic(String instanceId, String name) {
-        String namesrvAddr = namesrvAddr(instanceId);
-        executeForInstance(instanceId, admin -> {
+        OpsDefaultClient.Selection defaultSelection = defaultSelection(instanceId);
+        String namesrvAddr = namesrvAddr(instanceId, defaultSelection);
+        executeForInstance(instanceId, defaultSelection, admin -> {
             try {
                 String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
@@ -550,7 +551,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         try {
             return StringUtils.hasText(request.getInstanceId())
                     ? runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction)
-                    : clientPool.withProducer(namesrvAddr(), null, null, sendAction);
+                    : defaultClient.select(properties.getNamesrvAddr()).withProducer(sendAction);
         } catch (BusinessException e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw e;
@@ -1060,7 +1061,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     return null;
                 });
             } else {
-                adminFactory.execute(namesrvAddr(), null, admin -> {
+                executeForInstance(null, admin -> {
                     admin.resetOffsetNew(name, topic, timestamp);
                     return null;
                 });
@@ -1118,25 +1119,33 @@ public class RocketMQAdminClientImpl implements AdminClient {
      * Returns the configured default NameServer address, failing fast when the studio has no
      * RocketMQ endpoint configured (equivalent to the former absent admin bean).
      */
-    private String namesrvAddr() {
-        String namesrvAddr = properties.getNamesrvAddr();
+    private OpsDefaultClient.Selection defaultSelection(String instanceId) {
+        return StringUtils.hasText(instanceId) ? null : defaultClient.select(properties.getNamesrvAddr());
+    }
+
+    private String namesrvAddr(String instanceId, OpsDefaultClient.Selection defaultSelection) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
+                : requireNamesrvAddr(defaultSelection.namesrvAddr());
+    }
+
+    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+        return executeForInstance(instanceId, defaultSelection(instanceId), action);
+    }
+
+    private <T> T executeForInstance(String instanceId, OpsDefaultClient.Selection defaultSelection,
+                                     MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return defaultSelection.execute(null, "anonymous", action);
+    }
+
+    private String requireNamesrvAddr(String namesrvAddr) {
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return namesrvAddr;
-    }
-
-    private String namesrvAddr(String instanceId) {
-        return StringUtils.hasText(instanceId)
-                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
-                : namesrvAddr();
-    }
-
-    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, action);
-        }
-        return adminFactory.execute(namesrvAddr(), null, action);
     }
 
     private String metadataScope(String instanceId) {

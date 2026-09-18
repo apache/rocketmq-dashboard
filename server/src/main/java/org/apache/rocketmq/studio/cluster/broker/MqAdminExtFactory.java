@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.OpsConnectionSettings;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
@@ -50,7 +51,7 @@ public class MqAdminExtFactory {
     /** Default admin RPC timeout in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MILLIS = 5000L;
 
-    private final Map<AdminClientCacheKey, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
+    private final Map<AdminClientCacheKey, ClientLease<DefaultMQAdminExt>> cache = new ConcurrentHashMap<>();
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -78,6 +79,19 @@ public class MqAdminExtFactory {
      */
     public <T> T execute(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
                          AdminAction<T> action) {
+        return execute(namesrvAddr, rpcHook, authenticationIdentity, false, false, false, action);
+    }
+
+    /** Applies the managed default transport settings before starting a separate admin client. */
+    public <T> T executeDefault(OpsConnectionSettings settings, RPCHook rpcHook,
+                                String authenticationIdentity, AdminAction<T> action) {
+        return execute(settings.currentNamesrv(), rpcHook, authenticationIdentity,
+                true, settings.useVIPChannel(), settings.useTLS(), action);
+    }
+
+    private <T> T execute(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
+                          boolean managedDefault, boolean vipChannel, boolean useTLS,
+                          AdminAction<T> action) {
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "NameServer address is required");
         }
@@ -89,23 +103,30 @@ public class MqAdminExtFactory {
             throw new BusinessException(400, "NameServer address is required");
         }
         AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
-                normalizeAuthenticationIdentity(authenticationIdentity));
-        DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
-                key -> {
-                    // Re-check under the cache lock so a request that passed the initial closed check
-                    // cannot create a fresh connection while the factory is shutting down.
-                    if (closed) {
-                        throw new BusinessException(503, "Admin factory is shutting down");
-                    }
-                    return createAndStart(key.namesrvAddr(), rpcHook);
-                });
+                normalizeAuthenticationIdentity(authenticationIdentity), managedDefault, vipChannel, useTLS);
+        ClientLease<DefaultMQAdminExt> lease;
+        while (true) {
+            lease = cache.computeIfAbsent(cacheKey, key -> {
+                // Re-check under the cache lock so shutdown cannot create a fresh connection.
+                if (closed) {
+                    throw new BusinessException(503, "Admin factory is shutting down");
+                }
+                return new ClientLease<>(createAndStart(key, rpcHook), this::safeShutdown);
+            });
+            if (lease.acquire()) {
+                break;
+            }
+            cache.remove(cacheKey, lease);
+        }
         try {
-            return action.apply(admin);
+            return action.apply(lease.client());
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
             log.warn("Admin action failed against namesrv {}: {}", namesrvAddr, ex.getMessage());
             throw new BusinessException(502, "RocketMQ admin call failed: " + rootMessage(ex));
+        } finally {
+            lease.release();
         }
     }
 
@@ -126,10 +147,26 @@ public class MqAdminExtFactory {
             if (!entry.getKey().namesrvAddr().equals(normalizedNamesrvAddr)) {
                 return false;
             }
-            safeShutdown(entry.getValue());
+            entry.getValue().retire();
             return true;
         });
         log.info("Released RocketMQ admin clients for namesrv {}", normalizedNamesrvAddr);
+    }
+
+    /** Evicts obsolete Ops-managed clients without touching clients owned by an Instance. */
+    public void releaseInactiveManagedDefaults(OpsConnectionSettings current) {
+        String selected = current.currentNamesrv().isBlank() ? ""
+                : normalizeNamesrvAddr(current.currentNamesrv());
+        cache.entrySet().removeIf(entry -> {
+            AdminClientCacheKey key = entry.getKey();
+            boolean stillCurrent = key.namesrvAddr().equals(selected)
+                    && key.vipChannel() == current.useVIPChannel() && key.useTLS() == current.useTLS();
+            if (!key.managedDefault() || stillCurrent) {
+                return false;
+            }
+            entry.getValue().retire();
+            return true;
+        });
     }
 
     /** Stops one credential-scoped client without interrupting other identities on the endpoint. */
@@ -142,18 +179,23 @@ public class MqAdminExtFactory {
             return;
         }
         AdminClientCacheKey key = new AdminClientCacheKey(normalizedNamesrvAddr,
-                normalizeAuthenticationIdentity(authenticationIdentity));
-        DefaultMQAdminExt admin = cache.remove(key);
-        if (admin != null) {
-            safeShutdown(admin);
+                normalizeAuthenticationIdentity(authenticationIdentity), false, false, false);
+        ClientLease<DefaultMQAdminExt> lease = cache.remove(key);
+        if (lease != null) {
+            lease.retire();
             log.info("Released RocketMQ admin client for namesrv {} and identity {}",
                     normalizedNamesrvAddr, key.authenticationIdentity());
         }
     }
 
-    private DefaultMQAdminExt createAndStart(String namesrvAddr, RPCHook rpcHook) {
+    private DefaultMQAdminExt createAndStart(AdminClientCacheKey key, RPCHook rpcHook) {
+        String namesrvAddr = key.namesrvAddr();
         DefaultMQAdminExt admin = newAdmin(rpcHook);
         admin.setNamesrvAddr(namesrvAddr);
+        if (key.managedDefault()) {
+            admin.setVipChannelEnabled(key.vipChannel());
+            admin.setUseTLS(key.useTLS());
+        }
         admin.setInstanceName(buildInstanceName(namesrvAddr));
         try {
             admin.start();
@@ -213,7 +255,7 @@ public class MqAdminExtFactory {
     @PreDestroy
     public void shutdown() {
         closed = true;
-        cache.values().forEach(this::safeShutdown);
+        cache.values().forEach(ClientLease::retire);
         cache.clear();
         log.info("Shut down all RocketMQ admin clients");
     }
@@ -224,7 +266,8 @@ public class MqAdminExtFactory {
         T apply(MQAdminExt admin) throws Exception;
     }
 
-    private record AdminClientCacheKey(String namesrvAddr, String authenticationIdentity) {
+    private record AdminClientCacheKey(String namesrvAddr, String authenticationIdentity,
+                                       boolean managedDefault, boolean vipChannel, boolean useTLS) {
         private AdminClientCacheKey {
             Objects.requireNonNull(namesrvAddr, "namesrvAddr");
             Objects.requireNonNull(authenticationIdentity, "authenticationIdentity");

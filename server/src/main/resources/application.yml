@@ -110,6 +110,14 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+  ops:
+    runtime:
+      # Disabled by default. When enabled, /api/ops writes persist and apply the
+      # default Apache RocketMQ connection used by Studio's non-instance client paths.
+      enabled: ${STUDIO_OPS_RUNTIME_ENABLED:false}
+      # STUDIO_OPS_RUNTIME_NAMESRV_ADDR is optional; OpsRuntimeProperties falls back
+      # to the configured default cluster address when it is absent.
+      max-name-server-addresses: ${STUDIO_OPS_RUNTIME_MAX_NAMESRV_ADDRESSES:32}
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
