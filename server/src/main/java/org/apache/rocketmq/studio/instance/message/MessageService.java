@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
@@ -135,7 +136,13 @@ public class MessageService {
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
-                .map(provider -> provider.consumeMessageDirectly(request))
+                .map(provider -> {
+                    if (!provider.capabilities().contains(InstanceCapability.DIRECT_MESSAGE_CONSUME)) {
+                        throw new UnsupportedOperationException(
+                                "Direct message consumption is not supported by this instance");
+                    }
+                    return provider.consumeMessageDirectly(request);
+                })
                 .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
         operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(), request.getInstanceId(),
                 "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()

@@ -43,6 +43,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponseBody;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -56,6 +59,8 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -69,6 +74,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Aliyun RocketMQ 5.x implementation of the instance-scoped operations SPI, backed by the
@@ -103,6 +109,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -519,6 +526,35 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        Context ctx = resolve(request.getInstanceId());
+        VerifyConsumeMessageRequest verifyRequest = VerifyConsumeMessageRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .topicName(request.getTopic())
+                .messageId(request.getMsgId())
+                .consumerGroupId(request.getConsumerGroup())
+                .clientId(request.getClientId())
+                .build();
+        long startedAt = System.nanoTime();
+        VerifyConsumeMessageResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.verifyConsumeMessage(verifyRequest));
+        long spentTimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        VerifyConsumeMessageResponseBody body = response == null ? null : response.getBody();
+        if (body == null) {
+            throw new BusinessException(502, "Aliyun direct consume returned an empty response");
+        }
+        boolean success = Boolean.TRUE.equals(body.getSuccess()) && Boolean.TRUE.equals(body.getData());
+        String message = StringUtils.hasText(body.getMessage()) ? body.getMessage() : body.getDynamicMessage();
+        return DirectConsumeMessageResultVO.builder()
+                .consumeResult(success ? "CR_SUCCESS" : "CR_FAILED")
+                .remark(formatCloudRemark(message, body.getRequestId()))
+                .spentTimeMillis(spentTimeMillis)
+                .order(false)
+                .autoCommit(false)
+                .build();
+    }
+
+    @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         Context ctx = resolve(instanceId);
         GetTraceRequest request = GetTraceRequest.builder()
@@ -541,6 +577,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
                 .nodes(Collections.emptyList())
                 .consumerStatus(Collections.emptyList())
                 .build();
+    }
+
+    private static String formatCloudRemark(String message, String requestId) {
+        if (StringUtils.hasText(message) && StringUtils.hasText(requestId)) {
+            return message + " (requestId=" + requestId + ")";
+        }
+        if (StringUtils.hasText(message)) {
+            return message;
+        }
+        return StringUtils.hasText(requestId) ? "requestId=" + requestId : null;
     }
 
     private Context resolve(String instanceId) {

@@ -68,6 +68,7 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
 import {
@@ -408,6 +409,10 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const [directConsumeCapability, setDirectConsumeCapability] = useState<{
+    instanceId: string;
+    supported: boolean;
+  } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
@@ -423,6 +428,37 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    const instanceId = selectedInstanceId;
+    if (!instanceId) return;
+
+    let active = true;
+    void getInstanceCapabilities(instanceId)
+      .then((result) => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({
+            instanceId,
+            supported: result.capabilities.includes('DIRECT_MESSAGE_CONSUME'),
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({ instanceId, supported: false });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const directConsumeSupported =
+    directConsumeCapability !== null &&
+    directConsumeCapability.instanceId === selectedInstanceId &&
+    directConsumeCapability.supported;
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
@@ -672,6 +708,7 @@ const MessagePageContent = ({
   };
 
   const openDirectConsume = () => {
+    if (!directConsumeSupported) return;
     setDirectConsumeGroup('');
     setDirectConsumeClientId('');
     setDirectConsumeOpen(true);
@@ -1234,14 +1271,16 @@ const MessagePageContent = ({
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>关闭</Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!selectedInstanceId || !selectedMsg}
-              onClick={openDirectConsume}
-            >
-              直接消费
-            </Button>
+            {directConsumeSupported ? (
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                disabled={!selectedInstanceId || !selectedMsg}
+                onClick={openDirectConsume}
+              >
+                直接消费
+              </Button>
+            ) : null}
           </Flex>
         }
       >
@@ -1250,7 +1289,7 @@ const MessagePageContent = ({
 
       <Modal
         title="直接消费消息"
-        open={directConsumeOpen}
+        open={directConsumeOpen && directConsumeSupported}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}
