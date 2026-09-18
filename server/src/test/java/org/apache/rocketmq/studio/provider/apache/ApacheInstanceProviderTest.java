@@ -134,6 +134,18 @@ class ApacheInstanceProviderTest {
     }
 
     @Test
+    void listTopicsPageShouldPassClusterToMetadataProviderTest() {
+        PageResult<TopicVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20))
+                .thenReturn(page);
+
+        assertThat(provider.listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20))
+                .isSameAs(page);
+
+        verify(metadataProvider).listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20);
+    }
+
+    @Test
     void listConsumerGroupsShouldPassTheSelectedInstanceToMetadataProvider() {
         when(metadataProvider.listConsumerGroups("inst-1", null, "orders")).thenReturn(java.util.List.of());
 
@@ -150,5 +162,17 @@ class ApacheInstanceProviderTest {
         assertThat(provider.listConsumerGroupsPage("inst-1", "orders", 1, 20)).isSameAs(page);
 
         verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassClusterToMetadataProviderTest() {
+        PageResult<ConsumerGroupVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20))
+                .thenReturn(page);
+
+        assertThat(provider.listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20))
+                .isSameAs(page);
+
+        verify(metadataProvider).listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20);
     }
 }
