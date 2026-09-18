@@ -31,7 +31,7 @@ import {
   Popconfirm,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -39,6 +39,7 @@ import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -53,6 +54,32 @@ interface CreateCertFormValues {
   keyPem?: string;
 }
 
+interface K8sCertExportRow {
+  id: number;
+  k8sId: string;
+  cluster: string;
+  type: string | null;
+  issuer: string | null;
+  notBefore: string | null;
+  notAfter: string | null;
+  daysRemaining: number;
+  status: string | null;
+  san: string;
+}
+
+const K8S_CERT_EXPORT_COLUMNS: CsvColumn<K8sCertExportRow>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'K8s ID', value: (row) => row.k8sId },
+  { header: 'Cluster', value: (row) => row.cluster },
+  { header: 'Type', value: (row) => row.type ?? '' },
+  { header: 'Issuer', value: (row) => row.issuer ?? '' },
+  { header: 'Not Before', value: (row) => row.notBefore ?? '' },
+  { header: 'Not After', value: (row) => row.notAfter ?? '' },
+  { header: 'Days Remaining', value: (row) => row.daysRemaining },
+  { header: 'Status', value: (row) => row.status ?? '' },
+  { header: 'SANs', value: (row) => row.san },
+];
+
 const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +88,7 @@ const K8sCertsPage = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
   useEffect(() => {
@@ -128,6 +156,33 @@ const K8sCertsPage = () => {
       message.error(getErrorMessage(error));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const rows: K8sCertExportRow[] = filteredCerts.map((cert) => ({
+        id: cert.id,
+        k8sId: cert.k8sId,
+        cluster: cert.cluster,
+        type: cert.type,
+        issuer: cert.issuer,
+        notBefore: cert.notBefore,
+        notAfter: cert.notAfter,
+        daysRemaining: cert.daysRemaining,
+        status: cert.status,
+        san: (cert.san ?? []).join(';'),
+      }));
+      downloadCsv(
+        `rocketmq-k8s-certificates-${new Date().toISOString().slice(0, 10)}.csv`,
+        buildCsv(K8S_CERT_EXPORT_COLUMNS, rows),
+      );
+      message.success(`已导出 ${rows.length} 个证书`);
+    } catch {
+      message.error('导出证书列表失败，请稍后重试');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -277,9 +332,19 @@ const K8sCertsPage = () => {
             ]}
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          新增证书
-        </Button>
+        <Space>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            disabled={filteredCerts.length === 0}
+            onClick={() => void handleExport()}
+          >
+            导出
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            新增证书
+          </Button>
+        </Space>
       </Flex>
       <Card styles={{ body: { padding: 0 } }}>
         <Table
