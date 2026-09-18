@@ -317,6 +317,7 @@ const ConsumerPageContent = ({
   const [exporting, setExporting] = useState(false);
 
   const groupRequestIdRef = useRef(0);
+  const progressRequestIdRef = useRef<Record<string, number>>({});
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
   // Consumption switches as loaded from the broker, used to detect high-risk changes
@@ -431,11 +432,17 @@ const ConsumerPageContent = ({
     async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && progressByGroup[cacheKey]) return;
+      const requestId = (progressRequestIdRef.current[cacheKey] ?? 0) + 1;
+      progressRequestIdRef.current[cacheKey] = requestId;
       try {
         const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
-        setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
+        if (progressRequestIdRef.current[cacheKey] === requestId) {
+          setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
+        }
       } catch {
-        if (!silent) message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        if (progressRequestIdRef.current[cacheKey] === requestId && !silent) {
+          message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        }
       }
     },
     [progressByGroup, t, selectedInstanceId],
