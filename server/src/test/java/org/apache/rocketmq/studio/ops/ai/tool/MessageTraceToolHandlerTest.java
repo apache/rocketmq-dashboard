@@ -84,4 +84,36 @@ class MessageTraceToolHandlerTest {
 
         verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
     }
+
+    @Test
+    void customTraceTopicNameUsesTheExplicitServicePathTest() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of())
+                .consumerStatus(List.of())
+                .build();
+        when(messageService.getMessageTrace(
+                "instance-a", "msg-1", "TopicA", "CustomTraceTopic"))
+                .thenReturn(trace);
+
+        handler.execute(new MessageTraceInput(
+                "instance-a", "TopicA", "msg-1", "CustomTraceTopic"), context("instance-a"));
+
+        verify(messageService).getMessageTrace(
+                "instance-a", "msg-1", "TopicA", "CustomTraceTopic");
+    }
+
+    @Test
+    void blankTraceTopicNameKeepsTheDefaultServicePathTest() {
+        TraceRecordVO trace = TraceRecordVO.builder()
+                .nodes(List.of())
+                .consumerStatus(List.of())
+                .build();
+        when(messageService.getMessageTrace("instance-a", "msg-1", "TopicA"))
+                .thenReturn(trace);
+
+        handler.execute(new MessageTraceInput("instance-a", "TopicA", "msg-1", "   "),
+                context("instance-a"));
+
+        verify(messageService).getMessageTrace("instance-a", "msg-1", "TopicA");
+    }
 }

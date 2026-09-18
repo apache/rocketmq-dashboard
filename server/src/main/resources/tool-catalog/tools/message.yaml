@@ -4,7 +4,7 @@ tools:
     cli:
       resource: message
       verb: query
-    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths."
+    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. Results are paged (20 by default, maximum 100); message bodies are omitted unless includeBody is true."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -41,12 +41,36 @@ tools:
         endTime:
           type: integer
           description: Epoch milliseconds; only applies to the uniqueKey and key paths.
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+              maximum: 100
+        includeBody:
+          type: boolean
+          default: false
     outputSchema:
       type: object
       required:
+        - page
+        - pageSize
+        - total
         - items
+        - resultMayBeTruncated
       additionalProperties: false
       properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
         items:
           type: array
           items:
@@ -55,7 +79,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -81,13 +104,15 @@ tools:
                 type: boolean
               size:
                 type: integer
+        resultMayBeTruncated:
+          type: boolean
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_topic
     cli:
       resource: message
       verb: query-by-topic
-    description: Query RocketMQ messages by topic and optional time range in one Studio Instance.
+    description: Query RocketMQ messages by topic and optional time range in one Studio Instance. Results are paged (20 by default, maximum 100); message bodies are omitted unless includeBody is true.
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -112,12 +137,36 @@ tools:
           type: integer
         endTime:
           type: integer
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+              maximum: 100
+        includeBody:
+          type: boolean
+          default: false
     outputSchema:
       type: object
       required:
+        - page
+        - pageSize
+        - total
         - items
+        - resultMayBeTruncated
       additionalProperties: false
       properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
         items:
           type: array
           items:
@@ -126,7 +175,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -152,6 +200,8 @@ tools:
                 type: boolean
               size:
                 type: integer
+        resultMayBeTruncated:
+          type: boolean
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_offset
@@ -351,6 +401,9 @@ tools:
         msgId:
           type: string
           minLength: 1
+        traceTopicName:
+          type: string
+          description: Optional custom trace Topic name; blank or absent uses provider defaults.
     outputSchema:
       type: object
       required:
