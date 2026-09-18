@@ -1429,10 +1429,12 @@ const ConsumerPageContent = ({
             allowClear
             value={search}
             onChange={(e) => {
+              setSelectedRowKeys([]);
               setSearch(e.target.value);
               setPage(1);
             }}
             onSearch={(value) => {
+              setSelectedRowKeys([]);
               setSearch(value);
               setPage(1);
             }}
@@ -1441,7 +1443,10 @@ const ConsumerPageContent = ({
           />
           <Select
             value={modeFilter}
-            onChange={setModeFilter}
+            onChange={(value) => {
+              setSelectedRowKeys([]);
+              setModeFilter(value);
+            }}
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部模式' },
@@ -1551,6 +1556,7 @@ const ConsumerPageContent = ({
             showTotal: (total) => `共 ${total} 个 Group`,
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
+              setSelectedRowKeys([]);
               setPage(nextPage);
               setPageSize(nextPageSize);
             },
