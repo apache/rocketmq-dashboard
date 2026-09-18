@@ -95,6 +95,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, clusterId, type, search, page, pageSize);
+    }
+
+    @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         return adminClient.createTopic(instanceId, topic);
     }
@@ -128,6 +134,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
         return metadataProvider.listConsumerGroupsPage(instanceId, null, search, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
     }
 
     @Override

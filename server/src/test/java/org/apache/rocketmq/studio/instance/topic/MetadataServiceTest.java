@@ -296,6 +296,22 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listTopicsPageShouldApplyClusterFilterForInstanceScopedQueriesTest() {
+        TopicVO clusterATopic = new TopicVO();
+        clusterATopic.setName("orders-a");
+        clusterATopic.setClusterId("cluster-a");
+        when(apacheProvider.listTopicsPage("instance-a", "cluster-a", null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(clusterATopic), 1, 1, 20));
+
+        PageResult<TopicVO> result = metadataService.listTopicsPage(
+                "instance-a", "cluster-a", null, null, 1, 20);
+
+        assertThat(result.getItems()).containsExactly(clusterATopic);
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(apacheProvider).listTopicsPage("instance-a", "cluster-a", null, null, 1, 20);
+    }
+
+    @Test
     void topicWriteOperationsShouldRejectNullRequest() {
         assertThatThrownBy(() -> metadataService.createTopic(null))
                 .isInstanceOf(BusinessException.class)
@@ -758,7 +774,7 @@ class MetadataServiceTest {
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", 2, 2))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", 2, 2))
                 .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
@@ -768,8 +784,24 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", 2, 2);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", 2, 2);
         verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldApplyClusterFilterForInstanceScopedQueriesTest() {
+        ConsumerGroupVO clusterAGroup = new ConsumerGroupVO();
+        clusterAGroup.setName("group-a");
+        clusterAGroup.setClusterId("cluster-a");
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20))
+                .thenReturn(PageResult.of(List.of(clusterAGroup), 1, 1, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", "cluster-a", null, 1, 20);
+
+        assertThat(result.getItems()).containsExactly(clusterAGroup);
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20);
     }
 
     @Test
