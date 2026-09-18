@@ -1693,13 +1693,14 @@ GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTim
 ### 10.1 获取客户端连接列表
 
 ```
-GET /api/clients?clusterId={clusterId}&type={type}
+GET /api/clients?namesrvAddr={namesrvAddr}&clusterId={clusterId}&type={type}
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `namesrvAddr` | `string` | 是 | 页面选中的 NameServer 地址 |
 | `clusterId` | `string` | 否 | 按集群过滤 |
 | `type` | `string` | 否 | 按类型过滤: `Producer` / `Consumer` |
 
@@ -1710,12 +1711,18 @@ GET /api/clients?clusterId={clusterId}&type={type}
 | `clientId` | `string` | 客户端 ID |
 | `type` | `string` | 类型: `Producer` / `Consumer` |
 | `groupOrTopic` | `string` | 消费组名或 Topic 名 |
-| `protocol` | `string` | 协议: `gRPC` / `Remoting` |
+| `protocol` | `string / null` | 可确认的协议: `gRPC` / `Remoting`；未知为 `null` |
 | `address` | `string` | 客户端地址 |
-| `language` | `string` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `C++` / `C#` / `Node.js` / `PHP` |
-| `version` | `string` | SDK 版本号 |
+| `language` | `string / null` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `C++` / `C#` / `Node.js` / `PHP` |
+| `version` | `string / null` | 可确认的 SDK 版本号；未知为 `null` |
 | `connectedAt` | `string` | 连接时间 |
+| `partial` | `boolean` | 连接扫描不完整（部分查询失败或达到扫描上限） |
 | `clusterName` | `string` | 所属集群名称（显示在第一列） |
+
+消费者查询合并所选 NameServer、集群中的 Broker 和 Proxy 连接，并按客户端及地址去重。
+Proxy 地址沿用心跳同步消费组发现机制及 Remoting 管理端口 8080，仅在本次请求内缓存。
+现有 Proxy 响应不提供客户端协议，版本号也可能是兼容值；这两项返回 `null`，页面显示 `-`，语言保留实际返回的可识别值。
+确认离线返回空列表；查询失败时保留已有行并设置 `partial`，没有可返回的行时返回查询错误。
 
 ### 10.2 获取 Producer Group 候选列表
 
