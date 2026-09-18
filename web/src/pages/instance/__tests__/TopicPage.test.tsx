@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App, Modal } from 'antd';
@@ -1138,5 +1138,56 @@ describe('TopicPage', () => {
 
     const groupLink = await screen.findByText('cg-orders');
     expect(groupLink.closest('a')).not.toBeNull();
+  });
+
+  it('keeps a reopened sync modal owned by its newest route check', async () => {
+    const user = userEvent.setup();
+    let resolveFirst!: (routes: BrokerRoute[]) => void;
+    let resolveSecond!: (routes: BrokerRoute[]) => void;
+    const firstCheck = new Promise<BrokerRoute[]>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondCheck = new Promise<BrokerRoute[]>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const healthyRoute: BrokerRoute = {
+      brokerName: 'broker-b',
+      brokerAddr: '10.0.0.2:10911',
+      masterAddr: '10.0.0.2:10911',
+      writeQueues: 8,
+      readQueues: 8,
+      perm: 'RW',
+      readable: true,
+      writable: true,
+      replicaCount: 1,
+    };
+    let routeCheckCount = 0;
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicRoutes.mockImplementation(() => {
+      routeCheckCount += 1;
+      return routeCheckCount === 1 ? firstCheck : secondCheck;
+    });
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    const syncButton = await screen.findByRole('button', { name: /同步/ });
+    await user.click(syncButton);
+    await waitFor(() => expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledTimes(1));
+    await user.click(document.querySelector('.ant-modal-close') as HTMLElement);
+
+    await user.click(syncButton);
+    await waitFor(() => expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveSecond([healthyRoute]);
+      await secondCheck;
+    });
+    expect(screen.getByText(/所有 Topic 在 Broker 上均有路由/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirst([]);
+      await firstCheck;
+    });
+    expect(screen.queryByText('缺失路由')).not.toBeInTheDocument();
   });
 });
