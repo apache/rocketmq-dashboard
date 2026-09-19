@@ -28,6 +28,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -56,7 +57,10 @@ class AuthServiceSessionOverviewIntegrationTest {
 
     @Test
     void sessionOverviewAggregatesEveryBucketFromOneExecutedQueryTest() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // The session table stores DATETIME without fractional seconds and MySQL rounds the
+        // stored value up, so a sub-second "now" can make an inserted "now minus 1 minute"
+        // read back as one second younger and break the exact-seconds assertions below.
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
         RmqStudioUser user = new RmqStudioUser();
         user.setUsername("session-overview-it-" + System.nanoTime());
         user.setPasswordHash("not-a-real-password-hash");
@@ -96,7 +100,9 @@ class AuthServiceSessionOverviewIntegrationTest {
 
     @Test
     void listActiveSessionsForUserReturnsOnlyThatUsersActiveSessionDetailsTest() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // Truncated to whole seconds for the same MySQL DATETIME rounding reason as above;
+        // otherwise the idleSeconds >= 60 and >= 20*60 assertions can observe 59 and 1199.
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
         RmqStudioUser user = studioUser("session-detail-it-" + System.nanoTime(), now);
         RmqStudioUser otherUser = studioUser("other-session-detail-it-" + System.nanoTime(), now);
         userMapper.insert(user);
