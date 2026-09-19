@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.filter;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.CapabilityResolver;
+import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolError;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolInvocation;
@@ -59,6 +60,13 @@ public class ToolCapabilityFilter implements ToolExecutionFilter {
         ToolExecutionContext context = invocation.context();
         ToolDefinition definition = context.definition();
         if (definition.requiredCapabilities().isEmpty()) {
+            return chain.proceed(invocation);
+        }
+        // Platform-level tools are addressed by a physical clusterName and dispatch with no
+        // instanceId at all (see ToolExecutionService.resolveTargetInstance). Discovery gates
+        // them per instance, but the capability lookup itself requires an instance, so calling
+        // it here would fail every platform tool with CAPABILITY_INSTANCE_REQUIRED.
+        if (context.instanceId() == null && ToolCatalog.isInstanceIdExempt(definition.name())) {
             return chain.proceed(invocation);
         }
 
