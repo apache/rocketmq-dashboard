@@ -999,6 +999,68 @@ describe('TopicPage', () => {
     expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
   });
 
+  it('applies message property templates in form mode without overwriting existing keys', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+    fireEvent.change(within(dialog).getByPlaceholderText('属性名'), {
+      target: { value: 'traceId' },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText('属性值'), {
+      target: { value: 'operator-trace' },
+    });
+
+    await user.click(within(dialog).getByRole('combobox', { name: '属性模板' }));
+    await user.click(
+      await screen.findByText('Trace context', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: '套用模板' }));
+
+    const propertyKeys = within(dialog).getAllByPlaceholderText('属性名') as HTMLInputElement[];
+    const propertyValues = within(dialog).getAllByPlaceholderText('属性值') as HTMLInputElement[];
+    expect(propertyKeys.map((input) => input.value)).toEqual(['traceId', 'spanId', 'source']);
+    expect(propertyValues.map((input) => input.value)).toEqual([
+      'operator-trace',
+      'studio-send',
+      'rocketmq-studio',
+    ]);
+    expect(within(dialog).getByText('traceId=operator-trace')).toBeInTheDocument();
+    expect(within(dialog).getByText('spanId=studio-send')).toBeInTheDocument();
+    expect(within(dialog).getByText('source=rocketmq-studio')).toBeInTheDocument();
+  });
+
+  it('applies message property templates in batch text mode without duplicating keys', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /发送/ }));
+    const dialog = await getSendDialog();
+    await user.click(within(dialog).getByText('批量粘贴'));
+    const textArea = within(dialog).getByPlaceholderText(/TAGS=tagA/) as HTMLTextAreaElement;
+    fireEvent.change(textArea, {
+      target: { value: 'tenantId=tenant-a\nregion=cn-shanghai' },
+    });
+
+    await user.click(within(dialog).getByRole('combobox', { name: '属性模板' }));
+    await user.click(
+      await screen.findByText('Tenant routing', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: '套用模板' }));
+    expect(textArea.value).toBe(
+      ['tenantId=tenant-a', 'region=cn-shanghai', 'environment=staging'].join('\n'),
+    );
+
+    await user.click(within(dialog).getByRole('button', { name: '套用模板' }));
+    expect(textArea.value).toBe(
+      ['tenantId=tenant-a', 'region=cn-shanghai', 'environment=staging'].join('\n'),
+    );
+  });
+
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
     const user = userEvent.setup();
     mockTopicsList([buildTopics(1)[0]]);

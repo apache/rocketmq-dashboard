@@ -103,6 +103,12 @@ import {
   type MessagePayloadPreviewStatus,
   type MessagePropertyInput,
 } from '../../utils/messagePayloadPreview';
+import {
+  appendMessagePropertyTemplateText,
+  applyMessagePropertyTemplate,
+  messagePropertyTemplateOptions,
+  type MessagePropertyTemplateId,
+} from '../../utils/messagePropertyTemplates';
 
 const { Text } = Typography;
 
@@ -381,6 +387,8 @@ const TopicPage = () => {
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
+  const [selectedPropertyTemplate, setSelectedPropertyTemplate] =
+    useState<MessagePropertyTemplateId>();
   const sendTagValue = Form.useWatch('tag', sendForm);
   const sendKeyValue = Form.useWatch('key', sendForm);
   const sendBodyValue = Form.useWatch('body', sendForm);
@@ -637,6 +645,7 @@ const TopicPage = () => {
     } else if (key === 'send') {
       setSendTopic(topic);
       setPropsMode('form');
+      setSelectedPropertyTemplate(undefined);
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
@@ -1436,6 +1445,30 @@ const TopicPage = () => {
     }
   };
 
+  const handleApplyPropertyTemplate = () => {
+    if (!selectedPropertyTemplate) return;
+    if (propsMode === 'text') {
+      const currentText = sendForm.getFieldValue('propsText') as string | undefined;
+      const result = appendMessagePropertyTemplateText(currentText, selectedPropertyTemplate);
+      sendForm.setFieldValue('propsText', result.text);
+      message.success(
+        result.appliedKeys.length > 0
+          ? t('topic.propertyTemplateApplied', { count: result.appliedKeys.length })
+          : t('topic.propertyTemplateExists'),
+      );
+      return;
+    }
+
+    const currentRows = sendForm.getFieldValue('properties') as MessagePropertyInput[] | undefined;
+    const result = applyMessagePropertyTemplate(currentRows, selectedPropertyTemplate);
+    sendForm.setFieldValue('properties', result.rows);
+    message.success(
+      result.appliedKeys.length > 0
+        ? t('topic.propertyTemplateApplied', { count: result.appliedKeys.length })
+        : t('topic.propertyTemplateExists'),
+    );
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -1880,6 +1913,7 @@ const TopicPage = () => {
         onCancel={() => {
           setSendModalOpen(false);
           sendForm.resetFields();
+          setSelectedPropertyTemplate(undefined);
         }}
         onOk={handleSend}
         okText="发送"
@@ -1955,6 +1989,30 @@ const TopicPage = () => {
                 { label: '批量粘贴', value: 'text' },
               ]}
             />
+            <Space size={8} wrap>
+              <Select<MessagePropertyTemplateId>
+                allowClear
+                aria-label={t('topic.propertyTemplate')}
+                placeholder={t('topic.propertyTemplate')}
+                style={{ width: 180 }}
+                options={messagePropertyTemplateOptions}
+                value={selectedPropertyTemplate}
+                onChange={setSelectedPropertyTemplate}
+              />
+              <Button
+                size="small"
+                disabled={!selectedPropertyTemplate}
+                onClick={handleApplyPropertyTemplate}
+              >
+                {t('topic.applyPropertyTemplate')}
+              </Button>
+            </Space>
+          </Flex>
+
+          <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              {t('topic.propertyTemplateHint')}
+            </Text>
             {propsMode === 'text' && (
               <Text type="secondary" style={{ fontSize: 14 }}>
                 支持 key=value，每行填写一个属性；属性值可以包含逗号

@@ -2189,6 +2189,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.propName': { zh: '属性名', en: 'Property Name' },
   'topic.propValue': { zh: '属性值', en: 'Property Value' },
   'topic.addProp': { zh: '添加属性', en: 'Add Property' },
+  'topic.propertyTemplate': { zh: '属性模板', en: 'Property template' },
+  'topic.applyPropertyTemplate': { zh: '套用模板', en: 'Apply template' },
+  'topic.propertyTemplateHint': {
+    zh: '模板只追加缺失属性，不覆盖现有输入。',
+    en: 'Templates only append missing properties and never overwrite existing input.',
+  },
+  'topic.propertyTemplateApplied': {
+    zh: '已追加 {count} 个模板属性',
+    en: '{count} template properties appended',
+  },
+  'topic.propertyTemplateExists': {
+    zh: '模板属性已存在，无需重复追加',
+    en: 'Template properties already exist; nothing was appended',
+  },
   'topic.confirmBatchDelete': { zh: '确认批量删除', en: 'Confirm Batch Delete' },
   'topic.batchDeleteConfirm': {
     zh: '确定要删除选中的 {count} 个 Topic 吗？此操作不可撤销。',
