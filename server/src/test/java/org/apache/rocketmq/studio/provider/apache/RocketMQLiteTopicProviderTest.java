@@ -148,6 +148,25 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsSumsTheBacklogAcrossEveryMasterTest() throws Exception {
+        // A parent topic sharded across two masters: each master reports the group and holds
+        // part of the backlog. getLiteGroupInfo only reads the broker's own offset table, so
+        // the summary must query every master, not just the last one that advertised the topic.
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, "broker-b:10911"));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getBrokerLiteInfo("broker-b:10911")).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getParentTopicInfo(anyString(), eq(PARENT))).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.getLiteGroupInfo("broker-b:10911", GROUP, null, 1)).thenReturn(lag(4));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(new ConsumerConnection());
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary ->
+                assertThat(summary.getTotalBacklog()).isEqualTo(11L));
+    }
+
+    @Test
     void getSessionResolvesTheBrokerOwningTheClientAndComputesProgress() throws Exception {
         long lastAccess = System.currentTimeMillis() - 1_000;
         Map<String, BrokerData> brokers = new LinkedHashMap<>();
