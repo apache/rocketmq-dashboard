@@ -264,7 +264,10 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   identityCounts.forEach((count, identity) => {
     if (count <= 1) return;
-    const [, clientId, resource, address] = identity.split('|');
+    const [type, clientId, bareResource, address] = identity.split('|');
+    // Same qualified key as the resource summaries (type:resource) so this issue
+    // rolls up onto the right resource row.
+    const resource = `${type}:${bareResource}`;
     issues.push(
       issue(
         'EXACT_DUPLICATE_CONNECTION',
@@ -289,7 +292,11 @@ const addUnknownFieldIssues = (
 ) => {
   connections.forEach((connection, index) => {
     const clientId = normalizeText(connection.clientId);
-    const resource = normalizeText(connection.groupOrTopic);
+    // Per-connection issues must match the resource summaries produced by
+    // buildResourceSummaries, whose lookup key is the type-qualified
+    // `${type}:${resource}` — a bare name would never match and the resource
+    // rows would report zero issues for problems found on their connections.
+    const resource = resourceKey(connection);
     const protocol = normalizeText(connection.protocol);
     const language = normalizeText(connection.language);
     const version = normalizeText(connection.version);

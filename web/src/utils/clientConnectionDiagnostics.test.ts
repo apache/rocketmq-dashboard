@@ -205,4 +205,80 @@ describe('client connection diagnostics', () => {
       ]),
     );
   });
+
+  it('rolls per-connection issues up onto their resource summary row', () => {
+    // A single consumer whose protocol/version are unknown: the connection-level
+    // findings must surface on the cg-order resource row, not render as a healthy
+    // row with zero issues next to a full issues panel.
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Consumer',
+        clientId: 'consumer-a',
+        groupOrTopic: 'cg-order',
+        protocol: 'Custom',
+        version: '-',
+        address: '10.0.2.10:49152',
+      }),
+      connection({
+        type: 'Consumer',
+        clientId: 'consumer-b',
+        groupOrTopic: 'cg-clean',
+        address: '10.0.2.11:49152',
+      }),
+      connection({
+        type: 'Consumer',
+        clientId: 'consumer-c',
+        groupOrTopic: 'cg-clean',
+        address: '10.0.2.12:49152',
+      }),
+    ]);
+
+    const orderRow = diagnostics.resources.find((resource) => resource.resource === 'cg-order');
+    const cleanRow = diagnostics.resources.find((resource) => resource.resource === 'cg-clean');
+    expect(orderRow).toMatchObject({
+      status: 'warning',
+      issueCount: 3, // UNKNOWN_PROTOCOL + UNKNOWN_VERSION + INVALID_CONNECTION_TIME
+    });
+    expect(cleanRow).toMatchObject({ status: 'healthy', issueCount: 0 });
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNKNOWN_PROTOCOL',
+          resource: 'Consumer:cg-order',
+        }),
+        expect.objectContaining({
+          code: 'UNKNOWN_VERSION',
+          resource: 'Consumer:cg-order',
+        }),
+      ]),
+    );
+  });
+
+  it('attributes duplicate-record issues to their type-qualified resource row', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({
+        type: 'Producer',
+        clientId: 'dup-client',
+        groupOrTopic: 'order-events',
+        address: '10.0.1.12:49152',
+      }),
+      connection({
+        type: 'Producer',
+        clientId: 'dup-client',
+        groupOrTopic: 'order-events',
+        address: '10.0.1.12:49152',
+      }),
+    ]);
+
+    const row = diagnostics.resources.find((resource) => resource.resource === 'order-events');
+    expect(row).toMatchObject({ issueCount: 1 });
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'EXACT_DUPLICATE_CONNECTION',
+          resource: 'Producer:order-events',
+        }),
+      ]),
+    );
+  });
 });
