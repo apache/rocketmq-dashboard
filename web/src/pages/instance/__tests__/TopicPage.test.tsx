@@ -209,6 +209,61 @@ describe('TopicPage', () => {
     vi.clearAllMocks();
   });
 
+  it('resets the search text when the selected instance changes', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 5,
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY_CLUSTER',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 1,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 6,
+        name: 'instance-proxy-2',
+        remark: '',
+        type: 'PROXY_CLUSTER',
+        endpoint: '10.0.2.22:8080',
+        topicCount: 1,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      );
+    });
+    const searchInput = screen.getByPlaceholderText('搜索 Topic 名称');
+    await user.type(searchInput, 'topic-01');
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1', search: 'topic-01' }),
+      );
+    });
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-proxy-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-2', search: undefined, page: 1 }),
+      );
+    });
+    expect(screen.getByPlaceholderText('搜索 Topic 名称')).toHaveValue('');
+  });
+
   it('shows the selected Proxy deployment type explicitly', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       { ...selectedInstance, type: 'PROXY_LOCAL' },
