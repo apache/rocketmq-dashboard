@@ -1191,6 +1191,55 @@ describe('Consumer page', () => {
     expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes the subscription verdict on the 2s modal auto-refresh', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'inconsistent',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'consistent',
+        },
+      ]);
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    // The modal advertises that the diagnostic result refreshes every 2 seconds. Without any
+    // further user action the subscription consistency verdict must be re-checked alongside
+    // the progress table, not stay frozen at whatever the first load returned.
+    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
+      timeout: 10000,
+    });
+    expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {

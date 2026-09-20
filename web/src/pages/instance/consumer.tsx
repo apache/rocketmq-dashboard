@@ -406,10 +406,12 @@ const ConsumerPageContent = ({
   }, [autoRefresh, selectedInstanceId, triggerRefresh]);
 
   const loadSubscriptions = useCallback(
-    async (groupName: string, force = false) => {
+    async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && subscriptionsByGroup[cacheKey]) return;
-      setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+      if (!silent) {
+        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+      }
       setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
       try {
         const subscriptions = await getConsumerSubscriptions(
@@ -419,9 +421,13 @@ const ConsumerPageContent = ({
         setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
       } catch {
         setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
-        message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+        if (!silent) {
+          message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+        }
       } finally {
-        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        if (!silent) {
+          setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        }
       }
     },
     [subscriptionsByGroup, t, selectedInstanceId],
@@ -455,6 +461,10 @@ const ConsumerPageContent = ({
           setSelectedGroup((prev) => (prev && prev.name === groupName ? refreshed : prev));
         }
         await loadProgress(groupName, true, true);
+        // The modal advertises "每 2s 自动刷新" for the whole diagnostic result, which includes
+        // the subscription consistency verdict, not only the progress table. Refresh it silently
+        // so a failing backend does not toast every 2s and the check spinner does not flicker.
+        await loadSubscriptions(groupName, true, true);
       } catch {
         // 自动刷新失败静默处理，避免每 2s 弹错
       } finally {
@@ -463,7 +473,7 @@ const ConsumerPageContent = ({
     };
     const interval = window.setInterval(() => void tick(), 2000);
     return () => window.clearInterval(interval);
-  }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress]);
+  }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress, loadSubscriptions]);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
