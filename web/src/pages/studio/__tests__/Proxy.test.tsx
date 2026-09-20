@@ -26,7 +26,7 @@ import {
   reloadProxyConfig,
   removeProxyAddress,
 } from '../../../api/proxy';
-import { LangProvider } from '../../../i18n/LangContext';
+import { LangProvider, useLang } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
@@ -63,6 +63,24 @@ function renderPage() {
     <App>
       <LangProvider>
         <ProxyPage />
+      </LangProvider>
+    </App>,
+  );
+}
+
+// The load effect re-runs when the language changes because its callback closes over the
+// translated strings. A test-only switcher inside the same provider reproduces that.
+const LangSwitcher = () => {
+  const { setLang } = useLang();
+  return <button onClick={() => setLang('en')}>switch-en</button>;
+};
+
+function renderPageWithLangSwitch() {
+  return render(
+    <App>
+      <LangProvider>
+        <ProxyPage />
+        <LangSwitcher />
       </LangProvider>
     </App>,
   );
@@ -239,6 +257,41 @@ describe('ProxyPage', () => {
 
     expect(addProxyAddress).toHaveBeenCalledTimes(1);
     mutation.resolve(proxyHome);
+  });
+
+  it('does not let a stale add overwrite the list reloaded after a language switch', async () => {
+    const add = createDeferred<typeof proxyHome>();
+    const freshLoad = createDeferred<typeof proxyHome>();
+    let homeCalls = 0;
+    vi.mocked(queryProxyHomePage).mockImplementation(() => {
+      homeCalls += 1;
+      return homeCalls === 1 ? Promise.resolve(proxyHome) : freshLoad.promise;
+    });
+    vi.mocked(addProxyAddress).mockImplementation(() => add.promise);
+    const user = userEvent.setup();
+    renderPageWithLangSwitch();
+    await screen.findAllByText('127.0.0.1:8081');
+
+    await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
+    await user.click(screen.getByRole('button', { name: '新增' }));
+
+    // Switching the language re-runs the load effect while the add is still in flight.
+    // Its fresh response carries the post-add list; the older add response carries the
+    // pre-add list and must not overwrite it when it resolves afterwards.
+    await user.click(screen.getByRole('button', { name: 'switch-en' }));
+    await waitFor(() => expect(queryProxyHomePage).toHaveBeenCalledTimes(2));
+
+    freshLoad.resolve({
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    });
+    expect(await screen.findByText('10.0.0.10:8081')).toBeInTheDocument();
+
+    await act(async () => {
+      add.resolve(proxyHome);
+    });
+    expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
+    expect(screen.queryByText('Proxy 地址已新增')).not.toBeInTheDocument();
   });
 
   it('removes a Proxy address and applies the updated address list', async () => {
