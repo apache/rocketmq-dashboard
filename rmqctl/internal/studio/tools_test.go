@@ -63,6 +63,30 @@ func TestCallTool(t *testing.T) {
 	}
 }
 
+func TestCallToolIgnoresNonPositiveTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 200, "message": "success",
+			"data": map[string]any{"items": []any{}},
+		})
+	}))
+	defer server.Close()
+
+	for name, timeout := range map[string]time.Duration{"zero": 0, "negative": -time.Second} {
+		t.Run(name, func(t *testing.T) {
+			client := NewClient(server.Client())
+			result, err := client.CallTool(context.Background(), Target{
+				Server: server.URL, InstanceID: "instance-dev",
+				Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: timeout,
+			}, "rmq.topic.list", map[string]any{"instanceId": "instance-dev"})
+			resultMap, ok := result.(map[string]any)
+			if err != nil || !ok || resultMap["items"] == nil {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+		})
+	}
+}
+
 func TestCallToolKeepsCatalogControlsInArguments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request types.ToolCallRequest
