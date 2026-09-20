@@ -162,4 +162,24 @@ describe('BrokerCluster instance scope', () => {
     expect(screen.queryByText('broker-from-instance-1')).not.toBeInTheDocument();
     expect(await screen.findByText('broker-from-instance-2')).toBeInTheDocument();
   }, 20_000);
+
+  it('falls back to the first instance when the selected one is gone', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('broker-from-instance-1');
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-2'));
+
+    // The next discovery — a language change re-runs it — no longer lists instance-2.
+    vi.mocked(listInstances).mockResolvedValue([instanceFixture(1, 'instance-1')]);
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    // Keeping a selection that no longer exists would leave the page pointed at nothing.
+    await waitFor(() => expect(listClusters).toHaveBeenLastCalledWith('instance-1'));
+    expect(await screen.findByText('broker-from-instance-1')).toBeInTheDocument();
+  }, 20_000);
 });
