@@ -38,13 +38,18 @@ func (session *MCPClientSession) SendMessage(ctx context.Context, payload json.R
 	if bindErr != nil {
 		return nil, false, bindErr
 	}
+	decoded, err := decodeMCPMessage(payload)
+	if err != nil {
+		return nil, false, err
+	}
+	// A response frame answers a server-initiated request previously forwarded
+	// to the stdio client; it never travels as a client HTTP request.
+	if decoded.response != nil {
+		return nil, false, session.deliverResponse(*decoded.response)
+	}
 	// Client-originated messages follow the Streamable HTTP POST rules:
 	// https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#sending-messages-to-the-server
 	if err := session.transport.Start(ctx); err != nil {
-		return nil, false, err
-	}
-	decoded, err := decodeMCPMessage(payload)
-	if err != nil {
 		return nil, false, err
 	}
 	callCtx := ctx
@@ -63,6 +68,17 @@ func (session *MCPClientSession) SendMessage(ctx context.Context, payload json.R
 type decodedMCPMessage struct {
 	request      *mcptransport.JSONRPCRequest
 	notification *mcp.JSONRPCNotification
+	response     *mcpClientResponse
+}
+
+// mcpClientResponse is a JSON-RPC response frame produced by the stdio client
+// in reply to a request the upstream server initiated (for example
+// sampling/createMessage).
+type mcpClientResponse struct {
+	JSONRPC string                   `json:"jsonrpc"`
+	ID      mcp.RequestId            `json:"id"`
+	Result  json.RawMessage          `json:"result"`
+	Error   *mcp.JSONRPCErrorDetails `json:"error"`
 }
 
 func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
@@ -88,6 +104,16 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC notification: %w", err)
 		}
 		return decodedMCPMessage{notification: &notification}, nil
+	}
+	if hasID {
+		var response mcpClientResponse
+		if err := json.Unmarshal(payload, &response); err != nil {
+			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC response: %w", err)
+		}
+		if response.Result == nil && response.Error == nil {
+			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC response: missing result or error")
+		}
+		return decodedMCPMessage{response: &response}, nil
 	}
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
 }
@@ -260,6 +286,68 @@ func (session *MCPClientSession) forwardNotification(notification mcp.JSONRPCNot
 		return
 	}
 	session.enqueueNotification(payload)
+}
+
+// forwardRequest serializes a server-initiated request (for example
+// sampling/createMessage) to the stdio client and waits for its response
+// frame. mcp-go invokes this handler from the SSE reader with a bounded
+// context and POSTs the returned response back to the server.
+func (session *MCPClientSession) forwardRequest(
+	ctx context.Context,
+	request mcptransport.JSONRPCRequest,
+) (*mcptransport.JSONRPCResponse, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("encode MCP server request: %w", err)
+	}
+	// The pending response channel must be registered before the request
+	// becomes visible to the client so the response frame can never win the
+	// race against the registration.
+	response := make(chan *mcptransport.JSONRPCResponse, 1)
+	key := request.ID.String()
+	session.pendingMu.Lock()
+	session.pendingRequests[key] = response
+	session.pendingMu.Unlock()
+	defer func() {
+		session.pendingMu.Lock()
+		delete(session.pendingRequests, key)
+		session.pendingMu.Unlock()
+	}()
+	session.enqueueNotification(payload)
+	select {
+	case response := <-response:
+		return response, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-session.closed:
+		return nil, fmt.Errorf("MCP session closed before the client responded")
+	}
+}
+
+// deliverResponse routes a response frame from the stdio client to the pending
+// server request. Responses without a pending request are dropped with a
+// warning: once the forwarding handler has timed out there is no way to relay
+// the frame to the server anymore.
+func (session *MCPClientSession) deliverResponse(response mcpClientResponse) error {
+	key := response.ID.String()
+	session.pendingMu.Lock()
+	pending, ok := session.pendingRequests[key]
+	session.pendingMu.Unlock()
+	if !ok {
+		slog.Warn("MCP client response dropped: no pending server request", "requestId", key)
+		return nil
+	}
+	select {
+	case pending <- &mcptransport.JSONRPCResponse{
+		JSONRPC: mcp.JSONRPC_VERSION,
+		ID:      response.ID,
+		Result:  response.Result,
+		Error:   response.Error,
+	}:
+	default:
+		slog.Warn("MCP client response dropped: pending server request already answered", "requestId", key)
+	}
+	return nil
 }
 
 func (session *MCPClientSession) enqueueNotification(payload json.RawMessage) {

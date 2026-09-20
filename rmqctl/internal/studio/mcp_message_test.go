@@ -21,6 +21,32 @@ import (
 	"testing"
 )
 
+// TestDecodeMCPMessageAcceptsClientResponseFrames verifies that response
+// frames produced by the stdio client in reply to server-initiated requests
+// decode instead of being rejected as unknown frames.
+func TestDecodeMCPMessageAcceptsClientResponseFrames(t *testing.T) {
+	decoded, err := decodeMCPMessage(json.RawMessage(`{"jsonrpc":"2.0","id":"srv-req-1","result":{"role":"assistant"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.request != nil || decoded.notification != nil || decoded.response == nil {
+		t.Fatalf("decoded = %#v, want only a response", decoded)
+	}
+	if decoded.response.ID.String() != "string:srv-req-1" {
+		t.Fatalf("response id = %s, want string:srv-req-1", decoded.response.ID)
+	}
+	if decoded.response.Error != nil || len(decoded.response.Result) == 0 {
+		t.Fatalf("response = %#v, want a result and no error", decoded.response)
+	}
+	decoded, err = decodeMCPMessage(json.RawMessage(`{"jsonrpc":"2.0","id":3,"error":{"code":-32000,"message":"denied"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.response == nil || decoded.response.Error == nil || decoded.response.Error.Code != -32000 {
+		t.Fatalf("decoded = %#v, want an error response", decoded)
+	}
+}
+
 func toolCallPayload(t *testing.T, tool string, arguments map[string]any) []byte {
 	t.Helper()
 	params := map[string]any{"name": tool}

@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -125,6 +126,126 @@ func TestSessionStreamsPostSSEWithoutContinuousGet(t *testing.T) {
 	}
 }
 
+// TestSessionForwardsServerRequestsAndClientResponses verifies bidirectional
+// forwarding: a server-initiated request (for example sampling/createMessage)
+// delivered on the POST SSE stream is surfaced to the stdio client, and the
+// client's response frame is relayed back to the server as a POST.
+func TestSessionForwardsServerRequestsAndClientResponses(t *testing.T) {
+	var mu sync.Mutex
+	var responseToServer []byte
+	responseRelayed := make(chan struct{})
+	var relayOnce sync.Once
+	client := NewClient(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method == http.MethodDelete {
+			return mcpHTTPResponse(http.StatusNoContent, "", ""), nil
+		}
+		payload := readMCPPayload(t, request)
+		switch payload.Method {
+		case string(mcp.MethodInitialize):
+			response := mcpJSONResultResponse(payload.ID, map[string]any{
+				"protocolVersion": mcp.LATEST_PROTOCOL_VERSION,
+				"capabilities":    map[string]any{},
+				"serverInfo":      map[string]any{"name": "studio", "version": "1"},
+			})
+			response.Header.Set(mcptransport.HeaderKeySessionID, "session-1")
+			return response, nil
+		case string(mcp.MethodNotificationInitialized):
+			return mcpHTTPResponse(http.StatusAccepted, "", ""), nil
+		case string(mcp.MethodToolsList):
+			reader, writer := io.Pipe()
+			go func() {
+				// The server initiates a sampling request on the stream opened
+				// for tools/list and only completes the call after the client's
+				// response has been relayed back.
+				_, _ = fmt.Fprint(writer, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"srv-req-1\",\"method\":\"sampling/createMessage\",\"params\":{\"messages\":[]}}\n\n")
+				select {
+				case <-responseRelayed:
+				case <-request.Context().Done():
+					_ = writer.Close()
+					return
+				}
+				_, _ = fmt.Fprintf(writer, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"tools\":[]}}\n\n", payload.ID)
+				<-request.Context().Done()
+				_ = writer.Close()
+			}()
+			response := mcpHTTPResponse(http.StatusOK, "text/event-stream", "")
+			response.Body = reader
+			return response, nil
+		default:
+			// A response frame (id, no method) sent by the stdio client must be
+			// relayed to the upstream server.
+			if len(payload.ID) > 0 {
+				mu.Lock()
+				responseToServer = payload.Raw
+				mu.Unlock()
+				relayOnce.Do(func() { close(responseRelayed) })
+				return mcpHTTPResponse(http.StatusAccepted, "", ""), nil
+			}
+			return nil, fmt.Errorf("unexpected payload: %s", payload.Raw)
+		}
+	})})
+	session := newMCPTestSession(t, client, Target{
+		Server: "http://localhost", InstanceID: "instance-dev",
+		Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: time.Second,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	initializeClientSession(t, ctx, session)
+
+	// The proxy runs client calls concurrently with relaying server-initiated
+	// requests, so the tools/list call must be in flight while the response to
+	// the sampling request is sent.
+	type callOutcome struct {
+		response json.RawMessage
+		ok       bool
+		err      error
+	}
+	outcome := make(chan callOutcome, 1)
+	go func() {
+		response, ok, err := session.SendMessage(ctx, json.RawMessage(`{"jsonrpc":"2.0","id":"list-1","method":"tools/list","params":{}}`))
+		outcome <- callOutcome{response: response, ok: ok, err: err}
+	}()
+	select {
+	case forwarded := <-session.Notifications():
+		if !bytes.Contains(forwarded, []byte(`sampling/createMessage`)) ||
+			!bytes.Contains(forwarded, []byte(`"id":"srv-req-1"`)) {
+			t.Fatalf("forwarded server request = %s", forwarded)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("server request was not forwarded to the stdio client")
+	}
+	clientResponse := json.RawMessage(`{"jsonrpc":"2.0","id":"srv-req-1","result":{"role":"assistant","content":{"type":"text","text":"ok"}}}`)
+	if _, ok, err := session.SendMessage(ctx, clientResponse); err != nil || ok {
+		t.Fatalf("client response = ok:%t err:%v", ok, err)
+	}
+	select {
+	case <-responseRelayed:
+		mu.Lock()
+		payload := responseToServer
+		mu.Unlock()
+		if !bytes.Contains(payload, []byte(`"id":"srv-req-1"`)) ||
+			!bytes.Contains(payload, []byte(`"role":"assistant"`)) {
+			t.Fatalf("client response forwarded to the server = %s", payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("client response was not forwarded to the server")
+	}
+	select {
+	case result := <-outcome:
+		if result.err != nil || !result.ok {
+			t.Fatalf("tools/list = %s, ok:%t err:%v", result.response, result.ok, result.err)
+		}
+		if !bytes.Contains(result.response, []byte(`"tools":[]`)) {
+			t.Fatalf("tools/list response = %s", result.response)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("tools/list did not complete after the client response was relayed")
+	}
+	if err := session.Close(); err != nil {
+		t.Fatalf("Close() err = %v", err)
+	}
+}
+
 func newMCPTestSession(t *testing.T, client Client, target Target) *MCPClientSession {
 	t.Helper()
 	session, err := client.NewMCPClientSession(target)
@@ -156,6 +277,10 @@ type observedMCPPayload struct {
 
 func readMCPPayload(t *testing.T, request *http.Request) observedMCPPayload {
 	t.Helper()
+	if request.Body == nil {
+		t.Errorf("request %s %s has no body", request.Method, request.URL.Path)
+		return observedMCPPayload{}
+	}
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		t.Errorf("read request: %v", err)

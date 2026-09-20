@@ -43,7 +43,8 @@ var noRedirectPolicy = func(*http.Request, []*http.Request) error {
 
 // MCPClientSession manages a Streamable HTTP MCP session with Studio Server.
 // It handles initialize/initialized lifecycle, automatic reconnection on
-// session termination, and forwarding of server-initiated notifications.
+// session termination, and forwarding of server-initiated notifications and
+// requests (sampling/createMessage, roots/list, elicitation/create, ...).
 type MCPClientSession struct {
 	instanceID string
 	transport  mcptransport.HTTPConnection
@@ -52,6 +53,11 @@ type MCPClientSession struct {
 	closeOnce     sync.Once
 	closed        chan struct{}
 	notifications chan json.RawMessage
+
+	// pendingRequests matches the id of a forwarded server request to the
+	// channel that receives the stdio client's response frame.
+	pendingMu       sync.Mutex
+	pendingRequests map[string]chan *mcptransport.JSONRPCResponse
 
 	// sendMu allows ordinary messages to be concurrent while preventing any
 	// message from entering a replacement session before reinitialization and
@@ -101,13 +107,17 @@ func (c Client) NewMCPClientSession(target Target) (*MCPClientSession, error) {
 		return nil, err
 	}
 	session := &MCPClientSession{
-		instanceID:    target.InstanceID,
-		transport:     transport,
-		timeout:       target.Timeout,
-		closed:        make(chan struct{}),
-		notifications: make(chan json.RawMessage, notificationBufferSize),
+		instanceID:      target.InstanceID,
+		transport:       transport,
+		timeout:         target.Timeout,
+		closed:          make(chan struct{}),
+		notifications:   make(chan json.RawMessage, notificationBufferSize),
+		pendingRequests: make(map[string]chan *mcptransport.JSONRPCResponse),
 	}
 	transport.SetNotificationHandler(session.forwardNotification)
+	// Without this handler mcp-go answers every server-initiated request with
+	// -32601 method not found instead of forwarding it to the stdio client.
+	transport.SetRequestHandler(session.forwardRequest)
 	return session, nil
 }
 
@@ -224,6 +234,7 @@ func (session *MCPClientSession) Close() error {
 }
 
 func (session *MCPClientSession) Notifications() <-chan json.RawMessage {
-	// Server-initiated notifications are forwarded to the stdio MCP client.
+	// Server-initiated notifications and requests are forwarded to the stdio
+	// MCP client.
 	return session.notifications
 }
