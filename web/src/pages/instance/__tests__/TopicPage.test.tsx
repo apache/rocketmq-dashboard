@@ -930,6 +930,35 @@ describe('TopicPage', () => {
     expect(screen.getAllByText('imported-topic').length).toBeGreaterThan(0);
   });
 
+  it('reloads the paginated inventory after importing topics', async () => {
+    const user = userEvent.setup();
+    const imported: Topic = {
+      ...buildTopics(1)[0],
+      name: 'imported-topic',
+      instanceId: 'instance-proxy-1',
+    };
+    topicServiceMocks.listTopicsPage
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, size: 20 })
+      .mockResolvedValue({ items: [imported], total: 1, page: 1, size: 20 });
+    topicServiceMocks.importTopics.mockResolvedValue({ topics: [imported], failures: [] });
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText(/共 0 个 Topic/);
+    const csv = [
+      '"Name","Namespace","Type","Cluster ID","Write Queues","Read Queues","Permission","Remark"',
+      '"imported-topic","ignored","NORMAL","ignored-cluster","4","6","RW","orders"',
+    ].join('\n');
+    await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'topics.csv'));
+    await screen.findByText('检测到 1 个 Topic，将通过后端批量导入');
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+
+    // The authoritative server page decides both the rows and the total: a local
+    // patch of the loaded page cannot keep the header and the pagination honest.
+    expect(await screen.findByText(/共 1 个 Topic/)).toBeInTheDocument();
+    expect(screen.getAllByText('imported-topic').length).toBeGreaterThan(0);
+  });
+
   it('does not call importTopics when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
