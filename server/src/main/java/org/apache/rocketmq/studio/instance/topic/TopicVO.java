@@ -30,8 +30,10 @@ public class TopicVO extends BaseEntity {
     private String clusterId;
     private String instanceId;
     private TopicType type;
-    private int writeQueues;
-    private int readQueues;
+    // Nullable so an update can distinguish "not submitted" from an explicit 0, which is a
+    // legitimate drain operation; mirrors the optional semantics of perm.
+    private Integer writeQueues;
+    private Integer readQueues;
     private TopicPerm perm;
     private long messageCount;
     private double tps;

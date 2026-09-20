@@ -355,7 +355,7 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setTopic(topic.getName());
         request.setRemark(topic.getRemark());
         Long requestedQueueNum = null;
-        if (topic.getWriteQueues() > 0 || topic.getReadQueues() > 0) {
+        if (hasQueueCount(topic)) {
             requestedQueueNum = queueNum(topic);
             request.setQueueNum(requestedQueueNum);
         }
@@ -1129,23 +1129,33 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static void validateQueueNumber(TopicVO topic) {
-        if (topic.getWriteQueues() < 0 || topic.getReadQueues() < 0) {
+        Integer writeQueues = topic.getWriteQueues();
+        Integer readQueues = topic.getReadQueues();
+        if (writeQueues != null && writeQueues < 0 || readQueues != null && readQueues < 0) {
             throw new BusinessException(400, "Topic queue number must not be negative");
         }
-        if (topic.getWriteQueues() > 0 && topic.getReadQueues() > 0
-                && topic.getWriteQueues() != topic.getReadQueues()) {
+        if (writeQueues != null && readQueues != null && writeQueues > 0 && readQueues > 0
+                && writeQueues.intValue() != readQueues.intValue()) {
             throw new BusinessException(400,
                     "Topic write and read queue numbers must match for Tencent Cloud");
         }
-        int queueNum = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : topic.getReadQueues();
+        int queueNum = writeQueues != null && writeQueues > 0 ? writeQueues
+                : readQueues != null ? readQueues : 0;
         if (queueNum > 0 && (queueNum < MIN_QUEUE_NUM || queueNum > MAX_QUEUE_NUM)) {
             throw new BusinessException(400, "Topic queue number must be between 3 and 16");
         }
     }
 
     private static Long queueNum(TopicVO topic) {
-        int queueNum = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : topic.getReadQueues();
+        int queueNum = topic.getWriteQueues() != null && topic.getWriteQueues() > 0
+                ? topic.getWriteQueues()
+                : topic.getReadQueues() != null ? topic.getReadQueues() : 0;
         return (long) (queueNum > 0 ? queueNum : DEFAULT_QUEUE_NUM);
+    }
+
+    private static boolean hasQueueCount(TopicVO topic) {
+        return topic.getWriteQueues() != null && topic.getWriteQueues() > 0
+                || topic.getReadQueues() != null && topic.getReadQueues() > 0;
     }
 
     private static TopicPerm defaultPerm(TopicPerm perm) {

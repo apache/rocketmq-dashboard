@@ -257,8 +257,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         topic.setInstanceId(instanceId);
         String topicName = topic.getName();
-        int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
-        int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
+        int writeQueues = topic.getWriteQueues() != null && topic.getWriteQueues() > 0
+                ? topic.getWriteQueues() : 8;
+        int readQueues = topic.getReadQueues() != null && topic.getReadQueues() > 0
+                ? topic.getReadQueues() : 8;
 
         return executeForInstance(instanceId, admin -> {
             try {
@@ -359,11 +361,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 // Preserve the existing queue counts when the update request does not change them,
                 // matching the perm semantics below; defaulting to 8 would silently resize the
                 // topic on partial updates (e.g. perm or remark only).
-                int writeQueues = topic.getWriteQueues() > 0
+                int writeQueues = topic.getWriteQueues() != null && topic.getWriteQueues() >= 0
                         ? topic.getWriteQueues()
                         : existing != null && existing.getWriteQueueNums() != null
                                 && existing.getWriteQueueNums() > 0 ? existing.getWriteQueueNums() : 8;
-                int readQueues = topic.getReadQueues() > 0
+                int readQueues = topic.getReadQueues() != null && topic.getReadQueues() >= 0
                         ? topic.getReadQueues()
                         : existing != null && existing.getReadQueueNums() != null
                                 && existing.getReadQueueNums() > 0 ? existing.getReadQueueNums() : 8;
