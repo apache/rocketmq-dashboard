@@ -152,6 +152,7 @@ const DLQPage = () => {
     setGroups([]);
     setTotal(0);
     setPage(1);
+    setSearch('');
     setSelectedGroupNames([]);
     setDetailOpen(false);
     setDetailGroup(null);
