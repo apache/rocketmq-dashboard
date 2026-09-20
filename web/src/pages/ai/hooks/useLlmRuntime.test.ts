@@ -67,7 +67,7 @@ describe('useLlmRuntime', () => {
 
   it('a late response for a disabled runtime never repopulates the state', async () => {
     const configDeferred = deferred<LlmConfig>();
-    const modelsDeferred = deferred({ status: 0, data: [{ id: 'gpt-test' }] });
+    const modelsDeferred = deferred<unknown>();
     configMock.mockReturnValue(configDeferred.promise as never);
     modelsMock.mockReturnValue(modelsDeferred.promise as never);
 
@@ -91,11 +91,31 @@ describe('useLlmRuntime', () => {
     expect(result.current.modelsLoading).toBe(false);
   });
 
+  it('never repopulates the state when the config response resolves after the toggle', async () => {
+    // The config request is still in flight when the runtime is disabled; once it finally
+    // resolves it belongs to a superseded load and must be dropped entirely.
+    const configDeferred = deferred<LlmConfig>();
+    configMock.mockReturnValue(configDeferred.promise as never);
+    modelsMock.mockResolvedValue({ status: 0, data: [] });
+
+    const { result, rerender } = render(true);
+    rerender({ enabled: false });
+    await act(async () => {
+      configDeferred.resolve(config);
+    });
+    expect(result.current.config).toBeNull();
+    expect(result.current.modelOptions).toEqual([]);
+    expect(result.current.llmReady).toBe(false);
+    expect(modelsMock).not.toHaveBeenCalled();
+  });
+
   it('keeps the last request winning when reload overlaps', async () => {
     // The initial effect load, the first reload and the second reload each suspend on the
-    // deferred the mock hands out at call time.
+    // deferred the mock hands out at call time. Resolving the latest request first proves the
+    // later-arriving superseded response cannot overwrite it.
     const superseded = deferred<LlmConfig>();
     const latest = deferred<LlmConfig>();
+    const latestConfig: LlmConfig = { ...config, model: 'gpt-latest' };
     let current = superseded;
     configMock.mockImplementation(() => current.promise as never);
     modelsMock.mockResolvedValue({ status: 0, data: [] });
@@ -106,10 +126,11 @@ describe('useLlmRuntime', () => {
       current = latest;
       const second = result.current.reload();
       current = superseded;
+      latest.resolve(latestConfig);
       superseded.resolve(config);
-      latest.resolve(config);
       await Promise.all([first, second]);
     });
-    expect(result.current.config).toEqual(config);
+    expect(result.current.config).toEqual(latestConfig);
+    expect(result.current.config?.model).toBe('gpt-latest');
   });
 });
