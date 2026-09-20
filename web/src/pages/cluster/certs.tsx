@@ -89,7 +89,7 @@ const K8sCertsPage = () => {
     return () => {
       active = false;
     };
-  }, [reloadNonce]);
+  }, [reloadNonce, t]);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
