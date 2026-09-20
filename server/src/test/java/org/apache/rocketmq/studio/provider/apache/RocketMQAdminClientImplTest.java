@@ -931,6 +931,32 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void updateTopicPreservesStoredZeroQueueCountsWhenOmitted() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setWriteQueueNums(0);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setPerm(TopicPerm.RO);
+
+        adminClient.updateTopic(topic);
+
+        // A stored write=0 (drained) state must survive an update that omits the counts.
+        ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isZero();
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isEqualTo(8);
+        assertThat(existing.getWriteQueueNums()).isZero();
+        assertThat(existing.getReadQueueNums()).isEqualTo(8);
+    }
+
+    @Test
     void topicDeleteUsesSelectedInstanceAndScopesMetadataToClusterAndInstance() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
