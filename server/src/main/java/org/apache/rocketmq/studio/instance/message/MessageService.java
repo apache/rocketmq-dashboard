@@ -134,14 +134,34 @@ public class MessageService {
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
-        DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
-                .map(provider -> provider.consumeMessageDirectly(request))
-                .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
-        operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(), request.getInstanceId(),
-                "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
-                        + ", clientId=" + request.getClientId() + ", result=" + result.getConsumeResult(),
-                "SUCCESS", null);
-        return result;
+        String detail = "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
+                + ", clientId=" + request.getClientId();
+        try {
+            DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
+                    .map(provider -> provider.consumeMessageDirectly(request))
+                    .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
+            recordDirectConsumeAudit(request, detail + ", result=" + result.getConsumeResult(),
+                    auditResult(result.getConsumeResult()), null);
+            return result;
+        } catch (RuntimeException e) {
+            recordDirectConsumeAudit(request, detail, "FAILED", e.getMessage());
+            throw e;
+        }
+    }
+
+    /** consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed. */
+    private static String auditResult(String consumeResult) {
+        return "CR_SUCCESS".equals(consumeResult) ? "SUCCESS" : "FAILED";
+    }
+
+    private void recordDirectConsumeAudit(DirectConsumeMessageDTO request, String detail,
+                                          String result, String errorInfo) {
+        try {
+            operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(),
+                    request.getInstanceId(), detail, result, errorInfo);
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record direct-consume audit: {}", auditFailure.getMessage());
+        }
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
