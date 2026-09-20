@@ -31,7 +31,6 @@ tools:
             required:
               - id
               - name
-              - metric
               - threshold
               - channels
               - enabled
@@ -43,8 +42,9 @@ tools:
                 type: string
                 minLength: 1
               metric:
-                type: string
-                minLength: 1
+                type:
+                  - string
+                  - 'null'
               operator:
                 type: string
               threshold:
