@@ -17,16 +17,13 @@
 package org.apache.rocketmq.studio.ops.ai.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
-import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
-import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.InstanceCredentialResolver;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
-import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.springframework.http.HttpHeaders;
-import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriUtils;
 
 import javax.crypto.Mac;
@@ -40,9 +37,18 @@ import java.util.HexFormat;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Verifies the {@code rmq-hmac-sha256} credential/signature pair of an MCP request.
+ *
+ * <p>Credential resolution is delegated to {@link InstanceCredentialResolver}, the single
+ * implementation shared with the hosted agent's {@code rmqctl} workspace. Sharing it is what keeps
+ * the two sides of the loop in agreement: the workspace injects a credential into the agent's child
+ * process, this class decides whether a request signed with that credential is authentic, and a
+ * divergence between the two lookups would surface as an inexplicable 401 on every tool call.
+ */
 public class McpAuthenticator {
 
-    static final String ALGORITHM = "RMQ-HMAC-SHA256";
+    static final String ALGORITHM = "rmq-hmac-sha256";
     static final String HEADER_INSTANCE = "x-rmq-instance-id";
     static final String HEADER_TIMESTAMP = "x-rmq-timestamp";
     static final String AUTHENTICATION_FAILED_MESSAGE = "MCP authentication failed.";
@@ -51,8 +57,7 @@ public class McpAuthenticator {
             "^" + Pattern.quote(ALGORITHM)
                     + " Credential=([^,]+), Signature=([0-9a-f]{64})$");
     private final InstanceResolver instanceResolver;
-    private final RuntimeAdminClientResolver adminClientResolver;
-    private final CloudCredentialRepository cloudCredentialRepository;
+    private final InstanceCredentialResolver credentialResolver;
     private final Clock clock;
 
     public McpAuthenticator(
@@ -68,8 +73,8 @@ public class McpAuthenticator {
             CloudCredentialRepository cloudCredentialRepository,
             Clock clock) {
         this.instanceResolver = instanceResolver;
-        this.adminClientResolver = adminClientResolver;
-        this.cloudCredentialRepository = cloudCredentialRepository;
+        this.credentialResolver = new InstanceCredentialResolver(
+                adminClientResolver, cloudCredentialRepository, instanceResolver);
         this.clock = clock;
     }
 
@@ -126,27 +131,20 @@ public class McpAuthenticator {
         }
     }
 
+    /**
+     * Delegates to the shared {@link InstanceCredentialResolver} and collapses every "this instance
+     * has no usable credential" outcome into the same opaque failure as a bad signature. Anything
+     * that is <em>not</em> a configuration problem — a database outage inside the credential
+     * repository — keeps propagating, so the filter can still answer 500 instead of blaming the
+     * caller's credentials for it.
+     */
     private Credential resolveCredential(InstanceVO instance) {
-        if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            try {
-                MqAdminProperties.Credential credential =
-                        adminClientResolver.resolveCredential(instance);
-                return new Credential(credential.getAccessKey().trim(), credential.getSecretKey().trim());
-            } catch (BusinessException exception) {
-                throw authenticationFailed(exception);
-            }
+        try {
+            InstanceCredentialResolver.InstanceCredential resolved = credentialResolver.resolve(instance);
+            return new Credential(resolved.accessKey(), resolved.secretKey());
+        } catch (BusinessException exception) {
+            throw authenticationFailed(exception);
         }
-        if (instance.getCredentialId() == null) {
-            throw authenticationFailed();
-        }
-        CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
-                .orElseThrow(McpAuthenticator::authenticationFailed);
-
-        if (!StringUtils.hasText(credential.getAccessKey())
-                || !StringUtils.hasText(credential.getSecretKey())) {
-            throw authenticationFailed();
-        }
-        return new Credential(credential.getAccessKey().trim(), credential.getSecretKey().trim());
     }
 
     private static void verifySignature(HttpServletRequest request, Authorization authorization, Credential credential,

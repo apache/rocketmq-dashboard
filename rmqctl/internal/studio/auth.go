@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	HMACAlgorithm   = "RMQ-HMAC-SHA256"
+	HMACAlgorithm   = "rmq-hmac-sha256"
 	HeaderInstance  = "x-rmq-instance-id"
 	HeaderTimestamp = "x-rmq-timestamp"
 )

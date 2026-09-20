@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import type { AiMessageRequest } from '../../api/aiConversations';
 import type { AgentEngine } from '../../stores/engineStore';
 
 export type ChatMode = 'chat' | 'diagnose' | 'manage' | 'query';
@@ -28,20 +29,20 @@ export interface ChatDraft {
   engine?: AgentEngine;
   mode?: ChatMode;
   enhance?: boolean;
-  newConversation?: boolean;
-  conversationId?: string;
+  /**
+   * RocketMQ instance the created conversation is pinned to (`rmqctl --instance-id`). Optional:
+   * an unbound conversation can still be created and answered without instance-scoped tools.
+   */
+  instanceId?: string;
 }
 
 export function getChatDraft(state: unknown): ChatDraft | null {
   if (typeof state !== 'object' || state === null) return null;
   const candidate = state as Record<string, unknown>;
   const prompt = typeof candidate.prompt === 'string' ? candidate.prompt.trim() : '';
-  const conversationId =
-    typeof candidate.conversationId === 'string' && candidate.conversationId.trim()
-      ? candidate.conversationId
-      : undefined;
-  if (!prompt && !conversationId) return null;
+  if (!prompt) return null;
   const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
+  const instanceId = typeof candidate.instanceId === 'string' ? candidate.instanceId.trim() : '';
   const mode =
     typeof candidate.mode === 'string' && CHAT_MODES.has(candidate.mode as ChatMode)
       ? (candidate.mode as ChatMode)
@@ -57,12 +58,63 @@ export function getChatDraft(state: unknown): ChatDraft | null {
     ...(engine ? { engine } : {}),
     ...(mode ? { mode } : {}),
     ...(candidate.enhance === true ? { enhance: true } : {}),
-    ...(candidate.newConversation === true ? { newConversation: true } : {}),
-    ...(conversationId ? { conversationId } : {}),
+    ...(instanceId ? { instanceId } : {}),
   };
 }
 
 export function shouldOpenChatHistory(state: unknown): boolean {
   if (typeof state !== 'object' || state === null) return false;
   return (state as Record<string, unknown>).historyIntent === 'open';
+}
+
+export function shouldOpenTools(state: unknown): boolean {
+  if (typeof state !== 'object' || state === null) return false;
+  return (state as Record<string, unknown>).toolsIntent === 'open';
+}
+
+/**
+ * The `/ai/c/:conversationId` route param (or any numeric id string) → a positive integer id;
+ * anything else → null, which is the bare `/ai` route's "no conversation on screen yet".
+ * Conversation ids are `bigint unsigned AUTO_INCREMENT`, so a non-positive or fractional value is
+ * a hand-edited URL, not an id.
+ */
+export function parseConversationId(raw: string | undefined | null): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * `AiMessageRequest` assembled from composer state. Empty optional overrides are OMITTED rather
+ * than sent as empty strings: the run row snapshots the overrides it was actually admitted with,
+ * and an empty `model` would snapshot a lie.
+ */
+export function buildMessageRequest(
+  message: string,
+  model: string,
+  engine: string,
+  mode: ChatMode,
+  enhance?: boolean,
+): AiMessageRequest {
+  return {
+    message,
+    ...(model ? { model } : {}),
+    engine,
+    mode,
+    ...(enhance ? { enhance: true } : {}),
+  };
+}
+
+/** The auto-send request of a home-page draft; the engine selector is the engine fallback. */
+export function draftToMessageRequest(
+  draft: ChatDraft,
+  fallbackEngine: AgentEngine,
+): AiMessageRequest {
+  return buildMessageRequest(
+    draft.prompt,
+    draft.model ?? '',
+    draft.engine ?? fallbackEngine,
+    draft.mode ?? 'chat',
+    draft.enhance,
+  );
 }

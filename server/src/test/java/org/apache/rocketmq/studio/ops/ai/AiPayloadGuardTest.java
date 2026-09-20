@@ -31,27 +31,16 @@ class AiPayloadGuardTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void chatMeasuresUtf8BytesAndAcceptsTheExactBoundary() {
-        ChatDTO boundary = ChatDTO.builder()
-                .message("\u754c".repeat(AiPayloadGuard.MAX_MESSAGE_BYTES / 3) + "x")
-                .build();
-        ChatDTO oversized = ChatDTO.builder()
-                .message(boundary.getMessage() + "\u754c")
-                .build();
+    void toolNameMeasuresUtf8BytesAndAcceptsTheExactBoundary() {
+        String boundary = "\u754c".repeat(AiPayloadGuard.MAX_TOOL_NAME_BYTES / 3) + "x";
+        String oversized = boundary + "\u754c";
 
-        assertThatCode(() -> AiPayloadGuard.validateChat(boundary)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> AiPayloadGuard.validateChat(oversized))
+        assertThatCode(() -> AiPayloadGuard.validateToolInvocation(
+                boundary, Map.of(), objectMapper)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> AiPayloadGuard.validateToolInvocation(
+                oversized, Map.of(), objectMapper))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("UTF-8 bytes");
-    }
-
-    @Test
-    void commandRequiresPromptOrCommand() {
-        AiCommandDTO request = AiCommandDTO.builder().context(Map.of("cluster", "main")).build();
-
-        assertThatThrownBy(() -> AiPayloadGuard.validateCommand(request, objectMapper))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Command or prompt is required");
     }
 
     @Test

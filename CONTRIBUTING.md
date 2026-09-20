@@ -31,8 +31,10 @@ Recommended background reading:
 ### Run the full stack
 
 ```bash
-cd deploy/rocketmq && docker compose up -d   # RocketMQ topology + network
-cd .. && docker compose up -d --build        # MySQL + Studio backend + frontend
+# Run from the repository root; rocketmq_net is external to both compose files and must exist first
+(docker network create rocketmq_net 2>/dev/null || true) && \
+  docker compose -f deploy/rocketmq/docker-compose.yml up -d && \
+  docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
 Studio is then available at <http://127.0.0.1:6789> (frontend) and <http://127.0.0.1:8888>
@@ -110,8 +112,9 @@ Pull requests are merged with **squash merge only**, so the merged commit messag
 - **One coherent change per pull request.** Do not split a single fix into a series of
   one-line pull requests, and do not bundle unrelated changes together.
 - **It builds and the tests pass.** CI runs the backend build, the backend test suite, the
-  frontend build and the frontend image build. A pull request that does not compile will be
-  closed.
+  frontend build, the frontend image build, and the Go CLI checks (`rmqctl`: `gofmt`,
+  catalog/manifest consistency, `go vet`, `go test -race`, build). A pull request that does
+  not compile will be closed.
 - **It is reviewed code, not just generated code.** Using AI assistance is fine, but you are
   responsible for the result: read the diff, understand it, and verify it with tests. Bulk
   submissions of unverified changes are closed without review.
@@ -125,13 +128,26 @@ Pull requests are merged with **squash merge only**, so the merged commit messag
 The rules below are enforced by review or by the build; details and rationale live in
 [README](README.md#development-guidelines) and [`docs/`](docs).
 
-- **Package root** `org.apache.rocketmq.studio`, sources under `server/src/`.
+- **Package root** `org.apache.rocketmq.studio`, sources under `server/src/`. The repository
+  also holds a Go module, `rmqctl/`, which is compiled into the server image and is what a
+  hosted agent uses to reach the MCP tools; it follows Go conventions (`gofmt`, `go vet`,
+  `go test -race` — `make -C rmqctl ci` runs exactly what CI runs) and its tool catalog must stay
+  in sync with the server's `tool-catalog` manifest, which `make -C rmqctl catalog-verify` checks.
 - **Hexagonal architecture** (domain / application / adapter) is asserted by ArchUnit tests
   that run as part of `mvn test` — a violation fails the build.
 - **Lombok** everywhere: `@Data` / `@Builder` / `@NoArgsConstructor` / `@AllArgsConstructor`
   on POJOs, `@RequiredArgsConstructor` for constructor injection, `@Slf4j` for logging.
 - **REST layer**: write operations take a DTO with Jakarta validation and return a VO; every
   response is wrapped in `Result<T>`; errors are raised as `BusinessException(400, msg)`.
+- **The AI event vocabulary is a cross-language contract.** An agent transcript has to render
+  identically whether it is watched live over SSE or replayed from the database, so the event
+  types are pinned by one committed fixture, `server/src/test/resources/ai/ai-event-contract.json`,
+  which both `AiEventContractTest` (Java) and `web/src/api/aiEvents.contract.test.ts` (TypeScript)
+  read. Adding, renaming or removing a `LiveEvent` / `TimelineEvent` subtype means updating the
+  fixture **and** the type set on **both** sides in the same pull request; changing only one turns
+  CI red, which is the point. The Java switch over `AgentEvent` is deliberately exhaustive with no
+  `default` branch, so a new subtype that has not been given a projection is a compile error rather
+  than a silently dropped event.
 - **RocketMQ clients are long-lived and pooled.** Use the existing factories and pools
   (`MqAdminExtFactory`, `MqClientPool`) instead of creating, starting and shutting down a
   client per request.
@@ -144,6 +160,27 @@ The rules below are enforced by review or by the build; details and rationale li
 - **Frontend**: minimum font size 14px; tables must not need a horizontal scrollbar at
   normal widths (use `tableScrollX(columns)`); page-level neutral notes use the shared
   `InfoBanner` component.
+- **List tables**: the Group management page (`web/src/pages/instance/consumer.tsx`) is the
+  reference implementation. Exactly one column — the primary text column — uses `minWidth`
+  and absorbs the surplus width of wide windows; every other column declares a fixed
+  `width`. The action column is always the last column with a fixed width, and its buttons
+  are right-aligned (`<Flex gap={6} justify="flex-end">`) so they sit flush with the right
+  edge of the table instead of leaving trailing whitespace. `scroll.x` is always derived via
+  `tableScrollX(columns)`; never hand-write a magic number. The declared widths are a budget:
+  their sum (plus the selection/expand columns) must stay within the content area at the
+  standard 1560px window — the reference page totals ~1290px — so no horizontal scrollbar
+  appears at the default width. Never leave a column without `width`/`minWidth`: under
+  `tableLayout="fixed"` unsized columns share the whole `scroll.x` evenly and push the
+  action column past the viewport. Verify in a real browser after adding or resizing
+  columns.
+- **Configuration**: `server/src/main/resources/application.yml` keeps environment-variable
+  overrides minimal. Only genuinely deployment-specific values — datasource coordinates,
+  credentials and secrets, external endpoints (Prometheus, NameServer, LLM), and deployment
+  policy switches (login required, CORS origins, cookie Secure) — may use the
+  `${ENV_VAR:default}` form. Internal tuning knobs (retention days, cleanup intervals, batch
+  sizes, timeouts, parallelism) are written as plain literal values; promote one to an
+  environment variable only when a real deployment needs to override it. The file carries no
+  comments — rationale belongs in the pull request or `docs/`, not in the configuration.
 
 ## Review, merge and the stale bot
 

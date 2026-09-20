@@ -220,6 +220,19 @@ describe('TopicPage', () => {
     expect(screen.getByText(/与 Broker 同进程部署的 Proxy 地址/)).toBeInTheDocument();
   });
 
+  it('keeps the action column wide enough for the four row buttons', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+
+    const cols = document.querySelectorAll('.ant-table-content colgroup col');
+    expect(cols.length).toBeGreaterThan(0);
+    const actionCol = cols[cols.length - 1] as HTMLElement;
+    // 操作列实测依据（勿随意改小，topic.tsx 列定义处有同步注释）：
+    // 4 个小按钮（详情/配置/发送/删除）一行占 282px，按钮右对齐贴住表格右缘
+    // （与 Group 管理页操作列一致），列宽不足时按钮溢出产生横向滚动条。
+    expect(actionCol.style.width).toBe('282px');
+  });
+
   it('reloads the authoritative server page after creating a topic', async () => {
     const existingTopic = { ...buildTopics(1)[0], name: 'topic-b' };
     const createdTopic = {

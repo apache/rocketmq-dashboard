@@ -82,6 +82,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
   'layout.switchToMockData': { zh: '切换到模拟数据', en: 'Switch to mock data' },
+  'layout.dataMode': { zh: '数据模式', en: 'Data mode' },
+  'layout.searchGeneral': { zh: '常规', en: 'General' },
   'layout.switchToEnglish': { zh: '切换到英语', en: 'Switch to English' },
   'layout.switchToChinese': { zh: '切换到中文', en: 'Switch to Chinese' },
   'layout.switchToLightTheme': { zh: '切换到浅色主题', en: 'Switch to light theme' },
@@ -181,10 +183,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.brokerClusterName': { zh: 'Broker 集群名称', en: 'Broker Cluster Name' },
   'cluster.brokerName': { zh: 'Broker 名称', en: 'Broker Name' },
   'cluster.diskUsage': { zh: '磁盘使用', en: 'Disk Usage' },
-  'cluster.putMessagesToday': { zh: '今日写入', en: 'Put Today' },
-  'cluster.putMessagesYesterday': { zh: '昨日写入', en: 'Put Yesterday' },
-  'cluster.getMessagesToday': { zh: '今日消费', en: 'Get Today' },
-  'cluster.getMessagesYesterday': { zh: '昨日消费', en: 'Get Yesterday' },
   'cluster.proxyAddr': { zh: 'Proxy 地址', en: 'Proxy Address' },
   'cluster.connections': { zh: '连接数', en: 'Connections' },
   'cluster.grpcPort': { zh: 'gRPC 端口', en: 'gRPC Port' },
@@ -269,8 +267,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.title': { zh: '实例列表', en: 'Instance List' },
   'instance.subtitle': { zh: '管理 RocketMQ 集群连接', en: 'Manage RocketMQ cluster connections' },
   'instance.managementSubtitle': {
-    zh: '接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {count} 个实例',
-    en: 'Connect and manage RocketMQ instances (Apache / Aliyun / Tencent). Showing {count} instances.',
+    zh: '接入并管理 RocketMQ 实例，当前显示 {count} 个实例',
+    en: 'Connect and manage RocketMQ instances. Showing {count} instances.',
   },
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
@@ -1329,6 +1327,169 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.history.empty': { zh: '当前模式暂无对话记录', en: 'No conversations in this mode' },
   'ai.history.justNow': { zh: '刚刚', en: 'Just now' },
   'ai.history.minutesAgo': { zh: '{count} 分钟前', en: '{count} min ago' },
+
+  // ─── AI conversation list (server-paged history modal) ───
+  'ai.list.search': { zh: '搜索会话标题', en: 'Search conversation titles' },
+  'ai.list.empty': { zh: '暂无会话', en: 'No conversations' },
+  'ai.list.loadFailed': { zh: '会话列表加载失败', en: 'Failed to load conversations' },
+  'ai.list.columnTitle': { zh: '会话', en: 'Conversation' },
+  'ai.list.columnEngine': { zh: '引擎', en: 'Engine' },
+  'ai.list.columnModel': { zh: '模型', en: 'Model' },
+  'ai.list.columnMode': { zh: '模式', en: 'Mode' },
+  'ai.list.columnInstance': { zh: '实例', en: 'Instance' },
+  'ai.list.columnStatus': { zh: '最近状态', en: 'Last run' },
+  'ai.list.columnUpdatedAt': { zh: '更新时间', en: 'Updated' },
+  'ai.list.scopeActive': { zh: '进行中', en: 'Active' },
+  'ai.list.scopeArchived': { zh: '已归档', en: 'Archived' },
+  'ai.list.current': { zh: '当前会话', en: 'Current' },
+  'ai.list.openAria': { zh: '打开会话 {title}', en: 'Open conversation {title}' },
+  'ai.list.columnAction': { zh: '操作', en: 'Action' },
+  'ai.list.deleteAria': { zh: '删除会话 {title}', en: 'Delete conversation {title}' },
+  'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
+  'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
+  'ai.list.deleteSelectedConfirm': {
+    zh: '删除选中的 {count} 条会话？',
+    en: 'Delete the {count} selected conversations?',
+  },
+  'ai.list.deletePage': { zh: '全部删除', en: 'Delete all' },
+  'ai.list.deletePageConfirm': {
+    zh: '删除本页全部 {count} 条会话？',
+    en: 'Delete all {count} conversations on this page?',
+  },
+  'ai.list.deleteHint': {
+    zh: '对话记录、运行历史与该会话的 agent 工作目录都会被删除，且无法恢复。',
+    en: 'The transcript, the run history and the agent workspace are removed for good.',
+  },
+  'ai.list.deleted': { zh: '已删除 {count} 条会话', en: 'Deleted {count} conversation(s)' },
+  'ai.list.deletePartial': {
+    zh: '已删除 {deleted} 条会话，{failed} 条删除失败',
+    en: 'Deleted {deleted} conversation(s), {failed} failed',
+  },
+  'ai.list.deleteFailed': { zh: '删除失败，请稍后重试', en: 'Delete failed, please retry later' },
+  'ai.runStatus.QUEUED': { zh: '排队中', en: 'Queued' },
+  'ai.runStatus.RUNNING': { zh: '生成中', en: 'Running' },
+  'ai.runStatus.COMPLETED': { zh: '已完成', en: 'Completed' },
+  'ai.runStatus.STOPPED': { zh: '已停止', en: 'Stopped' },
+  'ai.runStatus.FAILED': { zh: '失败', en: 'Failed' },
+
+  // ─── AI composer and send/stop button ───
+  'ai.composer.send': { zh: '发送', en: 'Send' },
+  'ai.composer.sendHint': { zh: '发送 ↩ · Shift+↩ 换行', en: 'Send ↩ · Shift+↩ for a new line' },
+  'ai.composer.stop': { zh: '停止生成', en: 'Stop generating' },
+  'ai.composer.stopHint': { zh: '停止生成 · Esc', en: 'Stop generating · Esc' },
+  'ai.composer.stopping': { zh: '正在停止…', en: 'Stopping…' },
+  'ai.composer.placeholder': {
+    zh: '输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟...',
+    en: 'Ask a question or give an instruction, e.g. check the cluster status, create a topic, diagnose consumer lag...',
+  },
+  'ai.composer.tools': { zh: '工具', en: 'Tools' },
+  'ai.composer.modelPlaceholder': { zh: '选择模型', en: 'Select a model' },
+  'ai.composer.modelsLoading': { zh: '加载模型中...', en: 'Loading models...' },
+  'ai.composer.engine': { zh: '执行引擎', en: 'Agent engine' },
+  'ai.composer.providerReady': { zh: '已就绪', en: 'ready' },
+  'ai.composer.providerNotReady': { zh: '未就绪', en: 'not ready' },
+  'ai.composer.modelLabel': { zh: '模型', en: 'Model' },
+  'ai.composer.agentLabel': { zh: 'Agent', en: 'Agent' },
+  'ai.composer.contextUsage': {
+    zh: '上下文约 {used} / {total} tokens（{percent}%）',
+    en: 'Context ≈ {used} / {total} tokens ({percent}%)',
+  },
+  'ai.providerNotReady': { zh: 'AI 助手未启用', en: 'AI assistant is not enabled' },
+  'ai.goToSettings': { zh: '去配置', en: 'Configure' },
+
+  // ─── AI thread scrolling ───
+  'ai.thread.jumpToLatest': { zh: '回到最新', en: 'Jump to latest' },
+  'ai.thread.unread': { zh: '{count} 条新消息', en: '{count} new messages' },
+  'ai.thread.loadEarlier': { zh: '加载更早的内容', en: 'Load earlier events' },
+
+  // ─── AI render blocks ───
+  'ai.thinking.model': { zh: '思考过程', en: 'Reasoning' },
+  'ai.thinking.enhance': { zh: 'Prompt 增强改写', en: 'Prompt enhancement rewrite' },
+  'ai.thinking.chars': { zh: '（{count} 字）', en: '({count} chars)' },
+  'ai.thinking.pending': { zh: '正在思考…', en: 'Thinking…' },
+  'ai.speedHint': {
+    zh: '回复生成速度（按流式输出估算：中文 1 字≈ 1 token，其他 4 字符≈ 1 token）',
+    en: 'Generation speed, estimated from the stream: 1 CJK char ≈ 1 token, 4 other chars ≈ 1 token',
+  },
+  'ai.bubble.copy': { zh: '复制回复', en: 'Copy response' },
+  'ai.bubble.copied': { zh: '已复制', en: 'Copied' },
+  'ai.welcome.title': { zh: 'RocketMQ Studio AI 助手', en: 'RocketMQ Studio AI Assistant' },
+  'ai.welcome.subtitle': {
+    zh: '选择一个运维场景开始，或直接在下方输入问题',
+    en: 'Pick an operations scenario to start, or type your question below',
+  },
+  'ai.welcome.starter.health.title': { zh: '集群健康巡检', en: 'Cluster health check' },
+  'ai.welcome.starter.health.desc': {
+    zh: 'Broker 状态、磁盘水位、TPS 与告警一览',
+    en: 'Broker status, disk usage, TPS and alerts at a glance',
+  },
+  'ai.welcome.starter.health.prompt': {
+    zh: '请对当前绑定的 RocketMQ 实例做一次健康巡检：Broker 状态、磁盘水位、TPS、Topic 数量与告警情况，最后给出结论。',
+    en: 'Run a health check on the bound RocketMQ instance: broker status, disk usage, TPS, topic counts and alerts, then give a conclusion.',
+  },
+  'ai.welcome.starter.inventory.title': { zh: '资源盘点', en: 'Resource inventory' },
+  'ai.welcome.starter.inventory.desc': {
+    zh: '列出 Topic 与订阅组，找出无流量或异常资源',
+    en: 'List topics and groups, flag idle or abnormal resources',
+  },
+  'ai.welcome.starter.inventory.prompt': {
+    zh: '请列出当前实例的 Topic 与订阅组，指出没有流量或配置异常的资源。',
+    en: 'List the topics and consumer groups of the current instance and flag resources with no traffic or abnormal configuration.',
+  },
+  'ai.welcome.starter.lag.title': { zh: '消费延迟排查', en: 'Consumer lag triage' },
+  'ai.welcome.starter.lag.desc': {
+    zh: '定位堆积最大的消费组并分析原因',
+    en: 'Find the group with the largest backlog and analyze why',
+  },
+  'ai.welcome.starter.lag.prompt': {
+    zh: '帮我排查消费延迟：列出各消费组的堆积量，找出堆积最大的组并分析可能原因。',
+    en: 'Help me triage consumer lag: list the backlog of each consumer group, find the largest one and analyze possible causes.',
+  },
+  'ai.welcome.starter.learn.title': { zh: '概念答疑', en: 'Concept Q&A' },
+  'ai.welcome.starter.learn.desc': {
+    zh: 'RocketMQ 消息类型与适用场景',
+    en: 'RocketMQ message types and when to use them',
+  },
+  'ai.welcome.starter.learn.prompt': {
+    zh: 'RocketMQ 有哪些消息类型？分别适用什么场景？',
+    en: 'What message types does RocketMQ have, and what scenarios is each one for?',
+  },
+  'ai.tool.input': { zh: '输入参数', en: 'Input' },
+  'ai.tool.output': { zh: '执行结果', en: 'Result' },
+  'ai.tool.running': { zh: '执行中', en: 'Running' },
+  'ai.tool.success': { zh: '成功', en: 'Success' },
+  'ai.tool.failed': { zh: '失败', en: 'Failed' },
+  'ai.tool.truncated': { zh: '已截断（{size}）', en: 'Truncated ({size})' },
+  'ai.tool.inputUnavailable': {
+    zh: '输入参数不在已加载的事件范围内',
+    en: 'The tool input is outside the loaded event window',
+  },
+  'ai.tool.outputPending': { zh: '工具执行中，暂无结果', en: 'The tool is still running' },
+  'ai.notice.warn': { zh: '注意', en: 'Notice' },
+
+  // ─── AI page shell ───
+  'ai.rmqctlUnavailable': { zh: 'Agent 工具通道不可用', en: 'Agent tool channel unavailable' },
+  'ai.rmqctlUnavailableDescription': {
+    zh: '未检测到 rmqctl，托管 Agent 无法调用 RocketMQ 工具，本轮对话只能得到通用回答。',
+    en: 'rmqctl was not detected, so the hosted agent cannot call RocketMQ tools and can only give general answers.',
+  },
+  'ai.conversationCreateFailed': { zh: '创建会话失败', en: 'Failed to create the conversation' },
+
+  // ─── AI tool playground ───
+  'ai.tools.title': { zh: 'AI 工具', en: 'AI tools' },
+  'ai.tools.selectCluster': { zh: '选择集群', en: 'Select a cluster' },
+  'ai.tools.globalScope': { zh: '全局工具', en: 'Global tools' },
+  'ai.tools.selectTool': { zh: '选择工具', en: 'Select a tool' },
+  'ai.tools.inputLabel': { zh: '输入参数 (JSON)', en: 'Input (JSON)' },
+  'ai.tools.inputAria': { zh: '工具参数 JSON', en: 'Tool input JSON' },
+  'ai.tools.execute': { zh: '执行', en: 'Run' },
+  'ai.tools.invalidJson': {
+    zh: '工具参数必须是有效的 JSON 对象',
+    en: 'Tool input must be a valid JSON object',
+  },
+  'ai.tools.executeSuccess': { zh: '工具执行成功', en: 'Tool executed' },
+  'ai.tools.executeFailed': { zh: '工具执行失败', en: 'Tool execution failed' },
+
   'ai.responseStopped': { zh: '回答已停止。', en: 'Response stopped.' },
   'ai.requestFailed': { zh: 'AI 请求失败', en: 'AI request failed' },
   'ai.runtimeLoadFailed': { zh: 'AI 配置加载失败', en: 'Failed to load AI configuration' },
@@ -1339,6 +1500,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.providerNotReadyDescription': {
     zh: '请先在 设置 → AI 助手 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。',
     en: 'Configure and enable an LLM provider under Settings → AI Assistant first. No requests are sent and stub replies may be returned until it is enabled.',
+  },
+  'ai.readOnlyRole': {
+    zh: '当前账号为只读角色',
+    en: 'This account is read-only',
+  },
+  'ai.readOnlyRoleDescription': {
+    zh: '你可以查看自己的历史对话，但不能发起新的对话。发起对话会让托管 Agent 使用实例凭据调用 RocketMQ 工具，因此需要管理员权限；如需使用请联系管理员。',
+    en: 'You can still review your own conversations, but you cannot start a new one. Starting a conversation lets the hosted agent call RocketMQ tools with the instance credential, so it requires an administrator — ask one to enable it for you.',
   },
   'ai.toolCatalogLoadFailed': {
     zh: 'AI 工具目录加载失败',
@@ -1373,6 +1542,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.promptTemplates.empty': { zh: '暂无 Prompt 模板', en: 'No prompt templates' },
   'ai.promptTemplates.use': { zh: '使用', en: 'Use' },
   'ai.promptTemplates.append': { zh: '追加', en: 'Append' },
+  'ai.promptTemplates.expand': { zh: '展开', en: 'Expand' },
+  'ai.promptTemplates.collapse': { zh: '收起', en: 'Collapse' },
   'ai.promptTemplates.deleteConfirm': {
     zh: '删除这个 Prompt 模板？',
     en: 'Delete this prompt template?',
@@ -1455,8 +1626,8 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Home Page ───
   'home.banner': {
-    zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
-    en: 'RocketMQ Studio — unified control plane across clusters, architectures and clouds',
+    zh: 'RocketMQ Studio — 多实例统一的消息运维管控平台',
+    en: 'RocketMQ Studio — unified operations console for your RocketMQ instances',
   },
   'home.greeting.night': { zh: '夜深了', en: 'Late night' },
   'home.greeting.morning': { zh: '上午好', en: 'Good morning' },
@@ -1467,11 +1638,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.mode.diagnose': { zh: '集群诊断', en: 'Cluster Diagnose' },
   'home.mode.manage': { zh: '资源管理', en: 'Resource Management' },
   'home.mode.chat': { zh: 'AI 对话', en: 'AI Chat' },
+  'home.voiceNotSupported': { zh: '语音输入暂未支持', en: 'Voice input is not supported yet' },
   'home.recommended': { zh: '推荐', en: 'Recommended' },
   'home.welcomeTo': { zh: '来到', en: 'to' },
   'home.tagline': {
-    zh: '跨集群 · 跨架构 · 跨云，统一管控你的 RocketMQ 集群',
-    en: 'Cross-cluster · Cross-arch · Cross-cloud, unified RocketMQ management',
+    zh: '多实例统一管控，让消息运维更简单、更可靠',
+    en: 'Unified multi-instance management, simpler and more reliable messaging operations',
   },
 
   // ─── ACL ───
@@ -2229,19 +2401,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'login.passwordRequired': { zh: '密码为必填项', en: 'Password is required' },
   'login.success': { zh: '登录成功', en: 'Login successful' },
   'login.failed': { zh: '登录失败', en: 'Login failed' },
-  'login.welcome': { zh: '登录到控制台', en: 'Sign in to the console' },
   'login.brandEyebrow': { zh: '控制台', en: 'Control plane' },
   'login.brandTitle': {
     zh: '统一管理每一条消息链路',
     en: 'Operate every message path from one place',
   },
   'login.brandDescription': {
-    zh: '跨集群、跨架构、跨云环境查看运行状态并执行可靠的消息运维操作。',
-    en: 'Observe runtime health and operate RocketMQ reliably across clusters, architectures, and clouds.',
-  },
-  'login.formDescription': {
-    zh: '使用已配置的控制台账号继续。',
-    en: 'Use a configured console account to continue.',
+    zh: '统一观测多实例运行状态，执行可靠的消息运维操作。',
+    en: 'One console for multi-instance RocketMQ operations.',
   },
   'login.statusLabel': { zh: '控制台服务可用', en: 'Control plane available' },
   'login.switchToLight': { zh: '切换到浅色模式', en: 'Switch to light mode' },

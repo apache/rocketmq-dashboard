@@ -32,6 +32,15 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   );
 }
 
+export interface FormatUtcDateTimeOptions {
+  /**
+   * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
+   * column noise rather than information — a compact list whose every row would repeat the viewer's
+   * own zone, and whose width that suffix would otherwise dictate.
+   */
+  zone?: boolean;
+}
+
 /**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
@@ -40,6 +49,7 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 export function formatUtcDateTime(
   date: string | Date | null | undefined,
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  options: FormatUtcDateTimeOptions = {},
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const utcDate =
@@ -67,7 +77,7 @@ export function formatUtcDateTime(
   const hour = value('hour');
   const minute = value('minute');
   const second = value('second');
-  const zone = value('timeZoneName');
+  const zone = options.zone === false ? '' : value('timeZoneName');
   return year && month && day && hour && minute && second
     ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
     : '-';

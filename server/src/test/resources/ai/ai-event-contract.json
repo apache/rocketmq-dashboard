@@ -1,0 +1,263 @@
+{
+  "version": 2,
+  "comment": "Cross-language event contract. Java AiEventContractTest and web aiEvents.contract.test.ts both read THIS file. Adding, renaming or removing an event type or field must be reflected here and on both sides.",
+  "entryShape": "Every entry of live[] and timeline[] is {type, example, exampleMinimal, absent}. `example` is the richest legal wire form: it populates every field of the type except the ones that cannot legitimately appear together with it (a successful tool_done carries no error). `absent` lists the OPTIONAL fields, i.e. the ones @JsonInclude(NON_NULL) drops when the server has nothing to say, so the client must tolerate their absence. `exampleMinimal` is the leanest legal wire form and therefore carries exactly the REQUIRED fields; for a type with no optional field it doubles as a second example that widens value coverage, which is how notice reaches level=error, run_status reaches a COMPLETED run with no reason, and the tool pair reaches a no-argument call whose input is {} instead of null. Both suites assert the two closure rules that make the entry self-checking: fields(type) == keys(example) U absent, and keys(exampleMinimal) == fields(type) \\ absent. Version 2 added exampleMinimal and absent; version 1 carried {type, example} only.",
+  "live": [
+    {
+      "type": "run_started",
+      "absent": [],
+      "example": {
+        "type": "run_started",
+        "runId": 41,
+        "conversationId": 7,
+        "title": "查看集群状态",
+        "turn": 3
+      },
+      "exampleMinimal": {
+        "type": "run_started",
+        "runId": 41,
+        "conversationId": 7,
+        "title": "查看集群状态",
+        "turn": 3
+      }
+    },
+    {
+      "type": "text_delta",
+      "absent": [],
+      "example": {
+        "type": "text_delta",
+        "content": "集群当前有 "
+      },
+      "exampleMinimal": {
+        "type": "text_delta",
+        "content": "集群当前有 "
+      }
+    },
+    {
+      "type": "thinking",
+      "absent": [],
+      "example": {
+        "type": "thinking",
+        "content": "用户想确认堆积，先查 topic 路由",
+        "source": "model"
+      },
+      "exampleMinimal": {
+        "type": "thinking",
+        "content": "用户想确认堆积，先查 topic 路由",
+        "source": "model"
+      }
+    },
+    {
+      "type": "tool_start",
+      "absent": [],
+      "example": {
+        "type": "tool_start",
+        "tcId": "toolu_01A",
+        "tool": "rmq.topic.list",
+        "input": {
+          "instanceId": "open-source-local"
+        }
+      },
+      "exampleMinimal": {
+        "type": "tool_start",
+        "tcId": "toolu_01B",
+        "tool": "rmq.instance.capabilities",
+        "input": {}
+      }
+    },
+    {
+      "type": "tool_done",
+      "absent": ["error"],
+      "example": {
+        "type": "tool_done",
+        "tcId": "toolu_01A",
+        "tool": "rmq.topic.list",
+        "output": "{\"items\":[{\"name\":\"StudioTest\"}]}",
+        "outputBytes": 33,
+        "truncated": false,
+        "durationMs": 212,
+        "success": true
+      },
+      "exampleMinimal": {
+        "type": "tool_done",
+        "tcId": "toolu_01B",
+        "tool": "rmq.instance.capabilities",
+        "output": "{\"rmqctlAvailable\":true}",
+        "outputBytes": 24,
+        "truncated": false,
+        "durationMs": 8,
+        "success": true
+      }
+    },
+    {
+      "type": "notice",
+      "absent": [],
+      "example": {
+        "type": "notice",
+        "level": "warn",
+        "message": "rmqctl 不可用，本次会话已禁用 RocketMQ 工具"
+      },
+      "exampleMinimal": {
+        "type": "notice",
+        "level": "error",
+        "message": "provider reported: No conversation found with session ID: 6f1c"
+      }
+    },
+    {
+      "type": "error",
+      "absent": ["hint"],
+      "example": {
+        "type": "error",
+        "code": "llm.provider.timeout",
+        "message": "claude CLI stream timed out after 300s",
+        "hint": "Retry with a shorter prompt."
+      },
+      "exampleMinimal": {
+        "type": "error",
+        "code": "llm.provider.timeout",
+        "message": "claude CLI stream timed out after 300s"
+      }
+    },
+    {
+      "type": "run_finished",
+      "absent": [],
+      "example": {
+        "type": "run_finished",
+        "runId": 41,
+        "status": "COMPLETED",
+        "durationMs": 8123
+      },
+      "exampleMinimal": {
+        "type": "run_finished",
+        "runId": 41,
+        "status": "COMPLETED",
+        "durationMs": 8123
+      }
+    }
+  ],
+  "timeline": [
+    {
+      "type": "user",
+      "absent": ["enhancedPrompt"],
+      "example": {
+        "type": "user",
+        "text": "查看集群状态",
+        "enhancedPrompt": "请列出当前集群的 broker 与 topic 概况"
+      },
+      "exampleMinimal": {
+        "type": "user",
+        "text": "查看集群状态"
+      }
+    },
+    {
+      "type": "thinking",
+      "absent": [],
+      "example": {
+        "type": "thinking",
+        "text": "用户想确认堆积，先查 topic 路由",
+        "source": "model"
+      },
+      "exampleMinimal": {
+        "type": "thinking",
+        "text": "用户想确认堆积，先查 topic 路由",
+        "source": "model"
+      }
+    },
+    {
+      "type": "text",
+      "absent": [],
+      "example": {
+        "type": "text",
+        "text": "集群当前有 2 个 broker。"
+      },
+      "exampleMinimal": {
+        "type": "text",
+        "text": "集群当前有 2 个 broker。"
+      }
+    },
+    {
+      "type": "tool_use",
+      "absent": [],
+      "example": {
+        "type": "tool_use",
+        "tcId": "toolu_01A",
+        "tool": "rmq.topic.list",
+        "input": {
+          "instanceId": "open-source-local"
+        }
+      },
+      "exampleMinimal": {
+        "type": "tool_use",
+        "tcId": "toolu_01B",
+        "tool": "rmq.instance.capabilities",
+        "input": {}
+      }
+    },
+    {
+      "type": "tool_result",
+      "absent": ["error"],
+      "example": {
+        "type": "tool_result",
+        "tcId": "toolu_01A",
+        "tool": "rmq.topic.list",
+        "output": "{\"items\":[{\"name\":\"StudioTest\"}]}",
+        "outputBytes": 33,
+        "truncated": false,
+        "success": true,
+        "durationMs": 212
+      },
+      "exampleMinimal": {
+        "type": "tool_result",
+        "tcId": "toolu_01B",
+        "tool": "rmq.instance.capabilities",
+        "output": "{\"rmqctlAvailable\":true}",
+        "outputBytes": 24,
+        "truncated": false,
+        "success": true,
+        "durationMs": 8
+      }
+    },
+    {
+      "type": "notice",
+      "absent": [],
+      "example": {
+        "type": "notice",
+        "level": "info",
+        "message": "本次运行已恢复上游会话"
+      },
+      "exampleMinimal": {
+        "type": "notice",
+        "level": "error",
+        "message": "upstream API error status: 529"
+      }
+    },
+    {
+      "type": "error",
+      "absent": ["hint"],
+      "example": {
+        "type": "error",
+        "code": "llm.provider.error_max_turns",
+        "message": "agent reached the maximum turn count",
+        "hint": "Split the request."
+      },
+      "exampleMinimal": {
+        "type": "error",
+        "code": "llm.provider.error_max_turns",
+        "message": "agent reached the maximum turn count"
+      }
+    },
+    {
+      "type": "run_status",
+      "absent": ["reason"],
+      "example": {
+        "type": "run_status",
+        "status": "STOPPED",
+        "reason": "USER_STOP"
+      },
+      "exampleMinimal": {
+        "type": "run_status",
+        "status": "COMPLETED"
+      }
+    }
+  ]
+}

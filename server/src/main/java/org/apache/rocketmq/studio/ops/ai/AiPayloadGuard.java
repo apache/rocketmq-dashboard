@@ -30,46 +30,20 @@ import java.util.Map;
  */
 final class AiPayloadGuard {
 
+    /**
+     * The two halves of the outbound prompt budget. No inbound validator reads them any more — the
+     * conversation surface validates its request bodies with jakarta {@code @Size} on
+     * {@code AiMessageDTO} — but they stay named rather than collapsed into one literal so the number
+     * a provider is allowed to receive still explains itself.
+     */
     static final int MAX_MESSAGE_BYTES = 64 * 1024;
     static final int MAX_CONTEXT_BYTES = 256 * 1024;
     static final int MAX_TOOL_INPUT_BYTES = 256 * 1024;
     static final int MAX_OUTBOUND_PROMPT_BYTES = MAX_MESSAGE_BYTES + MAX_CONTEXT_BYTES + 1024;
     static final int MAX_MODEL_BYTES = 512;
-    static final int MAX_CONVERSATION_ID_BYTES = 256;
-    static final int MAX_SELECTOR_BYTES = 64;
     static final int MAX_TOOL_NAME_BYTES = 256;
 
     private AiPayloadGuard() {
-    }
-
-    static void validateChat(ChatDTO request) {
-        if (request == null) {
-            throw new BusinessException(400, "Chat request is required");
-        }
-        requireText(request.getMessage(), "Chat message is required");
-        requireWithin(request.getMessage(), MAX_MESSAGE_BYTES, "Chat message");
-        requireOptionalWithin(request.getModel(), MAX_MODEL_BYTES, "Chat model");
-        requireOptionalWithin(request.getConversationId(), MAX_CONVERSATION_ID_BYTES,
-                "Conversation ID");
-        requireOptionalWithin(request.getMode(), MAX_SELECTOR_BYTES, "Chat mode");
-        requireOptionalWithin(request.getEngine(), MAX_SELECTOR_BYTES, "Chat engine");
-    }
-
-    static void validateCommand(AiCommandDTO command, ObjectMapper objectMapper) {
-        if (command == null) {
-            throw new BusinessException(400, "Command request is required");
-        }
-        if (!StringUtils.hasText(command.getPrompt()) && !StringUtils.hasText(command.getCommand())) {
-            throw new BusinessException(400, "Command or prompt is required");
-        }
-        requireOptionalWithin(command.getPrompt(), MAX_MESSAGE_BYTES, "Command prompt");
-        requireOptionalWithin(command.getCommand(), MAX_MESSAGE_BYTES, "Command text");
-        requireOptionalWithin(command.getModel(), MAX_MODEL_BYTES, "Command model");
-        requireOptionalWithin(command.getConversationId(), MAX_CONVERSATION_ID_BYTES,
-                "Conversation ID");
-        requireOptionalWithin(command.getMode(), MAX_SELECTOR_BYTES, "Command mode");
-        requireOptionalWithin(command.getEngine(), MAX_SELECTOR_BYTES, "Command engine");
-        requireJsonWithin(command.getContext(), MAX_CONTEXT_BYTES, "Command context", objectMapper);
     }
 
     static void validateToolInvocation(String name, Map<String, Object> input, ObjectMapper objectMapper) {
@@ -105,12 +79,6 @@ final class AiPayloadGuard {
     private static void requireText(String value, String message) {
         if (!StringUtils.hasText(value)) {
             throw new BusinessException(400, message);
-        }
-    }
-
-    private static void requireOptionalWithin(String value, int limitBytes, String field) {
-        if (value != null) {
-            requireWithin(value, limitBytes, field);
         }
     }
 

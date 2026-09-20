@@ -16,8 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +28,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class QoderAgentProviderTest {
 
     private final QoderAgentProvider provider = new QoderAgentProvider(new CliProcessEnvironment(List.of()));
+
+    @Test
+    void streamEventsDegradesToTheTextChannelTest() {
+        // qoder overrides neither streaming method, so the SPI default must carry it: one completion
+        // adapted into one text delta. This is the non-breaking half of the SPI evolution.
+        QoderAgentProvider textOnly = new QoderAgentProvider(new CliProcessEnvironment(List.of())) {
+            @Override
+            public String complete(LlmConfigVO config, String prompt, String modelOverride) {
+                return "answered " + prompt + " with " + modelOverride;
+            }
+        };
+        List<AgentEvent> events = new ArrayList<>();
+
+        textOnly.streamEvents(LlmConfigVO.builder().model("qoder-configured").build(),
+                AgentStreamOptions.builder().prompt("prompt").model("qoder-request").build(),
+                events::add);
+
+        assertThat(events).containsExactly(
+                new AgentEvent.TextDelta("answered prompt with qoder-request"));
+    }
 
     @Test
     void buildCommandUsesConfiguredModelWhenRequestDoesNotOverrideIt() {

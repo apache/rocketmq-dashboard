@@ -678,7 +678,7 @@ const AclPageContent = ({
       key: 'ruleActions',
       width: 160,
       render: (_: unknown, record: AclRule) => (
-        <Flex gap={6}>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<EditOutlined />}
@@ -827,7 +827,7 @@ const AclPageContent = ({
       key: 'userActions',
       width: 160,
       render: (_: unknown, record: NormalizedAclUser) => (
-        <Flex gap={6}>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<EditOutlined />}

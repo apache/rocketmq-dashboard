@@ -73,7 +73,7 @@ func TestCatalogMutationRoundTrip(t *testing.T) {
 		instanceKey: "instance-dev", "topicName": "orders", "writeQueues": float64(8), "dry_run": true,
 	}
 	if call.method != http.MethodPost || call.path != "/api/mcp/tools/call" ||
-		!strings.HasPrefix(call.authorization, "RMQ-HMAC-SHA256 Credential=test-ak, Signature=") ||
+		!strings.HasPrefix(call.authorization, "rmq-hmac-sha256 Credential=test-ak, Signature=") ||
 		!reflect.DeepEqual(call.request.Arguments, wantArguments) {
 		t.Fatalf("unexpected preview request: %#v", call)
 	}
@@ -244,7 +244,7 @@ func TestCatalogPassesExplicitInstanceIDToArgumentsAndHeader(t *testing.T) {
 	if value := call.request.Arguments[instanceKey]; value != "instance-profile" {
 		t.Fatalf("%s = %v, want the explicit --instance-id value", instanceKey, value)
 	}
-	if !strings.HasPrefix(call.authorization, "RMQ-HMAC-SHA256 Credential=test-ak, Signature=") {
+	if !strings.HasPrefix(call.authorization, "rmq-hmac-sha256 Credential=test-ak, Signature=") {
 		t.Fatalf("authorization = %q, want HMAC signature", call.authorization)
 	}
 }

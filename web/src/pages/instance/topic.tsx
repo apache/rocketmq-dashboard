@@ -697,7 +697,7 @@ const TopicPage = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      minWidth: 200,
+      width: 200,
       ellipsis: true,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
@@ -746,9 +746,12 @@ const TopicPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 280,
+      // 4 个小按钮实测 274px + 单元格左 padding 8px = 282px；按钮右对齐贴住表格右缘，
+      // 与 Group 管理页操作列样式保持一致。勿随意改小：列宽不足时按钮溢出产生横向滚动条。
+      // 宽度由 TopicPage.test.tsx 「keeps the action column wide enough」用例守护。
+      width: 282,
       render: (_: unknown, record: Topic) => (
-        <Flex gap={6} onClick={(e) => e.stopPropagation()}>
+        <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
             size="small"
             icon={<EyeOutlined />}

@@ -72,7 +72,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .compact(false)
                     .desktopNotify(true)
                     .notifySound(false)
-                    .sessionTimeout(30)
+                    .sessionTimeout(1440)
                     .requireLogin(false)
                     .llmProvider("tongyi")
                     .apiKey("")

@@ -382,6 +382,124 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    // --- The AI conversation surface: writes admin-only, reads open -----------
+    //
+    // These pin a decision that otherwise lives only in the javadoc on
+    // AuthInterceptor#requiresAdmin, where nothing stops the next endpoint from
+    // silently reopening it.
+    //
+    // Why a run is a privilege boundary: a hosted agent's tool calls are signed with
+    // the instance credential the server resolves (InstanceCredentialResolver), NOT
+    // with the caller's identity, and /api/mcp/** never reaches this interceptor at
+    // all. So a reader who could start a run could perform exactly the L2 mutations
+    // that isReaderAccessibleToolPath exists to refuse that reader in the Tool
+    // Playground. The endpoint this surface replaced, POST /api/ai/chat, was safe for
+    // a reader only because it ran a CLI with every built-in tool disabled and no MCP
+    // server attached -- it was a text generator. "The old endpoint was
+    // reader-accessible, therefore the new one may be" does not hold.
+
+    @Test
+    void rejectsCreatingAConversationForNonAdminUserTest() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ai/conversations", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void rejectsStartingAnAgentRunForNonAdminUserTest() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ai/conversations/7/messages", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void rejectsStoppingARunForNonAdminUserTest() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ai/runs/9/stop", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    /**
+     * PATCH and DELETE are the reason this cannot be expressed through
+     * {@code READER_POST_PATHS}: that set is consulted only for POST, so a non-POST
+     * non-GET verb falls through to the admin requirement. Asserting both verbs keeps
+     * rename/archive and delete from drifting away from the rest of the write surface.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"PATCH", "DELETE"})
+    void rejectsRenamingAndDeletingAConversationForNonAdminUserTest(String method) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                method, "/api/ai/conversations/7", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void allowsStartingAnAgentRunForAdminUserTest() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ai/conversations/7/messages", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    /**
+     * Reading one's own transcript drives no tool, so it stays open to every
+     * authenticated operator. Ownership is a separate filter
+     * ({@code AiConversationService.requireOwned}, which answers 404 for somebody
+     * else's id) and applies regardless of role.
+     */
+    @Test
+    void allowsReadingOwnTimelineForNonAdminUserTest() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/ai/conversations/7/events", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    /** Attaching to a run already in flight replays and tails it; it starts nothing. */
+    @Test
+    void allowsAttachingToARunStreamForNonAdminUserTest() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/ai/runs/9/stream", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
     @Test
     void shouldAllowLlmModelDiscoveryForAdminUser() throws Exception {
         TestSession session = login(true);

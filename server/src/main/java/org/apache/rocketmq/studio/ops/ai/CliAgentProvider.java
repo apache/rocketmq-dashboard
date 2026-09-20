@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.CliBinaryProbe;
 import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayOutputStream;
@@ -40,7 +41,7 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 public abstract class CliAgentProvider implements AgentProvider {
 
-    private static final long TIMEOUT_SECONDS = 180;
+    private static final long TIMEOUT_SECONDS = 300;
     private static final int MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
     private final CliProcessEnvironment processEnvironment;
@@ -59,27 +60,16 @@ public abstract class CliAgentProvider implements AgentProvider {
         return processEnvironment;
     }
 
+    /**
+     * Probes the runtime image for this provider's binary. The implementation lives in
+     * {@link CliBinaryProbe} so the {@code rmqctl} MCP transport is probed the same way; the
+     * {@code startAvailabilityProcess} seam stays here because it is how the existing tests inject a
+     * hung or an interrupting probe process.
+     */
     @Override
     public boolean available() {
-        Process process = null;
-        try {
-            ProcessBuilder builder = new ProcessBuilder("sh", "-c", "command -v " + binaryName());
-            processEnvironment.apply(builder, Map.of());
-            process = startAvailabilityProcess(builder.redirectErrorStream(true));
-            boolean finished = process.waitFor(5, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-            }
-            return finished && process.exitValue() == 0;
-        } catch (IOException | InterruptedException exception) {
-            if (process != null) {
-                process.destroyForcibly();
-            }
-            if (exception instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return false;
-        }
+        return new CliBinaryProbe(processEnvironment::apply, this::startAvailabilityProcess)
+                .isAvailable(binaryName());
     }
 
     protected Process startAvailabilityProcess(ProcessBuilder builder) throws IOException {

@@ -228,7 +228,7 @@ class AuthServiceTest {
 
         LoginVO response = authService.login(request);
 
-        assertThat(response.getExpiresIn()).isEqualTo(1800);
+        assertThat(response.getExpiresIn()).isEqualTo(86400);
     }
 
     @Test

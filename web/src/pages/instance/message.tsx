@@ -785,7 +785,7 @@ const MessagePageContent = ({
       key: 'actions',
       width: 260,
       render: (_: unknown, record: MessageRecord) => (
-        <Flex gap={6}>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<EyeOutlined />}

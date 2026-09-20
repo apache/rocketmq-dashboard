@@ -18,8 +18,8 @@
 import { useRef, useState } from 'react';
 import {
   LockOutlined,
+  MessageOutlined,
   MoonOutlined,
-  RocketOutlined,
   SunOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -70,48 +70,110 @@ const LoginPage = () => {
 
   return (
     <main className="login-page" data-theme={darkMode ? 'dark' : 'light'}>
-      <section className="login-brand-panel" aria-labelledby="login-brand-title">
+      {/* ── Animated Orbs Background (same recipe as the home page) ── */}
+      <div
+        className="login-orbs"
+        aria-hidden="true"
+        style={{ animation: '8s ease-in-out infinite oneday-bg-drift' }}
+      >
+        {/* Top-left blue orb */}
+        <div
+          className="login-orb"
+          style={{
+            top: '-14%',
+            left: '-7%',
+            width: '42%',
+            height: '42%',
+            background:
+              'radial-gradient(circle at 30% 30%, rgb(186, 230, 253) 0%, transparent 65%)',
+            opacity: 0.45,
+            filter: 'blur(80px)',
+            animation: '8s ease-in-out infinite oneday-orb-drift-a',
+          }}
+        />
+        {/* Bottom-right violet orb */}
+        <div
+          className="login-orb"
+          style={{
+            bottom: '-18%',
+            right: '-10%',
+            width: '48%',
+            height: '48%',
+            background:
+              'radial-gradient(circle at 70% 70%, rgb(221, 214, 254) 0%, rgb(233, 213, 255) 40%, transparent 68%)',
+            opacity: 0.4,
+            filter: 'blur(90px)',
+            animation: '10s ease-in-out infinite oneday-orb-drift-b',
+          }}
+        />
+        {/* Top-right warm accent */}
+        <div
+          className="login-orb"
+          style={{
+            top: '-8%',
+            right: '5%',
+            width: '30%',
+            height: '30%',
+            background:
+              'radial-gradient(circle at 60% 40%, rgb(254, 215, 170) 0%, transparent 60%)',
+            opacity: 0.3,
+            filter: 'blur(70px)',
+            animation: '12s ease-in-out infinite oneday-orb-drift-c',
+          }}
+        />
+        {/* Center-bottom subtle blue-green */}
+        <div
+          className="login-orb"
+          style={{
+            bottom: '10%',
+            left: '20%',
+            width: '35%',
+            height: '28%',
+            background:
+              'radial-gradient(ellipse at 50% 80%, rgb(153, 246, 228) 0%, transparent 60%)',
+            opacity: 0.2,
+            filter: 'blur(80px)',
+            animation: '14s ease-in-out infinite oneday-orb-drift-a',
+          }}
+        />
+        {/* Noise texture overlay */}
+        <div
+          className="login-noise"
+          style={{
+            backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>")`,
+          }}
+        />
+      </div>
+
+      <div className="login-theme-action">
+        <Button
+          type="text"
+          shape="circle"
+          aria-label={darkMode ? t('login.switchToLight') : t('login.switchToDark')}
+          icon={darkMode ? <SunOutlined /> : <MoonOutlined />}
+          onClick={toggleTheme}
+        />
+      </div>
+
+      <section className="login-card" aria-labelledby="login-form-title">
         <div className="login-brand-lockup">
           <span className="login-brand-mark" aria-hidden="true">
-            <RocketOutlined />
+            <MessageOutlined />
           </span>
-          <span>RocketMQ Studio</span>
-        </div>
-        <div className="login-brand-copy">
+          <span className="login-brand-name">RocketMQ Studio</span>
           <span className="login-brand-eyebrow">{t('login.brandEyebrow')}</span>
-          <Title id="login-brand-title" level={1} className="login-brand-title">
+        </div>
+
+        <div className="login-headline">
+          <Title id="login-form-title" level={1} className="login-headline-title">
             {t('login.brandTitle')}
           </Title>
-          <Typography.Paragraph className="login-brand-description">
+          <Typography.Paragraph className="login-headline-description">
             {t('login.brandDescription')}
           </Typography.Paragraph>
         </div>
-        <div className="login-brand-status" aria-label={t('login.statusLabel')}>
-          <span className="login-status-dot" aria-hidden="true" />
-          {t('login.statusLabel')}
-        </div>
-      </section>
 
-      <section className="login-form-panel" aria-labelledby="login-form-title">
-        <div className="login-theme-action">
-          <Button
-            type="text"
-            shape="circle"
-            aria-label={darkMode ? t('login.switchToLight') : t('login.switchToDark')}
-            icon={darkMode ? <SunOutlined /> : <MoonOutlined />}
-            onClick={toggleTheme}
-          />
-        </div>
         <div className="login-form-shell">
-          <div className="login-form-heading">
-            <span className="login-form-mark" aria-hidden="true">
-              <RocketOutlined />
-            </span>
-            <Title id="login-form-title" level={2}>
-              {t('login.welcome')}
-            </Title>
-            <Typography.Paragraph>{t('login.formDescription')}</Typography.Paragraph>
-          </div>
           <Form
             form={form}
             name="login_form"
@@ -149,7 +211,14 @@ const LoginPage = () => {
               </Button>
             </Form.Item>
           </Form>
-          <p className="login-form-footer">Apache RocketMQ Studio</p>
+        </div>
+
+        <div className="login-card-footer">
+          <span className="login-status" aria-label={t('login.statusLabel')}>
+            <span className="login-status-dot" aria-hidden="true" />
+            {t('login.statusLabel')}
+          </span>
+          <span className="login-form-footer">Apache RocketMQ Studio</span>
         </div>
       </section>
     </main>
