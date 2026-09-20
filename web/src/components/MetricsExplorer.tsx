@@ -148,7 +148,18 @@ const MetricChart = ({
       });
     })
     .filter((series) => series.samples.length > 0);
-
+  // The slot arithmetic above can hand the same palette entry to a split mixed series and
+  // the next pure series, which would make two polylines (and their legend swatches)
+  // indistinguishable. Reassign duplicates to the first free palette color in order.
+  const takenColors = new Set<string>();
+  for (const series of allSeries) {
+    if (!takenColors.has(series.color)) {
+      takenColors.add(series.color);
+      continue;
+    }
+    series.color = SERIES_COLORS.find((color) => !takenColors.has(color)) ?? series.color;
+    takenColors.add(series.color);
+  }
   if (allSeries.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={noSamples} />;
   }
