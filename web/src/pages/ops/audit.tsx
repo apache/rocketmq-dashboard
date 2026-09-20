@@ -318,8 +318,11 @@ const AuditPage: React.FC = () => {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      sorter: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      // Server-paginated: rows hold one page of a larger result ordered by
+      // gmt_create DESC, so a client sorter could only re-order the visible page
+      // while claiming a full sort.
       defaultSortOrder: 'descend',
+      sorter: false,
       render: (timestamp: string) => formatDateTime(timestamp),
     },
     {
@@ -327,14 +330,12 @@ const AuditPage: React.FC = () => {
       dataIndex: 'operator',
       width: 130,
       align: 'center',
-      sorter: (a, b) => (a.operator ?? '').localeCompare(b.operator ?? ''),
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
       align: 'center',
-      sorter: (a, b) => (a.operationType ?? '').localeCompare(b.operationType ?? ''),
       render: renderOperationType,
     },
     {
@@ -343,7 +344,6 @@ const AuditPage: React.FC = () => {
       width: 150,
       ellipsis: true,
       align: 'right',
-      sorter: (a, b) => (a.resourceType ?? '').localeCompare(b.resourceType ?? ''),
       render: renderResourceType,
     },
     {
@@ -351,7 +351,6 @@ const AuditPage: React.FC = () => {
       dataIndex: 'clusterId',
       width: 140,
       ellipsis: true,
-      sorter: (a, b) => (a.clusterId ?? '').localeCompare(b.clusterId ?? ''),
     },
     {
       title: t('audit.target'),
@@ -401,7 +400,6 @@ const AuditPage: React.FC = () => {
       dataIndex: 'result',
       width: 80,
       align: 'center',
-      sorter: (a, b) => (a.result ?? '').localeCompare(b.result ?? ''),
       render: renderResult,
     },
     {

@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -388,5 +388,55 @@ describe('Audit page', () => {
     await user.click(await screen.findByRole('button', { name: '确认清理' }));
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the server order intact instead of sorting the visible page only', async () => {
+    // Two records whose operator order is the REVERSE of the server timestamp order.
+    // A page-local sorter (the old behavior) would flip the rows when the user clicks
+    // the operator header even though the rest of the result set stays unsorted.
+    vi.mocked(opsService.listAuditRecords).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          timestamp: '2026-08-01 10:00:00',
+          operator: 'zeta-ops',
+          operationType: 'CREATE_TOPIC',
+          resourceType: 'TOPIC',
+          target: 'topic-new',
+          clusterId: 'prod-cn',
+          detail: 'created topic-new',
+          result: 'SUCCESS',
+          errorMessage: '',
+        },
+        {
+          id: 1,
+          timestamp: '2026-08-01 09:00:00',
+          operator: 'alpha-ops',
+          operationType: 'DELETE_TOPIC',
+          resourceType: 'TOPIC',
+          target: 'topic-a',
+          clusterId: 'prod-cn',
+          detail: 'removed topic-a',
+          result: 'FAILED',
+          errorMessage: 'boom',
+        },
+      ],
+      total: 41,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AuditPage />);
+
+    const headers = await screen.findAllByRole('columnheader', { name: /操作人/ });
+    // The table must not advertise sort buttons it cannot honour across pages.
+    // (antd renders the header twice while measuring sticky columns.)
+    for (const header of headers) {
+      expect(header.querySelector('.ant-table-column-sorters')).toBeNull();
+    }
+
+    // Server order preserved: newest record (zeta-ops) first, no client re-sort applied.
+    const firstBodyRow = screen.getByText('zeta-ops').closest('tr')!;
+    expect(within(firstBodyRow).queryByText('alpha-ops')).not.toBeInTheDocument();
+    expect(within(firstBodyRow).getByText('zeta-ops')).toBeInTheDocument();
   });
 });
