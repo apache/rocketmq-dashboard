@@ -208,12 +208,14 @@ func runTool(
 	}
 
 	// L2/L3 mutations require a server-issued confirm_token from a matching
-	// dry-run preview before they execute. When --yes is supplied without an
-	// explicit --confirm-token or --dry-run, transparently run the preview first
-	// to obtain the token so callers need not script the two-phase handshake
-	// manually. L1 tools, explicit dry-runs, and calls that already carry a
-	// confirm_token are left untouched.
-	if tool.RiskLevel != "L1" && runtime.options.yes {
+	// dry-run preview before they execute. Unless an explicit --confirm-token
+	// or --dry-run is supplied, transparently run the preview first to obtain
+	// the token so callers need not script the two-phase handshake manually —
+	// for scripted --yes calls and for interactively confirmed runs alike,
+	// because the server rejects both with CONFIRMATION_TOKEN_REQUIRED when
+	// the token is missing. L1 tools, explicit dry-runs, and calls that
+	// already carry a confirm_token are left untouched.
+	if tool.RiskLevel != "L1" {
 		if _, hasToken := arguments["confirm_token"]; !hasToken {
 			if dryRun, _ := arguments["dry_run"].(bool); !dryRun {
 				preview := make(map[string]any, len(arguments)+1)
