@@ -274,24 +274,33 @@ function readCustomPromptTemplates(storage = getStorage()): {
   invalidCustomCount: number;
 } {
   if (!storage) return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
+  let raw: string | null;
   try {
-    const raw = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
-    if (!raw) return { templates: [], storageAvailable: true, invalidCustomCount: 0 };
-    const parsed = JSON.parse(raw) as unknown;
-    const items = Array.isArray(parsed) ? parsed : [];
-    const sanitized = items
-      .map((item) => sanitizeCustomTemplate(item))
-      .filter((item): item is PromptTemplate => item !== null);
-    return {
-      templates: sanitized.slice(0, MAX_CUSTOM_PROMPT_TEMPLATES),
-      storageAvailable: true,
-      // Only entries the sanitizer rejected are invalid: valid templates dropped by the
-      // cap are a storage limit, not corrupt data, and must not be counted here.
-      invalidCustomCount: items.length - sanitized.length,
-    };
+    raw = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
   } catch {
     return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   }
+  if (!raw) return { templates: [], storageAvailable: true, invalidCustomCount: 0 };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // An unparseable payload is corrupt data, not blocked storage: the next save or
+    // delete must be able to overwrite the key and repair it, exactly like a
+    // parseable payload of the wrong shape below.
+    return { templates: [], storageAvailable: true, invalidCustomCount: 0 };
+  }
+  const items = Array.isArray(parsed) ? parsed : [];
+  const sanitized = items
+    .map((item) => sanitizeCustomTemplate(item))
+    .filter((item): item is PromptTemplate => item !== null);
+  return {
+    templates: sanitized.slice(0, MAX_CUSTOM_PROMPT_TEMPLATES),
+    storageAvailable: true,
+    // Only entries the sanitizer rejected are invalid: valid templates dropped by the
+    // cap are a storage limit, not corrupt data, and must not be counted here.
+    invalidCustomCount: items.length - sanitized.length,
+  };
 }
 
 function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getStorage()): boolean {
