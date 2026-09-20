@@ -101,6 +101,11 @@ func NewHTTPClient() *http.Client {
 	}
 }
 
+// Maximum accepted response body size. Responses are JSON envelopes and never
+// legitimately approach this; without a cap a misbehaving server could exhaust
+// the CLI's memory before any validation runs.
+var maxResponseBytes int64 = 64 << 20
+
 func (c Client) request(ctx context.Context, target Target, method string, path string, body any, out any) error {
 	signedClient, err := signedHTTPClient(c.httpClient, target)
 	if err != nil {
@@ -133,9 +138,12 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 		return err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(data)) > maxResponseBytes {
+		return fmt.Errorf("studio response exceeds %d bytes", maxResponseBytes)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return responseError(response.StatusCode, data)

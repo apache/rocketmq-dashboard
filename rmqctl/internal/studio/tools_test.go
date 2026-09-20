@@ -17,6 +17,7 @@
 package studio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -100,5 +101,28 @@ func TestCallToolKeepsCatalogControlsInArguments(t *testing.T) {
 	if mutation.Status != types.MutationPlanned ||
 		mutation.ConfirmToken != "confirmation" || mutation.Plan == nil {
 		t.Fatalf("unexpected result: %#v", mutation)
+	}
+}
+
+func TestRequestRejectsOversizedResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("x"), 4096))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client())
+	original := maxResponseBytes
+	maxResponseBytes = 1024
+	defer func() { maxResponseBytes = original }()
+
+	var out map[string]any
+	err := client.request(context.Background(), Target{
+		Server:     server.URL,
+		InstanceID: "instance-dev",
+		Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"},
+		Timeout:    time.Second,
+	}, http.MethodGet, "/api/oversized", nil, &out)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized-response error, got %v", err)
 	}
 }
