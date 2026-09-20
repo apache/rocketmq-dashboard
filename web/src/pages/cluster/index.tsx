@@ -170,22 +170,26 @@ const ClusterPage = () => {
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
     open: boolean;
     loading: boolean;
+    failed: boolean;
     cluster: ClusterInfo | null;
     result: NameServerConfigDiffResult | null;
   }>({
     open: false,
     loading: false,
+    failed: false,
     cluster: null,
     result: null,
   });
   const [brokerConfigDiffState, setBrokerConfigDiffState] = useState<{
     open: boolean;
     loading: boolean;
+    failed: boolean;
     cluster: ClusterInfo | null;
     result: BrokerConfigDiffResult | null;
   }>({
     open: false,
     loading: false,
+    failed: false,
     cluster: null,
     result: null,
   });
@@ -391,6 +395,7 @@ const ClusterPage = () => {
       setNsConfigDiffState({
         open: true,
         loading: true,
+        failed: false,
         cluster,
         result: null,
       });
@@ -400,12 +405,13 @@ const ClusterPage = () => {
         setNsConfigDiffState({
           open: true,
           loading: false,
+          failed: false,
           cluster,
           result,
         });
       } catch {
         if (!nsConfigDiffRequest.isCurrent(requestId)) return;
-        setNsConfigDiffState((current) => ({ ...current, loading: false }));
+        setNsConfigDiffState((current) => ({ ...current, loading: false, failed: true }));
         message.error(t('cluster.nsConfigDiffFailed'));
       }
     },
@@ -418,6 +424,7 @@ const ClusterPage = () => {
       setBrokerConfigDiffState({
         open: true,
         loading: true,
+        failed: false,
         cluster,
         result: null,
       });
@@ -427,12 +434,13 @@ const ClusterPage = () => {
         setBrokerConfigDiffState({
           open: true,
           loading: false,
+          failed: false,
           cluster,
           result,
         });
       } catch {
         if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
-        setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
+        setBrokerConfigDiffState((current) => ({ ...current, loading: false, failed: true }));
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
     },
@@ -440,7 +448,13 @@ const ClusterPage = () => {
   );
   const closeNameServerConfigDiff = useCallback(() => {
     nsConfigDiffRequest.invalidate();
-    setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null });
+    setNsConfigDiffState({
+      open: false,
+      loading: false,
+      failed: false,
+      cluster: null,
+      result: null,
+    });
   }, [nsConfigDiffRequest]);
 
   // ─── Connection test ──────────────────────────────────────────────────────
@@ -876,7 +890,7 @@ const ClusterPage = () => {
   // ─── Tab 2: Broker 管理 (flat table) ────────────────────────────────────────
 
   function renderNameServerConfigDiffModal() {
-    const { cluster, loading: diffLoading, open, result } = nsConfigDiffState;
+    const { cluster, loading: diffLoading, failed, open, result } = nsConfigDiffState;
     const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
     const nodeColumns: ColumnsType<NameServerConfigDiffNode> = [
       {
@@ -977,6 +991,20 @@ const ClusterPage = () => {
                 locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
               />
             </>
+          ) : failed ? (
+            <Alert
+              showIcon
+              type="error"
+              message={t('cluster.nsConfigDiffFailed')}
+              action={
+                <Button
+                  size="small"
+                  onClick={() => cluster && void openNameServerConfigDiff(cluster)}
+                >
+                  {t('common.retry')}
+                </Button>
+              }
+            />
           ) : (
             <Alert showIcon type="info" message={t('cluster.nsConfigDiffLoading')} />
           )}
@@ -986,7 +1014,7 @@ const ClusterPage = () => {
   }
 
   function renderBrokerConfigDiffModal() {
-    const { cluster, loading: diffLoading, open, result } = brokerConfigDiffState;
+    const { cluster, loading: diffLoading, failed, open, result } = brokerConfigDiffState;
     const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
     const brokerColumns: ColumnsType<BrokerConfigDiffBroker> = [
       {
@@ -1070,6 +1098,7 @@ const ClusterPage = () => {
           setBrokerConfigDiffState({
             open: false,
             loading: false,
+            failed: false,
             cluster: null,
             result: null,
           });
@@ -1081,6 +1110,7 @@ const ClusterPage = () => {
               setBrokerConfigDiffState({
                 open: false,
                 loading: false,
+                failed: false,
                 cluster: null,
                 result: null,
               });
@@ -1137,6 +1167,17 @@ const ClusterPage = () => {
                 locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
               />
             </>
+          ) : failed ? (
+            <Alert
+              showIcon
+              type="error"
+              message={t('cluster.brokerConfigDiffFailed')}
+              action={
+                <Button size="small" onClick={() => cluster && void openBrokerConfigDiff(cluster)}>
+                  {t('common.retry')}
+                </Button>
+              }
+            />
           ) : (
             <Alert showIcon type="info" message={t('cluster.brokerConfigDiffLoading')} />
           )}

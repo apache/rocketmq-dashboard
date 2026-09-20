@@ -801,7 +801,81 @@ describe('Cluster page', () => {
     const dialog = await screen.findByRole('dialog', {
       name: /Broker 配置差异 - ns-prod/,
     });
-    expect(within(dialog).getByText('正在检测 Broker 配置差异')).toBeInTheDocument();
+    expect(within(dialog).getByText('Broker 配置差异检测失败')).toBeInTheDocument();
+  });
+
+  it('renders a failed NameServer config diff as an error with retry instead of the loading banner', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [{ addr: 'rocketmq1-nameserver:9876', status: 'healthy' }],
+      },
+    ]);
+    clusterServiceMocks.getNameServerConfigDiff
+      .mockRejectedValueOnce(new Error('name server unreachable'))
+      .mockResolvedValueOnce({
+        cluster: 'rocketmq1',
+        complete: true,
+        driftDetected: false,
+        nodeCount: 1,
+        reachableNodeCount: 1,
+        comparedKeys: ['serverWorkerThreads'],
+        nodes: [{ address: 'rocketmq1-nameserver:9876', reachable: true }],
+        differences: [],
+      });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith('NameServer 配置差异检测失败，请稍后重试'),
+    );
+    const dialog = await screen.findByRole('dialog', { name: /NameServer 配置差异/ });
+    // The failed request must surface the error alert, not the "正在检测" loading banner.
+    expect(within(dialog).getByText('NameServer 配置差异检测失败，请稍后重试')).toBeInTheDocument();
+    expect(within(dialog).queryByText('正在检测 NameServer 配置差异')).not.toBeInTheDocument();
+
+    const retryButton = within(dialog).getByRole('button', { name: /重\s*试/ });
+    await user.click(retryButton);
+    expect(await within(dialog).findByText('未检测到 NameServer 配置差异')).toBeInTheDocument();
+  });
+
+  it('renders a failed Broker config diff as an error with retry instead of the loading banner', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    clusterServiceMocks.getBrokerConfigDiff
+      .mockRejectedValueOnce(new Error('broker unreachable'))
+      .mockResolvedValueOnce({
+        cluster: 'cluster-prod',
+        complete: true,
+        driftDetected: false,
+        brokerCount: 1,
+        reachableBrokerCount: 1,
+        comparedFields: ['flushDiskType'],
+        brokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true }],
+        differences: [],
+      });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /Broker 管理/ }));
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('Broker 配置差异检测失败'));
+    const dialog = await screen.findByRole('dialog', { name: /Broker 配置差异 - ns-prod/ });
+    expect(within(dialog).getByText('Broker 配置差异检测失败')).toBeInTheDocument();
+    expect(within(dialog).queryByText('正在检测 Broker 配置差异')).not.toBeInTheDocument();
+
+    const retryButton = within(dialog).getByRole('button', { name: /重\s*试/ });
+    await user.click(retryButton);
+    expect(await within(dialog).findByText('Broker 配置一致')).toBeInTheDocument();
   });
 
   it('does not reopen a closed NameServer config diff when its request finishes', async () => {
