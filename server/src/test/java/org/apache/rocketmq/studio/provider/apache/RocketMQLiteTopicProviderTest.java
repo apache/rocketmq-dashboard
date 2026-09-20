@@ -106,6 +106,50 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
+        String failingMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getBrokerLiteInfo(failingMaster))
+                .thenThrow(new IllegalStateException("broker restarting"));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(consumerConnection("c1", "10.0.0.9:1234"));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1")).thenReturn(clientInfo(2, System.currentTimeMillis()));
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> {
+            assertThat(summary.getTopicPattern()).isEqualTo(PARENT);
+            assertThat(summary.getTopicCount()).isEqualTo(2);
+            assertThat(summary.getTotalBacklog()).isEqualTo(7L);
+        });
+    }
+
+    @Test
+    void quotaSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
+        String failingMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(3, 40, 3));
+        when(admin.getBrokerLiteInfo(failingMaster))
+                .thenThrow(new IllegalStateException("broker restarting"));
+        Properties reachableConfig = new Properties();
+        reachableConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(BROKER_A)).thenReturn(reachableConfig);
+        Properties failingConfig = new Properties();
+        failingConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(failingMaster)).thenReturn(failingConfig);
+
+        LiteTopicQuota quota = provider.getQuota(null);
+
+        // Only the reachable master contributed counts, so the ratio is built from it alone.
+        assertThat(quota.getCurrentTopicCount()).isEqualTo(3);
+        assertThat(quota.getMaxTopicCount()).isEqualTo(40);
+        assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
+        assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
+    }
+
+    @Test
     void listLiteTopicsAggregatesParentTopicTtlBacklogAndSessions() throws Exception {
         long lastAccess = System.currentTimeMillis() - 1_000;
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
