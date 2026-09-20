@@ -63,6 +63,7 @@ import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { formatDelay, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { useLang } from '../../i18n/LangContext';
 
 interface CreateFormValues {
   username: string;
@@ -103,15 +104,19 @@ const STUDIO_USER_EXPORT_COLUMNS: CsvColumn<StudioUser>[] = [
   { header: 'Modified At', value: (user) => dateTime(user.gmtModified) },
 ];
 
-const sessionStatusTags = (session: StudioUserSessionDetail) => (
-  <Space size={4} wrap>
-    <Tag color="processing">活跃</Tag>
-    {session.expiringSoon && <Tag color="gold">即将过期</Tag>}
-    {session.stale && <Tag color="orange">长时间未活跃</Tag>}
-  </Space>
-);
+const SessionStatusTags = ({ session }: { session: StudioUserSessionDetail }) => {
+  const { t } = useLang();
+  return (
+    <Space size={4} wrap>
+      <Tag color="processing">{t('userMgmt.tagActive')}</Tag>
+      {session.expiringSoon && <Tag color="gold">{t('userMgmt.tagExpiringSoon')}</Tag>}
+      {session.stale && <Tag color="orange">{t('userMgmt.tagStale')}</Tag>}
+    </Space>
+  );
+};
 
 const UserManagementPage = () => {
+  const { t } = useLang();
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
   const userId = useAuthStore((state) => state.userId);
@@ -181,11 +186,11 @@ const UserManagementPage = () => {
       setUsers(result.items);
       setTotal(result.total);
     } catch {
-      if (requestId === requestSeqRef.current) message.error('加载用户列表失败');
+      if (requestId === requestSeqRef.current) message.error(t('userMgmt.loadFailed'));
     } finally {
       if (requestId === requestSeqRef.current) setLoading(false);
     }
-  }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter]);
+  }, [admin, debouncedSearch, page, pageSize, roleFilter, statusFilter, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -202,27 +207,30 @@ const UserManagementPage = () => {
     [],
   );
 
-  const loadSessionDetails = useCallback(async (record: StudioUser) => {
-    const requestId = ++sessionDetailsRequestSeqRef.current;
-    setSessionDetailsLoading(true);
-    try {
-      const details = await listStudioUserSessions(record.id);
-      if (requestId !== sessionDetailsRequestSeqRef.current) return;
-      setSessionDetails(details);
-      setSessionDrawerUser((current) =>
-        current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
-      );
-    } catch {
-      if (requestId === sessionDetailsRequestSeqRef.current) {
-        setSessionDetails([]);
-        message.error('加载用户会话失败');
+  const loadSessionDetails = useCallback(
+    async (record: StudioUser) => {
+      const requestId = ++sessionDetailsRequestSeqRef.current;
+      setSessionDetailsLoading(true);
+      try {
+        const details = await listStudioUserSessions(record.id);
+        if (requestId !== sessionDetailsRequestSeqRef.current) return;
+        setSessionDetails(details);
+        setSessionDrawerUser((current) =>
+          current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
+        );
+      } catch {
+        if (requestId === sessionDetailsRequestSeqRef.current) {
+          setSessionDetails([]);
+          message.error(t('userMgmt.loadSessionsFailed'));
+        }
+      } finally {
+        if (requestId === sessionDetailsRequestSeqRef.current) {
+          setSessionDetailsLoading(false);
+        }
       }
-    } finally {
-      if (requestId === sessionDetailsRequestSeqRef.current) {
-        setSessionDetailsLoading(false);
-      }
-    }
-  }, []);
+    },
+    [t],
+  );
 
   const openSessionDrawer = (record: StudioUser) => {
     setSessionDrawerUser(record);
@@ -241,13 +249,13 @@ const UserManagementPage = () => {
     const values = await createForm.validateFields();
     try {
       await createStudioUser(values);
-      message.success('用户已创建');
+      message.success(t('userMgmt.userCreated'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
     } catch {
-      message.error('创建用户失败');
+      message.error(t('userMgmt.createFailed'));
     }
   };
 
@@ -279,10 +287,10 @@ const UserManagementPage = () => {
       record.id,
       async () => {
         await setStudioUserEnabled(record.id, enabled);
-        message.success(enabled ? '用户已启用' : '用户已禁用，全部会话已注销');
+        message.success(enabled ? t('userMgmt.userEnabled') : t('userMgmt.userDisabled'));
         await loadUsers();
       },
-      '更新用户状态失败',
+      t('userMgmt.updateStatusFailed'),
     );
 
   const updatePassword = async () => {
@@ -293,15 +301,15 @@ const UserManagementPage = () => {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
         navigate('/login', { replace: true });
-        message.success('密码已修改，请使用新密码重新登录');
+        message.success(t('userMgmt.passwordChanged'));
       } else {
         await resetStudioUserPassword(passwordTarget.id, values.newPassword);
-        message.success('密码已重置，用户的现有会话已注销');
+        message.success(t('userMgmt.passwordReset'));
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
     } catch {
-      message.error('修改密码失败');
+      message.error(t('userMgmt.changePasswordFailed'));
     }
   };
 
@@ -311,9 +319,9 @@ const UserManagementPage = () => {
       async () => {
         const result = await revokeStudioUserSessions(record.id);
         if (result.revokedSessionCount > 0) {
-          message.success(`已注销 ${result.revokedSessionCount} 个活跃会话`);
+          message.success(t('userMgmt.revokedCount', { count: result.revokedSessionCount }));
         } else {
-          message.success('没有可注销的活跃会话');
+          message.success(t('userMgmt.nothingToRevoke'));
         }
         if (record.id === userId && result.revokedSessionCount > 0) {
           clearAuth();
@@ -325,7 +333,7 @@ const UserManagementPage = () => {
         }
         await loadUsers();
       },
-      '注销用户会话失败',
+      t('userMgmt.revokeFailed'),
     );
 
   const openCreateUserModal = () => setCreateOpen(true);
@@ -345,48 +353,48 @@ const UserManagementPage = () => {
         `rocketmq-studio-users-${today}.csv`,
         buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
       );
-      message.success(`已导出 ${exportedUsers.length} 个用户`);
+      message.success(t('userMgmt.exportedCount', { count: exportedUsers.length }));
     } catch {
-      message.error('导出用户列表失败，请稍后重试');
+      message.error(t('userMgmt.exportFailed'));
     }
     setUserExporting(false);
-  }, [admin, debouncedSearch, roleFilter, statusFilter]);
+  }, [admin, debouncedSearch, roleFilter, statusFilter, t]);
   const sessionDetailColumns: ColumnsType<StudioUserSessionDetail> = [
-    { title: '会话 ID', dataIndex: 'id', width: 96 },
+    { title: t('userMgmt.sessionId'), dataIndex: 'id', width: 96 },
     {
-      title: '状态',
+      title: t('common.status'),
       key: 'status',
       width: 172,
-      render: (_, record) => sessionStatusTags(record),
+      render: (_, record) => <SessionStatusTags session={record} />,
     },
     {
-      title: '最近活跃',
+      title: t('userMgmt.lastActive'),
       dataIndex: 'lastSeenAt',
       width: 160,
       ellipsis: true,
       render: dateTime,
     },
     {
-      title: '已空闲',
+      title: t('userMgmt.idleFor'),
       dataIndex: 'idleSeconds',
       width: 112,
       render: durationText,
     },
     {
-      title: '过期时间',
+      title: t('userMgmt.expiresAt'),
       dataIndex: 'expiresAt',
       width: 160,
       ellipsis: true,
       render: dateTime,
     },
     {
-      title: '剩余有效期',
+      title: t('userMgmt.remainingValidity'),
       dataIndex: 'remainingSeconds',
       width: 126,
       render: durationText,
     },
     {
-      title: '创建时间',
+      title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
       width: 160,
       ellipsis: true,
@@ -398,23 +406,32 @@ const UserManagementPage = () => {
   // horizontal scrollbar by default. Columns whose text can be longer than that truncate with
   // the full value on hover instead of wrapping.
   const columns: ColumnsType<StudioUser> = [
-    { title: '用户名', dataIndex: 'username', width: 120, ellipsis: true },
-    { title: '用户 ID', dataIndex: 'id', width: 80 },
+    { title: t('userMgmt.username'), dataIndex: 'username', width: 120, ellipsis: true },
+    { title: t('userMgmt.userId'), dataIndex: 'id', width: 80 },
     {
-      title: '权限',
+      title: t('userMgmt.role'),
       dataIndex: 'admin',
       width: 88,
-      render: (value: boolean) => (value ? <Tag color="blue">管理员</Tag> : <Tag>普通用户</Tag>),
+      render: (value: boolean) =>
+        value ? (
+          <Tag color="blue">{t('userMgmt.roleAdmin')}</Tag>
+        ) : (
+          <Tag>{t('userMgmt.roleUser')}</Tag>
+        ),
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'enabled',
       width: 88,
       render: (value: boolean) =>
-        value ? <Tag color="green">已启用</Tag> : <Tag color="default">已禁用</Tag>,
+        value ? (
+          <Tag color="green">{t('common.enabled')}</Tag>
+        ) : (
+          <Tag color="default">{t('common.disabled')}</Tag>
+        ),
     },
     {
-      title: '活跃会话',
+      title: t('userMgmt.activeSessions'),
       dataIndex: 'activeSessionCount',
       width: 80,
       render: (value?: number) => {
@@ -423,47 +440,47 @@ const UserManagementPage = () => {
       },
     },
     {
-      title: '最近活跃',
+      title: t('userMgmt.lastActive'),
       dataIndex: 'lastSessionSeenAt',
       width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
-      title: '最近过期',
+      title: t('userMgmt.nearestExpiry'),
       dataIndex: 'nearestSessionExpiresAt',
       width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
-      title: '创建时间',
+      title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
       width: 132,
       ellipsis: true,
       render: dateTime,
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 264,
       render: (_, record) => (
         <Space size={4}>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
-            改密
+            {t('userMgmt.changePassword')}
           </Button>
           <Button
             size="small"
             icon={<ListBullets size={14} />}
             onClick={() => openSessionDrawer(record)}
           >
-            会话
+            {t('userMgmt.sessions')}
           </Button>
           <Popconfirm
-            title={`注销 ${record.username} 的活跃会话？`}
-            description="用户需要重新登录，账号状态不会改变。"
-            okText="注销"
-            cancelText="取消"
+            title={t('userMgmt.revokeConfirm', { username: record.username })}
+            description={t('userMgmt.revokeDescription')}
+            okText={t('userMgmt.revoke')}
+            cancelText={t('common.cancel')}
             okButtonProps={{ danger: true }}
             disabled={(record.activeSessionCount ?? 0) === 0}
             onConfirm={() => void revokeSessions(record)}
@@ -475,14 +492,14 @@ const UserManagementPage = () => {
               disabled={(record.activeSessionCount ?? 0) === 0}
               loading={mutatingUserIds.has(record.id)}
             >
-              注销
+              {t('userMgmt.revoke')}
             </Button>
           </Popconfirm>
           <Switch
             checked={record.enabled}
             loading={mutatingUserIds.has(record.id)}
-            checkedChildren="启用"
-            unCheckedChildren="禁用"
+            checkedChildren={t('userMgmt.enable')}
+            unCheckedChildren={t('userMgmt.disable')}
             onChange={(enabled) => void setEnabled(record, enabled)}
           />
         </Space>
@@ -493,8 +510,8 @@ const UserManagementPage = () => {
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="用户管理"
-        subtitle="Studio 本地账号、会话与密码管理"
+        title={t('userMgmt.title')}
+        subtitle={t('userMgmt.subtitle')}
         extra={
           admin ? (
             <Space>
@@ -504,10 +521,10 @@ const UserManagementPage = () => {
                 loading={userExporting}
                 onClick={() => void handleExportUsers()}
               >
-                导出
+                {t('common.export')}
               </Button>
               <Button type="primary" icon={<Plus size={16} />} onClick={openCreateUserModal}>
-                新建用户
+                {t('userMgmt.createUser')}
               </Button>
             </Space>
           ) : undefined
@@ -515,11 +532,11 @@ const UserManagementPage = () => {
       />
       {!admin && (
         <InfoBanner
-          title="当前账号不是管理员"
-          description="你可以修改自己的密码；用户列表和账号状态仅对管理员开放。"
+          title={t('userMgmt.notAdminTitle')}
+          description={t('userMgmt.notAdminDescription')}
         />
       )}
-      <Card title="我的账号" style={{ marginBottom: 16 }}>
+      <Card title={t('userMgmt.myAccount')} style={{ marginBottom: 16 }}>
         <Button
           icon={<Key size={16} />}
           disabled={!userId}
@@ -536,20 +553,27 @@ const UserManagementPage = () => {
             })
           }
         >
-          修改我的密码
+          {t('userMgmt.changeMyPassword')}
         </Button>
       </Card>
       {admin && sessionOverview && (
-        <Card title="会话概览" style={{ marginBottom: 16 }}>
+        <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
           <Flex gap={32} wrap>
-            <Statistic title="活跃会话" value={sessionOverview.activeSessionCount} />
-            <Statistic title="活跃用户" value={sessionOverview.activeUserCount} />
             <Statistic
-              title={`未来 ${sessionOverview.expiringSoonWindowMinutes} 分钟过期`}
+              title={t('userMgmt.activeSessions')}
+              value={sessionOverview.activeSessionCount}
+            />
+            <Statistic title={t('userMgmt.activeUsers')} value={sessionOverview.activeUserCount} />
+            <Statistic
+              title={t('userMgmt.expiringWithin', {
+                minutes: sessionOverview.expiringSoonWindowMinutes,
+              })}
               value={sessionOverview.expiringSoonSessionCount}
             />
             <Statistic
-              title={`${sessionOverview.staleSessionThresholdMinutes} 分钟未活跃`}
+              title={t('userMgmt.idleMinutes', {
+                minutes: sessionOverview.staleSessionThresholdMinutes,
+              })}
               value={sessionOverview.staleSessionCount}
             />
           </Flex>
@@ -560,7 +584,7 @@ const UserManagementPage = () => {
           <Flex gap={12} wrap style={{ marginBottom: 16 }}>
             <Input.Search
               allowClear
-              placeholder="搜索用户名"
+              placeholder={t('userMgmt.searchPlaceholder')}
               style={{ width: 240 }}
               value={search}
               onChange={(event) => {
@@ -570,8 +594,8 @@ const UserManagementPage = () => {
             />
             <Select<RoleFilter>
               allowClear
-              aria-label="按权限筛选"
-              placeholder="全部权限"
+              aria-label={t('userMgmt.filterByRole')}
+              placeholder={t('userMgmt.allRoles')}
               style={{ width: 140 }}
               value={roleFilter}
               onChange={(value) => {
@@ -579,14 +603,14 @@ const UserManagementPage = () => {
                 setPage(1);
               }}
               options={[
-                { label: '管理员', value: 'admin' },
-                { label: '普通用户', value: 'reader' },
+                { label: t('userMgmt.roleAdmin'), value: 'admin' },
+                { label: t('userMgmt.roleUser'), value: 'reader' },
               ]}
             />
             <Select<StatusFilter>
               allowClear
-              aria-label="按状态筛选"
-              placeholder="全部状态"
+              aria-label={t('userMgmt.filterByStatus')}
+              placeholder={t('userMgmt.allStatuses')}
               style={{ width: 140 }}
               value={statusFilter}
               onChange={(value) => {
@@ -594,8 +618,8 @@ const UserManagementPage = () => {
                 setPage(1);
               }}
               options={[
-                { label: '已启用', value: 'enabled' },
-                { label: '已禁用', value: 'disabled' },
+                { label: t('common.enabled'), value: 'enabled' },
+                { label: t('common.disabled'), value: 'disabled' },
               ]}
             />
           </Flex>
@@ -612,7 +636,7 @@ const UserManagementPage = () => {
               total,
               showSizeChanger: true,
               pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
-              showTotal: (count) => `共 ${count} 个用户`,
+              showTotal: (count) => t('userMgmt.totalUsers', { count }),
               onChange: (nextPage, nextPageSize) => {
                 if (nextPageSize !== pageSize) {
                   setPage(1);
@@ -627,7 +651,11 @@ const UserManagementPage = () => {
       )}
 
       <Drawer
-        title={sessionDrawerUser ? `${sessionDrawerUser.username} 的会话` : '用户会话'}
+        title={
+          sessionDrawerUser
+            ? t('userMgmt.sessionsOf', { username: sessionDrawerUser.username })
+            : t('userMgmt.userSessions')
+        }
         width={1040}
         open={sessionDrawerUser !== null}
         onClose={closeSessionDrawer}
@@ -640,13 +668,13 @@ const UserManagementPage = () => {
                 loading={sessionDetailsLoading}
                 onClick={() => void loadSessionDetails(sessionDrawerUser)}
               >
-                刷新
+                {t('common.refresh')}
               </Button>
               <Popconfirm
-                title={`注销 ${sessionDrawerUser.username} 的活跃会话？`}
-                description="用户需要重新登录，账号状态不会改变。"
-                okText="注销"
-                cancelText="取消"
+                title={t('userMgmt.revokeConfirm', { username: sessionDrawerUser.username })}
+                description={t('userMgmt.revokeDescription')}
+                okText={t('userMgmt.revoke')}
+                cancelText={t('common.cancel')}
                 okButtonProps={{ danger: true }}
                 disabled={sessionDetails.length === 0}
                 onConfirm={() => void revokeSessions(sessionDrawerUser)}
@@ -657,7 +685,7 @@ const UserManagementPage = () => {
                   disabled={sessionDetails.length === 0}
                   loading={mutatingUserIds.has(sessionDrawerUser.id)}
                 >
-                  注销全部
+                  {t('userMgmt.revokeAll')}
                 </Button>
               </Popconfirm>
             </Space>
@@ -671,35 +699,37 @@ const UserManagementPage = () => {
               size="small"
               column={2}
               items={[
-                { key: 'userId', label: '用户 ID', children: sessionDrawerUser.id },
+                { key: 'userId', label: t('userMgmt.userId'), children: sessionDrawerUser.id },
                 {
                   key: 'role',
-                  label: '权限',
-                  children: sessionDrawerUser.admin ? '管理员' : '普通用户',
+                  label: t('userMgmt.role'),
+                  children: sessionDrawerUser.admin
+                    ? t('userMgmt.roleAdmin')
+                    : t('userMgmt.roleUser'),
                 },
                 {
                   key: 'activeSessionCount',
-                  label: '活跃会话',
+                  label: t('userMgmt.activeSessions'),
                   children: sessionDetailsLoading ? '-' : sessionDetails.length,
                 },
                 {
                   key: 'status',
-                  label: '账号状态',
-                  children: sessionDrawerUser.enabled ? '已启用' : '已禁用',
+                  label: t('userMgmt.accountStatus'),
+                  children: sessionDrawerUser.enabled ? t('common.enabled') : t('common.disabled'),
                 },
                 {
                   key: 'lastSessionSeenAt',
-                  label: '最近活跃',
+                  label: t('userMgmt.lastActive'),
                   children: dateTime(sessionDrawerUser.lastSessionSeenAt),
                 },
                 {
                   key: 'nearestSessionExpiresAt',
-                  label: '最近过期',
+                  label: t('userMgmt.nearestExpiry'),
                   children: dateTime(sessionDrawerUser.nearestSessionExpiresAt),
                 },
                 {
                   key: 'passwordChangedAt',
-                  label: '密码修改时间',
+                  label: t('userMgmt.passwordChangedAt'),
                   children: dateTime(sessionDrawerUser.passwordChangedAt),
                 },
               ]}
@@ -712,31 +742,38 @@ const UserManagementPage = () => {
               tableLayout="fixed"
               pagination={false}
               scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
-              locale={{ emptyText: '暂无活跃会话' }}
+              locale={{ emptyText: t('userMgmt.noActiveSessions') }}
             />
           </Space>
         )}
       </Drawer>
 
       <Modal
-        title="新建 Studio 用户"
+        title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
         onCancel={() => setCreateOpen(false)}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
-          <Form.Item name="username" label="用户名" rules={[{ required: true }, { max: 128 }]}>
+          <Form.Item
+            name="username"
+            label={t('userMgmt.username')}
+            rules={[{ required: true }, { max: 128 }]}
+          >
             <Input autoComplete="username" />
           </Form.Item>
           <Form.Item
             name="password"
-            label="初始密码"
-            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+            label={t('userMgmt.initialPassword')}
+            rules={[{ required: true }, { min: 8, message: t('userMgmt.passwordMinLength') }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="admin" label="管理员权限" valuePropName="checked">
-            <Switch checkedChildren="管理员" unCheckedChildren="普通用户" />
+          <Form.Item name="admin" label={t('userMgmt.adminAccess')} valuePropName="checked">
+            <Switch
+              checkedChildren={t('userMgmt.roleAdmin')}
+              unCheckedChildren={t('userMgmt.roleUser')}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -744,8 +781,8 @@ const UserManagementPage = () => {
       <Modal
         title={
           passwordTarget?.id === userId
-            ? '修改我的密码'
-            : `重置 ${passwordTarget?.username ?? ''} 的密码`
+            ? t('userMgmt.changeMyPassword')
+            : t('userMgmt.resetPasswordOf', { username: passwordTarget?.username ?? '' })
         }
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
@@ -756,14 +793,18 @@ const UserManagementPage = () => {
       >
         <Form form={passwordForm} layout="vertical">
           {passwordTarget?.id === userId && (
-            <Form.Item name="currentPassword" label="当前密码" rules={[{ required: true }]}>
+            <Form.Item
+              name="currentPassword"
+              label={t('userMgmt.currentPassword')}
+              rules={[{ required: true }]}
+            >
               <Input.Password autoComplete="current-password" />
             </Form.Item>
           )}
           <Form.Item
             name="newPassword"
-            label="新密码"
-            rules={[{ required: true }, { min: 8, message: '密码至少 8 位' }]}
+            label={t('userMgmt.newPassword')}
+            rules={[{ required: true }, { min: 8, message: t('userMgmt.passwordMinLength') }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
