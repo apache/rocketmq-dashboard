@@ -15,7 +15,19 @@
  * limitations under the License.
  */
 
-import { Card, Col, Empty, Flex, Progress, Row, Skeleton, Statistic, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Card,
+  Col,
+  Empty,
+  Flex,
+  Progress,
+  Row,
+  Skeleton,
+  Statistic,
+  Tag,
+  Typography,
+} from 'antd';
 import type { AuditSummary, AuditSummaryBucket } from '../../api/audit';
 
 const { Text } = Typography;
@@ -23,6 +35,7 @@ const { Text } = Typography;
 interface Props {
   summary: AuditSummary | null;
   loading: boolean;
+  failed?: boolean;
 }
 
 const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: number }) => {
@@ -48,10 +61,24 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
   );
 };
 
-const AuditSummaryCards = ({ summary, loading }: Props) => {
+const AuditSummaryCards = ({ summary, loading, failed = false }: Props) => {
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
+  // A failed aggregate must not masquerade as a valid empty result: the cards
+  // below would read as "no record matched the filters" while the record table
+  // and the insights panel still show matching rows.
+  if (failed && !summary) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="审计概览加载失败"
+        description="筛选条件下的统计信息暂不可用，下方记录列表不受影响"
+      />
+    );
+  }
   const data = summary || {
     total: 0,
     successful: 0,

@@ -230,6 +230,18 @@ describe('Audit page', () => {
     expect(screen.queryByRole('button', { name: /操作时间线/ })).not.toBeInTheDocument();
   });
 
+  it('reports a failed summary instead of rendering it as empty statistics', async () => {
+    vi.mocked(opsService.getAuditSummary).mockRejectedValue(new Error('summary unavailable'));
+    renderWithProviders(<AuditPage />);
+
+    // The record list still resolves, so the page has matching records to show.
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+
+    // The cards must not claim that no record matched the filters.
+    expect(await screen.findByText('审计概览加载失败')).toBeInTheDocument();
+    expect(screen.queryByText('匹配记录')).not.toBeInTheDocument();
+  });
+
   it('loads a filtered server-side summary dashboard', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);

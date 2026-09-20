@@ -109,6 +109,7 @@ const AuditPage: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryFailed, setSummaryFailed] = useState(false);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
@@ -219,10 +220,20 @@ const AuditPage: React.FC = () => {
     });
     void getAuditSummary(activeFilter)
       .then((value) => {
-        if (!cancelled) setSummary(value);
+        if (!cancelled) {
+          setSummary(value);
+          setSummaryFailed(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) {
+          // Keep the failure visible: the cards fall back to zeros, which would
+          // otherwise read as "no record matched the filters" while the record
+          // table below still lists matching rows.
+          setSummary(null);
+          setSummaryFailed(true);
+          message.error('审计概览加载失败，请稍后重试');
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -512,7 +523,7 @@ const AuditPage: React.FC = () => {
         </Flex>
       </Flex>
 
-      <AuditSummaryCards summary={summary} loading={summaryLoading} />
+      <AuditSummaryCards summary={summary} loading={summaryLoading} failed={summaryFailed} />
       <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}
