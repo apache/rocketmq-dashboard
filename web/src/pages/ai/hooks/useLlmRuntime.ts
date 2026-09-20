@@ -87,7 +87,12 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     );
   }, []);
 
+  // Monotonic id per load: a response from a superseded load (an enabled flip or an overlapping
+  // reload) must not repopulate the state, or a disabled runtime could come back "ready".
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(async () => {
+    const requestId = ++loadSeqRef.current;
     if (!enabled) {
       setConfig(null);
       setModelOptions([]);
@@ -98,10 +103,12 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     setModelsLoading(true);
     try {
       const loaded = await getLlmConfig();
+      if (requestId !== loadSeqRef.current) return;
       setConfig(loaded);
       if (isAgentEngine(loaded.engine)) optionsRef.current.onEngine?.(loaded.engine);
       if (loaded.model) setSelectedModel((current) => current || loaded.model);
       const result = await getLlmModels();
+      if (requestId !== loadSeqRef.current) return;
       const models = result?.status === 0 && result.data ? result.data : [];
       const options = models
         .map((item) => item.id || item.name || '')
@@ -114,9 +121,9 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
         setModelOptions([{ value: loaded.model, label: loaded.model }]);
       }
     } catch (error) {
-      optionsRef.current.onError?.(error);
+      if (requestId === loadSeqRef.current) optionsRef.current.onError?.(error);
     } finally {
-      setModelsLoading(false);
+      if (requestId === loadSeqRef.current) setModelsLoading(false);
     }
   }, [enabled]);
 
