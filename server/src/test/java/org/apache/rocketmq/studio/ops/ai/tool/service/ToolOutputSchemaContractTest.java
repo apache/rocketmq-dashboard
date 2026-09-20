@@ -125,16 +125,22 @@ class ToolOutputSchemaContractTest {
                 .aclVersion("v2")
                 .gmtCreate(LocalDateTime.of(2026, 8, 22, 8, 0))
                 .build();
-        samples.put("rmq.acl.get", List.of(aclRule));
-        samples.put("rmq.acl.list", List.of(new PageOutput<>(1, 20, 1L, List.of(aclRule))));
+        // Tencent roles have no database row: id stays null and the role name (principal)
+        // is the identifier, so tool outputs must tolerate a missing id
+        AclRuleItem tencentAclRule = new AclRuleItem(
+                null, "alice", "orders", "TOPIC", "LITERAL",
+                List.of("PUB"), "ALLOW", INSTANCE, "v2", null);
+        samples.put("rmq.acl.get", List.of(aclRule, tencentAclRule));
+        samples.put("rmq.acl.list", List.of(new PageOutput<>(1, 20, 2L, List.of(aclRule, tencentAclRule))));
         samples.put("rmq.acl.create", List.of(planned(), executed(aclRuleVO)));
         samples.put("rmq.acl.update", List.of(planned(), executed(aclRuleVO)));
         samples.put("rmq.acl.delete", List.of(planned(), executedVoid()));
 
         AclUserItem user = new AclUserItem("1", "alice", true, List.of(INSTANCE));
-        samples.put("rmq.user.get", List.of(user));
-        samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user))));
-        samples.put("rmq.user.create", List.of(planned(), executed(user)));
+        AclUserItem tencentUser = new AclUserItem(null, "alice", false, List.of("cloud-instance"));
+        samples.put("rmq.user.get", List.of(user, tencentUser));
+        samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user, tencentUser))));
+        samples.put("rmq.user.create", List.of(planned(), executed(user), executed(tencentUser)));
         samples.put("rmq.user.delete", List.of(planned(), executedVoid()));
 
         // metric is optional at the service layer (AlertService only validates name),
