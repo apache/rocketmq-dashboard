@@ -480,6 +480,10 @@ public class RocketMQDLQProvider implements DLQProvider {
                         if (nextOffset <= offset) {
                             log.warn("Stop DLQ scan for {} because queue {} did not advance offset {}",
                                     dlqTopic, queue, offset);
+                            // The remainder of this queue is left unscanned, so the queue counts as
+                            // failed; otherwise the resend below would report SUCCESS while part of
+                            // the dead letters was never read.
+                            failedQueueCount++;
                             break;
                         }
                         offset = nextOffset;
@@ -494,6 +498,9 @@ public class RocketMQDLQProvider implements DLQProvider {
                                 log.warn("Stop DLQ scan for {} because queue {} returned OFFSET_ILLEGAL "
                                         + "{} times consecutively, giving up at offset {}", dlqTopic, queue,
                                         consecutiveIllegalOffsets, offset);
+                                // Same as the stall case above: the rest of the queue is abandoned
+                                // mid-scan and must be reflected in the incompleteness signal.
+                                failedQueueCount++;
                                 break;
                             }
                             log.debug("Offset was illegal for queue {} in DLQ {}, retrying from {}",
