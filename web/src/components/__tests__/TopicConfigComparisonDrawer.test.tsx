@@ -227,9 +227,12 @@ describe('TopicConfigComparisonDrawer', () => {
     );
     const user = userEvent.setup();
     renderDrawer({ instances: [...instances, archiveInstance] });
+    // Hold the node: while it is loading, the spinner contributes to its accessible name.
+    const compareButton = screen.getByRole('button', { name: '开始对比' });
 
-    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    await user.click(compareButton);
     await waitFor(() => expect(pending.size).toBe(2));
+    expect(compareButton).toHaveClass('ant-btn-loading');
 
     // Change the source instance while the production/staging comparison is still in flight.
     await user.click(screen.getByRole('combobox', { name: '源实例' }));
@@ -242,6 +245,8 @@ describe('TopicConfigComparisonDrawer', () => {
 
     expect(screen.queryByText('配置一致')).not.toBeInTheDocument();
     expect(screen.queryByText('source-only-topic')).not.toBeInTheDocument();
+    // Changing the pair must also end the in-flight indicator, so the control cannot stay spinning.
+    await waitFor(() => expect(compareButton).not.toHaveClass('ant-btn-loading'));
   });
 
   it('calls onClose from the drawer close control', async () => {
