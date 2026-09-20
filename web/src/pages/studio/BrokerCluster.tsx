@@ -233,7 +233,11 @@ const BrokerClusterPage = () => {
         if (!active) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
-        setSelectedInstanceId(apacheInstances[0]?.name);
+        setSelectedInstanceId((current) =>
+          apacheInstances.some((instance) => instance.name === current)
+            ? current
+            : apacheInstances[0]?.name,
+        );
       })
       .catch(() => {
         if (!active) return;
