@@ -587,6 +587,180 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.diagSeverity': { zh: '级别', en: 'Severity' },
   'messagePage.diagRisk': { zh: '风险', en: 'Risk' },
   'messagePage.diagDescription': { zh: '说明', en: 'Description' },
+  'messagePage.traceStatusHealthy': { zh: '轨迹健康', en: 'Trace Healthy' },
+  'messagePage.traceStatusWarning': { zh: '需要关注', en: 'Needs Attention' },
+  'messagePage.traceStatusDeliveryCritical': { zh: '投递异常', en: 'Delivery Critical' },
+  'messagePage.issue.NO_TRACE_NODES.title': { zh: '缺少轨迹节点', en: 'No trace stages' },
+  'messagePage.issue.NO_TRACE_NODES.description': {
+    zh: '当前消息没有返回可展示的轨迹阶段。',
+    en: 'The message returned no trace stages to display.',
+  },
+  'messagePage.issue.NO_TRACE_NODES.recommendation': {
+    zh: '确认消息轨迹已开启，并检查是否需要指定自定义轨迹 Topic。',
+    en: 'Confirm message tracing is enabled and check whether a custom trace topic needs to be specified.',
+  },
+  'messagePage.issue.FAILED_TRACE_NODE.title': { zh: '轨迹阶段失败', en: 'Trace stage failed' },
+  'messagePage.issue.FAILED_TRACE_NODE.description': {
+    zh: '{phase} 阶段返回失败状态。',
+    en: 'The {phase} stage returned a failed status.',
+  },
+  'messagePage.issue.FAILED_TRACE_NODE.recommendation': {
+    zh: '优先查看失败阶段对应的生产者、Broker 或消费者日志，确认失败返回码和异常堆栈。',
+    en: 'Check the producer, broker, or consumer logs for the failed stage first to confirm the failure code and exception stack.',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.title': {
+    zh: '轨迹阶段未完成',
+    en: 'Trace stage not finished',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.description': {
+    zh: '{phase} 阶段仍处于等待或处理中状态。',
+    en: 'The {phase} stage is still waiting or being processed.',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.recommendation': {
+    zh: '等待或处理中阶段需要结合消费者在线状态和堆积情况确认是否仍在推进。',
+    en: 'For waiting or in-progress stages, check consumer availability and backlog to confirm whether progress is being made.',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.title': {
+    zh: '轨迹时间不可用',
+    en: 'Trace time unavailable',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.description': {
+    zh: '{phase} 阶段没有可解析的时间戳。',
+    en: 'The {phase} stage has no parsable timestamp.',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.recommendation': {
+    zh: '检查生产者、Broker 与消费者机器时间，避免时钟漂移影响轨迹判断。',
+    en: 'Check the clocks on producers, brokers, and consumers to avoid clock drift affecting trace analysis.',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.title': {
+    zh: '轨迹时间发生回退',
+    en: 'Trace time regressed',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.description': {
+    zh: '{phase} 比上一阶段早 {gap} ms。',
+    en: 'The {phase} stage is {gap} ms earlier than the previous stage.',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.recommendation': {
+    zh: '轨迹时间出现回退时，先确认各节点 NTP 同步和跨机房时间源配置。',
+    en: 'When trace time regresses, first verify NTP sync and cross-datacenter time source configuration.',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.title': {
+    zh: '阶段耗时不可用',
+    en: 'Stage cost unavailable',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.description': {
+    zh: '{phase} 阶段返回了无效耗时。',
+    en: 'The {phase} stage returned an invalid cost time.',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.recommendation': {
+    zh: '忽略异常耗时值后再判断链路瓶颈，并核对服务端轨迹采集字段是否完整。',
+    en: 'Ignore the abnormal cost value before judging bottlenecks and verify the server-side trace fields are complete.',
+  },
+  'messagePage.issue.SLOW_TRACE_NODE.title': { zh: '阶段耗时偏高', en: 'High stage cost' },
+  'messagePage.issue.SLOW_TRACE_NODE.description': {
+    zh: '{phase} 阶段耗时 {cost} ms。',
+    en: 'The {phase} stage took {cost} ms.',
+  },
+  'messagePage.issue.SLOW_TRACE_NODE.recommendation': {
+    zh: '对耗时最高的阶段做分段排查，区分发送、存储和消费处理时间。',
+    en: 'Break down the slowest stage to separate send, storage, and consumption processing time.',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.title': {
+    zh: '相邻阶段间隔偏高',
+    en: 'High gap between stages',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.description': {
+    zh: '{phase} 与上一阶段相隔 {gap} ms。',
+    en: 'The {phase} stage started {gap} ms after the previous stage.',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.recommendation': {
+    zh: '相邻阶段间隔过大时，检查 Broker 拉取、客户端长轮询和消费线程池排队。',
+    en: 'When the gap between stages is large, check broker pulls, client long polling, and consumer thread pool queuing.',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.title': {
+    zh: '端到端轨迹耗时偏高',
+    en: 'High end-to-end trace latency',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.description': {
+    zh: '首尾轨迹阶段相隔 {latency} ms。',
+    en: 'The first and last trace stages are {latency} ms apart.',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.recommendation': {
+    zh: '端到端耗时过高时，结合 Topic 队列分布、Consumer Group 进度和客户端负载一起排查。',
+    en: 'For high end-to-end latency, investigate topic queue distribution, consumer group progress, and client load together.',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.title': {
+    zh: '缺少消费状态',
+    en: 'Missing consumer status',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.description': {
+    zh: '轨迹中没有返回任何消费组的投递状态。',
+    en: 'The trace returned no delivery status for any consumer group.',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.recommendation': {
+    zh: '缺少消费状态时，可用直接消费或 Consumer Group 进度进一步确认消息是否可达。',
+    en: 'When consumer status is missing, use direct consumption or consumer group progress to confirm deliverability.',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.title': {
+    zh: '消费投递失败',
+    en: 'Consumer delivery failed',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.description': {
+    zh: '{group} 返回失败消费状态。',
+    en: '{group} returned a failed consumption status.',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.recommendation': {
+    zh: '失败消费组需要检查消费异常、重试 Topic 和业务幂等处理。',
+    en: 'For failed consumer groups, check consumption errors, retry topics, and business idempotency.',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.title': {
+    zh: '消费投递等待中',
+    en: 'Consumer delivery pending',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.description': {
+    zh: '{group} 尚未完成消费。',
+    en: '{group} has not finished consuming.',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.recommendation': {
+    zh: '等待中的消费组需要确认客户端是否在线、订阅是否匹配以及是否存在明显堆积。',
+    en: 'For pending consumer groups, confirm the client is online, the subscription matches, and there is no significant backlog.',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.title': {
+    zh: '消费状态未知',
+    en: 'Unknown consumer status',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.description': {
+    zh: '{group} 返回未识别状态 {status}。',
+    en: '{group} returned an unrecognized status {status}.',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.recommendation': {
+    zh: '未知消费状态需要回查服务端返回值，避免把未识别状态误判为成功。',
+    en: 'For unknown consumer status, check the server response to avoid mistaking unrecognized states for success.',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.title': {
+    zh: '消费发生重试',
+    en: 'Consumer delivery retried',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.description': {
+    zh: '{group} 已重试 {retry} 次。',
+    en: '{group} has retried {retry} times.',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.recommendation': {
+    zh: '存在重试时，检查消费耗时、异常类型和重试次数是否符合预期。',
+    en: 'When retries occur, check whether consumption latency, error types, and retry counts are expected.',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.title': {
+    zh: '消费时间不可用',
+    en: 'Consume time unavailable',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.description': {
+    zh: '{group} 没有可解析的消费时间。',
+    en: '{group} has no parsable consume time.',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.recommendation': {
+    zh: '消费时间不可解析时，检查 trace 数据生成端是否返回了完整时间字段。',
+    en: 'When consume time cannot be parsed, check whether the trace producer returns complete time fields.',
+  },
   'messagePage.storeTime': { zh: '存储时间', en: 'Store Time' },
   'messagePage.size': { zh: '大小', en: 'Size' },
   'messagePage.trace': { zh: '轨迹', en: 'Trace' },

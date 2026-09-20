@@ -78,6 +78,7 @@ import { tableScrollX } from '../../utils/table';
 import {
   analyzeMessageTrace,
   type MessageTraceDiagnostics,
+  type TraceDiagnosticIssue,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
 
@@ -225,10 +226,10 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
         message={
           <Flex gap={8} align="center" wrap>
             <span>{t('messagePage.traceDiagnostics')}</span>
-            <Tag color={diagnosticTagColor[diagnostics.status]}>{diagnostics.statusText}</Tag>
+            <Tag color={diagnosticTagColor[diagnostics.status]}>{t(diagnostics.statusKey)}</Tag>
             {issueData.map((issue) => (
               <Tag key={issue.id} color={diagnosticTagColor[issue.severity]}>
-                {issue.title}
+                {t(issue.titleKey, issue.params)}
               </Tag>
             ))}
           </Flex>
@@ -290,14 +291,18 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
             },
             {
               title: t('messagePage.diagRisk'),
-              dataIndex: 'title',
-              key: 'title',
+              dataIndex: 'titleKey',
+              key: 'titleKey',
               width: 150,
+              render: (_: string, record: TraceDiagnosticIssue) =>
+                t(record.titleKey, record.params),
             },
             {
               title: t('messagePage.diagDescription'),
-              dataIndex: 'description',
-              key: 'description',
+              dataIndex: 'descriptionKey',
+              key: 'descriptionKey',
+              render: (_: string, record: TraceDiagnosticIssue) =>
+                t(record.descriptionKey, record.params),
             },
           ]}
           dataSource={issueData}
@@ -306,11 +311,11 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
           size="small"
         />
       )}
-      {diagnostics.recommendations.length > 0 && (
+      {diagnostics.recommendationCodes.length > 0 && (
         <Space direction="vertical" size={4}>
-          {diagnostics.recommendations.slice(0, 4).map((recommendation) => (
-            <Typography.Text key={recommendation} type="secondary">
-              {recommendation}
+          {diagnostics.recommendationCodes.slice(0, 4).map((code) => (
+            <Typography.Text key={code} type="secondary">
+              {t(`messagePage.issue.${code}.recommendation`)}
             </Typography.Text>
           ))}
         </Space>
