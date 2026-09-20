@@ -36,6 +36,7 @@
 - URL 路径使用动词标识操作类型：`/create`、`/update`、`/delete`、`/toggle`、`/restart`、`/cleanup` 等
 - POST 操作如需定位特定资源，在 **Request Body** 中传递 `id` 或 `name`（不放在 URL 路径中）
 - GET 操作仍使用 Path Params 标识资源（如 `GET /api/topics/:name/routes`）
+- **唯一例外**：`PATCH /api/ai/conversations/:id`（AI 会话重命名 / 归档）是全仓第一个也是唯一一个 `PATCH`，刻意偏离本文档的 GET + POST 风格，理由与等价的 POST 改法见 §15.4。`DELETE` **不算**偏离——仓库已有 `DELETE /api/proxies/addresses` 与 `DELETE /api/alert-silences/:id` 两处先例。
 
 ## 接口速查
 
@@ -116,20 +117,29 @@
 | 73 | POST | `/api/settings/datasources/update` | 更新数据源 |
 | 74 | POST | `/api/settings/datasources/delete` | 删除数据源 |
 | 75 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 76 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 77 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 78 | GET | `/api/ai/tools` | 可用工具列表 |
-| 79 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 80 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 81 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 82 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 83 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 84 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 85 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 86 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 87 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 88 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 89 | GET | `/api/topics/page` | Topic 分页列表 |
+| 76 | POST | `/api/ai/conversations` | 创建 AI 会话 |
+| 77 | GET | `/api/ai/conversations` | AI 会话列表（分页） |
+| 78 | GET | `/api/ai/conversations/:id` | AI 会话详情 |
+| 79 | PATCH | `/api/ai/conversations/:id` | 重命名 / 归档 AI 会话 |
+| 80 | DELETE | `/api/ai/conversations/:id` | 删除 AI 会话 |
+| 81 | GET | `/api/ai/conversations/:id/events` | AI 会话时间线（游标分页） |
+| 82 | POST | `/api/ai/conversations/:id/messages` | 发送消息并流式返回（SSE） |
+| 83 | GET | `/api/ai/runs/:runId/stream` | 重连进行中的 AI 任务（SSE） |
+| 84 | POST | `/api/ai/runs/:runId/stop` | 停止 AI 任务 |
+| 85 | GET | `/api/ai/agent-capabilities` | Agent 运行时能力探测 |
+| 86 | GET | `/api/ai/conversations/:id/rmqctl-config` | 外部 Agent 的 rmqctl MCP 配置片段 |
+| 87 | GET | `/api/ai/tools` | 可用工具列表 |
+| 88 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 89 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 90 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 91 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 92 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 93 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 94 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 95 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 98 | GET | `/api/topics/page` | Topic 分页列表 |
 
 ## 通用响应格式
 
@@ -161,6 +171,7 @@
 | `401` | 未认证 | Token 过期或缺失 |
 | `403` | 无权限 | 无权访问该资源 |
 | `404` | 不存在 | 资源未找到 |
+| `409` | 冲突 | 与资源当前状态冲突，如会话已有进行中的 Run、停止的不是当前 Run（见 15.7 / 15.9） |
 | `500` | 服务器异常 | 未预期的内部错误 |
 
 ---
@@ -2058,43 +2069,482 @@ POST /api/settings/datasources/test
 
 ## 15. AI 交互
 
-### 15.1 发送 AI 消息
+> **Breaking change**：本节 15.1 ~ 15.11 是新增接口，同时**删除**了旧的两个端点
+> `POST /api/ai/chat`（单轮 SSE 对话）与 `POST /api/ai/execute`（执行 AI 指令）。
+> **不提供兼容层，不做数据迁移。** 直接调用这两个端点的外部脚本会失败，需改用 15.7（发消息）
+> 与 15.9（停止）。随端点一起废弃的还有旧 SSE 线格式：`event: message`、`event: enhance`
+> 与 `data: [DONE]` 哨兵都不再产生，新客户端遇到它们会显式报错而不是静默结束（见 15.7）。
+>
+> 会话历史此前只存在于浏览器 `sessionStorage`（关标签页即丢失），现在持久化到
+> `rmq_ai_conversation` / `rmq_ai_run` / `rmq_ai_event` 三张表，由启动时的迁移自动建表。
+> 旧历史记录不迁移——它本来就按标签页存，没有可迁移的东西。
+
+### 概念模型
+
+三层，与接口层级一一对应：
+
+| 概念 | 说明 | 存储表 |
+|------|------|--------|
+| **会话 Conversation** | 一次持续的对话容器：标题、归属人、绑定的 RocketMQ 实例、引擎/模型 | `rmq_ai_conversation` |
+| **运行 Run** | 会话内的一次执行（一轮问答），有独立状态机、token 统计与停止原因 | `rmq_ai_run` |
+| **事件 Event** | Run 产生的一条时间线记录：用户消息、模型推理、正文、工具调用/结果、通知、错误、终态 | `rmq_ai_event` |
+
+**归属与鉴权**：所有接口按调用者身份做 owner 过滤，访问他人的会话或 Run 一律返回 `404`
+（而不是 `403`，避免用状态码枚举 id）。写操作（创建会话、发消息、停止、改名、归档、删除）
+需要 admin；读操作（列表、详情、时间线、`GET /api/ai/runs/:runId/stream`）任何已登录用户可用。
+理由是托管 Agent 的工具调用用**服务端解析出的实例凭据**签名，不是调用者身份，所以能发起 Run
+就等于能执行 L2 变更。
+
+**Run 状态机**：`QUEUED` → `RUNNING` → `COMPLETED` / `STOPPED` / `FAILED`，后三者为终态。
+同一会话最多只有一个非终态 Run，第二个并发请求返回 `409`。
+
+**生成与 HTTP 连接解耦**：Run 不属于发起它的那个请求。关掉流（或关掉标签页）不会停止生成，
+`GET /api/ai/runs/:runId/stream`（15.8）可以重新接上。
+
+### 共用响应结构
+
+**`AiConversationVO`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 会话 ID |
+| `title` | `string` | 标题，由首条用户消息前 40 字规则生成，可用 15.4 改名 |
+| `owner` | `string` | 归属用户名 |
+| `engine` | `string` | 引擎：`http` / `claude-code` / `qoder` |
+| `model` | `string` | 模型名 |
+| `mode` | `string` | 模式：`chat` / `diagnose` / `manage` / `query` |
+| `instanceId` | `string?` | 工具绑定的 RocketMQ 实例；未绑定时为 `null` |
+| `runtimeSessionId` | `string?` | 上游 Agent CLI 自己的会话 ID（供 `--resume`）；首轮结束前为 `null` |
+| `lastSeq` | `number` | 事件序号高水位缓存，权威值是 `MAX(rmq_ai_event.seq)`；不会为 `null`（默认 `0`） |
+| `archived` | `boolean` | 是否已归档 |
+| `createdAt` | `string` | 创建时间（ISO-8601，无时区偏移的 UTC） |
+| `updatedAt` | `string` | 最后更新时间，格式同上 |
+
+**`AiRunVO`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | Run ID |
+| `conversationId` | `number` | 所属会话 ID |
+| `turn` | `number` | 会话内的轮次，从 1 开始，`(conversationId, turn)` 唯一 |
+| `status` | `string` | `QUEUED` / `RUNNING` / `COMPLETED` / `STOPPED` / `FAILED` |
+| `engine` | `string` | **准入时固化的快照**，之后改设置不会改写历史 |
+| `model` | `string` | 同上 |
+| `startedAt` | `string?` | 开始时间 |
+| `finishedAt` | `string?` | 结束时间 |
+| `durationMs` | `number?` | 耗时（毫秒） |
+| `inputTokens` | `number?` | 输入 token 数 |
+| `outputTokens` | `number?` | 输出 token 数 |
+| `stopReason` | `string?` | 非成功终态的原因：`USER_STOP` / `SHUTDOWN` / `TIMEOUT` / `OUTPUT_LIMIT` / `PROVIDER_ERROR` / `SERVER_RESTART` / `OVERLOADED` / `ORPHANED` |
+| `errorCode` | `string?` | 失败时的错误码 |
+| `errorMessage` | `string?` | 失败时的错误信息 |
+
+**`AiActiveRunRef`**：`{ "id": number, "status": "QUEUED" | "RUNNING" }`，仅暴露非终态 Run。
+
+### 15.1 创建 AI 会话
 
 ```
-POST /api/ai/chat
+POST /api/ai/conversations
 ```
+
+**Request Body:**（两个字段均可选，请求体本身也可省略）
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | Agent 工具绑定的 RocketMQ 实例（即 `rmqctl --instance-id`），最长 128 字符 |
+| `mode` | `string` | 否 | 模式，最长 16 字符；默认 `chat`，未知值报 `400` |
+
+**Response `data`:** `AiConversationVO`
+
+### 15.2 获取 AI 会话列表
+
+```
+GET /api/ai/conversations?page={page}&size={size}&search={keyword}&archived={archived}
+```
+
+只返回调用者自己的会话，按 `gmt_modified desc, id desc` 排序——今天续聊的会话浮到顶部。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `page` | `number` | 否 | 页码，默认 `1`；小于 1 会被服务端夹到 1，不报 `400` |
+| `size` | `number` | 否 | 每页条数，默认 `20`，范围 `1`-`100`，越界同样夹取 |
+| `search` | `string` | 否 | 标题子串匹配；LIKE 通配符 `\`、`%`、`_` 会被转义，全空白视为不过滤 |
+| `archived` | `boolean` | 否 | `true` 只看已归档，`false` 只看未归档，省略表示两者都要 |
+
+**Response `data`:** `PageResult<AiConversationListItemVO>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `object[]` | 当前页数据 |
+| `items[].id` | `number` | 会话 ID |
+| `items[].title` | `string` | 标题 |
+| `items[].engine` | `string` | 引擎 |
+| `items[].model` | `string` | 模型 |
+| `items[].mode` | `string` | 模式 |
+| `items[].instanceId` | `string?` | 绑定实例 |
+| `items[].lastRunId` | `number?` | 最新一次 Run 的 ID；从未使用过的会话为 `null` |
+| `items[].lastRunStatus` | `string?` | 最新一次 Run 的状态，供列表直接显示 |
+| `items[].updatedAt` | `string` | 最后更新时间 |
+| `items[].createdAt` | `string` | 创建时间 |
+| `total` | `number` | 匹配条件的总数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 每页条数 |
+
+### 15.3 获取 AI 会话详情
+
+```
+GET /api/ai/conversations/:id
+```
+
+比列表多带一个「仍在生成的 Run」，好让刷新后的页面重新接上流，而不是显示一份看着像已结束
+的转录。
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 会话 ID |
+
+**Response `data`:** `AiConversationVO` 的全部字段，另加：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `activeRun` | `AiActiveRunRef?` | 处于 `QUEUED`/`RUNNING` 的 Run；会话空闲时为 `null` |
+
+**错误：** `404` —— id 不存在，**或**属于别人（两种情况返回同一个状态码）。
+
+### 15.4 更新 AI 会话（重命名 / 归档）
+
+```
+PATCH /api/ai/conversations/:id
+```
+
+**Request Body:**（省略的字段保持原值）
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | `string` | 否 | 新标题，最长 512 字符 |
+| `archived` | `boolean` | 否 | 是否归档 |
+
+一次什么都没改的更新**不会**推高 `gmt_modified`，否则把会话改成它已有的标题就会重排列表。
+
+> **关于 `PATCH` 的刻意偏离**：这是全仓库第一个也是唯一一个 `PATCH`（`DELETE` **不算**偏离，仓库
+> 已有 `DELETE /api/proxies/addresses`、`DELETE /api/alert-silences/:id` 两处先例），刻意偏离本文档
+> 开头「GET + POST 风格」的约定。理由是局部更新语义：请求体里**省略**的字段保持原值，「只改标题」
+> 与「只归档」是同一个端点的两种调用；换成 POST + 动词路径就得拆成 `/rename` 与 `/archive` 两个
+> 端点，或者用 body 里的 `null` 表达「不改」，两者都更别扭。
+>
+> 若维护者希望全仓风格统一，改回 `POST /api/ai/conversations/update`（`id` 放 body）即可，
+> **权限行为完全不变**：`AuthInterceptor.requiresAdmin` 对非 `GET`/`HEAD`/`OPTIONS` 的请求，只有
+> 落在 `READER_POST_PATHS` 白名单里的 `POST` 才放行给 reader，而 `PATCH` 因为不是 `POST` 一律要求
+> admin——两种写法都是 admin-only，前提是新路径不进那个白名单。
+
+**Response `data`:** `AiConversationVO`
+
+**错误：** `404` —— id 不存在或属于别人。
+
+### 15.5 删除 AI 会话
+
+```
+DELETE /api/ai/conversations/:id
+```
+
+硬删除。服务端先停掉进行中的 Run，再按 events → runs → conversation 的顺序删除（本项目不声明
+外键，级联由代码保证），最后清掉该会话的 Agent workspace（里面含 `claude` 的 resume 状态）。
+
+**Response `data`:** `null`
+
+**错误：** `404` —— id 不存在或属于别人。
+
+### 15.6 获取会话时间线
+
+```
+GET /api/ai/conversations/:id/events?after={seq}&limit={limit}
+```
+
+按 `seq` 游标分页：`after` 是**排他**下界，响应里的 `nextAfter` 是下一页的游标，到尾时为 `null`。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `after` | `number` | 否 | 只返回 `seq > after` 的事件，默认 `0`（即从头开始） |
+| `limit` | `number` | 否 | 每页条数，默认 `200`，服务端上限 `500` |
+
+**Response `data`:** `AiTimelineVO`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `items` | `object[]` | 时间线条目 |
+| `items[].id` | `number` | 事件行 ID |
+| `items[].turn` | `number` | 所属轮次 |
+| `items[].seq` | `number` | 会话内单调递增序号，重连游标用的就是它 |
+| `items[].createdAt` | `string` | 落库时间 |
+| `items[].runId` | `number` | 产生该事件的 Run，**永不为 null** |
+| `items[].event` | `object` | **已反序列化**的事件体，不是原始的 `type` + `payload` 两列 |
+| `nextAfter` | `number?` | 下一页游标（本页最后一行的 `seq`），到尾时为 `null` |
+| `activeRun` | `AiActiveRunRef?` | 仍在生成的 Run，空闲时为 `null` |
+
+**`items[].event` 的类型判别**：`type` 字段取值如下，各类型的字段与 15.7 的同名 live 事件一致
+（差异见「相对 live 事件的差异」一列）：
+
+| `type` | 说明 | 相对 live 事件的差异 |
+|--------|------|---------------------|
+| `user` | 用户消息，`{ text, enhancedPrompt? }` | live 侧没有对应帧（用户消息不回流） |
+| `thinking` | 模型推理或 prompt 增强改写，`{ text, source }` | 正文字段叫 `text`，live 侧叫 `content` |
+| `text` | 助手正文，`{ text }` | live 侧是增量 `text_delta.content`，落库时相邻片段已合并 |
+| `tool_use` | 工具调用，`{ tcId, tool, input }` | live 侧叫 `tool_start` |
+| `tool_result` | 工具结果，`{ tcId, tool, output, outputBytes, truncated, success, durationMs?, error? }` | live 侧叫 `tool_done` |
+| `notice` | 运行时通知，`{ level, message }` | 同形 |
+| `error` | 错误，`{ code, message, hint? }` | 同形 |
+| `run_status` | 终态，`{ status, reason? }` | live 侧是 `run_finished`；终态**要**落库，好让重载的会话不 join Run 表也能显示「已停止」 |
+
+`run_started` / `run_finished` 不落库（Run 行才是真相）。无法解码的历史行会被替换成一条
+`warn` 级 `notice` 占位，而不是让整条时间线失败。
+
+**示例：**
+
+```json
+{
+  "items": [
+    {
+      "id": 9001,
+      "turn": 3,
+      "seq": 41,
+      "createdAt": "2026-09-18T04:12:33",
+      "runId": 41,
+      "event": { "type": "user", "text": "查看集群状态" }
+    },
+    {
+      "id": 9002,
+      "turn": 3,
+      "seq": 42,
+      "createdAt": "2026-09-18T04:12:34",
+      "runId": 41,
+      "event": {
+        "type": "tool_result",
+        "tcId": "toolu_01A",
+        "tool": "rmq.topic.list",
+        "output": "{\"items\":[{\"name\":\"StudioTest\"}]}",
+        "outputBytes": 33,
+        "truncated": false,
+        "success": true,
+        "durationMs": 212
+      }
+    },
+    {
+      "id": 9003,
+      "turn": 3,
+      "seq": 43,
+      "createdAt": "2026-09-18T04:12:41",
+      "runId": 41,
+      "event": { "type": "run_status", "status": "COMPLETED" }
+    }
+  ],
+  "nextAfter": null,
+  "activeRun": null
+}
+```
+
+**错误：** `404` —— id 不存在或属于别人。
+
+### 15.7 发送消息并流式返回
+
+```
+POST /api/ai/conversations/:id/messages
+```
+
+发送一轮用户消息，并以 SSE 流式返回它开启的 Run。**这是 `POST /api/ai/chat` 的替代者。**
+
+准入在返回前完成：用户消息已落库、`run_started` 已发布，所以开始读 body 的客户端不可能漏掉
+第一帧。
 
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `message` | `string` | 是 | 用户消息 |
-| `mode` | `string` | 否 | 模式: `query` / `diagnose` / `manage` / `chat` |
-| `model` | `string` | 否 | 模型名称 |
-| `conversationId` | `string` | 否 | 会话 ID（续接对话） |
+| `message` | `string` | 是 | 用户消息，非空，最长 8192 字符 |
+| `model` | `string` | 否 | 覆盖本轮模型，最长 128 字符；Run 行会快照它 |
+| `engine` | `string` | 否 | 覆盖本轮引擎（`http` / `claude-code` / `qoder`），最长 16 字符 |
+| `mode` | `string` | 否 | 覆盖本轮模式，最长 16 字符 |
+| `enhance` | `boolean` | 否 | 是否先做 prompt 增强改写；改写过程以 `source: "enhance"` 的 `thinking` 帧流回，默认 `false` |
+| `resume` | `boolean` | 否 | 是否复用上游 Agent 会话（`claude --resume`）。**省略 = 沿用会话自身状态**，`false` = 强制开新会话，`true` = 强制复用 |
 
-**Response:** `text/event-stream`（SSE 流式返回）
+**Response:** `text/event-stream`
 
-### 15.2 执行 AI 指令
+响应头：`X-Accel-Buffering: no`、`Cache-Control: no-cache, no-transform`、
+`Connection: keep-alive`。服务端每 **15 s** 发一个 `:hb` 心跳注释帧；客户端 idle 超时取 **30 s**
+（心跳的 2 倍），超时即判定连接被缓冲或已断开。
+
+**SSE 线格式**：所有领域事件统一走 `event: agent`，具体类型由 payload 里的 `type` 字段判别；
+另有 `event: error` 与 `event: done` 两个终态控制帧。
+
+| 事件名 | 含义 |
+|--------|------|
+| `agent` | 一个领域帧，payload 是下表 8 种 `type` 之一 |
+| `error` | 终止性错误，payload 为 `{ code, message, hint?, status? }` |
+| `done` | 流结束（**替代旧的 `data: [DONE]` 哨兵**） |
+| `:hb`（注释帧） | 心跳，无 data，客户端忽略 |
+
+`event: agent` 的 8 种 `type`：
+
+| `type` | 字段 | 说明 |
+|--------|------|------|
+| `run_started` | `runId`, `conversationId`, `title`, `turn` | Run 已准入，不渲染任何内容 |
+| `text_delta` | `content` | 助手正文增量 |
+| `thinking` | `content`, `source` | 推理增量；`source` 为 `model`（模型自己的推理）或 `enhance`（Studio 的 prompt 改写）。**两者只在 `source` 相同时才可合并渲染** |
+| `tool_start` | `tcId`, `tool`, `input` | 工具调用开始 |
+| `tool_done` | `tcId`, `tool`, `output`, `outputBytes`, `truncated`, `success`, `durationMs?`, `error?` | 工具调用结束；`output` 服务端截断到 32 KiB，`outputBytes` 是真实大小，`truncated` 标记是否被截 |
+| `notice` | `level`, `message` | 运行时通知，`level` 为 `info` / `warn` / `error`。`error` 级 notice 不等于失败——Run 会继续 |
+| `error` | `code`, `message`, `hint?` | 错误 |
+| `run_finished` | `runId`, `status`, `durationMs` | Run 到达终态，不渲染任何内容 |
+
+**示例（一轮完整问答）：**
 
 ```
-POST /api/ai/execute
+event: agent
+data: {"type":"run_started","runId":41,"conversationId":7,"title":"查看集群状态","turn":3}
+
+event: agent
+data: {"type":"thinking","content":"用户想确认堆积，先查 topic 路由","source":"model"}
+
+event: agent
+data: {"type":"tool_start","tcId":"toolu_01A","tool":"rmq.topic.list","input":{"instanceId":"open-source-local"}}
+
+event: agent
+data: {"type":"tool_done","tcId":"toolu_01A","tool":"rmq.topic.list","output":"{\"items\":[{\"name\":\"StudioTest\"}]}","outputBytes":33,"truncated":false,"durationMs":212,"success":true}
+
+event: agent
+data: {"type":"text_delta","content":"集群当前有 "}
+
+event: agent
+data: {"type":"run_finished","runId":41,"status":"COMPLETED","durationMs":8123}
+
+event: done
+data:
 ```
 
-**Request Body:**
+**拒绝语义（重要）**：这个端点的两种结果都是事件流，所以**拒绝不以 HTTP 错误状态码返回**，
+而是以 200 + 一个 `event: error` 帧返回，帧里带对应的 `status` 与 `code`。原因是请求声明了
+`Accept: text/event-stream`，映射也只产出它，JSON 转换器写不出 `Result` 信封。
+
+| 场景 | `event: error` 的 `status` |
+|------|---------------------------|
+| 请求体校验失败（如 `message` 为空或超长） | `400` |
+| 会话不存在或属于别人 | `404` |
+| 该会话已有进行中的 Run | `409` |
+| 未配置可用的 LLM 提供方 / 缺少模型 | `400`（`code` 为 `llm.config.incomplete` / `llm.config.model_required`） |
+
+### 15.8 重连进行中的 AI 任务
+
+```
+GET /api/ai/runs/:runId/stream?after={seq}
+```
+
+接上一个正在生成的 Run：先回放 `seq > after` 的已落库事件（翻译回 live 帧），把本连接注册为
+观察者，然后 tail 到 `done`。已经终态的 Run 会回放完立即关闭。
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `runId` | `number` | 是 | Run ID |
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `after` | `number` | 否 | 只回放 `seq > after` 的事件，默认 `0`（即整个 Run）。刚加载完时间线的客户端传自己持有的最大 `seq` |
+
+**Response:** `text/event-stream`，线格式、响应头、心跳与拒绝语义同 15.7。
+
+**错误：** Run 不存在，或其会话属于别人 —— 以 `event: error` 帧返回（`status: 404`）。
+
+### 15.9 停止 AI 任务
+
+```
+POST /api/ai/runs/:runId/stop
+```
+
+停止一个 Run。会真正杀掉 Agent CLI 子进程树（先 `descendants()` 后父进程），不是只断开 TCP。
+
+**幂等**：它支撑的是一个用户可能连按两次的按钮，所以对已终态的 Run 返回 `200` 空操作。
+
+停止**不会**关闭流：15.7 / 15.8 的连接会继续开着，用来投递终态 `run_status` 帧与 `done`，
+按钮的「停止中」状态靠它退出。
+
+**Response `data`:** `AiRunVO`
+
+**错误：**
+
+| 状态码 | 场景 |
+|--------|------|
+| `404` | Run 不属于调用者 |
+| `409` | 该 Run 已不是所属会话的当前 Run —— **不会杀任何东西**。调用者手里的 `runId` 可能来自一整轮之前的 `run_started`，这里唯一不可挽回的错误就是停掉用户正在看的那个答案 |
+
+### 15.10 获取 Agent 运行时能力
+
+```
+GET /api/ai/agent-capabilities
+```
+
+请求时探测、短暂缓存。存在这个接口是为了让 UI 能**解释**一次拒绝，而不是抛一个看不懂的错误：
+`mcpEnabled=false` 时任何层级的工具都执行不了，`l3ToolsAllowed=false` 时托管 Agent 跑不了破坏性
+工具——这两件事都是部署事实，composer 没有别的途径知道。
+
+**Response `data`:** `AiAgentCapabilitiesVO`（5 个字段都是必填 `boolean`，永不为 `null`）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `command` | `string` | AI 生成的可执行指令 |
+| `rmqctlAvailable` | `boolean` | `rmqctl` 在 PATH 上且可执行 |
+| `claudeAvailable` | `boolean` | `claude` CLI 在 PATH 上且可执行 |
+| `qoderAvailable` | `boolean` | `qoder` CLI 在 PATH 上且可执行 |
+| `mcpEnabled` | `boolean` | Studio MCP server 已启用，即 Agent 工具整体可用 |
+| `l3ToolsAllowed` | `boolean` | 配置允许破坏性（L3）工具 |
 
-**Response `data`:**
+**示例：**
+
+```json
+{
+  "rmqctlAvailable": true,
+  "claudeAvailable": true,
+  "qoderAvailable": false,
+  "mcpEnabled": true,
+  "l3ToolsAllowed": false
+}
+```
+
+### 15.11 获取外部 Agent 的 rmqctl MCP 配置
+
+```
+GET /api/ai/conversations/:id/rmqctl-config
+```
+
+返回一段可直接粘贴的 `{"mcpServers":{...}}` 配置，用于让 Studio **不托管**的 Agent
+（Claude Desktop、Cursor 等）接入这个会话绑定的实例。走的是同一个签名网关、同一套实例绑定与
+风险闸门——托管 Agent 只是这条工具通道的第一个客户，这个接口让该说法可被验证。
+
+**永不含密钥，也不可能含**：凭据在用户自己的 `rmqctl` 配置里保持 `env:` 引用形式。这也是片段
+里省略 `--config`（服务端会传的那个路径只存在于它自己的容器内）、并把 `server` 单独返回的原因。
+
+**Response `data`:** `AiRmqctlConfigVO`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `success` | `boolean` | 执行结果 |
-| `result` | `string` | 执行输出 |
+| `snippet` | `string` | `{"mcpServers":{...}}` JSON 文档，可直接粘贴进外部 Agent |
+| `instanceId` | `string` | 工具绑定的实例（`rmqctl --instance-id`） |
+| `server` | `string` | 签名 MCP 请求需要到达的 Studio base URL |
 
-### 15.3 获取可用工具列表
+**错误：**
+
+| 状态码 | 场景 |
+|--------|------|
+| `404` | 会话属于别人 |
+| `400` | 会话未绑定实例 —— `rmqctl` 拒绝给 `--instance-id` 兜默认值，所以一个没有它的片段会在第一次工具调用时才失败，不如在配置阶段就报错 |
+
+### 15.12 获取可用工具列表
 
 ```
 GET /api/ai/tools
@@ -2108,7 +2558,7 @@ GET /api/ai/tools
 | `description` | `string` | 工具描述 |
 | `parameters` | `object` | 参数 Schema |
 
-### 15.4 执行只读工具
+### 15.13 执行只读工具
 
 ```
 POST /api/ai/tools/:name/execute
@@ -2398,3 +2848,12 @@ GET /api/metrics/grafana/dashboards/export
 | **通知渠道** | `dingtalk`, `email`, `sms` |
 | **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
 | **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |
+| **AI 会话模式** | `chat`, `diagnose`, `manage`, `query` |
+| **AI 引擎** | `http`, `claude-code`, `qoder` |
+| **AI Run 状态** | `QUEUED`, `RUNNING`, `COMPLETED`, `STOPPED`, `FAILED`（后三者为终态） |
+| **AI 停止原因** | `USER_STOP`, `SHUTDOWN`, `TIMEOUT`, `OUTPUT_LIMIT`, `PROVIDER_ERROR`, `SERVER_RESTART`, `OVERLOADED`, `ORPHANED` |
+| **AI 思维链来源** | `model`（模型推理）, `enhance`（Studio 的 prompt 增强改写） |
+| **AI 通知级别** | `info`, `warn`, `error` |
+| **AI live 事件类型**（SSE `event: agent`） | `run_started`, `text_delta`, `thinking`, `tool_start`, `tool_done`, `notice`, `error`, `run_finished` |
+| **AI 时间线事件类型**（持久化） | `user`, `thinking`, `text`, `tool_use`, `tool_result`, `notice`, `error`, `run_status` |
+| **AI SSE 事件名** | `agent`, `error`, `done`（另有 `:hb` 心跳注释帧） |

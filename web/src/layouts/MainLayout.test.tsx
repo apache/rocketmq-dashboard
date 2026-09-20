@@ -153,10 +153,9 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.getByRole('button', { name: '返回首页' })).toBeInTheDocument();
     const searchButton = screen.getByRole('button', { name: '打开导航搜索' });
     expect(searchButton).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '切换到模拟数据' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    // The data-mode toggle is a user-menu entry rather than a top-bar button: its label carries
+    // the current mode, which is what the old aria-pressed assertion pinned.
+    expect(screen.getByRole('button', { name: '数据模式: Real' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '切换到英语' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '切换到深色主题' })).toHaveAttribute(
       'aria-pressed',

@@ -644,32 +644,41 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.ruleName'),
       dataIndex: 'name',
+      // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+      minWidth: 170,
+      ellipsis: { showTitle: true },
       sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
+      width: 110,
+      ellipsis: { showTitle: true },
       sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
       render: (metric: string) => metricLabel(metric),
     },
     {
       title: t('alerts.threshold'),
+      width: 120,
+      ellipsis: { showTitle: true },
       sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
     },
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
+      width: 80,
       sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
     },
     {
       title: t('alerts.reminderInterval'),
       dataIndex: 'reminderInterval',
-      width: 130,
+      width: 96,
       render: (value) => value ?? '30m',
     },
     {
       title: t('alerts.channels'),
+      width: 130,
       render: (_, record) => (
         <Flex gap={4} wrap="wrap">
           {(record.channels ?? []).map((ch) => (
@@ -682,6 +691,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('common.status'),
+      width: 64,
+      align: 'center',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
       render: (_, record) => (
         <Switch
@@ -694,6 +705,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.lastTriggered'),
+      width: 150,
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
@@ -706,7 +718,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.runtime'),
-      width: 130,
+      width: 100,
       render: (_, record) => {
         const states = runtime.filter((state) => state.ruleId === record.id);
         if (!states.length)
@@ -726,8 +738,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('common.actions'),
+      // 3 个小按钮（编辑/复制/删除）实测 ~222px + 单元格左 padding 8px = 230px，
+      // 按钮右对齐贴住表格右缘，与 Group 管理页操作列样式保持一致。
+      width: 230,
       render: (_, record) => (
-        <Flex gap={8}>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<Pencil size={14} />}

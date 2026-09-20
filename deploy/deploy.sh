@@ -54,10 +54,12 @@ check_prereqs() {
 package_source() {
   info "📦 本地打包源码..."
   # deploy/.env 是环境专属配置（如 STUDIO_METRICS_PROMETHEUS_BASE_URL），不随源码覆盖远端
+  # rmqctl 必须随包上传：server 镜像构建上下文是仓库根目录，Dockerfile 的 Go 阶段要 COPY rmqctl/
+  # （rmqctl/bin 是本地构建产物，不上传）
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
-    --exclude='deploy/.env' \
-    server web deploy
+    --exclude='deploy/.env' --exclude='rmqctl/bin' \
+    server web deploy rmqctl
   log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
 }
 
@@ -87,7 +89,9 @@ build_server() {
     $MAVEN_IMAGE \
     mvn -B -ntp $settings_flag -Dmaven.repo.local=/maven-cache/repository package -DskipTests"
   info "🏗️  构建 rocketmq-server 镜像（runtime-prebuilt）..."
-  run_remote "cd $REMOTE_PATH && docker build --target runtime-prebuilt -t rocketmq-server:latest server/"
+  # 构建上下文由 server/ 扩到仓库根目录：Dockerfile 的 rmqctl Go 阶段需要 COPY rmqctl/，
+  # 让镜像自带 /usr/local/bin/rmqctl（AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）。
+  run_remote "cd $REMOTE_PATH && docker build --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest ."
   log "rocketmq-server 镜像构建完成"
 }
 

@@ -68,7 +68,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AuthService {
 
-    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
+    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 1440;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);

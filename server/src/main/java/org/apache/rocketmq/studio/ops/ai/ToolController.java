@@ -61,13 +61,14 @@ public class ToolController {
         Map<String, Object> normalizedInput = withTargetInstance(name, input, instanceId);
         AiPayloadGuard.validateToolInvocation(name, normalizedInput, objectMapper);
         log.info("Executing registered AI tool: {}", name);
-        return Result.ok(toolExecutor.execute(name, normalizedInput));
+        return Result.ok(toolExecutor.executeWithTarget(name, normalizedInput, instanceId));
     }
 
     /**
      * The executor reads the Studio instance target from the tool arguments, so the REST query
      * parameter is copied in. Platform-level tools are addressed by a physical {@code clusterName}
-     * and their input schemas reject unknown arguments, so their payload stays untouched.
+     * and their input schemas reject unknown arguments, so their payload stays untouched and the
+     * selected Instance reaches the executor as the call target instead.
      */
     private static Map<String, Object> withTargetInstance(
             String name, Map<String, Object> input, String instanceId) {

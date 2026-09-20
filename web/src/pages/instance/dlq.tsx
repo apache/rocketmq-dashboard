@@ -483,7 +483,7 @@ const DLQPage = () => {
       key: 'actions',
       width: 280,
       render: (_: unknown, record: DLQGroup) => (
-        <Flex gap={6}>
+        <Flex gap={6} justify="flex-end">
           <Button
             size="small"
             icon={<Eye size={14} />}

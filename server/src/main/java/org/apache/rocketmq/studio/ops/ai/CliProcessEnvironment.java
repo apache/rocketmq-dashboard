@@ -32,6 +32,33 @@ import java.util.regex.Pattern;
 /**
  * Builds the environment for CLI-backed AI providers without exposing every
  * variable from the Studio server process.
+ *
+ * <h2>Two layers, and only the first one is filtered</h2>
+ * <ol>
+ *   <li><strong>Inherited</strong>: the allow-list below, copied out of the server process. This is
+ *       the isolation boundary — it is what keeps {@code SPRING_DATASOURCE_PASSWORD},
+ *       {@code STUDIO_AUTH_ADMIN_PASSWORD} or a cloud AK/SK that happens to sit in the container
+ *       environment from reaching a subprocess we do not control.</li>
+ *   <li><strong>Provider-supplied</strong>: applied afterwards and <em>not</em> filtered through the
+ *       allow-list, so a provider entry also wins over an inherited value of the same name. That is
+ *       deliberate rather than a hole: these are values this request produced (the Anthropic token,
+ *       the per-run rmqctl credential) and they exist nowhere in the parent to be inherited from.
+ *       They are still rejected unless the name is a valid environment identifier and the value is
+ *       non-null.</li>
+ * </ol>
+ *
+ * <p>Consequence worth stating explicitly, because it is easy to "fix" in the wrong direction: the
+ * rmqctl credential variables ({@code RMQ_AI_ACCESS_KEY} / {@code RMQ_AI_SECRET_KEY}) are
+ * <strong>not</strong> added to the allow-list. They arrive as provider entries per run, which is both
+ * sufficient and safer — allow-listing them would additionally copy any value the server process
+ * happens to carry under those names into every child. The same reasoning rules out
+ * {@code RMQCTL_CONFIG}: the workspace passes {@code --config} explicitly, so allow-listing it would
+ * be pure exposure. {@code CliProcessEnvironmentTest} pins the allow-list to catch a silent widening.
+ *
+ * <p>{@code HOME} <em>is</em> allow-listed, and a stable HOME is what makes {@code claude --resume}
+ * work. But a container often does not define HOME at all, and the hosted agent needs a
+ * <em>per-conversation</em> HOME rather than the server's, so callers that care set it as a provider
+ * entry (see {@code RmqctlWorkspace}) instead of relying on inheritance.
  */
 @Component
 public class CliProcessEnvironment {
@@ -91,11 +118,29 @@ public class CliProcessEnvironment {
     }
 
     /**
-     * Replaces the builder's inherited environment with the isolated child
-     * environment. Provider-specific values are applied last so the selected
-     * request configuration wins over any allowed parent value.
+     * Replaces the builder's inherited environment with the isolated child environment.
+     *
+     * <p>Package-private and non-final on purpose: it is the seam the isolation tests override to
+     * record exactly what crossed the process boundary. Production callers inside this package use
+     * it; callers elsewhere use {@link #applyIsolated(ProcessBuilder, Map)}.
      */
     void apply(ProcessBuilder builder, Map<String, String> providerEnvironment) {
+        applyIsolated(builder, providerEnvironment);
+    }
+
+    /**
+     * Public form of {@link #apply(ProcessBuilder, Map)} for callers outside this package, e.g. the
+     * {@code rmqctl} availability probe.
+     *
+     * <p>Provider-specific values are applied last and are <strong>not</strong> filtered through the
+     * allow-list. That is deliberate, not an oversight: the allow-list protects the child from
+     * inheriting the server's environment, whereas provider entries are values this request itself
+     * produced (an ANTHROPIC token, the per-run rmqctl credentials) and they exist nowhere in the
+     * parent to be inherited from. They still have to satisfy {@link #isValidName(String)} and be
+     * non-null, and because they are applied after the allow-list copy they win over any parent value
+     * with the same name.
+     */
+    public void applyIsolated(ProcessBuilder builder, Map<String, String> providerEnvironment) {
         Map<String, String> target = builder.environment();
         Map<String, String> isolated = build(target, providerEnvironment);
         target.clear();

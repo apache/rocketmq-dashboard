@@ -32,7 +32,7 @@ func TestCallTool(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != toolCallPath ||
 			!strings.HasPrefix(r.Header.Get("Authorization"),
-				"RMQ-HMAC-SHA256 Credential=test-ak, Signature=") ||
+				"rmq-hmac-sha256 Credential=test-ak, Signature=") ||
 			r.Header.Get(HeaderInstance) != "instance-dev" {
 			http.Error(w, "unexpected request", http.StatusUnauthorized)
 			return

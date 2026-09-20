@@ -7,3 +7,18 @@ export function describeApiError(error: unknown, fallback: string): string {
     ?.message;
   return typeof serverMessage === 'string' && serverMessage.trim() ? serverMessage : fallback;
 }
+
+/**
+ * Best available machine-supplied message for anything thrown, or `''` when there is none.
+ *
+ * Wider than {@link describeApiError} on purpose: the AI run streams are opened with `fetch`, so
+ * their `AiStreamError` carries no axios response and only its own `message`. Hooks return this
+ * string verbatim and leave the empty case to the component, which pairs it with an i18n fallback —
+ * no user-facing text is hard-coded in a hook.
+ */
+export function describeThrownMessage(error: unknown): string {
+  const serverMessage = describeApiError(error, '');
+  if (serverMessage) return serverMessage;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return '';
+}

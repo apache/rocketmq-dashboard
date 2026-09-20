@@ -95,3 +95,37 @@ jobs:
           tags: rocketmq-studio-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  rmqctl-test:
+    name: rmqctl Build (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rmqctl
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: rmqctl/go.mod
+          cache-dependency-path: rmqctl/go.sum
+
+      - name: Check formatting
+        run: make fmt
+
+      # catalog-verify regenerates internal/catalog/catalog_gen.go from
+      # ../server/src/main/resources/tool-catalog/tools and fails on drift, so the
+      # full repository (rmqctl/ + server/) must be checked out.
+      - name: Verify generated tool catalog
+        run: make catalog-verify
+
+      - name: Run tests (race)
+        run: make test-race
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Build rmqctl binary
+        run: make build

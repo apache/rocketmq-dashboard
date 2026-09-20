@@ -17,10 +17,10 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { lazy, type ComponentType } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useParams } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthStatus } from './api/auth';
-import { AuthGate, LazyRouteOutlet } from './App';
+import App, { AuthGate, LazyRouteOutlet } from './App';
 import { LangProvider } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
 
@@ -28,6 +28,15 @@ vi.mock('./api/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api/auth')>();
   return { ...actual, getAuthStatus: vi.fn() };
 });
+
+// The AI route tests assert the route TABLE, not the layout chrome or the AI page itself.
+vi.mock('./layouts/MainLayout', () => ({ default: () => <Outlet /> }));
+vi.mock('./pages/ai', () => ({
+  default: function MockAiPage() {
+    const { conversationId } = useParams();
+    return <div>ai page {conversationId ?? 'home'}</div>;
+  },
+}));
 
 const dataModeMocks = vi.hoisted(() => ({ isMockMode: vi.fn(() => false) }));
 
@@ -154,5 +163,39 @@ describe('AuthGate', () => {
 
     await waitFor(() => expect(mockedGetAuthStatus).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('protected content')).toBeInTheDocument();
+  });
+});
+
+describe('AI routes', () => {
+  beforeEach(() => {
+    mockedGetAuthStatus.mockReset();
+    mockedGetAuthStatus.mockResolvedValue({ loginRequired: false, authenticated: false });
+    dataModeMocks.isMockMode.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+  });
+
+  const renderApp = (path: string) =>
+    render(
+      <LangProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>
+      </LangProvider>,
+    );
+
+  it('renders the AI page on the bare /ai route', async () => {
+    renderApp('/ai');
+
+    expect(await screen.findByText('ai page home')).toBeInTheDocument();
+  });
+
+  it('deep-links a conversation through the /ai/c/:conversationId sibling route', async () => {
+    renderApp('/ai/c/42');
+
+    expect(await screen.findByText('ai page 42')).toBeInTheDocument();
   });
 });

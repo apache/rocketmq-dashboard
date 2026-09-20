@@ -37,10 +37,14 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private static final String TOOL_EXECUTION_PREFIX = "/api/ai/tools/";
     private static final String TOOL_EXECUTION_SUFFIX = "/execute";
+
+    /**
+     * POST paths a reader may call. Deliberately does <strong>not</strong> grow to cover the AI
+     * conversation surface — {@link #requiresAdmin} explains why.
+     */
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
             "/api/auth/password",
-            "/api/ai/chat",
             "/api/metrics/query",
             "/api/metrics/query/datasource");
 
@@ -102,6 +106,32 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
     }
 
+    /**
+     * Whether the request needs an administrator. Reads are open to every authenticated operator except
+     * the credential views listed in {@link #isAdminOnlyGetPath}; writes are admin-only except the POST
+     * paths in {@link #READER_POST_PATHS} and the low-risk read-only tools.
+     *
+     * <h2>The AI conversation surface is a write surface, and stays admin-only</h2>
+     * {@code POST /api/ai/conversations}, {@code POST /api/ai/conversations/{id}/messages},
+     * {@code POST /api/ai/runs/{id}/stop} and {@code PATCH}/{@code DELETE} on a conversation all fall
+     * through to the admin requirement below. That is a decision, not an oversight of the reader
+     * allow-list, and the reasoning matters because the endpoints replaced one a reader could call:
+     * {@code POST /api/ai/chat} ran a CLI with every built-in tool disabled and no MCP server attached,
+     * so it was a text generator. {@code POST …/messages} drives an agent whose tool calls are signed
+     * with the <em>instance credential the server resolves</em> ({@code InstanceCredentialResolver}),
+     * not with the caller's identity, so a reader who could start a run could perform exactly the L2
+     * mutations {@link #isReaderAccessibleToolPath} exists to refuse that reader in the Tool Playground.
+     * "The old endpoint was reader-accessible, therefore the new one may be" does not hold.
+     *
+     * <p>What a reader keeps is every GET, {@code GET /api/ai/runs/{runId}/stream} included: reading
+     * one's own conversations, transcripts and an answer still in flight drives no tool. Owner scoping
+     * ({@code AiConversationService.requireOwned}, which answers 404 for somebody else's id) applies to
+     * all of them regardless of role, so role and ownership are two independent filters.
+     *
+     * <p>{@code /api/mcp/**} never reaches this method: {@code AuthWebConfig} excludes it from the
+     * interceptor and it authenticates with its own HMAC filter, where holding the instance credential
+     * is itself the authorisation.
+     */
     private boolean requiresAdmin(HttpServletRequest request, String path) {
         String method = request.getMethod();
         if (HttpMethod.GET.matches(method) || HttpMethod.HEAD.matches(method)

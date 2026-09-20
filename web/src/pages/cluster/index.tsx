@@ -370,6 +370,20 @@ const ClusterPage = () => {
     [registryClusters],
   );
 
+  // Registry rows are a global view, so the diff request must be scoped by the
+  // instance that owns the matched cluster, not the instance selected in the
+  // topbar — a mismatched instanceId makes the backend reject the lookup.
+  const resolveOwningInstanceId = (cluster: ClusterInfo): string | undefined => {
+    const endpoints = new Set(
+      [cluster.endpoint, ...(cluster.nameServers ?? []).map((nameServer) => nameServer.addr)]
+        .map(safeText)
+        .filter((endpoint) => endpoint.length > 0),
+    );
+    return apacheInstancesRef.current.find(
+      (instance) => instance.endpoint && endpoints.has(instance.endpoint),
+    )?.name;
+  };
+
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
       const requestId = nsConfigDiffRequest.begin();
@@ -380,7 +394,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getNameServerConfigDiff(cluster.id, resolveOwningInstanceId(cluster));
         if (!nsConfigDiffRequest.isCurrent(requestId)) return;
         setNsConfigDiffState({
           open: true,
@@ -407,7 +421,7 @@ const ClusterPage = () => {
         result: null,
       });
       try {
-        const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getBrokerConfigDiff(cluster.id, resolveOwningInstanceId(cluster));
         if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
         setBrokerConfigDiffState({
           open: true,
@@ -487,6 +501,7 @@ const ClusterPage = () => {
   );
   const tRef = useRef(t);
   const selectedInstanceIdRef = useRef<string | undefined>(undefined);
+  const apacheInstancesRef = useRef<Array<{ name: string; endpoint: string }>>([]);
   const instanceLoadRetryRef = useRef(0);
 
   useEffect(() => {
@@ -495,6 +510,10 @@ const ClusterPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        apacheInstancesRef.current = apacheInstances.map((instance) => ({
+          name: instance.name,
+          endpoint: safeText(instance.endpoint),
+        }));
         const initialInstanceId = apacheInstances.some(
           (instance) => instance.name === requestedInstanceId,
         )
@@ -508,6 +527,7 @@ const ClusterPage = () => {
       .catch(() => {
         if (cancelled) return;
         selectedInstanceIdRef.current = undefined;
+        apacheInstancesRef.current = [];
         setClusters([]);
         setSelectedProxy(null);
         setLoading(false);
@@ -1155,7 +1175,8 @@ const ClusterPage = () => {
         title: t('cluster.brokerClusterName'),
         dataIndex: 'nsClusterName',
         key: 'nsClusterName',
-        width: 160,
+        // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+        minWidth: 160,
         sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
@@ -1243,47 +1264,11 @@ const ClusterPage = () => {
         render: (v: number) => v.toLocaleString(),
       },
       {
-        title: t('cluster.putMessagesToday'),
-        dataIndex: 'putMessagesToday',
-        key: 'putMessagesToday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.putMessagesToday ?? -1) - (b.putMessagesToday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.putMessagesYesterday'),
-        dataIndex: 'putMessagesYesterday',
-        key: 'putMessagesYesterday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.putMessagesYesterday ?? -1) - (b.putMessagesYesterday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.getMessagesToday'),
-        dataIndex: 'getMessagesToday',
-        key: 'getMessagesToday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.getMessagesToday ?? -1) - (b.getMessagesToday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.getMessagesYesterday'),
-        dataIndex: 'getMessagesYesterday',
-        key: 'getMessagesYesterday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.getMessagesYesterday ?? -1) - (b.getMessagesYesterday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
         title: t('common.actions'),
         key: 'action',
         width: 260,
         render: (_: unknown, record: BrokerWithCluster) => (
-          <Flex gap={6}>
+          <Flex gap={6} justify="flex-end">
             <Button
               size="small"
               icon={<EyeOutlined />}
@@ -1514,7 +1499,7 @@ const ClusterPage = () => {
         render: (_: unknown, record: NameserverRegistryEntry) => {
           const matchedCluster = resolveNameserverRegistryCluster(record);
           return (
-            <Flex gap={6}>
+            <Flex gap={6} justify="flex-end">
               <Button
                 size="small"
                 icon={<EyeOutlined />}
@@ -1672,7 +1657,7 @@ const ClusterPage = () => {
         key: 'action',
         width: 160,
         render: (_: unknown, record: ProxyRow) => (
-          <Flex gap={6}>
+          <Flex gap={6} justify="flex-end">
             <Button
               size="small"
               icon={<EyeOutlined />}

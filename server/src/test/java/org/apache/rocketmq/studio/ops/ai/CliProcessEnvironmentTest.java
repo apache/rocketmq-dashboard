@@ -129,4 +129,57 @@ class CliProcessEnvironmentTest {
                 Map.entry("PATH", "/usr/bin"),
                 Map.entry("PROVIDER_TOKEN", "provider-secret"));
     }
+
+    /**
+     * Pins the inherited allow-list to exactly what it is documented to be. The rmqctl integration
+     * deliberately adds nothing here — its credential travels as a provider entry — so a name showing
+     * up in this set means someone widened the isolation boundary instead of using that mechanism.
+     */
+    @Test
+    void allowListIsNotSilentlyWidenedTest() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of());
+
+        assertThat(policy.allowedNames()).containsExactlyInAnyOrder(
+                "PATH", "HOME", "USERPROFILE",
+                "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME",
+                "TMPDIR", "TMP", "TEMP",
+                "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM",
+                "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
+                "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+                "http_proxy", "https_proxy", "no_proxy",
+                "SystemRoot", "ComSpec", "PATHEXT");
+        assertThat(policy.allowedNames()).doesNotContain(
+                "RMQCTL_CONFIG", "RMQ_AI_ACCESS_KEY", "RMQ_AI_SECRET_KEY",
+                "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL");
+    }
+
+    /**
+     * The other half of the contract, written down as a test because it reads like a hole in the
+     * isolation: provider entries are applied after the allow-list copy and are not filtered by it,
+     * which is how the per-run rmqctl credential and the per-conversation HOME reach the child even
+     * though neither is allow-listed. A parent value under one of those names is still not inherited,
+     * and an unrelated {@code RMQCTL_CONFIG} in the server environment stays out — the workspace
+     * passes {@code --config} explicitly.
+     */
+    @Test
+    void providerEntriesCarryTheRmqctlCredentialAndHomePastTheAllowListTest() {
+        CliProcessEnvironment policy = new CliProcessEnvironment(List.of());
+        Map<String, String> parent = new LinkedHashMap<>();
+        parent.put("PATH", "/usr/local/bin:/usr/bin");
+        parent.put("HOME", "/root");
+        parent.put("RMQ_AI_ACCESS_KEY", "stale-parent-key");
+        parent.put("RMQCTL_CONFIG", "/root/.rmqctl/config.yaml");
+
+        Map<String, String> child = policy.build(parent, Map.of(
+                "RMQ_AI_ACCESS_KEY", "per-run-key",
+                "RMQ_AI_SECRET_KEY", "per-run-secret",
+                "HOME", "/tmp/rocketmq-studio-ai/conv-42/home"));
+
+        assertThat(child)
+                .containsEntry("PATH", "/usr/local/bin:/usr/bin")
+                .containsEntry("RMQ_AI_ACCESS_KEY", "per-run-key")
+                .containsEntry("RMQ_AI_SECRET_KEY", "per-run-secret")
+                .containsEntry("HOME", "/tmp/rocketmq-studio-ai/conv-42/home")
+                .doesNotContainKey("RMQCTL_CONFIG");
+    }
 }

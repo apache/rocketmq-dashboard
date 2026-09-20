@@ -9,13 +9,15 @@ RocketMQ Studio 是一个面向多集群、多架构、多云环境的 RocketMQ 
 ## 一键构建 & 运行
 
 ```bash
-cd deploy/rocketmq && docker compose up -d
-cd .. && docker compose up -d --build
+(docker network create rocketmq_net 2>/dev/null || true) && docker compose -f deploy/rocketmq/docker-compose.yml up -d && docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-第一条命令会启动内置 RocketMQ 拓扑，并创建 Studio 服务所需的
-`rocketmq_net` Docker 网络。启动 Studio 前，可在 `deploy/rocketmq` 目录执行
-`docker compose ps` 确认 RocketMQ 已就绪。
+在仓库根目录执行。开头的 `docker network create` 必不可少：两个 compose 文件都把
+`rocketmq_net` 声明为 `external`，自身都不会创建它。第一个 compose 启动内置
+RocketMQ 拓扑（nameserver、broker-0/broker-1、proxy、producer/consumer 测试挂具、
+prometheus）；第二个构建并启动 Studio 三件套（mysql、rocketmq-server、
+rocketmq-web）。启动 Studio 前可用
+`docker compose -f deploy/rocketmq/docker-compose.yml ps` 确认 RocketMQ 已就绪。
 
 启动后访问 **http://127.0.0.1:6789** 即可使用。
 
@@ -59,14 +61,38 @@ cd .. && docker compose up -d --build
 | **告警规则** | 多维度告警规则配置（磁盘 / 堆积 / TPS / 节点离线），支持钉钉 / 邮件 / 短信通知 |
 | **系统告警** | 系统级告警查看、确认与清理 |
 | **审计日志** | 操作审计日志查询、按类型 / 时间 / 结果过滤、历史清理 |
-| **AI 助手** | SSE 流式对话，支持查询 / 诊断 / 管控 / 通用多模式，MCP 工具集成 |
+| **AI 助手** | 托管 Agent 的 SSE 流式对话，会话在服务端持久化并可回看历史，展示思维链，工具调用经 `rmqctl` 的 MCP 桥接；支持查询 / 诊断 / 管控 / 通用多模式 |
 | **系统设置** | 通用偏好设置、LLM 配置、数据源管理 |
+
+## AI 助手
+
+Studio 只负责**托管**一个通用 Agent CLI（Claude Code 或 Qoder，另提供对接 OpenAI 兼容接口的 HTTP
+引擎），不自己实现工具调用循环。RocketMQ 的能力经仓库内的 Go CLI [`rmqctl`](rmqctl/) 提供给 Agent：
+它以 MCP stdio server 的形式被 Agent 拉起，再签名回连 Studio 自己的 MCP 端点。因此同一套带签名、
+绑定实例、带风险闸门的工具面，同时服务于托管 Agent、手敲 `rmqctl topic list` 的开发者，以及任何
+指向 `rmqctl mcp config` 输出的外部 Agent。设计与取舍见
+[docs/ai-agent-architecture.md](docs/ai-agent-architecture.md)。
+
+- **会话在服务端持久化**，可从历史抽屉回看。刷新或断线重连回放出的时间线与直播时渲染的完全一致，
+  因为两条路径归约到同一套 block 模型。
+- **展示思维链**，且模型推理与可选的 prompt 增强改写严格分开，不会混成一个块。
+- **工具调用以卡片呈现**，含入参、输出、耗时与风险等级。L2/L3 变更走「预览 → confirm token →
+  执行」两步；L3 工具默认关闭，需显式设置 `STUDIO_AI_ALLOW_L3_TOOLS=true`。
+- **多轮上下文**使用 Agent CLI 自身的会话 resume，工具状态与推理跨轮保留。
+- **发送与停止是同一个按钮**：空闲时是发送箭头，生成中变成停止方块；停止会真正终止 Agent 进程
+  **及其 `rmqctl` 子进程**，而不只是断开连接。
+- **`rmqctl` 缺失或 `STUDIO_AI_RMQCTL_ENABLED=false` 时降级为纯聊天**，并在时间线里明确告知，
+  不会静默失败。
+
+生成过程与 HTTP 连接解耦：关掉标签页不会终止正在跑的 run，重新打开会话会自动接回。AI 相关的环境
+变量全部记录在 [`deploy/.env.example`](deploy/.env.example)。
 
 ## 技术栈
 
 - **前端** — React 18 + TypeScript + Vite + Ant Design + Tailwind CSS
-- **后端** — Java 21 + Spring Boot 3.5 + 六边形架构（ArchUnit 约束）
-- **部署** — Docker 多阶段构建，Nginx 反向代理，支持 Docker Compose 本地运行或 `deploy.sh` 远程部署
+- **后端** — Java 21 + Spring Boot 4.1 + Spring AI MCP 2.0 + MyBatis-Plus + 六边形架构（ArchUnit 约束）
+- **命令行** — Go 1.27（[`rmqctl`](rmqctl/)），既是托管 Agent 使用的 MCP 桥接，也是面向同一套工具面的独立签名客户端
+- **部署** — Docker 多阶段构建（JDK 运行阶段 + 把 `rmqctl` 编译进镜像的 Go 阶段），Nginx 反向代理，支持 Docker Compose 本地运行或 `deploy.sh` 远程部署
 
 ## 开发规范
 
@@ -76,6 +102,7 @@ cd .. && docker compose up -d --build
 - **架构测试** — 后端 `mvn test` 自动运行 ArchUnit 六边形架构约束检查
 - **国际化** — 新增前端文案需同时提供中英文翻译（`web/src/i18n/`）
 - **表格宽度** — 表格默认不出横向滚动条（仅窗口/容器被人为缩窄时才出现）；列宽用 `web/src/utils/table.ts` 的 `tableScrollX(columns)` 按声明列宽自动累加算出 `scroll.x`，禁止写死魔术数字；弹窗内表格列多或内容长时，按当前 Tab 动态调整弹窗 `width`（如 Group 详情弹窗：概览 800、消费进度 1080）使容器宽 ≥ 表宽；长文本列（如长 Topic 名）用列 `ellipsis: true` + `title` 悬停显示全名截断，允许显示不全、不换行
+- **操作列宽度** — 带按钮的操作列宽度必须按「按钮行实测宽度 + 单元格 padding + 右侧留白」确定，禁止凭感觉改小：`ant-flex` 是块级容器会撑满单元格，列宽不足时按钮贴表格右边缘甚至溢出产生横向滚动条；改动前先量按钮行实际宽度（浏览器 DevTools），并同步更新对应守护测试（如 `TopicPage.test.tsx` 「keeps the action column wide enough」）
 
 ## License
 

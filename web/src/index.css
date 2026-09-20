@@ -143,6 +143,30 @@ body {
   }
 }
 
+/* Spinner shared by the send/stop button's `stopping` state and a tool block still running. */
+@keyframes ai-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* "Thinking…" dots of an assistant bubble that has not rendered a block yet. */
+@keyframes ai-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
 /* === Utility Classes === */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
@@ -231,12 +255,76 @@ body {
   background: var(--ai-primary-bg);
   color: var(--ai-primary);
 }
-.ai-page .ai-send-button {
-  background: var(--ai-primary);
+/* Send/stop is ONE button slot that morphs: send (↑) -> stop (■) -> stopping (spinner). Mounting a
+   second button next to it while a run streamed used to shift the whole toolbar, so every state
+   keeps the same 36x36 circular box and only the background, the icon and `disabled` change. The
+   disabled treatment used to be inline `opacity`/`cursor` on the element; it lives here so the
+   component carries no state-conditional style object.
+   The purple gradient is the base on purpose: the composer renders both on the AI page and on
+   the home page, and the background must not depend on an `.ai-page` ancestor. */
+.ai-send-button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  background: linear-gradient(to right, #a855f7, #7c3aed);
 }
-.ai-page .ai-send-button:hover {
-  background: var(--ai-primary-hover);
+.ai-send-button:hover:not(:disabled) {
+  background: linear-gradient(to right, #9333ea, #6d28d9);
 }
+.ai-send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ai-send-button:disabled:hover {
+  transform: none;
+}
+/* Placed after the `.ai-page .ai-send-button:hover` rule above so the danger background also wins
+   on hover, and scoped with the attribute so the send state keeps the primary colour. */
+.ai-page .ai-send-button[data-state='stop'] {
+  background: #ff4d4f;
+  box-shadow: 0 2px 8px rgba(255, 77, 79, 0.24);
+}
+.ai-page .ai-send-button[data-state='stop']:hover {
+  background: #ff7875;
+}
+.ai-icon-spin {
+  animation: ai-spin 1s linear infinite;
+}
+
+/* Tool-call cards are <details>: collapsed they stay a single summary line, expanded they
+   reveal the arguments and the result. Hide the native disclosure marker and rotate the
+   chevron instead so the header reads as one clean row. */
+.ai-tool-card > summary {
+  list-style: none;
+}
+.ai-tool-card > summary::-webkit-details-marker {
+  display: none;
+}
+.ai-tool-card .ai-tool-chevron {
+  transition: transform 0.2s;
+}
+.ai-tool-card[open] .ai-tool-chevron {
+  transform: rotate(90deg);
+}
+
+.ai-thinking-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ai-primary, #1677ff);
+  animation: ai-dot-pulse 1.4s infinite ease-in-out;
+}
+.ai-thinking-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.ai-thinking-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
 .ai-page .ai-markdown {
   color: var(--ai-text);
 }
@@ -293,7 +381,7 @@ body {
 .ai-markdown {
   color: #595959;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 .ai-markdown > :first-child {
@@ -306,20 +394,20 @@ body {
 .ai-markdown h2,
 .ai-markdown h3,
 .ai-markdown h4 {
-  margin: 14px 0 8px;
+  margin: 10px 0 6px;
   color: #262626;
   font-weight: 600;
   line-height: 1.35;
 }
 .ai-markdown h1 {
-  font-size: 18px;
+  font-size: 16px;
 }
 .ai-markdown h2 {
-  font-size: 16px;
+  font-size: 15px;
 }
 .ai-markdown h3,
 .ai-markdown h4 {
-  font-size: 15px;
+  font-size: 14px;
 }
 .ai-markdown p,
 .ai-markdown ul,
@@ -327,7 +415,7 @@ body {
 .ai-markdown blockquote,
 .ai-markdown pre,
 .ai-markdown table {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
 }
 .ai-markdown ul,
 .ai-markdown ol {

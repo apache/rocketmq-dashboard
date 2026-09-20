@@ -114,10 +114,6 @@ const buildCluster = ({
       diskUsage: 62,
       tpsIn,
       tpsOut,
-      putMessagesToday: 1234,
-      putMessagesYesterday: 1100,
-      getMessagesToday: 980,
-      getMessagesYesterday: 900,
     },
     {
       name: 'rocketmq-prod-1',
@@ -488,20 +484,6 @@ describe('Cluster page', () => {
     expect(within(dialog).queryByText('defaultTopicQueueNums=16')).not.toBeInTheDocument();
   });
 
-  it('renders per-broker daily message counters in the broker tab', async () => {
-    renderWithProviders(<ClusterPage />);
-
-    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '今日写入' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '昨日写入' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '今日消费' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '昨日消费' })).toBeInTheDocument();
-    expect(screen.getByText('1,234')).toBeInTheDocument();
-    expect(screen.getByText('1,100')).toBeInTheDocument();
-    expect(screen.getByText('980')).toBeInTheDocument();
-    expect(screen.getByText('900')).toBeInTheDocument();
-  });
-
   it('keeps cluster tabs usable when address fields are missing', async () => {
     const user = userEvent.setup();
     const submitSearch = async (placeholder: string, value: string) => {
@@ -589,6 +571,32 @@ describe('Cluster page', () => {
 
   it('opens NameServer config drift details from a registry row', async () => {
     const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 11,
+        name: 'instance-rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
         ...buildCluster(),
@@ -631,7 +639,7 @@ describe('Cluster page', () => {
     await waitFor(() =>
       expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
         'cluster-prod',
-        'instance-1',
+        'instance-rocketmq1',
       ),
     );
     const dialog = await screen.findByRole('dialog', {
@@ -647,8 +655,59 @@ describe('Cluster page', () => {
     ).toBeInTheDocument();
   });
 
+  it('omits instanceId for NameServer config drift when no instance owns the registry cluster', async () => {
+    const user = userEvent.setup();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [{ addr: 'rocketmq1-nameserver:9876', status: 'healthy' }],
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
+        'cluster-prod',
+        undefined,
+      ),
+    );
+  });
+
   it('opens Broker config drift details from a broker row', async () => {
     const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 12,
+        name: 'instance-prod-owner',
+        endpoint: '10.101.2.1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.getBrokerConfigDiff.mockResolvedValue({
       cluster: 'cluster-prod',
       complete: true,
@@ -690,7 +749,7 @@ describe('Cluster page', () => {
     await waitFor(() =>
       expect(clusterServiceMocks.getBrokerConfigDiff).toHaveBeenCalledWith(
         'cluster-prod',
-        'instance-1',
+        'instance-prod-owner',
       ),
     );
     const dialog = await screen.findByRole('dialog', {

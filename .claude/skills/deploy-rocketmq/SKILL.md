@@ -516,6 +516,28 @@ docker compose exec nameserver sh bin/mqadmin queryMsgByKey \
   `--build-arg ROCKETMQ_REPO=<镜像仓库地址>` 换源；Maven 慢用 `./build.sh`
   自动切阿里源。
 - **compose 报 external 网络不存在**：先 `docker network create rocketmq_net`。
+- ⚠️ **`clusterList` 只看到部分 broker（`nameserver` 名字解析歧义）**（2026-09-17 实测）：
+  症状是 `clusterList` 只有 `rocketmq-studio-0`、缺 `-1`，而缺失那个 broker 自己的日志
+  却反复打 `Registering current broker to name server completed. TargetHost=nameserver:9876`，
+  nameserver 侧也搜不到它的注册记录。
+  根因：`rocketmq_net` 是 **external 共享网络**，若同机还有另一套 stack 挂在该网络上、
+  且 compose 服务名也叫 `nameserver`（如 5.5.1 测试集群的 `rmq551-nameserver`），
+  Docker DNS 会把 `nameserver` 解析成**多个 A 记录**，各 broker 注册到哪个 nameserver
+  取决于解析顺序 → 表现为随机缺 broker。
+  排查：
+  ```bash
+  docker exec rmq-broker-1 getent hosts nameserver     # 出现两行即命中此坑
+  docker network inspect rocketmq_net --format '{{range .Containers}}{{.Name}}={{.IPv4Address}} {{end}}'
+  ```
+  修法：配置里**一律用唯一容器名 `rmq-nameserver:9876`**，不要用服务名 `nameserver:9876`。
+  需改 4 个文件共 7 处——`docker-compose.yml` 的 4 处 `NAMESRV_ADDR`（broker-0 / broker-1 /
+  producer / consumer）、`conf/broker-0.conf` 与 `conf/broker-1.conf` 的 `namesrvAddr`、
+  `conf/rmq-proxy.json` 的 `namesrvAddr`；改完 `docker compose up -d --force-recreate
+  nameserver broker-0 broker-1 proxy`。（`brokerIP1=broker-{0,1}` 用的 `broker-0` / `broker-1`
+  别名经实测无歧义，可不改；若将来有别的 stack 也叫这名，同样换成 `rmq-broker-{0,1}`。）
+  副作用：注册错的那套 nameserver 路由表里会**多出你的 broker**（交叉污染，会让对方的
+  实例可能路由到本集群）。无需干预——停止心跳后约 120s 自动过期，用
+  `docker exec rmq551-nameserver sh bin/mqadmin clusterList -n localhost:9876` 复核已清除即可。
 - **目标机拉基础镜像超时/403**：国内机器配置 `/etc/docker/daemon.json`
   registry-mirrors 后重启 docker。
 - **公共 Docker Hub 镜像源全部失效**（2026-08 实测：1ms.run / xuanyuan / daocloud /
