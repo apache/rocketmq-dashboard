@@ -304,6 +304,7 @@ const ConsumerPageContent = ({
   );
   const [showOnlyInconsistent, setShowOnlyInconsistent] = useState(false);
   const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+  const [progressErrorByGroup, setProgressErrorByGroup] = useState<Record<string, boolean>>({});
   const [stackModalOpen, setStackModalOpen] = useState(false);
   const [stackLoading, setStackLoading] = useState(false);
   const [selectedStack, setSelectedStack] = useState<ConsumerStackTrace | null>(null);
@@ -445,10 +446,16 @@ const ConsumerPageContent = ({
         const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
         if (progressRequestIdRef.current[cacheKey] === requestId) {
           setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
+          setProgressErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
         }
       } catch {
-        if (progressRequestIdRef.current[cacheKey] === requestId && !silent) {
-          message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        // A failed read is not an empty result: the progress tab and the health
+        // diagnosis must not present it as "the group is offline". A stale request
+        // must not write the flag either, or it could mark a group as failed after
+        // a newer read already succeeded.
+        if (progressRequestIdRef.current[cacheKey] === requestId) {
+          setProgressErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+          if (!silent) message.error(t('consumer.fetchProgressFailed', { name: groupName }));
         }
       }
     },
@@ -650,6 +657,7 @@ const ConsumerPageContent = ({
     () => (selectedGroupName ? (progressByGroup[selectedDiagnosticKey] ?? []) : []),
     [progressByGroup, selectedDiagnosticKey, selectedGroupName],
   );
+  const selectedProgressFailed = Boolean(progressErrorByGroup[selectedDiagnosticKey]);
   const progressTopicOptions = useMemo(
     () => Array.from(new Set(selectedProgress.map((q) => q.topic).filter(Boolean))).sort(),
     [selectedProgress],
@@ -679,6 +687,9 @@ const ConsumerPageContent = ({
         : null,
     [selectedGroup, selectedProgress, selectedSubscriptions],
   );
+  // A failed progress read leaves the queues unknown; the diagnosis stays useful
+  // for the loaded data but must never read as "everything is healthy".
+  const selectedGroupHealthIsPartial = selectedProgressFailed && selectedSubscriptions.length > 0;
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
@@ -1917,6 +1928,14 @@ const ConsumerPageContent = ({
                       />
                     )}
 
+                    {selectedGroupHealthIsPartial && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="消费进度加载失败，诊断未包含队列进度。"
+                      />
+                    )}
+
                     <Row gutter={16}>
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
@@ -2039,6 +2058,15 @@ const ConsumerPageContent = ({
                 ),
                 children: (
                   <div>
+                    {selectedProgressFailed && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message="消费进度加载失败，无法判断消费组是否在线"
+                        description="队列进度与堆积统计暂不可用，请稍后重试。"
+                      />
+                    )}
                     {progressTopicOptions.length > 0 && (
                       <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
                         <Text type="secondary">Topic 筛选:</Text>
@@ -2106,7 +2134,12 @@ const ConsumerPageContent = ({
                       size="small"
                       tableLayout="fixed"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
-                      locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
+                      locale={{
+                        emptyText: selectedProgressFailed
+                          ? // A failed read must not assert that the group is offline.
+                            '队列进度暂不可用'
+                          : '消费组不在线，暂无队列进度数据',
+                      }}
                     />
                   </div>
                 ),

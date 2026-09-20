@@ -662,6 +662,45 @@ describe('Consumer page', () => {
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
   });
 
+  it('does not report a failed progress load as an offline consumer group', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: '*',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockRejectedValue(
+      new Error('broker unreachable'),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() =>
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+
+    // The empty-state text claims the group is offline; the read simply failed.
+    await user.click(await screen.findByRole('tab', { name: /消费进度/ }));
+    const progressPanel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() =>
+      expect(
+        within(progressPanel).queryByText('消费组不在线，暂无队列进度数据'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(within(progressPanel).getByText('队列进度暂不可用')).toBeInTheDocument();
+    expect(
+      within(progressPanel).getByText('消费进度加载失败，无法判断消费组是否在线'),
+    ).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await waitFor(() => expect(within(panel).queryByText(/消费进度加载失败/)).toBeInTheDocument());
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,
