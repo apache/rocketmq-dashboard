@@ -1419,4 +1419,53 @@ describe('Cluster page', () => {
 
     expect(screen.getByText('502')).toBeInTheDocument();
   });
+
+  it('keeps the registry inventories and surfaces an error banner when a registry load fails', async () => {
+    // First load succeeds so the page holds real rows, then a reload transiently fails:
+    // the tables must not be silently emptied and the failure must be visible with retry.
+    const user = userEvent.setup();
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([
+      {
+        id: 1,
+        name: 'rocketmq1',
+        namesrvAddr: 'rocketmq1-nameserver:9876',
+        k8sNamespace: 'rocketmq1',
+        k8sId: 'ack-daily',
+        status: 'healthy',
+        description: 'community chart cluster',
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+    expect((await screen.findAllByText('ns-prod')).length).toBeGreaterThan(0);
+
+    clusterServiceMocks.listRegistryClusters.mockRejectedValueOnce(new Error('blip'));
+    clusterServiceMocks.listNameserverRegistry.mockRejectedValueOnce(new Error('blip'));
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent('获取数据失败');
+    expect(banner).toHaveTextContent('重 试');
+    // Previously loaded rows remain instead of being wiped to empty tables.
+    expect(screen.queryAllByText('ns-prod').length).toBeGreaterThan(0);
+
+    // Retry recovers: both loaders succeed again and the banner disappears.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValueOnce([buildCluster()]);
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([
+      {
+        id: 1,
+        name: 'rocketmq1',
+        namesrvAddr: 'rocketmq1-nameserver:9876',
+        k8sNamespace: 'rocketmq1',
+        k8sId: 'ack-daily',
+        status: 'healthy',
+        description: 'community chart cluster',
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    await user.click(within(banner).getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
 });
