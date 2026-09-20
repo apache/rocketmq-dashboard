@@ -485,6 +485,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRule(rule);
+    setTestResult(null);
     form.setFieldsValue({
       ...rule,
       metric: normalizeMetric(rule.metric),
