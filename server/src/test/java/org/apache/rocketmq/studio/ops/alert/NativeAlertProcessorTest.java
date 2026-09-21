@@ -453,6 +453,41 @@ class NativeAlertProcessorTest {
     }
 
     @Test
+    void resolvesActiveStateForBlankInstanceIdRuleMissingFromCollectionScopeTest() {
+        AlertService service = mock(AlertService.class);
+        // A blank instance_id is stored verbatim and means "every instance"; the repository side
+        // already reads it through StringUtils.hasText, so this filter must not fall back to a
+        // null check or such a rule can neither fire nor resolve.
+        AlertRuleVO rule = rule("   ", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60),
+                oldSample.collectedAt().minusSeconds(60), null);
+        ActiveAlertState active = new ActiveAlertState(oldKey, firing, oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")), List.of());
+
+        org.mockito.ArgumentCaptor<AlertRuleState> state = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+        verify(states).save(eq(oldKey), state.capture());
+        assertThat(state.getValue().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule), eq(oldSample.labels()));
+    }
+
+    @Test
     void keepsActiveFingerprintWhenItAppearsInSuccessfulCollectionScopeTest() {
         AlertService service = mock(AlertService.class);
         AlertRuleVO rule = rule("local", "orders", 1);
