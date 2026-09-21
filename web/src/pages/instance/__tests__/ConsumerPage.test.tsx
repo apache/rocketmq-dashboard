@@ -710,7 +710,7 @@ describe('Consumer page', () => {
       instances: [
         {
           clientId: 'remote-cg-0@10.0.0.1',
-          protocol: 'GRPC',
+          protocol: 'gRPC',
           address: '10.0.0.1:49152',
           subscribedTopics: ['remote-topic'],
           lastHeartbeat: '2026-07-23T00:00:00Z',
@@ -718,7 +718,7 @@ describe('Consumer page', () => {
         },
         {
           clientId: 'remote-cg-1@10.0.0.2',
-          protocol: 'REMOTING',
+          protocol: 'Remoting',
           address: '10.0.0.2:49152',
           subscribedTopics: [],
           lastHeartbeat: '2026-07-23T00:00:00Z',

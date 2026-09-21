@@ -19,7 +19,7 @@
 
 export interface ConsumerInstance {
   clientId: string;
-  protocol: 'REMOTING' | 'GRPC';
+  protocol: 'gRPC' | 'Remoting';
   address: string;
   subscribedTopics: string[];
   lastHeartbeat: string;
@@ -82,7 +82,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'order-notify-0@10.0.1.12',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.1.12:49152',
         subscribedTopics: ['order-create', 'order-status-change'],
         lastHeartbeat: '2026-07-01 18:32:05',
@@ -90,7 +90,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'order-notify-1@10.0.1.13',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.1.13:49200',
         subscribedTopics: ['order-create', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:03',
@@ -98,7 +98,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'order-notify-2@10.0.1.14',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.1.14:49300',
         subscribedTopics: ['order-status-change', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:01',
@@ -106,7 +106,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'order-notify-3@10.0.1.15',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.1.15:49400',
         subscribedTopics: ['order-create', 'order-status-change', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:31:58',
@@ -114,7 +114,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'order-notify-4@10.0.1.16',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.1.16:49500',
         subscribedTopics: ['order-create'],
         lastHeartbeat: '2026-07-01 18:32:04',
@@ -122,7 +122,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'order-notify-5@10.0.1.17',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.1.17:49600',
         subscribedTopics: ['order-status-change', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:02',
@@ -148,7 +148,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'payment-cb-0@10.0.2.10',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.2.10:50100',
         subscribedTopics: ['payment-callback', 'refund-event'],
         lastHeartbeat: '2026-07-01 18:32:00',
@@ -156,7 +156,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'payment-cb-1@10.0.2.11',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.2.11:50200',
         subscribedTopics: ['payment-callback'],
         lastHeartbeat: '2026-07-01 18:31:58',
@@ -164,7 +164,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'payment-cb-2@10.0.2.12',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.2.12:50300',
         subscribedTopics: ['refund-event'],
         lastHeartbeat: '2026-07-01 18:32:02',
@@ -172,7 +172,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'payment-cb-3@10.0.2.13',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.2.13:50400',
         subscribedTopics: ['payment-callback', 'refund-event'],
         lastHeartbeat: '2026-07-01 18:31:55',
@@ -198,7 +198,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'user-act-0@10.0.3.20',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.3.20:51100',
         subscribedTopics: ['user-activity-log', 'user-profile-change'],
         lastHeartbeat: '2026-07-01 18:31:50',
@@ -206,7 +206,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'user-act-1@10.0.3.21',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.3.21:51200',
         subscribedTopics: ['user-activity-log'],
         lastHeartbeat: '2026-07-01 18:31:48',
@@ -214,7 +214,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'user-act-2@10.0.3.22',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.3.22:51300',
         subscribedTopics: ['user-activity-log', 'user-profile-change'],
         lastHeartbeat: '2026-07-01 18:31:52',
@@ -241,7 +241,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'inv-sync-0@10.0.4.30',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.4.30:52100',
         subscribedTopics: ['inventory-sync', 'stock-alert'],
         lastHeartbeat: '2026-07-01 18:31:45',
@@ -249,7 +249,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'inv-sync-1@10.0.4.31',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.4.31:52200',
         subscribedTopics: ['inventory-sync'],
         lastHeartbeat: '2026-07-01 18:31:42',
@@ -275,7 +275,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'log-col-0@10.0.5.40',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.40:53100',
         subscribedTopics: ['app-log', 'access-log'],
         lastHeartbeat: '2026-07-01 18:32:08',
@@ -283,7 +283,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-1@10.0.5.41',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.41:53200',
         subscribedTopics: ['app-log', 'error-log'],
         lastHeartbeat: '2026-07-01 18:32:06',
@@ -291,7 +291,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-2@10.0.5.42',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.42:53300',
         subscribedTopics: ['access-log', 'error-log'],
         lastHeartbeat: '2026-07-01 18:32:04',
@@ -299,7 +299,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-3@10.0.5.43',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.43:53400',
         subscribedTopics: ['app-log'],
         lastHeartbeat: '2026-07-01 18:32:02',
@@ -307,7 +307,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-4@10.0.5.44',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.44:53500',
         subscribedTopics: ['access-log'],
         lastHeartbeat: '2026-07-01 18:32:00',
@@ -315,7 +315,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-5@10.0.5.45',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.45:53600',
         subscribedTopics: ['error-log'],
         lastHeartbeat: '2026-07-01 18:31:58',
@@ -323,7 +323,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-6@10.0.5.46',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.5.46:53700',
         subscribedTopics: ['app-log', 'access-log', 'error-log'],
         lastHeartbeat: '2026-07-01 18:31:55',
@@ -331,7 +331,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'log-col-7@10.0.5.47',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.5.47:53800',
         subscribedTopics: ['app-log', 'error-log'],
         lastHeartbeat: '2026-07-01 18:31:52',
@@ -357,7 +357,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'notif-push-0@10.0.6.50',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.6.50:54100',
         subscribedTopics: ['notification-push'],
         lastHeartbeat: '2026-07-01 18:32:10',
@@ -365,7 +365,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'notif-push-1@10.0.6.51',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.6.51:54200',
         subscribedTopics: ['notification-push', 'sms-gateway'],
         lastHeartbeat: '2026-07-01 18:32:08',
@@ -373,7 +373,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'notif-push-2@10.0.6.52',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.6.52:54300',
         subscribedTopics: ['sms-gateway'],
         lastHeartbeat: '2026-07-01 18:32:06',
@@ -399,7 +399,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'ai-worker-0@10.0.7.60',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.7.60:55100',
         subscribedTopics: ['ai-task-dispatch', 'model-inference-request'],
         lastHeartbeat: '2026-07-01 18:32:12',
@@ -407,7 +407,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'ai-worker-1@10.0.7.61',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.7.61:55200',
         subscribedTopics: ['ai-task-dispatch'],
         lastHeartbeat: '2026-07-01 18:32:10',
@@ -415,7 +415,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'ai-worker-2@10.0.7.62',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.7.62:55300',
         subscribedTopics: ['model-inference-request'],
         lastHeartbeat: '2026-07-01 18:32:08',
@@ -423,7 +423,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'ai-worker-3@10.0.7.63',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.7.63:55400',
         subscribedTopics: ['ai-task-dispatch', 'model-inference-request'],
         lastHeartbeat: '2026-07-01 18:32:06',
@@ -449,7 +449,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'metrics-agg-0@10.0.8.70',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.8.70:56100',
         subscribedTopics: ['metrics-raw', 'trace-span'],
         lastHeartbeat: '2026-07-01 18:31:40',
@@ -457,7 +457,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'metrics-agg-1@10.0.8.71',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.8.71:56200',
         subscribedTopics: ['metrics-raw', 'trace-span'],
         lastHeartbeat: '2026-07-01 18:31:38',
@@ -483,7 +483,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'risk-ctrl-0@10.0.9.80',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.9.80:57100',
         subscribedTopics: ['transaction-event', 'login-event'],
         lastHeartbeat: '2026-07-01 18:32:15',
@@ -491,7 +491,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'risk-ctrl-1@10.0.9.81',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.9.81:57200',
         subscribedTopics: ['transaction-event', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:13',
@@ -499,7 +499,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'risk-ctrl-2@10.0.9.82',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.9.82:57300',
         subscribedTopics: ['login-event', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:11',
@@ -507,7 +507,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'risk-ctrl-3@10.0.9.83',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.9.83:57400',
         subscribedTopics: ['transaction-event', 'login-event', 'payment-callback'],
         lastHeartbeat: '2026-07-01 18:32:09',
@@ -515,7 +515,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'risk-ctrl-4@10.0.9.84',
-        protocol: 'REMOTING',
+        protocol: 'Remoting',
         address: '10.0.9.84:57500',
         subscribedTopics: ['transaction-event'],
         lastHeartbeat: '2026-07-01 18:32:07',
@@ -542,7 +542,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
     instances: [
       {
         clientId: 'data-sync-0@10.0.10.90',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.10.90:58100',
         subscribedTopics: ['binlog-event', 'schema-change'],
         lastHeartbeat: '2026-07-01 18:31:55',
@@ -550,7 +550,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'data-sync-1@10.0.10.91',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.10.91:58200',
         subscribedTopics: ['binlog-event'],
         lastHeartbeat: '2026-07-01 18:31:53',
@@ -558,7 +558,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
       },
       {
         clientId: 'data-sync-2@10.0.10.92',
-        protocol: 'GRPC',
+        protocol: 'gRPC',
         address: '10.0.10.92:58300',
         subscribedTopics: ['binlog-event', 'schema-change'],
         lastHeartbeat: '2026-07-01 18:31:50',
