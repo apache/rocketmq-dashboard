@@ -4,7 +4,7 @@ tools:
     cli:
       resource: message
       verb: query
-    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths."
+    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. The truncated flag reports that the key-path result budget was reached before the query was exhausted."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -87,7 +87,7 @@ tools:
     cli:
       resource: message
       verb: query-by-topic
-    description: Query RocketMQ messages by topic and optional time range in one Studio Instance.
+    description: Query RocketMQ messages by topic and optional time range in one Studio Instance. The truncated flag reports that the result budget was reached before the query was exhausted.
     riskLevel: L1
     permission: message:read
     requiredCapabilities:

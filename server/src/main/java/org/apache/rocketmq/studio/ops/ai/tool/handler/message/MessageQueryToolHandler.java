@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
@@ -55,19 +56,25 @@ public class MessageQueryToolHandler
     public ListOutput<MessageItem> execute(MessageQueryInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
         List<MessageRecordVO> messages;
+        Boolean truncated;
         if (StringUtils.hasText(input.msgId())) {
             messages = messageService.queryMessages(
                     instanceId, input.topicName(), input.msgId(), null, null, null, null);
+            truncated = false;
         } else if (StringUtils.hasText(input.uniqueKey())) {
             messages = messageService.queryMessageByUniqueKey(
                     instanceId, input.topicName(), input.uniqueKey(), input.startTime(), input.endTime());
+            truncated = false;
         } else if (StringUtils.hasText(input.key())) {
-            messages = messageService.queryMessages(
+            MessageQueryResult result = messageService.queryMessagesDetailed(
                     instanceId, input.topicName(), null, null, input.key(),
-                    input.startTime(), input.endTime());
+                    input.startTime(), input.endTime(), true);
+            messages = result.messages();
+            truncated = result.mayBeTruncated()
+                    || result.messages().size() >= MessageService.TOPIC_QUERY_RESULT_LIMIT;
         } else {
             throw new BusinessException(400, "message query requires one of: msgId, uniqueKey, key");
         }
-        return new ListOutput<>(messages.stream().map(MessageItem::from).toList());
+        return new ListOutput<>(messages.stream().map(MessageItem::from).toList(), truncated);
     }
 }

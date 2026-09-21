@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
@@ -49,11 +50,13 @@ public class MessageQueryByTopicToolHandler
     @Override
     public ListOutput<MessageItem> execute(
             MessageQueryByTopicInput input, ToolExecutionContext context) {
-        return new ListOutput<>(messageService.queryMessages(
-                        context.instanceId(), input.topicName(), null, input.tag(), null,
-                        input.startTime(), input.endTime())
-                .stream()
+        MessageQueryResult result = messageService.queryMessagesDetailed(
+                context.instanceId(), input.topicName(), null, input.tag(), null,
+                input.startTime(), input.endTime(), true);
+        boolean truncated = result.mayBeTruncated()
+                || result.messages().size() >= MessageService.TOPIC_QUERY_RESULT_LIMIT;
+        return new ListOutput<>(result.messages().stream()
                 .map(MessageItem::from)
-                .toList());
+                .toList(), truncated);
     }
 }

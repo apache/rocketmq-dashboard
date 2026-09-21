@@ -33,7 +33,7 @@ public class MessageService {
 
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
     private static final int MAX_PAGE_SIZE = 200;
-    private static final int TOPIC_QUERY_RESULT_LIMIT = 200;
+    public static final int TOPIC_QUERY_RESULT_LIMIT = 200;
 
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
@@ -46,7 +46,7 @@ public class MessageService {
                 .messages();
     }
 
-    private MessageQueryResult queryMessagesDetailed(
+    public MessageQueryResult queryMessagesDetailed(
             String instanceId, String topic, String msgId, String tag, String key,
             Long startTime, Long endTime, boolean recordHistory) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
@@ -54,8 +55,9 @@ class MessageQueryByTopicToolHandlerTest {
                 .storeTime(1000L)
                 .size(5)
                 .build();
-        when(messageService.queryMessages(eq("instance-a"), eq("TopicA"), isNull(), isNull(), isNull(), any(), any()))
-                .thenReturn(List.of(message));
+        when(messageService.queryMessagesDetailed(
+                eq("instance-a"), eq("TopicA"), isNull(), isNull(), isNull(), any(), any(), eq(true)))
+                .thenReturn(MessageQueryResult.complete(List.of(message)));
 
         ListOutput<MessageItem> result = handler.execute(
                 new MessageQueryByTopicInput("instance-a", "TopicA", null, null, null),
@@ -65,18 +67,32 @@ class MessageQueryByTopicToolHandlerTest {
         MessageItem row = result.items().getFirst();
         assertThat(row.msgId()).isEqualTo("msg-1");
         assertThat(row.topic()).isEqualTo("TopicA");
+        assertThat(result.truncated()).isFalse();
+    }
+
+    @Test
+    void executeShouldReportTruncationWhenTheResultBudgetIsReachedTest() {
+        when(messageService.queryMessagesDetailed(
+                eq("instance-a"), eq("TopicA"), isNull(), isNull(), isNull(), any(), any(), eq(true)))
+                .thenReturn(MessageQueryResult.truncated(List.of()));
+
+        ListOutput<MessageItem> result = handler.execute(
+                new MessageQueryByTopicInput("instance-a", "TopicA", null, null, null),
+                context("instance-a"));
+
+        assertThat(result.truncated()).isTrue();
     }
 
     @Test
     void executeShouldConvertNumericTimeArguments() {
-        when(messageService.queryMessages(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of());
+        when(messageService.queryMessagesDetailed(any(), any(), any(), any(), any(), any(), any(), eq(true)))
+                .thenReturn(MessageQueryResult.complete(List.of()));
 
         handler.execute(
                 new MessageQueryByTopicInput("instance-a", "TopicA", null, 1000L, 2000L),
                 context("instance-a"));
 
         verify(messageService)
-                .queryMessages(eq("instance-a"), eq("TopicA"), isNull(), isNull(), isNull(), eq(1000L), eq(2000L));
+                .queryMessagesDetailed(eq("instance-a"), eq("TopicA"), isNull(), isNull(), isNull(), eq(1000L), eq(2000L), eq(true));
     }
 }

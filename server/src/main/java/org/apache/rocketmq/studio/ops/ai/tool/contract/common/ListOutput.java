@@ -16,7 +16,18 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.contract.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 
-public record ListOutput<T>(List<T> items) {
+/**
+ * @param truncated true when the tool stopped at its result budget before the query was
+ *        exhausted; null when the tool has no meaningful truncation notion (bounded lookups).
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record ListOutput<T>(List<T> items, Boolean truncated) {
+
+    public ListOutput(List<T> items) {
+        this(items, null);
+    }
 }

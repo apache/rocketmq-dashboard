@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "71c2cc225321b7e83243ef77b7330f25800e9623c0a110f56b27a6834a21735e",
+	Digest:               "eea91f06ed138d3b045fbc4016247100e99981886ab0fbc91ff58220adaa6b07",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -372,7 +372,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.message.query",
 			CLI:                  CLI{Resource: "message", Verb: "query"},
-			Description:          "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths.",
+			Description:          "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. The truncated flag reports that the key-path result budget was reached before the query was exhausted.",
 			RiskLevel:            "L1",
 			Permission:           "message:read",
 			RequiredCapabilities: []string{"MESSAGE_QUERY"},
@@ -393,7 +393,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.message.query_by_topic",
 			CLI:                  CLI{Resource: "message", Verb: "query-by-topic"},
-			Description:          "Query RocketMQ messages by topic and optional time range in one Studio Instance.",
+			Description:          "Query RocketMQ messages by topic and optional time range in one Studio Instance. The truncated flag reports that the result budget was reached before the query was exhausted.",
 			RiskLevel:            "L1",
 			Permission:           "message:read",
 			RequiredCapabilities: []string{"MESSAGE_QUERY"},

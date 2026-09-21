@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
@@ -122,10 +123,10 @@ class MessageQueryToolHandlerTest {
                 .storeTime(1000L)
                 .size(5)
                 .build();
-        when(messageService.queryMessages(
+        when(messageService.queryMessagesDetailed(
                 eq("instance-a"), eq("TopicA"), isNull(), isNull(),
-                eq("order-123"), eq(1000L), eq(2000L)))
-                .thenReturn(List.of(message));
+                eq("order-123"), eq(1000L), eq(2000L), eq(true)))
+                .thenReturn(MessageQueryResult.complete(List.of(message)));
 
         ListOutput<MessageItem> result = handler.execute(
                 new MessageQueryInput("instance-a", "TopicA", null, null, "order-123", 1000L, 2000L),
@@ -135,6 +136,21 @@ class MessageQueryToolHandlerTest {
         MessageItem row = result.items().getFirst();
         assertThat(row.msgId()).isEqualTo("msg-3");
         assertThat(row.key()).isEqualTo("order-123");
+        assertThat(result.truncated()).isFalse();
+    }
+
+    @Test
+    void keyPathReportsTruncationWhenTheResultBudgetIsReachedTest() {
+        when(messageService.queryMessagesDetailed(
+                eq("instance-a"), eq("TopicA"), isNull(), isNull(),
+                eq("order-123"), eq(1000L), eq(2000L), eq(true)))
+                .thenReturn(MessageQueryResult.truncated(List.of()));
+
+        ListOutput<MessageItem> result = handler.execute(
+                new MessageQueryInput("instance-a", "TopicA", null, null, "order-123", 1000L, 2000L),
+                context("instance-a"));
+
+        assertThat(result.truncated()).isTrue();
     }
 
     @ParameterizedTest
