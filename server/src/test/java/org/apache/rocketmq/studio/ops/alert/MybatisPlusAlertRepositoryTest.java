@@ -116,6 +116,42 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void replaceRuleShouldSkipTheClearPassWhenEveryOptionalFieldIsPresentTest() {
+        // A fully-loaded update (toggle, bulk toggle, import) must not issue the extra clear
+        // statement at all: it would be redundant work per row and an empty SET clause is
+        // exactly what MyBatis-Plus guards against.
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .id(4L)
+                .name("Lag")
+                .metric("consumer.lag.total")
+                .operator(">")
+                .threshold(100.0)
+                .thresholdUnit("messages")
+                .duration("5m")
+                .channels(Arrays.asList("email"))
+                .description("checked")
+                .brokerName("broker-a")
+                .clusterName("cluster-a")
+                .severity("warning")
+                .instanceId("inst-1")
+                .consumerGroup("G1")
+                .topic("orders")
+                .notificationTemplate("body")
+                .domain(AlertDomain.BUSINESS)
+                .enabled(true)
+                .consecutiveSamples(1)
+                .reminderInterval("30m")
+                .build();
+
+        when(ruleMapper.selectById(4L)).thenReturn(new RmqAlertRule());
+        when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(1);
+
+        assertThat(repository.replaceRule(rule)).isTrue();
+
+        verify(ruleMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
     void findRulePageShouldApplyFiltersOrderingAndDatabasePagination() {
         RmqAlertRule entity = new RmqAlertRule();
         entity.setId(1L);
