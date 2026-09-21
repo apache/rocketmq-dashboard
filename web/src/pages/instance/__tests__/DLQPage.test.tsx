@@ -610,6 +610,85 @@ describe('DLQ page', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows per-message failure details for a partial range resend', async () => {
+    vi.mocked(messageService.resendDLQ).mockResolvedValue({
+      matched: 2,
+      resent: 1,
+      failed: 1,
+      outcome: 'PARTIAL',
+      failures: [
+        {
+          msgId: 'failed-range-msg',
+          targetTopic: 'orders-retry',
+          reason: 'Producer returned FLUSH_DISK_TIMEOUT',
+        },
+      ],
+      failuresTruncated: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    expect(await screen.findByText('failed-range-msg')).toBeInTheDocument();
+    expect(screen.getByText('orders-retry')).toBeInTheDocument();
+    expect(screen.getByText('Producer returned FLUSH_DISK_TIMEOUT')).toBeInTheDocument();
+  });
+
+  it('shows per-message failure details for selected-message resend', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'msg-1',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 1,
+          storeTime: 2,
+          reconsumeTimes: 3,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 1,
+      outcome: 'FAILED',
+      failures: [
+        {
+          msgId: 'msg-1',
+          targetTopic: 'orders',
+          reason: 'Producer send failed: broker unavailable',
+        },
+      ],
+      failuresTruncated: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('msg-1')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText('Producer send failed: broker unavailable')).toBeInTheDocument();
+    expect(screen.getAllByText('msg-1').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('orders')).toBeInTheDocument();
+  });
+
   it('clears retry state before loading groups for a newly selected instance', async () => {
     let resolveSecondInstance!: (page: DLQGroupPage) => void;
     vi.mocked(messageService.listDLQGroups)

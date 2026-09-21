@@ -845,6 +845,22 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
+  'dlq.resendPartialSummary': {
+    zh: '重投部分完成：成功 {resent}，失败 {failed}',
+    en: 'Resend partially completed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.resendFailedSummary': {
+    zh: '重投失败：成功 {resent}，失败 {failed}',
+    en: 'Resend failed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
+  'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
+  'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },
+  'dlq.failureReason': { zh: '失败原因', en: 'Failure reason' },
+  'dlq.failureDetailsTruncated': {
+    zh: '失败明细较多，仅显示前 100 条。',
+    en: 'Only the first 100 failure details are shown.',
+  },
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },

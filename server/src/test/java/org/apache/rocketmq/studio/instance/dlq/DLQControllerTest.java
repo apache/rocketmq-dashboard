@@ -127,13 +127,32 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                 "endTime", 2000,
                 "targetTopic", "target-topic"
         );
+        when(dlqService.resendMessages(
+                "instance-1", "test-group", 1000L, 2000L, "target-topic"))
+                .thenReturn(DLQResendResultVO.builder()
+                        .matched(2)
+                        .resent(1)
+                        .failed(1)
+                        .outcome("PARTIAL")
+                        .failures(List.of(DLQResendFailureVO.builder()
+                                .msgId("failed-msg")
+                                .targetTopic("target-topic")
+                                .reason("Producer returned FLUSH_DISK_TIMEOUT")
+                                .build()))
+                        .failuresTruncated(false)
+                        .build());
 
         mockMvc.perform(post("/api/dlq/resend")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"));
+                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.data.failures[0].msgId").value("failed-msg"))
+                .andExpect(jsonPath("$.data.failures[0].targetTopic").value("target-topic"))
+                .andExpect(jsonPath("$.data.failures[0].reason")
+                        .value("Producer returned FLUSH_DISK_TIMEOUT"))
+                .andExpect(jsonPath("$.data.failuresTruncated").value(false));
 
         verify(dlqService).resendMessages(
                 eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq("target-topic"));

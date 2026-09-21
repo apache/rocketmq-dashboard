@@ -16,20 +16,13 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
-import java.util.List;
 import lombok.Builder;
 import lombok.Value;
 
 @Value
 @Builder
-public class DLQResendResultVO {
-    int matched;
-    int resent;
-    int failed;
-    String outcome;
-    boolean scanIncomplete;
-    int failedQueueCount;
-    @Builder.Default
-    List<DLQResendFailureVO> failures = List.of();
-    boolean failuresTruncated;
+public class DLQResendFailureVO {
+    String msgId;
+    String targetTopic;
+    String reason;
 }
