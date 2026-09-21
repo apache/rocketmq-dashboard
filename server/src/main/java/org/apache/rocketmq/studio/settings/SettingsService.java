@@ -354,10 +354,21 @@ public class SettingsService {
             if (!StringUtils.hasText(request.getBearerToken())) {
                 throw new IllegalArgumentException("Bearer authentication requires token");
             }
+            if (isArmsDataSource(request.getType())) {
+                // ARMS V1 token auth matches the Authorization header exactly; a "Bearer "
+                // prefix breaks it (Aliyun ARMS HTTP API docs: Authorization: {Token}).
+                headers.set("Authorization", request.getBearerToken().trim());
+                return;
+            }
             headers.setBearerAuth(request.getBearerToken().trim());
             return;
         }
         throw new IllegalArgumentException("Unsupported data source authentication: " + request.getAuth());
+    }
+
+    private boolean isArmsDataSource(String type) {
+        return "arms".equals(type == null ? null
+                : type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
     }
 
     private String normalizeAuth(String auth) {
