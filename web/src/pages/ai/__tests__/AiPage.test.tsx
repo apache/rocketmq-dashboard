@@ -610,6 +610,60 @@ describe('AiPage', () => {
     expect(await within(dialog).findByTestId('tool-result')).toHaveTextContent('"GRPC"');
   });
 
+  it('dropsAnInFlightToolResultWhenAnotherToolIsSelectedTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listClusters).mockResolvedValue([
+      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listTools).mockResolvedValue([
+      {
+        name: 'rmq.topic.list',
+        description: 'List topics.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+      {
+        name: 'rmq.instance.capabilities',
+        description: 'Describe instance capabilities.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+    ]);
+    let resolveExecute!: (value: unknown) => void;
+    vi.mocked(executeTool).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExecute = resolve;
+        }),
+    );
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await waitFor(() => expect(executeTool).toHaveBeenCalledTimes(1));
+
+    // Switch tools while the first call is still in flight: the panel is cleared, so the late
+    // response must not repopulate it under the newly selected tool.
+    await user.click(within(dialog).getByRole('combobox', { name: '选择工具' }));
+    await user.click(
+      await screen.findByText('rmq.instance.capabilities', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await act(async () => {
+      resolveExecute({ capabilities: ['GRPC'] });
+    });
+
+    expect(within(dialog).queryByTestId('tool-result')).not.toBeInTheDocument();
+  });
+
   it('rejectsToolInputThatIsNotAJsonObjectTest', async () => {
     const user = userEvent.setup();
     vi.mocked(listClusters).mockResolvedValue([

@@ -121,12 +121,15 @@ const ToolPlaygroundModal = ({
   const [toolResult, setToolResult] = useState<unknown>(undefined);
   const [toolExecuting, setToolExecuting] = useState(false);
   const toolLoadRequestRef = useRef(0);
+  /** Invalidates an execution whose tool/scope is no longer the one on screen. */
+  const toolExecuteRequestRef = useRef(0);
   /** The catalog is loaded once per mount: reopening the modal must not re-hit the endpoint. */
   const bootstrappedRef = useRef(false);
 
   const selectTool = useCallback(
     (name: string, availableTools: McpTool[] = tools, clusterId: string = selectedClusterId) => {
       const tool = availableTools.find((item) => item.name === name);
+      toolExecuteRequestRef.current += 1;
       setSelectedToolName(name);
       setToolInput(tool ? buildToolInputTemplate(tool, clusterId) : '{}');
       setToolResult(undefined);
@@ -137,6 +140,7 @@ const ToolPlaygroundModal = ({
   const loadTools = useCallback(
     async (clusterId: string) => {
       const requestId = ++toolLoadRequestRef.current;
+      toolExecuteRequestRef.current += 1;
       setSelectedToolName('');
       setToolResult(undefined);
       setToolsLoading(true);
@@ -214,11 +218,19 @@ const ToolPlaygroundModal = ({
 
     setToolExecuting(true);
     setToolResult(undefined);
+    const requestId = ++toolExecuteRequestRef.current;
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput, selectedClusterId));
+      const result = await executeTool(selectedToolName, parsedInput, selectedClusterId);
+      // The panel belongs to whatever tool is selected now: a response for a tool the operator has
+      // already switched away from (or a modal that was closed and reopened) must not repopulate it,
+      // because the output pane does not name the tool that produced it.
+      if (requestId !== toolExecuteRequestRef.current) return;
+      setToolResult(result);
       message.success(t('ai.tools.executeSuccess'));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
+      if (requestId === toolExecuteRequestRef.current) {
+        message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
+      }
     } finally {
       setToolExecuting(false);
     }
@@ -228,6 +240,7 @@ const ToolPlaygroundModal = ({
     // Invalidate an in-flight catalog load: its response would otherwise land on a closed modal and
     // re-select a tool nobody is looking at.
     toolLoadRequestRef.current += 1;
+    toolExecuteRequestRef.current += 1;
     setToolsLoading(false);
     onClose();
   }, [onClose]);
