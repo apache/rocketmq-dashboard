@@ -386,6 +386,14 @@ describe('Cluster page', () => {
 
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup();
+    // The registry row lives on the NameServer of instance-1, so the preview is scoped to it.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        endpoint: 'namesrv-1:9876',
+        nameServers: [{ addr: 'namesrv-1:9876', status: 'healthy' }],
+      },
+    ]);
     renderWithProviders(<ClusterPage />);
 
     const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
@@ -411,6 +419,57 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('10.101.2.11:10911')).toBeInTheDocument();
     expect(within(dialog).getByText('defaultTopicQueueNums=16')).toBeInTheDocument();
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
+  });
+
+  it('scopes the config write to the instance that owns the registry row', async () => {
+    const user = userEvent.setup();
+    // instance-2 is selected in the topbar, but the registry row lives on instance-1's
+    // NameServer: the request must carry the owning instance, not the selection.
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 2,
+        name: 'instance-2',
+        endpoint: 'namesrv-2:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        endpoint: 'namesrv-1:9876',
+        nameServers: [{ addr: 'namesrv-1:9876', status: 'healthy' }],
+      },
+    ]);
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-2');
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'cluster-prod', instanceId: 'instance-1' }),
+      ),
+    );
   });
 
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
