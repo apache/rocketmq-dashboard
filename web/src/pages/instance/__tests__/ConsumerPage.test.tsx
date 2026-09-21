@@ -701,6 +701,36 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).queryByText(/消费进度加载失败/)).toBeInTheDocument());
   });
 
+  it('renders the filter modes the API returns as localized labels', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: 'tagA',
+        type: 'NORMAL',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+      {
+        topic: 'sql-topic',
+        expression: 'a > 1',
+        type: 'NORMAL',
+        filterMode: 'SQL',
+        consistency: 'consistent',
+      },
+    ]);
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('Tag 过滤')).toBeInTheDocument();
+    expect(screen.getByText('SQL92 过滤')).toBeInTheDocument();
+    // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+    // (SubscriptionFilterModes), so the raw codes must not leak into the table.
+    expect(screen.queryByText('TAG')).not.toBeInTheDocument();
+    expect(screen.queryByText('SQL')).not.toBeInTheDocument();
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,

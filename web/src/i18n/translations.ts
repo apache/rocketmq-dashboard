@@ -2219,6 +2219,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.filterAll': { zh: '全量', en: 'Full' },
   'consumer.filterTag': { zh: 'Tag 过滤', en: 'Tag Filter' },
   'consumer.filterSql92': { zh: 'SQL92 过滤', en: 'SQL92 Filter' },
+  'consumer.filterClassFilter': { zh: 'Class 过滤', en: 'Class Filter' },
   'consumer.expression': { zh: '订阅表达式', en: 'Expression' },
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },

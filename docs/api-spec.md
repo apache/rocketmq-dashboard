@@ -1002,8 +1002,8 @@ GET /api/groups/:name/subscriptions
 | `topic` | `string` | Topic 名称 |
 | `expression` | `string` | 过滤表达式 |
 | `type` | `string` | 数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
-| `filterMode` | `string` | 过滤模式: `Tag 过滤` / `SQL92 过滤` / `全量` |
-| `consistency` | `string` | 一致性: `一致` / `不一致` |
+| `filterMode` | `string` | 过滤模式: `TAG` / `SQL` / `CLASS_FILTER` |
+| `consistency` | `string` | 订阅一致性: `consistent`；无在线客户端等无法判定时为 `null` |
 
 ### 6.5 创建消费组
 
