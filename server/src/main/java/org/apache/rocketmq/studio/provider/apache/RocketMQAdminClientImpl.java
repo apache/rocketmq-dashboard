@@ -119,6 +119,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             } catch (BusinessException e) {
                 throw e;
             } catch (Exception e) {
+                // A topic that does not exist makes the NameServer answer TOPIC_NOT_EXIST, which
+                // the client re-throws as an MQClientException; that is a missing topic, not a
+                // cluster failure, so it must reach the caller as 404 like the branches above.
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+                    throw new BusinessException(404, "Topic not found: " + name);
+                }
                 throw new BusinessException(500, "Failed to get topic: " + e.getMessage());
             }
         });

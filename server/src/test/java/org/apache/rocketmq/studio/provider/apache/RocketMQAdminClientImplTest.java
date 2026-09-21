@@ -158,6 +158,20 @@ class RocketMQAdminClientImplTest {
                 .hasMessage("Topic not found: orders")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
     }
+    @Test
+    void getTopicReturnsNotFoundWhenTheNameServerHasNoRoute() throws Exception {
+        // A topic that was never created makes the NameServer answer TOPIC_NOT_EXIST, which the
+        // client re-throws as an MQClientException: the topic is absent, the cluster is not broken.
+        when(adminExt.examineTopicRouteInfo("orders"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in name server for the topic: orders"));
+
+        assertThatThrownBy(() -> adminClient.getTopic("orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic not found: orders")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
 
     @Test
     void getConsumerGroupReturnsOfflineDetailForConsumerNotOnline() throws Exception {
