@@ -1622,6 +1622,14 @@ GET /api/producer/connection
 |------|------|------|
 | `connectionSet` | `ProducerConnection[]` | 匹配的 Producer 连接 |
 | `summary` | `ProducerConnectionSummary` | 连接完整性和分布摘要 |
+| `complete` | `boolean` | 是否覆盖全部可发现的 Broker 与 Producer Group |
+| `failedBrokers` | `string[]` | Producer Group 发现失败的 Broker 地址；完整扫描时为空 |
+| `failedProducerGroups` | `string[]` | 连接查询失败的 Producer Group；完整扫描时为空 |
+
+省略 `producerGroup` 的 Topic 聚合查询采用部分成功语义：只要至少一个 Broker 可查询，且并非
+所有已发现的 Producer Group 都查询失败，就返回可用连接；覆盖缺口通过 `complete=false` 和
+失败列表公开。所有 Broker 或所有已发现 Group 都无法查询时仍返回 `502`。显式
+`producerGroup` 查询保持原有语义。
 
 #### ProducerConnection
 
@@ -1646,7 +1654,7 @@ GET /api/producer/connection
 | `languages` | `{ value: string, count: number }[]` | 按客户端语言统计的分布 |
 | `versions` | `{ value: string, count: number }[]` | 按客户端版本统计的分布 |
 | `duplicateClientIds` | `string[]` | 重复出现的客户端 ID |
-| `warnings` | `string[]` | `NO_CONNECTIONS` / `DUPLICATE_CLIENT_ID` / `MIXED_CLIENT_VERSION` / `INCOMPLETE_CLIENT_METADATA` |
+| `warnings` | `string[]` | `NO_CONNECTIONS` / `DUPLICATE_CLIENT_ID` / `MIXED_CLIENT_VERSION` / `INCOMPLETE_CLIENT_METADATA` / `INCOMPLETE_SCAN` |
 | `readiness` | `string` | `READY` / `WARNING` / `UNAVAILABLE` |
 
 ---
