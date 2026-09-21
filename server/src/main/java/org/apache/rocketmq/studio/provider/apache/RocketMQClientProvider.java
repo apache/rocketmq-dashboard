@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
+import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -94,8 +95,14 @@ public class RocketMQClientProvider implements ClientProvider {
 
     @Override
     public List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup) {
+        return scanProducerConnections(instanceId, topic, producerGroup).connections();
+    }
+
+    @Override
+    public ProducerConnectionScanResult scanProducerConnections(
+            String instanceId, String topic, String producerGroup) {
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> findProducerConnections(adminExt, topic, producerGroup));
+                adminExt -> scanProducerConnections(adminExt, topic, producerGroup));
     }
 
     @Override
@@ -105,17 +112,17 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
-        return findProducerGroups(adminExt, topic, query, limit, false);
+        return scanProducerGroups(adminExt, query, limit).groups();
     }
 
-    private List<String> findProducerGroups(
-            MQAdminExt adminExt, String topic, String query, int limit, boolean requireComplete) {
+    private ProducerGroupScanResult scanProducerGroups(MQAdminExt adminExt, String query, int limit) {
         BrokerTopology topology = discoverBrokerTopology(adminExt, null, "producer group selector");
         if (topology.brokerAddresses().isEmpty()) {
-            return List.of();
+            return new ProducerGroupScanResult(List.of(), List.of());
         }
         String normalizedQuery = query == null ? null : query.toLowerCase(Locale.ROOT);
         LinkedHashSet<String> groups = new LinkedHashSet<>();
+        List<String> failedBrokers = new ArrayList<>();
         int successfulBrokers = 0;
         for (String brokerAddress : topology.brokerAddresses()) {
             try {
@@ -123,47 +130,56 @@ public class RocketMQClientProvider implements ClientProvider {
                 successfulBrokers++;
                 collectProducerGroups(groups, producerTable, normalizedQuery);
             } catch (Exception e) {
-                if (requireComplete) {
-                    throw new BusinessException(502,
-                            "Failed to query active producer groups from broker "
-                                    + brokerAddress + ": " + rootMessage(e));
-                }
+                failedBrokers.add(brokerAddress);
                 log.warn("Failed to fetch producer groups from broker={}, skipping", brokerAddress, e);
             }
         }
         if (successfulBrokers == 0) {
             throw new BusinessException(502, "Failed to query producer groups from all brokers");
         }
-        return groups.stream()
+        List<String> matchedGroups = groups.stream()
                 .sorted(Comparator.naturalOrder())
                 .limit(limit)
                 .toList();
+        return new ProducerGroupScanResult(matchedGroups, failedBrokers);
     }
 
-    private List<ClientConnectionVO> findProducerConnections(MQAdminExt adminExt, String topic, String producerGroup) {
+    private ProducerConnectionScanResult scanProducerConnections(
+            MQAdminExt adminExt, String topic, String producerGroup) {
         if (producerGroup == null || producerGroup.isBlank()) {
             return findProducerConnectionsForActiveGroups(adminExt, topic);
         }
-        return findProducerConnectionsForGroup(adminExt, topic, producerGroup);
+        return ProducerConnectionScanResult.complete(
+                findProducerConnectionsForGroup(adminExt, topic, producerGroup));
     }
 
-    private List<ClientConnectionVO> findProducerConnectionsForActiveGroups(MQAdminExt adminExt, String topic) {
-        List<String> producerGroups = findProducerGroups(
-                adminExt, topic, null, Integer.MAX_VALUE, true);
+    private ProducerConnectionScanResult findProducerConnectionsForActiveGroups(
+            MQAdminExt adminExt, String topic) {
+        ProducerGroupScanResult groupScan = scanProducerGroups(adminExt, null, Integer.MAX_VALUE);
+        List<String> producerGroups = groupScan.groups();
         if (producerGroups.isEmpty()) {
-            return List.of();
+            return new ProducerConnectionScanResult(
+                    List.of(), groupScan.failedBrokers(), List.of());
         }
         List<ClientConnectionVO> connections = new ArrayList<>();
+        List<String> failedProducerGroups = new ArrayList<>();
+        int successfulGroupQueries = 0;
         for (String producerGroup : producerGroups) {
             try {
                 connections.addAll(findProducerConnectionsForGroup(adminExt, topic, producerGroup));
+                successfulGroupQueries++;
             } catch (BusinessException e) {
-                throw new BusinessException(502,
-                        "Failed to query producer connections for group "
-                                + producerGroup + ": " + e.getMessage());
+                failedProducerGroups.add(producerGroup);
+                log.warn("Failed to query producer connections for group={}, skipping: {}",
+                        producerGroup, rootMessage(e));
             }
         }
-        return connections;
+        if (successfulGroupQueries == 0) {
+            throw new BusinessException(502,
+                    "Failed to query producer connections from all groups");
+        }
+        return new ProducerConnectionScanResult(
+                connections, groupScan.failedBrokers(), failedProducerGroups);
     }
 
     private List<ClientConnectionVO> findProducerConnectionsForGroup(
@@ -466,6 +482,13 @@ public class RocketMQClientProvider implements ClientProvider {
 
         private String clusterFor(String brokerAddress) {
             return clusterByAddress.get(brokerAddress);
+        }
+    }
+
+    private record ProducerGroupScanResult(List<String> groups, List<String> failedBrokers) {
+        private ProducerGroupScanResult {
+            groups = List.copyOf(groups);
+            failedBrokers = List.copyOf(failedBrokers);
         }
     }
 }

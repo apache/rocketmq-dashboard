@@ -29,6 +29,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
+import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -263,7 +264,7 @@ class RocketMQClientProviderTest {
     }
 
     @Test
-    void producerGroupSelectorKeepsBestEffortResultsWhenOneBrokerFails() throws Exception {
+    void producerGroupSelectorKeepsBestEffortResultsWhenOneBrokerFailsTest() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
                 "127.0.0.1:10911", "127.0.0.2:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
@@ -328,7 +329,7 @@ class RocketMQClientProviderTest {
     }
 
     @Test
-    void producerQueryWithoutGroupFailsWhenOneGroupQueryFails() throws Exception {
+    void producerQueryWithoutGroupReturnsPartialResultWhenOneGroupQueryFailsTest() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
                 .thenReturn(new ProducerTableInfo(Map.of(
@@ -336,16 +337,24 @@ class RocketMQClientProviderTest {
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
         when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
                 .thenThrow(new IllegalStateException("broker unavailable"));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
 
-        assertThatThrownBy(() -> provider.findProducerConnections("instance-a", "TopicA", null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Failed to query producer connections for group pg-order: "
-                        + "Failed to query producer connections: broker unavailable")
-                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(result.connections()).singleElement().satisfies(connection ->
+                assertThat(connection.getProducerGroup()).isEqualTo("pg-payment"));
+        assertThat(result.complete()).isFalse();
+        assertThat(result.failedBrokers()).isEmpty();
+        assertThat(result.failedProducerGroups()).containsExactly("pg-order");
     }
 
     @Test
-    void producerQueryWithoutGroupFailsWhenOneBrokerGroupDiscoveryFails() throws Exception {
+    void producerQueryWithoutGroupReturnsPartialResultWhenOneBrokerGroupDiscoveryFailsTest() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
                 "127.0.0.1:10911", "127.0.0.2:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
@@ -353,16 +362,24 @@ class RocketMQClientProviderTest {
         when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
 
-        assertThatThrownBy(() -> provider.findProducerConnections("instance-a", "TopicA", null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Failed to query active producer groups from broker 127.0.0.1:10911: "
-                        + "broker unavailable")
-                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(result.connections()).singleElement().satisfies(connection ->
+                assertThat(connection.getProducerGroup()).isEqualTo("pg-payment"));
+        assertThat(result.complete()).isFalse();
+        assertThat(result.failedBrokers()).containsExactly("127.0.0.1:10911");
+        assertThat(result.failedProducerGroups()).isEmpty();
     }
 
     @Test
-    void producerQueryWithoutGroupTreatsOfflineGroupAsCompleteEmptyResult() throws Exception {
+    void producerQueryWithoutGroupTreatsOfflineGroupAsCompleteEmptyResultTest() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
                 .thenReturn(new ProducerTableInfo(Map.of(
@@ -376,12 +393,16 @@ class RocketMQClientProviderTest {
         when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
                 .thenReturn(paymentConnection);
 
-        List<ClientConnectionVO> connections = provider.findProducerConnections("instance-a", "TopicA", null);
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
 
-        assertThat(connections).singleElement().satisfies(connection -> {
+        assertThat(result.connections()).singleElement().satisfies(connection -> {
             assertThat(connection.getClientId()).isEqualTo("producer-payment");
             assertThat(connection.getProducerGroup()).isEqualTo("pg-payment");
         });
+        assertThat(result.complete()).isTrue();
+        assertThat(result.failedBrokers()).isEmpty();
+        assertThat(result.failedProducerGroups()).isEmpty();
     }
 
     @Test

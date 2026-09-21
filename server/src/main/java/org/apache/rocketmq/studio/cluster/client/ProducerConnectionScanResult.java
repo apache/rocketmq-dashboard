@@ -16,24 +16,26 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
-import org.apache.rocketmq.studio.common.exception.BusinessException;
-
 import java.util.List;
 
-public interface ClientProvider {
-    List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type);
+/** Producer connection rows plus the coverage gaps encountered while scanning them. */
+public record ProducerConnectionScanResult(
+        List<ClientConnectionVO> connections,
+        List<String> failedBrokers,
+        List<String> failedProducerGroups) {
 
-    default List<ClientConnectionVO> findConnectionsAt(String namesrvAddr, String clusterId, String type) {
-        throw new BusinessException(501, "Client connection provider does not support nameserver lookup");
+    public ProducerConnectionScanResult {
+        connections = connections == null ? List.of() : List.copyOf(connections);
+        failedBrokers = failedBrokers == null ? List.of() : List.copyOf(failedBrokers);
+        failedProducerGroups = failedProducerGroups == null
+                ? List.of() : List.copyOf(failedProducerGroups);
     }
 
-    List<String> findProducerGroups(String instanceId, String topic, String query, int limit);
+    public static ProducerConnectionScanResult complete(List<ClientConnectionVO> connections) {
+        return new ProducerConnectionScanResult(connections, List.of(), List.of());
+    }
 
-    List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup);
-
-    default ProducerConnectionScanResult scanProducerConnections(
-            String instanceId, String topic, String producerGroup) {
-        return ProducerConnectionScanResult.complete(
-                findProducerConnections(instanceId, topic, producerGroup));
+    public boolean complete() {
+        return failedBrokers.isEmpty() && failedProducerGroups.isEmpty();
     }
 }

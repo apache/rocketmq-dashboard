@@ -2695,6 +2695,18 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '连接元数据不完整',
     en: 'Incomplete connection metadata',
   },
+  'producer.warningIncompleteScan': {
+    zh: '扫描结果不完整',
+    en: 'Incomplete scan',
+  },
+  'producer.failedBroker': {
+    zh: 'Broker 失败：{name}',
+    en: 'Broker failed: {name}',
+  },
+  'producer.failedGroup': {
+    zh: '生产者组失败：{name}',
+    en: 'Producer group failed: {name}',
+  },
 
   // ─── Namespace ───
   'ns.title': { zh: '命名空间管理', en: 'Namespace Management' },
