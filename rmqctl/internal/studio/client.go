@@ -150,7 +150,12 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 	if !hasJSONData(envelope.Data) {
 		return nil
 	}
-	if err := json.Unmarshal(envelope.Data, out); err != nil {
+	// Passthrough commands decode into an `any`, where encoding/json would represent every
+	// number as float64 and silently corrupt int64 values beyond 2^53 (RocketMQ offsets and
+	// timestamps). UseNumber keeps the literal; decoding into typed struct fields is unaffected.
+	decoder := json.NewDecoder(bytes.NewReader(envelope.Data))
+	decoder.UseNumber()
+	if err := decoder.Decode(out); err != nil {
 		return fmt.Errorf("invalid studio data: %w", err)
 	}
 	return nil
