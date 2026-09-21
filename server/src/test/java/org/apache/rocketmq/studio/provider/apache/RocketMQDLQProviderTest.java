@@ -100,8 +100,11 @@ class RocketMQDLQProviderTest {
 
     private RocketMQDLQProvider provider;
 
+    private FakeBrokerHostResolver hostResolver;
+
     @BeforeEach
     void setUp() {
+        hostResolver = new FakeBrokerHostResolver();
         lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation -> {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
@@ -119,7 +122,7 @@ class RocketMQDLQProviderTest {
                             invocation.getArgument(1);
                     return action.apply(dlqProducer);
                 });
-        provider = new RocketMQDLQProvider(runtimeAdminClientResolver, auditService);
+        provider = new RocketMQDLQProvider(runtimeAdminClientResolver, auditService, hostResolver);
     }
 
     @Test
@@ -432,6 +435,28 @@ class RocketMQDLQProviderTest {
         assertThat(result.getResent()).isEqualTo(1);
         assertThat(result.getOutcome()).isEqualTo("SUCCESS");
         verify(adminExt).viewMessage(dlqTopic, msgId);
+    }
+
+    @Test
+    void resendSelectedMessagesLooksUpAHostnameRegisteredBrokerOnceForAllSelectedIdsTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        hostResolver.registered("broker-a.example.com", "172.30.10.100");
+        when(adminExt.examineBrokerClusterInfo())
+                .thenReturn(clusterInfoWithBrokerAddresses("broker-a.example.com:10911"));
+        String first = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        String second = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 67890L);
+        when(adminExt.viewMessage(dlqTopic, first)).thenReturn(null);
+        when(adminExt.viewMessage(dlqTopic, second)).thenReturn(null);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(first, second), null);
+
+        assertThat(result.getMatched()).isZero();
+        verify(adminExt).viewMessage(dlqTopic, first);
+        verify(adminExt).viewMessage(dlqTopic, second);
+        // The guard runs once per selected msgId, so a resolver built per call would look the
+        // hostname up twice.
+        assertThat(hostResolver.lookupCount("broker-a.example.com")).isEqualTo(1);
     }
 
     @Test

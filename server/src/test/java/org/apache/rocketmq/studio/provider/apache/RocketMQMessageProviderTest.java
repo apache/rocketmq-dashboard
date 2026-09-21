@@ -103,6 +103,8 @@ class RocketMQMessageProviderTest {
 
     private RocketMQMessageProvider provider;
 
+    private FakeBrokerHostResolver hostResolver;
+
     @BeforeEach
     void setUp() throws Exception {
         lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
@@ -120,13 +122,14 @@ class RocketMQMessageProviderTest {
         });
         lenient().when(adminExt.examineBrokerClusterInfo())
                 .thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        hostResolver = new FakeBrokerHostResolver();
         lenient().when(runtimeAdminClientResolver.executePullConsumer(anyString(), any()))
                 .thenAnswer(invocation -> {
                     MqClientPool.ClientAction<DefaultMQPullConsumer, Object> action =
                             invocation.getArgument(1);
                     return action.apply(pullConsumer);
                 });
-        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, ownershipGuard);
+        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, ownershipGuard, hostResolver);
     }
 
     @Test
@@ -570,6 +573,48 @@ class RocketMQMessageProviderTest {
 
         assertThat(result).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
         verify(adminExt).viewMessage("TopicA", msgId);
+    }
+
+    @Test
+    void queryByMsgIdAcceptsAHostnameRegisteredBrokerAndLooksItUpOnceTest() throws Exception {
+        hostResolver.registered("broker-a.example.com", "172.30.10.100");
+        when(adminExt.examineBrokerClusterInfo())
+                .thenReturn(clusterInfoWithBrokerAddresses("broker-a.example.com:10911"));
+        String msgId = MessageDecoder.createMessageId(
+                new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        when(adminExt.viewMessage("TopicA", msgId))
+                .thenThrow(new IllegalStateException("primary lookup failed"));
+        when(clientApi.viewMessage("172.30.10.100:10911", "TopicA",
+                MessageDecoder.decodeMessageId(msgId).getOffset(), 3000L)).thenReturn(message);
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
+        verify(clientApi).viewMessage("172.30.10.100:10911", "TopicA",
+                MessageDecoder.decodeMessageId(msgId).getOffset(), 3000L);
+        // One queryByMsgId evaluates the guard twice — before viewMessage and in the decoded-offset
+        // fallback — so a resolver built per evaluation would look the hostname up twice.
+        assertThat(hostResolver.lookupCount("broker-a.example.com")).isEqualTo(1);
+    }
+
+    @Test
+    void queryByMsgIdStillRejectsAnIdWhenTheRegisteredHostnameCannotBeResolvedTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo())
+                .thenReturn(clusterInfoWithBrokerAddresses("broker-0.invalid:10911"));
+        String msgId = MessageDecoder.createMessageId(
+                new InetSocketAddress("172.30.10.100", 10911), 12345L);
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).isEmpty();
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(adminExt, never()).getDefaultMQAdminExtImpl();
     }
 
     @Test

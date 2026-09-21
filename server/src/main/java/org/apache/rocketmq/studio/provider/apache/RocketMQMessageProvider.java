@@ -47,10 +47,10 @@ import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.ByteBuffer;
@@ -73,7 +73,6 @@ import java.util.Set;
  * Falls back to empty results when adminExt is not configured or a query fails.
  */
 @Slf4j
-@RequiredArgsConstructor
 @Service
 @Primary
 public class RocketMQMessageProvider implements MessageProvider {
@@ -102,6 +101,31 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final BrokerHostResolver brokerHostResolver;
+
+    @Autowired
+    public RocketMQMessageProvider(RuntimeAdminClientResolver runtimeAdminClientResolver,
+                                   ResourceOwnershipGuard ownershipGuard) {
+        this(runtimeAdminClientResolver, ownershipGuard, BrokerHostResolver.DEFAULT);
+    }
+
+    /** Visible for tests: injecting the resolver keeps the guard off DNS and makes lookups countable. */
+    RocketMQMessageProvider(RuntimeAdminClientResolver runtimeAdminClientResolver,
+                            ResourceOwnershipGuard ownershipGuard,
+                            BrokerHostResolver brokerHostResolver) {
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
+        this.ownershipGuard = ownershipGuard;
+        this.brokerHostResolver = brokerHostResolver;
+    }
+
+    /**
+     * One resolver per query: a single {@code queryByMsgId} evaluates the topology guard twice (once
+     * before {@code viewMessage} and once in the decoded-offset fallback), and a memoizing resolver
+     * keeps that at one lookup per registered host instead of two.
+     */
+    private BrokerHostResolver perQueryHostResolver() {
+        return BrokerHostResolver.caching(brokerHostResolver);
+    }
 
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
@@ -146,10 +170,11 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+        BrokerHostResolver hostResolver = perQueryHostResolver();
         MessageExt messageExt = null;
         Exception primaryFailure = null;
         if (StringUtils.hasText(topic)) {
-            if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
+            if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId, hostResolver)) {
                 return Collections.emptyList();
             }
             try {
@@ -163,7 +188,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         }
         if (messageExt == null) {
-            OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+            OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId, hostResolver);
             messageExt = lookup.message();
             if (messageExt == null && lookup.failure() != null) {
                 throw messageLookupFailure(lookup.failure());
@@ -182,8 +207,9 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Locate a message by decoding the broker address and physical offset embedded in its offset
      * msgId, then querying that broker directly.
      */
-    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
-        OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId,
+                                             BrokerHostResolver hostResolver) {
+        OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId, hostResolver);
         if (lookup.failure() != null) {
             log.warn("viewMessage by decoded offset id failed for msgId={}: {}",
                     msgId, lookup.failure().getMessage());
@@ -191,7 +217,8 @@ public class RocketMQMessageProvider implements MessageProvider {
         return lookup.message();
     }
 
-    private OffsetMessageLookup lookupMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+    private OffsetMessageLookup lookupMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId,
+                                                        BrokerHostResolver hostResolver) {
         MessageId messageId;
         try {
             messageId = MessageDecoder.decodeMessageId(msgId);
@@ -199,7 +226,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             return OffsetMessageLookup.empty();
         }
         try {
-            String brokerAddr = BrokerTopologyGuards.validatedBrokerAddr(adminExt, msgId, messageId);
+            String brokerAddr = BrokerTopologyGuards.validatedBrokerAddr(adminExt, msgId, messageId, hostResolver);
             if (!StringUtils.hasText(brokerAddr)) {
                 return OffsetMessageLookup.empty();
             }
@@ -718,10 +745,11 @@ public class RocketMQMessageProvider implements MessageProvider {
      * current time. Returns 0 if the message cannot be located.
      */
     private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+        BrokerHostResolver hostResolver = perQueryHostResolver();
         if (StringUtils.hasText(topic)) {
             try {
                 MessageExt messageExt = null;
-                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
+                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId, hostResolver)) {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
                 if (messageExt != null) {
@@ -733,7 +761,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         }
         try {
-            MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
+            MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId, hostResolver);
             if (messageExt != null) {
                 return messageExt.getStoreTimestamp();
             }
