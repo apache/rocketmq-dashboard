@@ -967,7 +967,7 @@ GET /api/groups/:name
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `clientId` | `string` | 客户端 ID |
-| `protocol` | `string` | 协议: `REMOTING` / `GRPC` |
+| `protocol` | `string` | 协议: `gRPC` / `Remoting` |
 | `address` | `string` | 客户端地址 |
 | `subscribedTopics` | `string[]` | 订阅的 Topic |
 | `lastHeartbeat` | `string` | 最后心跳时间 |
@@ -1942,7 +1942,7 @@ GET /api/settings/general
 | `notifySound` | `boolean` | 通知声音 |
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是否需要登录 |
-| `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `ollama` / `qwen` |
+| `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
 | `baseUrl` | `string` | Base URL |
@@ -2854,7 +2854,7 @@ GET /api/metrics/grafana/dashboards/export
 | **消费类型** | `CLUSTERING`, `BROADCASTING` |
 | **订阅模式** | `Push`, `Pop` |
 | **协议** | `gRPC`, `Remoting` |
-| **客户端语言** | `Java`, `Go`, `Python`, `Rust`, `C++`, `C#`, `Node.js`, `PHP` |
+| **客户端语言** | `Java`, `Go`, `Python`, `Rust`, `Cpp`, `CSharp`, `NodeJS`, `PHP` |
 | **ACL 资源类型** | `Topic`, `Group`, `Cluster` |
 | **ACL 匹配模式** | `LITERAL`, `PREFIX` |
 | **ACL 操作** | `PUB`, `SUB`, `ALL` |
@@ -2868,7 +2868,7 @@ GET /api/metrics/grafana/dashboards/export
 | **集群类型** | `V4_DIRECT`, `V5_PROXY_LOCAL`, `V5_PROXY_CLUSTER` |
 | **顺序类型** | `PARTITON_ORDER`, `MESSAGES_ORDER` |
 | **通知渠道** | `dingtalk`, `email`, `sms` |
-| **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
+| **LLM 提供商** | `openai`, `azure`, `anthropic`, `deepseek`, `tongyi`, `ollama`, `bedrock` |
 | **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |
 | **AI 会话模式** | `chat`, `diagnose`, `manage`, `query` |
 | **AI 引擎** | `http`, `claude-code`, `qoder` |
