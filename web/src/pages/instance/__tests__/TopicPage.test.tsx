@@ -730,6 +730,20 @@ describe('TopicPage', () => {
     });
   });
 
+  it('clears selected topics when the search scope changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索 Topic 名称'), 'missing-topic');
+    await user.keyboard('{Enter}');
+
+    expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+  });
+
   it('moves back from an emptied last topic page after batch deletion', async () => {
     const user = userEvent.setup();
     const firstPage = buildTopics(20);
