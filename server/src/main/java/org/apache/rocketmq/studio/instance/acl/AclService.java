@@ -323,15 +323,21 @@ public class AclService {
      * The secret is stored base64-encoded in the database and decoded here.
      */
     public AclUserVO getUserCredentials(String id, String instanceId) {
+        AclUserVO user;
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.getUserCredentials(instanceId, id);
+            user = tencentAclService.getUserCredentials(instanceId, id);
+        } else {
+            if (!StringUtils.hasText(id)) {
+                throw new BusinessException(400, "ACL user id is required");
+            }
+            log.info("Revealing credentials for ACL user id={}", id);
+            user = aclRepository.findUserById(EntityIds.parseId(id))
+                    .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
         }
-        if (!StringUtils.hasText(id)) {
-            throw new BusinessException(400, "ACL user id is required");
-        }
-        log.info("Revealing credentials for ACL user id={}", id);
-        return aclRepository.findUserById(EntityIds.parseId(id))
-                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
+        // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
+        recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
+                "instanceId=" + instanceId);
+        return user;
     }
 
     /**
