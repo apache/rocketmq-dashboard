@@ -474,19 +474,24 @@ class NativeAlertProcessorTest {
         when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
         AlertRepository alerts = mock(AlertRepository.class);
         when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
 
         NativeAlertProcessor processor = new NativeAlertProcessor(service,
                 new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
-                        mock(MetricSnapshotRepository.class), alerts, mock(NotificationOutboxService.class),
-                        suppression()),
-                new AlertStateMachine(), states, alerts, mock(NotificationOutboxService.class), suppression(),
-                mockTxManager());
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
         assertThatCode(() -> processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS,
                 "local", java.util.Set.of("consumer.lag.total")), List.of())).doesNotThrowAnyException();
 
         org.mockito.ArgumentCaptor<AlertRuleState> state = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+        org.mockito.ArgumentCaptor<SystemAlertVO> event = org.mockito.ArgumentCaptor.forClass(SystemAlertVO.class);
         verify(states).save(eq(oldKey), state.capture());
         assertThat(state.getValue().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        // the recovery half of the same claim: without the fix the pass aborts before reaching any
+        // of this, so no RESOLVED event is recorded and no recovery notification is queued
+        verify(alerts).saveAlert(event.capture());
+        assertThat(event.getValue().getTransition()).isEqualTo(AlertStateTransition.RESOLVED.name());
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule), eq(oldSample.labels()));
     }
 
     @Test
