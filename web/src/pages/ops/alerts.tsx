@@ -368,6 +368,17 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     })
       .then((result) => {
         if (!cancelled) {
+          // A deletion (or filter change) can leave the current page past the last valid one.
+          // Re-query the final page instead of rendering a permanently empty table, matching
+          // the audit page's clamp. Skip storing the empty result so the rows only ever come
+          // from the clamped page; setPage triggers the follow-up request.
+          if (result.items.length === 0 && result.total > 0 && page > 1) {
+            const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+            if (lastPage < page) {
+              setPage(lastPage);
+              return;
+            }
+          }
           setRules(result.items);
           setTotalRules(result.total);
           setSelectedRuleIds((selected) =>
