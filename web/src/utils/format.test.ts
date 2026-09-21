@@ -28,6 +28,13 @@ describe('formatBytes', () => {
     expect(huge).not.toContain('undefined');
   });
 
+  it('promotes to the next unit when rounding reaches the boundary', () => {
+    expect(formatBytes(1023.96)).toBe('1.0 KB');
+    expect(formatBytes(1024 * 1024 - 1)).toBe('1.0 MB');
+    expect(formatBytes(1024 * 1024 - 1, 0)).toBe('1 MB');
+    expect(formatBytes(1024 * 1024 * 1024 - 1, 2)).toBe('1.00 GB');
+    expect(formatBytes(1024 ** 6)).toBe('1024.0 PB');
+  });
   it('handles non-finite input', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('-');
