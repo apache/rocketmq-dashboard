@@ -71,7 +71,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -947,12 +946,11 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void updateTopicPreservesQueueCountsWhenNotSpecified() throws Exception {
+    void updateTopicAppliesExplicitZeroQueueCountsToDrainATopic() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
-        existing.setWriteQueueNums(16);
-        existing.setReadQueueNums(16);
-        // RocketMQ perm int: 6 = RW, 4 = RO, 2 = WO.
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
         existing.setPerm(6);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
         when(topicMapper.selectOne(any())).thenReturn(existing);
@@ -960,17 +958,19 @@ class RocketMQAdminClientImplTest {
 
         TopicVO topic = new TopicVO();
         topic.setName("orders");
-        topic.setPerm(TopicPerm.RO);
+        topic.setWriteQueues(0);
+        topic.setReadQueues(0);
 
         adminClient.updateTopic(topic);
 
-        // Partial update (perm only) must not reset queues to the default of 8.
+        // An explicit drain-to-zero must reach the broker instead of being read as
+        // "not provided" and refilled from the stored value or the default of 8.
         ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
-        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isEqualTo(16);
-        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isEqualTo(16);
-        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
-        assertThat(existing.getReadQueueNums()).isEqualTo(16);
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isZero();
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isZero();
+        assertThat(existing.getWriteQueueNums()).isZero();
+        assertThat(existing.getReadQueueNums()).isZero();
     }
 
     @Test

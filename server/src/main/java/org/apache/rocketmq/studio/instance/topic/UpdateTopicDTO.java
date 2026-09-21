@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
@@ -30,8 +31,12 @@ public class UpdateTopicDTO {
     private String clusterId;
     private String instanceId;
     private TopicType type;
+    // Required so an explicit drain-to-zero reaches the broker instead of being read as
+    // "not provided" and refilled from the stored value or the creation default of 8.
+    @NotNull(message = "writeQueues is required")
     @PositiveOrZero(message = "writeQueues must be zero or positive")
     private Integer writeQueues;
+    @NotNull(message = "readQueues is required")
     @PositiveOrZero(message = "readQueues must be zero or positive")
     private Integer readQueues;
     private TopicPerm perm;
@@ -43,12 +48,8 @@ public class UpdateTopicDTO {
         topic.setNamespace(namespace);
         topic.setClusterId(clusterId);
         topic.setType(type);
-        if (writeQueues != null) {
-            topic.setWriteQueues(writeQueues);
-        }
-        if (readQueues != null) {
-            topic.setReadQueues(readQueues);
-        }
+        topic.setWriteQueues(writeQueues);
+        topic.setReadQueues(readQueues);
         topic.setPerm(perm);
         topic.setRemark(remark);
         return topic;
