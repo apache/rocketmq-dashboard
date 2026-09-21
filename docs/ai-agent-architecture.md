@@ -134,9 +134,9 @@ Agent 循环 ⊃ 一条时间线条目。不带多租户 `tenant_id`、`shareSco
 
 **一个解析器，两种输出**：`AgentEventProjector` 对每个 `AgentEvent` 产出「一个可空的 `LiveEvent` +
 一个可空的 `TimelineEvent` 列表」。同一条上游消息可能只产 live、只产落库、两者都产或都不产，而且
-两侧内容**故意不同**：delta 只走 live（落库侧由缓冲写在合并边界产出一条完整 `text`）；工具输出在
-落库侧截到 32 KiB 并保留 `outputBytes`/`truncated`。它对 sealed 类型做穷尽 switch 且不写 `default`，
-新增子类型即编译错误。
+两侧内容**故意不同**：delta 只走 live（落库侧由缓冲写在合并边界产出一条完整 `text`）。工具输出则
+在 live 与落库**两侧都**截到 32 KiB 并保留 `outputBytes`/`truncated`，这一点两侧一致。它对 sealed
+类型做穷尽 switch 且不写 `default`，新增子类型即编译错误。
 
 `ThinkingSource = {MODEL, ENHANCE}` 这一个字段修掉了一个真实的错标 bug：改造前 UI 把 **prompt 增强
 改写**渲染在标题为「思维链」的折叠块里。两种来源的 thinking **只在 source 相同时才合并**，否则就是
@@ -245,7 +245,8 @@ MCP 那条路没有角色校验是**设计如此**：它靠实例 AK/SK 鉴权�
 **会话仍然能当纯聊天用**——这是硬要求，降级是可发现的，不是神秘的。
 
 两条提示的可读中文原文放在 `server/src/test/resources/ai/agent-notices.txt`，生产代码里用 `\uXXXX`
-转义写（`style/rmq_checkstyle.xml` 拒绝 Java 源文件里的非 ASCII 字符），`RmqctlWorkspaceTest` 读这个文件
+转义写（`style/rmq_checkstyle.xml` 拒绝 Java 源文件里的中文字符——CJK 区段与全角标点，拉丁扩展
+不在其列），`RmqctlWorkspaceTest` 读这个文件
 断言「转义确实解码成这句话」——测试里重复一遍转义等于什么都没断言。该文件用 `.txt` 而不是 `.properties`
 是为了避开 checkstyle 的 `resourceIncludes (**/*.properties)`，不要重命名。
 
