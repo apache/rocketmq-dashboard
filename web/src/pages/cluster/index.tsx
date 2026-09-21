@@ -694,9 +694,12 @@ const ClusterPage = () => {
   ): ClusterConfigRequest | null => {
     if (!selectedCluster) return null;
     const { maxMessageSizeMB, ...configValues } = values;
+    // The config dialog is opened from registry rows, so the write must be scoped the same
+    // way as the drift requests: the topbar instance need not be the one that owns the
+    // cluster, and a mismatched instanceId makes the backend reject the lookup.
     return {
       id: selectedCluster.id,
-      instanceId: selectedInstanceIdRef.current,
+      instanceId: resolveOwningInstanceId(selectedCluster),
       ...(selectedCluster.config ?? {}),
       ...configValues,
       maxMessageSize: maxMessageSizeMB * 1048576,
