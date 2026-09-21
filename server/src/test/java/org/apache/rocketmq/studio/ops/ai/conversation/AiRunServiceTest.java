@@ -281,6 +281,15 @@ class AiRunServiceTest {
         assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
         assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
         assertThat(registry.isLive(RUN_ID)).isFalse();
+
+        // Recovery half of the contract: the failed row is terminal, so the conversation is
+        // immediately usable again — a second message admits a new run instead of hitting the
+        // 409 the stranded-QUEUED row produced for up to a day.
+        org.mockito.Mockito.reset(workspace);
+        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.of(preparation()));
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("second try"));
+        assertThat(runInserts).hasSize(2);
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
     }
 
     @Test
