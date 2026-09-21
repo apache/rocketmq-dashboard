@@ -527,6 +527,36 @@ describe('Clients page', () => {
     await expect(blob.text()).resolves.toContain('billing-svc-0@10.0.3.10:49155');
   });
 
+  it('clears the text search and type filter when the nameserver changes', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
+    expect(screen.getByText('payment-svc-0@10.0.1.13:49153')).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText('搜索 Client ID 或地址');
+    await user.type(searchInput, 'order-svc');
+    await user.click(screen.getByRole('combobox', { name: '类型' }));
+    await selectOption(user, 'Consumer');
+
+    expect(connectionsService.listConnections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ namesrvAddr: 'namesrv-1:9876', type: 'Consumer' }),
+    );
+    expect(screen.queryByText('payment-svc-0@10.0.1.13:49153')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'NameServer' }));
+    await selectOption(user, 'rocketmq2 (namesrv-2:9876)');
+
+    await waitFor(() => {
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith(
+        expect.objectContaining({ namesrvAddr: 'namesrv-2:9876', type: undefined }),
+      );
+    });
+    expect(screen.getByPlaceholderText('搜索 Client ID 或地址')).toHaveValue('');
+    expect(await screen.findByText('audit-svc-0@10.0.2.10:49154')).toBeInTheDocument();
+  });
+
   it('renders empty distributions when no connections are available', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
     renderWithProviders(<ClientsPage />);

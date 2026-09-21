@@ -191,6 +191,8 @@ const ClientsPage = () => {
     setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
+    setSearch('');
+    setTypeFilter('ALL');
     // Column filters describe the previous endpoint's rows; keeping them (or antd's
     // uncontrolled internal filter state) would hide every row of the new endpoint.
     setColumnFilters({});
