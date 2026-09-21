@@ -1850,7 +1850,7 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `target` | `string \| null` | 操作对象，无操作对象时为 `null` |
 | `clusterId` | `string \| null` | 所属集群 ID，无集群上下文时为 `null` |
 | `detail` | `string` | 详细描述 |
-| `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `FAILURE` / `PARTIAL` |
+| `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `PARTIAL` |
 | `errorMessage` | `string` | 失败或部分成功时的错误信息 |
 
 ### 13.2 获取审计日志筛选项
@@ -2838,7 +2838,7 @@ GET /api/metrics/grafana/dashboards/export
 | **ACL 操作** | `PUB`, `SUB`, `ALL` |
 | **ACL 决策** | `ALLOW`, `DENY` |
 | **告警级别** | `error`, `warning`, `info` |
-| **审计结果** | `success`, `failure` |
+| **审计结果** | `SUCCESS`, `FAILED`, `PARTIAL` |
 | **投递状态** | `success`, `failed`, `pending` |
 | **证书状态** | `valid`, `expiring`, `expired` |
 | **证书类型** | `TLS`, `mTLS`, `ServiceAccount` |
