@@ -402,7 +402,15 @@ const TopicPageContent = ({
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
+  const syncRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      syncRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   const sendPayloadPreview = useMemo(
     () =>
@@ -568,7 +576,18 @@ const TopicPageContent = ({
     consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
 
   // ─── Sync data: find topics without broker routes and sync them ──
+  const invalidateSyncRequest = () => {
+    syncRequestIdRef.current += 1;
+  };
+
+  const closeSyncModal = () => {
+    invalidateSyncRequest();
+    setSyncModalOpen(false);
+  };
+
   const openSyncModal = async () => {
+    const requestId = syncRequestIdRef.current + 1;
+    syncRequestIdRef.current = requestId;
     setSyncModalOpen(true);
     setSyncChecking(true);
     setSyncMissing([]);
@@ -584,6 +603,7 @@ const TopicPageContent = ({
           }
         }),
       );
+      if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
         message.error('部分 Topic 路由校验失败，请稍后重试');
@@ -599,7 +619,7 @@ const TopicPageContent = ({
         checked.filter(({ routes }) => (routes as BrokerRoute[]).length === 0).map((r) => r.topic),
       );
     } finally {
-      setSyncChecking(false);
+      if (syncRequestIdRef.current === requestId) setSyncChecking(false);
     }
   };
 
@@ -1498,6 +1518,7 @@ const TopicPageContent = ({
           <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={(value) => {
+              closeSyncModal();
               setSelectedRowKeys([]);
               resetTablePage();
               selectInstance(value);
@@ -2022,8 +2043,8 @@ const TopicPageContent = ({
       <Modal
         title="同步数据"
         open={syncModalOpen}
-        onCancel={() => setSyncModalOpen(false)}
-        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        onCancel={closeSyncModal}
+        footer={<Button onClick={closeSyncModal}>关闭</Button>}
         width={680}
         destroyOnHidden
       >
