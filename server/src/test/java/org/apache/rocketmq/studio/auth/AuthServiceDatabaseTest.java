@@ -98,6 +98,23 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void listUsersEscapesLikeWildcardsInTheSearchTerm() {
+        Page<RmqStudioUser> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(userMapper.selectPage(any(Page.class), any(Wrapper.class))).thenReturn(databasePage);
+
+        authService.listUsers("100%_off", null, null, 1, 20);
+
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("username");
+        // The search term is matched literally: % and _ reach the database as escaped wildcards,
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%100\\%\\_off%");
+    }
+
+    @Test
     void listUsersRejectsInvalidPaginationBeforeDatabaseAccess() {
         assertThatThrownBy(() -> authService.listUsers(null, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)
