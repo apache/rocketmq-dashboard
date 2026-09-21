@@ -52,13 +52,20 @@ public class AuditService {
                                              String operationType, String resourceType,
                                              String target, String clusterId, boolean clusterIdMissing,
                                              String startDate,
-                                             String endDate, String result) {
+                                             String endDate, String result,
+                                             String sortField, String sortOrder) {
         validatePagination(page, pageSize);
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
         return findPage(search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result, page, pageSize);
+                startDate, endDate, result, AuditSortField.parse(sortField),
+                parseSortAscending(sortOrder), page, pageSize);
+    }
+
+    /** Defaults to `descend` (the newest-first order); only `asc`/`ascend` switch to ascending. */
+    private boolean parseSortAscending(String sortOrder) {
+        return "asc".equalsIgnoreCase(sortOrder) || "ascend".equalsIgnoreCase(sortOrder);
     }
 
     public AuditFilterOptionsVO getFilterOptions() {
@@ -78,7 +85,7 @@ public class AuditService {
                              String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
                 search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
+                startDate, endDate, result, null, false, 1, MAX_EXPORT_RECORDS);
         if (page.getTotal() > MAX_EXPORT_RECORDS) {
             throw new BusinessException(400,
                     "Audit log export exceeds the maximum of " + MAX_EXPORT_RECORDS + " records; narrow the filters");
@@ -165,12 +172,13 @@ public class AuditService {
                                                String resourceType, String target, String clusterId,
                                                boolean clusterIdMissing,
                                                String startDate, String endDate,
-                                               String result, int page, int pageSize) {
+                                               String result, AuditSortField sortField,
+                                               boolean sortAscending, int page, int pageSize) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
         return auditRepository.findPage(normalizedSearch, operationType, resourceType, target, clusterId,
                 clusterIdMissing,
-                range.start(), range.end(), result, page, pageSize);
+                range.start(), range.end(), result, sortField, sortAscending, page, pageSize);
     }
 
     private DateRange parseDateRange(String startDate, String endDate) {

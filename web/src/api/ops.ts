@@ -30,7 +30,20 @@ export interface AlertRuleQuery {
   pageSize?: number;
   search?: string;
   enabled?: boolean;
+  /** Allow-listed sort column; omitted keeps the server's name-ordered default. */
+  sortField?: AlertRuleSortField;
+  /** `asc` | `desc`; defaults to `asc` when a `sortField` is given without a direction. */
+  sortOrder?: 'asc' | 'desc';
 }
+
+/** Columns the backend can ORDER BY for alert rules (`AlertSortField` allow-list). */
+export type AlertRuleSortField =
+  | 'NAME'
+  | 'METRIC'
+  | 'THRESHOLD'
+  | 'DURATION'
+  | 'ENABLED'
+  | 'LAST_TRIGGERED';
 
 export interface NativeAlertMetricInfo {
   key: string;
@@ -201,7 +214,24 @@ export interface AuditQuery {
   startDate?: string;
   endDate?: string;
   result?: string;
+  /** Allow-listed sort column; omitted keeps the server's newest-first default order. */
+  sortField?: AuditSortField;
+  /** `asc` | `desc`; omitted with `sortField` keeps the column's natural default direction. */
+  sortOrder?: 'asc' | 'desc';
 }
+
+/**
+ * Columns the backend can ORDER BY for audit records (`AuditSortField` allow-list). The `id`
+ * tiebreaker is applied server-side; a blank/unset pair means "server default" (newest first).
+ */
+export type AuditSortField =
+  | 'TIMESTAMP'
+  | 'OPERATOR'
+  | 'OPERATION_TYPE'
+  | 'RESOURCE_TYPE'
+  | 'TARGET'
+  | 'CLUSTER_ID'
+  | 'RESULT';
 
 // ─── Alert Rules ────────────────────────────────────────────────
 const alertRulePath = (domain: AlertRuleDomain) =>

@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -390,10 +390,10 @@ describe('Audit page', () => {
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
 
-  it('keeps the server order intact instead of sorting the visible page only', async () => {
-    // Two records whose operator order is the REVERSE of the server timestamp order.
-    // A page-local sorter (the old behavior) would flip the rows when the user clicks
-    // the operator header even though the rest of the result set stays unsorted.
+  it('queries the server with the allow-listed sort and renders rows in the returned order', async () => {
+    // Two records whose operator order is the REVERSE of the server timestamp order. The page
+    // must render the mock's row order verbatim — the old page-local sorter flipped the rows
+    // when the operator header was clicked, even though the rest of the result set stayed put.
     vi.mocked(opsService.listAuditRecords).mockResolvedValue({
       items: [
         {
@@ -425,18 +425,39 @@ describe('Audit page', () => {
       page: 1,
       size: 20,
     });
+    const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
-    const headers = await screen.findAllByRole('columnheader', { name: /操作人/ });
-    // The table must not advertise sort buttons it cannot honour across pages.
-    // (antd renders the header twice while measuring sticky columns.)
-    for (const header of headers) {
-      expect(header.querySelector('.ant-table-column-sorters')).toBeNull();
-    }
+    // Default load: no sort params — the server keeps its newest-first default order.
+    await screen.findByText('zeta-ops');
+    expect(opsService.listAuditRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ sortField: undefined, sortOrder: undefined }),
+    );
 
-    // Server order preserved: newest record (zeta-ops) first, no client re-sort applied.
-    const firstBodyRow = screen.getByText('zeta-ops').closest('tr')!;
-    expect(within(firstBodyRow).queryByText('alpha-ops')).not.toBeInTheDocument();
-    expect(within(firstBodyRow).getByText('zeta-ops')).toBeInTheDocument();
+    // The rows render in exactly the order the server returned (zeta-ops before alpha-ops),
+    // and that order is stable: the page never re-sorts the visible page locally.
+    const bodyOrder = () =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-testid="audit-records-table"] tbody .ant-table-row',
+        ),
+      ].map((row) => row.querySelectorAll('.ant-table-cell')[1]?.textContent ?? '');
+    expect(bodyOrder()).toEqual(['zeta-ops', 'alpha-ops']);
+
+    // Sorting by the operator header re-queries the server with the allow-listed field and
+    // direction, back on page 1; the rows still render in the mocked server order.
+    // Scope to the records table: the insights cards also render an operator column.
+    const recordsTable = document.querySelector('[data-testid="audit-records-table"]')!;
+    const operatorHeader = [
+      ...recordsTable.querySelectorAll('thead .ant-table-column-sorters'),
+    ].find((header) => header.textContent === '操作人')!;
+    expect(operatorHeader).toBeDefined();
+    await user.click(operatorHeader);
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortField: 'OPERATOR', sortOrder: 'asc', page: 1 }),
+      ),
+    );
+    expect(bodyOrder()).toEqual(['zeta-ops', 'alpha-ops']);
   });
 });

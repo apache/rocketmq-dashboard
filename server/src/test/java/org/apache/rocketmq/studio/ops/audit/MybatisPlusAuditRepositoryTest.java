@@ -69,7 +69,7 @@ class MybatisPlusAuditRepositoryTest {
 
         PageResult<AuditRecordVO> result = repository.findPage(
                 "orders", "DELETE_TOPIC", "TOPIC", "orders", "prod-cn", false,
-                null, null, "FAILED", 2, 25);
+                null, null, "FAILED", null, false, 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
@@ -93,7 +93,7 @@ class MybatisPlusAuditRepositoryTest {
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
         repository.findPage(null, null, "TOPIC", "orders", "prod-cn", false,
-                null, null, null, 1, 20);
+                null, null, null, null, false, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
@@ -108,7 +108,7 @@ class MybatisPlusAuditRepositoryTest {
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
         repository.findPage(null, null, "SETTINGS", "general", null, true,
-                null, null, null, 1, 20);
+                null, null, null, null, false, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
@@ -122,7 +122,7 @@ class MybatisPlusAuditRepositoryTest {
                 .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
 
         repository.findPage(null, null, "SETTINGS", "general", "ignored-cluster", true,
-                null, null, null, 1, 20);
+                null, null, null, null, false, 1, 20);
 
         ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
         verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
@@ -131,6 +131,34 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue())
                 .getParamNameValuePairs().values())
                 .doesNotContain("ignored-cluster");
+    }
+
+    @Test
+    void findPageSortsByAnAllowListedColumnWithAnIdTiebreakerTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, null, null, null, false, null, null, null,
+                AuditSortField.OPERATOR, true, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("ORDER BY operator ASC,id ASC");
+    }
+
+    @Test
+    void findPageKeepsTheNewestFirstDefaultWhenNoSortIsRequestedTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage(null, null, null, null, null, false, null, null, null,
+                null, false, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("ORDER BY gmt_create DESC,id DESC");
     }
 
     @Test

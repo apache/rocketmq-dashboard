@@ -35,12 +35,13 @@ import {
 import { Trash } from '@phosphor-icons/react';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { SorterResult } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { AuditFilter, AuditFilterOptions, AuditSummary } from '../../api/audit';
-import type { AuditRecord } from '../../api/ops';
+import type { AuditRecord, AuditSortField } from '../../api/ops';
 import {
   cleanupAuditLogs,
   exportAuditLogs,
@@ -103,6 +104,7 @@ const AuditPage: React.FC = () => {
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [resultFilter, setResultFilter] = useState('all');
+  const [sort, setSort] = useState<{ field: AuditSortField; ascending: boolean } | null>(null);
   const [filterOptions, setFilterOptions] = useState<AuditFilterOptions>(emptyFilterOptions);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
@@ -151,6 +153,8 @@ const AuditPage: React.FC = () => {
         dateRange,
         resultFilter,
       ),
+      sortField: sort?.field,
+      sortOrder: sort ? (sort.ascending ? 'asc' : 'desc') : undefined,
     })
       .then((result) => {
         if (recordsRequestRef.current !== requestId) return;
@@ -178,6 +182,7 @@ const AuditPage: React.FC = () => {
     selectedClusterId,
     dateRange,
     resultFilter,
+    sort,
     refreshKey,
   ]);
 
@@ -313,16 +318,18 @@ const AuditPage: React.FC = () => {
     }
   };
 
+  // Every sortable column delegates to the server (`AuditSortField` allow-list): rows hold one
+  // page of a larger result, so a client-side comparator could only reorder the visible page
+  // while claiming a full sort. The header click just re-queries with the new sort.
   const columns: ColumnsType<AuditRecord> = [
     {
       title: t('audit.time'),
       dataIndex: 'timestamp',
       width: 180,
-      // Server-paginated: rows hold one page of a larger result ordered by
-      // gmt_create DESC, so a client sorter could only re-order the visible page
-      // while claiming a full sort.
-      defaultSortOrder: 'descend',
-      sorter: false,
+      // Matches the server's default order (gmt_create DESC) — the table renders an active
+      // sort indicator before the first query round-trip, without client-side reordering.
+      sorter: true,
+      sortOrder: sort === null || sort.field !== 'TIMESTAMP' ? null : sort.ascending ? 'ascend' : 'descend',
       render: (timestamp: string) => formatDateTime(timestamp),
     },
     {
@@ -330,12 +337,18 @@ const AuditPage: React.FC = () => {
       dataIndex: 'operator',
       width: 130,
       align: 'center',
+      sorter: true,
+      sortOrder:
+        sort?.field === 'OPERATOR' ? (sort.ascending ? 'ascend' : 'descend') : null,
     },
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
       width: 190,
       align: 'center',
+      sorter: true,
+      sortOrder:
+        sort?.field === 'OPERATION_TYPE' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: renderOperationType,
     },
     {
@@ -344,6 +357,9 @@ const AuditPage: React.FC = () => {
       width: 150,
       ellipsis: true,
       align: 'right',
+      sorter: true,
+      sortOrder:
+        sort?.field === 'RESOURCE_TYPE' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: renderResourceType,
     },
     {
@@ -351,6 +367,9 @@ const AuditPage: React.FC = () => {
       dataIndex: 'clusterId',
       width: 140,
       ellipsis: true,
+      sorter: true,
+      sortOrder:
+        sort?.field === 'CLUSTER_ID' ? (sort.ascending ? 'ascend' : 'descend') : null,
     },
     {
       title: t('audit.target'),
@@ -358,6 +377,8 @@ const AuditPage: React.FC = () => {
       width: 200,
       ellipsis: true,
       align: 'center',
+      sorter: true,
+      sortOrder: sort?.field === 'TARGET' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: (_: string, record) => {
         const target = record.target;
         if (!target?.trim()) return <Text type="secondary">-</Text>;
@@ -400,6 +421,8 @@ const AuditPage: React.FC = () => {
       dataIndex: 'result',
       width: 80,
       align: 'center',
+      sorter: true,
+      sortOrder: sort?.field === 'RESULT' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: renderResult,
     },
     {
@@ -520,7 +543,7 @@ const AuditPage: React.FC = () => {
       <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}
-      <Card styles={{ body: { padding: 0 } }}>
+      <Card styles={{ body: { padding: 0 } }} data-testid="audit-records-table">
         <Table
           size="small"
           columns={columns}
@@ -529,6 +552,29 @@ const AuditPage: React.FC = () => {
           loading={loading}
           tableLayout="fixed"
           scroll={{ x: tableScrollX(columns) }}
+          onChange={(_pagination, _filters, sorter) => {
+            // Header sort clicks only translate into a re-query (allow-listed field + direction
+            // above); the rows themselves always render exactly what the server returned.
+            const { column, order } = sorter as SorterResult<AuditRecord>;
+            if (!column || !order) {
+              setSort(null);
+              return;
+            }
+            const field = (column as { dataIndex?: string }).dataIndex;
+            const mapped: Record<string, AuditSortField> = {
+              timestamp: 'TIMESTAMP',
+              operator: 'OPERATOR',
+              operationType: 'OPERATION_TYPE',
+              resourceType: 'RESOURCE_TYPE',
+              clusterId: 'CLUSTER_ID',
+              target: 'TARGET',
+              result: 'RESULT',
+            };
+            const mappedField = field ? mapped[field] : undefined;
+            if (!mappedField) return;
+            setSort({ field: mappedField, ascending: order === 'ascend' });
+            setPage(1);
+          }}
           pagination={{
             current: page,
             pageSize,

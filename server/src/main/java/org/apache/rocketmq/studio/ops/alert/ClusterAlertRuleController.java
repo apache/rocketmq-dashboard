@@ -51,8 +51,11 @@ public class ClusterAlertRuleController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(alertService.listRules(AlertDomain.CLUSTER, search, enabled, page, pageSize));
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) String sortOrder) {
+        return Result.ok(alertService.listRules(AlertDomain.CLUSTER, search, enabled, page,
+                pageSize, sortField, sortOrder));
     }
 
     @GetMapping("/runtime")

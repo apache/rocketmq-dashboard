@@ -69,7 +69,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .build();
         when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
                 eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
-                eq("2026-07-24"), eq("SUCCESS")))
+                eq("2026-07-24"), eq("SUCCESS"), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(record), 1, 2, 10));
 
         mockMvc.perform(get("/api/audit-logs")
@@ -91,7 +91,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
         verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
                 eq("TOPIC"), eq("topic-a"), eq("prod-cn"), eq(false), eq("2026-07-01"),
-                eq("2026-07-24"), eq("SUCCESS"));
+                eq("2026-07-24"), eq("SUCCESS"), isNull(), isNull());
     }
 
     @Test
@@ -171,7 +171,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
         when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull()))
+                isNull(), eq(false), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -181,13 +181,13 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.size").value(20));
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull());
+                isNull(), eq(false), isNull(), isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
     void queryLogsShouldForwardAnExplicitMissingClusterScopeTest() throws Exception {
         when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
-                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull()))
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs")
@@ -197,7 +197,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk());
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), eq("SETTINGS"),
-                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull());
+                eq("general"), isNull(), eq(true), isNull(), isNull(), isNull(), isNull(), isNull());
     }
 
     @Test

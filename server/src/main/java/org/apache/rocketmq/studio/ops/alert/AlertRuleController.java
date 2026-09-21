@@ -57,13 +57,17 @@ public class AlertRuleController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize) {
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) String sortOrder) {
         // The legacy route keeps the cross-domain pagination contract; the business route
         // restricts the page to business rules.
         if (request.getRequestURI().endsWith("/api/alert-rules/page")) {
-            return Result.ok(alertService.listRules(search, enabled, page, pageSize));
+            return Result.ok(alertService.listRules(AlertDomain.CLUSTER, search, enabled, page,
+                    pageSize, sortField, sortOrder));
         }
-        return Result.ok(alertService.listRules(AlertDomain.BUSINESS, search, enabled, page, pageSize));
+        return Result.ok(alertService.listRules(AlertDomain.BUSINESS, search, enabled, page,
+                pageSize, sortField, sortOrder));
     }
 
     @GetMapping("/runtime")

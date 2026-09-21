@@ -186,11 +186,30 @@ class MybatisPlusAlertRepositoryTest {
         when(ruleMapper.selectPage(any(Page.class), any())).thenReturn(page);
 
         PageResult<AlertRuleVO> result = repository.findRulesPage(
-                new AlertRuleQuery(AlertDomain.BUSINESS, "lag", true, 2, 10));
+                new AlertRuleQuery(AlertDomain.BUSINESS, "lag", true, 2, 10, null, true));
 
         assertThat(result.getItems()).extracting(AlertRuleVO::getId).containsExactly(1L);
         assertThat(result.getTotal()).isEqualTo(11);
         verify(ruleMapper).selectPage(any(Page.class), argThat(MybatisPlusAlertRepositoryTest::hasBusinessRulePageFilters));
+    }
+
+    @Test
+    void findRulesPageSortsByAnAllowListedColumnAndRejectsUnknownFieldsTest() {
+        when(ruleMapper.selectPage(any(Page.class), any())).thenReturn(new Page<>(1, 20));
+
+        repository.findRulesPage(new AlertRuleQuery(AlertDomain.CLUSTER, null, null, 1, 20,
+                "METRIC", false));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(Page.class), queryCaptor.capture());
+        assertThat(queryCaptor.getValue().getSqlSegment()).contains("ORDER BY metric DESC,id DESC");
+
+        org.apache.rocketmq.studio.common.exception.BusinessException rejected =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        org.apache.rocketmq.studio.common.exception.BusinessException.class,
+                        () -> AlertSortField.parse("; DROP TABLE rmq_alert_rule"));
+        assertThat(rejected.getCode()).isEqualTo(400);
     }
 
     @Test

@@ -69,15 +69,6 @@ public class AlertService {
         return alertRepository.findAllRules();
     }
 
-    public PageResult<AlertRuleVO> listRules(String search, Boolean enabled, int page,
-                                             int pageSize) {
-        validateRulePagination(page, pageSize);
-        String normalizedSearch = StringUtils.hasText(search) ? search.trim() : null;
-        log.info("Listing alert rules, search={}, enabled={}, page={}, pageSize={}",
-                normalizedSearch, enabled, page, pageSize);
-        return alertRepository.findRulePage(normalizedSearch, enabled, page, pageSize);
-    }
-
     public List<AlertRuleVO> listRules(AlertDomain domain) {
         return listRules().stream()
                 .filter(rule -> domain == resolveDomain(rule))
@@ -85,13 +76,19 @@ public class AlertService {
     }
 
     public PageResult<AlertRuleVO> listRules(AlertDomain domain, String search, Boolean enabled, int page,
-            int pageSize) {
+            int pageSize, String sortField, String sortOrder) {
         requireDomain(domain);
         if (page < 1 || pageSize < 1 || pageSize > 100) {
             throw new BusinessException(400, "Invalid page or pageSize");
         }
         return alertRepository.findRulesPage(new AlertRuleQuery(domain,
-                hasText(search) ? search.trim() : null, enabled, page, pageSize));
+                hasText(search) ? search.trim() : null, enabled, page, pageSize, sortField,
+                parseSortAscending(sortOrder)));
+    }
+
+    /** Defaults to `asc` (the name-ordered feed); `desc`/`descend` switch to descending. */
+    private boolean parseSortAscending(String sortOrder) {
+        return !"desc".equalsIgnoreCase(sortOrder) && !"descend".equalsIgnoreCase(sortOrder);
     }
 
     public List<AlertRuleRuntimeVO> listRuleRuntime(AlertDomain domain) {
@@ -475,15 +472,6 @@ public class AlertService {
             }
         }
         return normalized;
-    }
-
-    private static void validateRulePagination(int page, int pageSize) {
-        if (page < 1) {
-            throw new BusinessException(400, "page must be greater than zero");
-        }
-        if (pageSize < 1 || pageSize > 100) {
-            throw new BusinessException(400, "pageSize must be between 1 and 100");
-        }
     }
 
 

@@ -1697,6 +1697,29 @@ GET /api/alert-rules
 | `lastTriggered` | `string \| null` | 最后触发时间，null 表示未触发 |
 | `description` | `string` | 规则描述 |
 
+### 11.1.1 分页获取告警规则列表
+
+```
+GET /api/alert-rules/page?search={search}&enabled={enabled}&page={page}&pageSize={pageSize}&sortField={sortField}&sortOrder={sortOrder}
+```
+
+`/api/business-alert-rules/page` 与 `/api/cluster-alert-rules/page` 参数一致，仅限定规则域。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 模糊搜索（匹配 name / metric） |
+| `enabled` | `boolean` | 否 | 启用状态过滤 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20，最大 100 |
+| `sortField` | `string` | 否 | 排序列，允许值：`NAME`（默认）、`METRIC`、`THRESHOLD`、`DURATION`、`ENABLED`、`LAST_TRIGGERED`。缺省时按 `name ASC, id ASC` 排序 |
+| `sortOrder` | `string` | 否 | 排序方向：`asc`（默认）或 `desc` |
+
+传入不在允许列表中的 `sortField` 时返回 HTTP 400；排序始终附带 `id` 作为稳定次序 breaker 以保证分页确定性。
+
+**Response `data`:** `PageResult<AlertRule>`（`items` / `total` / `page` / `size`，字段同 11.1）
+
 ### 11.2 创建告警规则
 
 ```
@@ -1827,7 +1850,7 @@ POST /api/system-alerts/clear-acknowledged
 ### 13.1 获取审计日志列表
 
 ```
-GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&target={target}&clusterId={clusterId}&clusterIdMissing={missing}&startDate={start}&endDate={end}&result={result}&sortField={sortField}&sortOrder={sortOrder}
 ```
 
 **Query Parameters:**
@@ -1845,8 +1868,10 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `startDate` | `string` | 否 | 开始日期 (YYYY-MM-DD) |
 | `endDate` | `string` | 否 | 结束日期 (YYYY-MM-DD) |
 | `result` | `string` | 否 | 结果过滤，传入筛选项接口返回的原始值 |
+| `sortField` | `string` | 否 | 排序列，允许值：`TIMESTAMP`（操作时间，默认）、`OPERATOR`、`OPERATION_TYPE`、`RESOURCE_TYPE`、`TARGET`、`CLUSTER_ID`、`RESULT`。缺省时按 `gmt_create DESC, id DESC`（最新在前）排序 |
+| `sortOrder` | `string` | 否 | 排序方向：`asc` 或 `desc`；配合 `sortField` 使用，缺省为 `desc` |
 
-`startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
+`startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。传入不在允许列表中的 `sortField` 时返回 HTTP 400；排序始终附带 `id` 作为稳定次序 breaker 以保证分页确定性。
 
 资源操作时间线使用 `resourceType + target + clusterId` 作为资源身份。对于没有集群范围的记录，
 省略 `clusterId` 并传入 `clusterIdMissing=true`。

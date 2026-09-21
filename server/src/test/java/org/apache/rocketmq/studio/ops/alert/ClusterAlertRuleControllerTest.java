@@ -80,7 +80,7 @@ class ClusterAlertRuleControllerTest extends WebMvcAuthTestSupport {
     void listRulesPageShouldUseClusterDomainTest() throws Exception {
         AlertRuleVO rule = AlertRuleVO.builder().id(7L).name("Broker unavailable")
                 .domain(AlertDomain.CLUSTER).build();
-        when(alertService.listRules(AlertDomain.CLUSTER, "broker", false, 1, 20))
+        when(alertService.listRules(AlertDomain.CLUSTER, "broker", false, 1, 20, null, null))
                 .thenReturn(PageResult.of(List.of(rule), 1, 1, 20));
 
         mockMvc.perform(get("/api/cluster-alert-rules/page")
@@ -88,7 +88,7 @@ class ClusterAlertRuleControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].id").value(7));
 
-        verify(alertService).listRules(AlertDomain.CLUSTER, "broker", false, 1, 20);
+        verify(alertService).listRules(AlertDomain.CLUSTER, "broker", false, 1, 20, null, null);
     }
 
     @Test

@@ -57,17 +57,36 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                                               String resourceType, String target, String clusterId,
                                               boolean clusterIdMissing,
                                               LocalDateTime startDate, LocalDateTime endDate,
-                                              String result, int page, int pageSize) {
+                                              String result, AuditSortField sortField, boolean ascending,
+                                              int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<>();
         applyFilters(query, search, operationType, resourceType, target, clusterId, clusterIdMissing,
                 startDate, endDate, result);
-        query.orderByDesc("gmt_create", "id");
+        applyOrder(query, sortField, ascending);
         Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
                 new Page<>(page, pageSize), query);
         List<AuditRecordVO> records = resultPage.getRecords().stream()
                 .map(MybatisPlusAuditRepository::toVO)
                 .collect(Collectors.toList());
         return PageResult.of(records, resultPage.getTotal(), page, pageSize);
+    }
+
+    /**
+     * ORDER BY comes from the {@link AuditSortField} allow-list only — never from raw caller
+     * input. The default stays `gmt_create DESC, id DESC`; an explicit sort keeps `id` as the
+     * stable tiebreaker in the same direction so pagination stays deterministic.
+     */
+    private void applyOrder(QueryWrapper<RmqOperationAudit> query, AuditSortField sortField,
+                            boolean ascending) {
+        if (sortField == null) {
+            query.orderByDesc("gmt_create", "id");
+            return;
+        }
+        if (ascending) {
+            query.orderByAsc(sortField.column(), "id");
+        } else {
+            query.orderByDesc(sortField.column(), "id");
+        }
     }
 
     @Override

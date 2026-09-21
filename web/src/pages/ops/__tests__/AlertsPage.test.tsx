@@ -357,6 +357,45 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('sorts by an allow-listed header and renders rows in the server-returned order', async () => {
+    // The rows arrive from the server in a deliberately unsorted-by-name order: the page must
+    // render them verbatim (a client sorter would reorder the visible page only) and the header
+    // click must re-query the server with the allow-listed sort field instead.
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[2]), cloneRule(alertRules[0])],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    // Server order rendered verbatim: NameServer unavailable first although the default feed is
+    // name-ordered — the page must not reorder the rows it was handed.
+    await screen.findByText('NameServer unavailable');
+    const namesOrder = () =>
+      [
+        ...document.querySelectorAll('[data-testid="alert-rules-table"] tbody .ant-table-row'),
+      ].map((row) => row.querySelectorAll('.ant-table-cell')[1]?.textContent ?? '');
+    expect(namesOrder()).toEqual(['NameServer unavailable', 'Broker disk usage']);
+
+    // Clicking the metric header re-queries the server with the allow-listed sort + direction.
+    const recordsTable = document.querySelector('[data-testid="alert-rules-table"]')!;
+    const metricHeader = [...recordsTable.querySelectorAll('thead .ant-table-column-sorters')]
+      .find((header) => header.textContent === '监控指标');
+    expect(metricHeader).toBeDefined();
+    await user.click(metricHeader!);
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ sortField: 'METRIC', sortOrder: 'asc', page: 1 }),
+      ),
+    );
+    // Still the server order — the click never re-sorts the rows locally.
+    expect(namesOrder()).toEqual(['NameServer unavailable', 'Broker disk usage']);
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
