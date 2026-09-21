@@ -114,7 +114,15 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 		}
 		reader = bytes.NewReader(payload)
 	}
-	ctx, cancel := context.WithTimeout(ctx, target.Timeout)
+	// A non-positive timeout must not be passed to context.WithTimeout, which would expire
+	// the context immediately and fail every request. Mirror mcp_message.go and treat it as
+	// "no client-side timeout".
+	var cancel context.CancelFunc
+	if target.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, target.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 	requestURL, err := url.JoinPath(target.BaseURL(), path)
 	if err != nil {
