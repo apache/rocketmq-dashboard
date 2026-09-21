@@ -78,6 +78,11 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   CREATE_ACL_USER: { label: 'Create ACL User', color: 'blue', category: 'security' },
   UPDATE_ACL_USER: { label: 'Update ACL User', color: 'cyan', category: 'security' },
   DELETE_ACL_USER: { label: 'Delete ACL User', color: 'volcano', category: 'security' },
+  REVEAL_ACL_USER_CREDENTIALS: {
+    label: 'Reveal ACL User Credentials',
+    color: 'gold',
+    category: 'security',
+  },
   UPSERT_PLAIN_ACCESS_CONFIG: {
     label: 'Upsert Plain Access Config',
     color: 'purple',
@@ -101,6 +106,11 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   DELETE_CLOUD_CREDENTIAL: {
     label: 'Delete Cloud Credential',
     color: 'volcano',
+    category: 'settings',
+  },
+  REVEAL_CLOUD_CREDENTIAL: {
+    label: 'Reveal Cloud Credential',
+    color: 'gold',
     category: 'settings',
   },
 

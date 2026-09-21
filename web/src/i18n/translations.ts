@@ -1517,6 +1517,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.CREATE_ACL_USER': { zh: '创建 ACL 用户', en: 'Create ACL User' },
   'audit.op.UPDATE_ACL_USER': { zh: '更新 ACL 用户', en: 'Update ACL User' },
   'audit.op.DELETE_ACL_USER': { zh: '删除 ACL 用户', en: 'Delete ACL User' },
+  'audit.op.REVEAL_ACL_USER_CREDENTIALS': {
+    zh: '查看 ACL 用户凭据',
+    en: 'Reveal ACL User Credentials',
+  },
   'audit.op.UPSERT_PLAIN_ACCESS_CONFIG': {
     zh: '更新 Plain Access 配置',
     en: 'Upsert Plain Access Config',
@@ -1528,6 +1532,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.CREATE_CLOUD_CREDENTIAL': { zh: '创建云凭据', en: 'Create Cloud Credential' },
   'audit.op.UPDATE_CLOUD_CREDENTIAL': { zh: '更新云凭据', en: 'Update Cloud Credential' },
   'audit.op.DELETE_CLOUD_CREDENTIAL': { zh: '删除云凭据', en: 'Delete Cloud Credential' },
+  'audit.op.REVEAL_CLOUD_CREDENTIAL': { zh: '查看云凭据', en: 'Reveal Cloud Credential' },
   'audit.op.CREATE_ALERT_RULE': { zh: '创建告警规则', en: 'Create Alert Rule' },
   'audit.op.UPDATE_ALERT_RULE': { zh: '更新告警规则', en: 'Update Alert Rule' },
   'audit.op.TOGGLE_ALERT_RULE': { zh: '启停告警规则', en: 'Toggle Alert Rule' },
