@@ -109,11 +109,13 @@ export interface UseAgentRunResult {
   /** Final speed of the most recent finished run; null when it produced no measurable text. */
   lastRunTokensPerSecond: number | null;
   /**
-   * Send a message and stream the run it starts. Resolves once the terminal frames were processed
-   * and the timeline refetch settled, to `true` when the server admitted the run and to `false` when
-   * the send was refused (another run in flight, a route that moved on, or a stream that failed
-   * before its first frame) — the caller uses that to hand a cleared draft back. A no-op while
-   * another run is in flight.
+   * Send a message and start streaming the run it opens. The returned promise settles on the
+   * ADMISSION of the run — `true` once the first stream frame arrived (the server accepted the
+   * send), `false` when the send was refused before any frame (another run in flight, a route
+   * that moved on, or a stream that failed with nothing delivered) — while the stream itself
+   * keeps running in the background until its terminal frames and the timeline refetch settle.
+   * The caller uses the admission result to hand a cleared draft back; it must not use it as a
+   * signal that the answer finished. A no-op while another run is in flight.
    */
   send: (conversationId: number, request: AiMessageRequest) => Promise<boolean>;
   /**
