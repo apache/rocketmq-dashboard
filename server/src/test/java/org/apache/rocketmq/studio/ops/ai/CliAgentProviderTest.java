@@ -233,4 +233,43 @@ class CliAgentProviderTest {
         assertThat(probe.isAvailable("sh")).isTrue();
         assertThat(applied).containsExactly(Map.of());
     }
+
+    @Test
+    void probeRefusesANameTheShellCouldReadAsSyntaxTest() {
+        CliBinaryProbe probe = new CliBinaryProbe(
+                (builder, providerEnvironment) -> { },
+                builder -> {
+                    throw new AssertionError("a refused name must never reach the shell");
+                });
+
+        // Every case is a bare name plus something "sh -c" would parse, which is exactly what
+        // interpolating into "command -v " turns into a second command, an option or a path.
+        for (String name : List.of("rmqctl; id", "rmqctl && id", "rmqctl | id", "claude$(id)",
+                "claude`id`", "rmqctl\nid", "/bin/sh", "-x", " ", "")) {
+            assertThat(probe.isAvailable(name)).as("name=[%s]", name).isFalse();
+        }
+        assertThat(probe.isAvailable(null)).isFalse();
+    }
+
+    @Test
+    void probeStillAcceptsTheBareNamesItsCallersPassTest() throws InterruptedException {
+        AtomicReference<List<String>> probed = new AtomicReference<>();
+        Process process = mock(Process.class);
+        when(process.waitFor(anyLong(), eq(java.util.concurrent.TimeUnit.SECONDS))).thenReturn(true);
+        when(process.exitValue()).thenReturn(0);
+        CliBinaryProbe probe = new CliBinaryProbe(
+                (builder, providerEnvironment) -> { },
+                builder -> {
+                    probed.set(List.copyOf(builder.command()));
+                    return process;
+                });
+
+        // The constants the callers pass today, plus the shapes the identifier pattern allows.
+        assertThat(probe.isAvailable("rmqctl")).isTrue();
+        assertThat(probed.get()).containsExactly("sh", "-c", "command -v rmqctl");
+        assertThat(probe.isAvailable("claude")).isTrue();
+        assertThat(probe.isAvailable("qodercli")).isTrue();
+        assertThat(probe.isAvailable("definitely-not-on-path-9f3a")).isTrue();
+        assertThat(probe.isAvailable("rmqctl.beta_2+x")).isTrue();
+    }
 }

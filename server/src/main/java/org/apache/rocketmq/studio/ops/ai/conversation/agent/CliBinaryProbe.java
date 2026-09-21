@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.ops.ai.CliProcessEnvironment;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * Answers "is this CLI on PATH in the runtime image?" by running {@code sh -c "command -v <binary>"}
@@ -49,6 +50,16 @@ public final class CliBinaryProbe {
      * not be able to stall the caller. */
     private static final long PROBE_TIMEOUT_SECONDS = 5;
 
+    /**
+     * A bare POSIX-style binary name. The probe interpolates this value into {@code sh -c}, so
+     * anything a shell could read as syntax — a space, a command separator, a substitution, a
+     * glob, a path separator — has to be refused rather than escaped: no quoting survives being
+     * handed to a command line somebody else assembled. Every caller today passes a compile-time
+     * constant ({@code claude}, {@code qodercli}, {@code rmqctl}); this is what keeps that true by
+     * construction instead of by convention.
+     */
+    private static final Pattern BINARY_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._+-]*");
+
     private final EnvironmentApplier environmentApplier;
     private final ProcessStarter processStarter;
 
@@ -69,9 +80,16 @@ public final class CliBinaryProbe {
     /**
      * @return true when {@code command -v <binaryName>} exits 0 within the probe budget. A timeout,
      *     an I/O failure and an interrupt all mean "not available": availability is a precondition
-     *     for spawning a CLI, and guessing yes is worse than guessing no.
+     *     for spawning a CLI, and guessing yes is worse than guessing no. A name that is not a bare
+     *     identifier (see {@link #BINARY_NAME}) is refused the same way, before a process is built.
      */
     public boolean isAvailable(String binaryName) {
+        if (binaryName == null || !BINARY_NAME.matcher(binaryName).matches()) {
+            // Fail closed, and log without echoing the value: this is the branch a hostile name
+            // would reach, and a log line is not the place to hand it back unescaped.
+            log.warn("refusing to probe a binary name that is not a bare identifier");
+            return false;
+        }
         Process process = null;
         try {
             ProcessBuilder builder = new ProcessBuilder("sh", "-c", "command -v " + binaryName);
