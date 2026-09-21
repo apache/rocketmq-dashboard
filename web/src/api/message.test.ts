@@ -117,7 +117,7 @@ describe('message API', () => {
       consumerStatus: [
         {
           group: 'cg-orders',
-          deliveryStatus: 'SUCCESS',
+          deliveryStatus: 'success',
           consumeTime: 1784246401000,
           retryCount: 0,
         },

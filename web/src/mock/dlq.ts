@@ -21,7 +21,7 @@ export interface DLQGroup {
   messageCount: number;
   lastEnqueueTime: string;
   retryCount: number;
-  status: 'active' | 'empty';
+  status: 'ACTIVE' | 'EMPTY' | 'UNAVAILABLE';
 }
 
 export const mockDLQGroups: DLQGroup[] = [
@@ -31,7 +31,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 23,
     lastEnqueueTime: '2026-07-01T14:32:18.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-payment-handler',
@@ -39,7 +39,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 8,
     lastEnqueueTime: '2026-07-01T15:10:45.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-notification',
@@ -47,7 +47,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 156,
     lastEnqueueTime: '2026-07-01T16:05:22.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-inventory-sync',
@@ -55,7 +55,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 3,
     lastEnqueueTime: '2026-07-01T12:48:33.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-analytics',
@@ -63,7 +63,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 42,
     lastEnqueueTime: '2026-07-01T15:55:10.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-user-tracking',
@@ -71,7 +71,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 0,
     lastEnqueueTime: '2026-06-28T09:12:00.000Z',
     retryCount: 16,
-    status: 'empty',
+    status: 'EMPTY',
   },
   {
     groupName: 'cg-sms-gateway',
@@ -79,7 +79,7 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 67,
     lastEnqueueTime: '2026-07-01T16:20:55.000Z',
     retryCount: 16,
-    status: 'active',
+    status: 'ACTIVE',
   },
   {
     groupName: 'cg-email-service',
@@ -87,6 +87,6 @@ export const mockDLQGroups: DLQGroup[] = [
     messageCount: 0,
     lastEnqueueTime: '2026-06-30T18:05:12.000Z',
     retryCount: 16,
-    status: 'empty',
+    status: 'EMPTY',
   },
 ];
