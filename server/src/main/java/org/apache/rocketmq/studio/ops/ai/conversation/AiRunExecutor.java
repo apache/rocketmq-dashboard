@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.RmqctlWorkspace;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
@@ -275,7 +276,7 @@ public class AiRunExecutor {
         Outcome outcome = new Outcome();
         try {
             markRunning(context);
-            stream(context, outcome);
+            streamWithLostResumeRetry(context, outcome);
         } catch (LlmGatewayException exception) {
             log.warn("agent run {} failed: {} - {}", run.getId(), exception.getCode(), exception.getMessage());
             outcome.gatewayFailure = exception;
@@ -304,20 +305,57 @@ public class AiRunExecutor {
                 run.getId(), run.getConversationId(), run.getTurn(), run.getEngine());
     }
 
-    private void stream(RunContext context, Outcome outcome) {
-        String prompt = context.getPrompt();
-        if (context.isEnhance()) {
-            prompt = promptEnhancer.enhance(context.getConfig(), context.getEngine(), prompt,
-                    chunk -> onAgentEvent(context, outcome,
-                            new AgentEvent.ThinkingDelta(chunk, ThinkingSource.ENHANCE)));
+    /**
+     * Streams the turn, and repairs the one provider failure a retry can repair: the {@code --resume}
+     * session the conversation remembers no longer exists on disk. The provider reports it as
+     * {@link ResumeRecovery#RESUME_LOST_CODE}, because only the provider knows the retry has to drop
+     * {@code --resume} from the command.
+     *
+     * <p>Exactly one retry, and the dead id is forgotten <em>before</em> it: were it kept, the retry
+     * would hit the same wall and so would every turn after it. What the conversation loses is the
+     * earlier turns' context, which is the price {@link ResumeRecovery} documents.
+     */
+    private void streamWithLostResumeRetry(RunContext context, Outcome outcome) {
+        // Prepared once, outside the retry: re-running the enhancer would pay for the rewrite twice
+        // and put its reasoning in the timeline a second time.
+        String prompt = preparePrompt(context, outcome);
+        boolean resumeRequested = StringUtils.hasText(context.getResumeSessionId());
+        try {
+            stream(context, prompt, outcome, resumeRequested);
+        } catch (LlmGatewayException exception) {
+            if (!resumeRequested || !ResumeRecovery.RESUME_LOST_CODE.equals(exception.getCode())) {
+                throw exception;
+            }
+            log.warn("agent run {} could not resume the session conversation {} remembers; retrying"
+                            + " without --resume",
+                    context.getRun().getId(), context.getConversation().getId());
+            forgetRuntimeSession(context);
+            outcome.forgetFirstAttempt();
+            context.getSink().emit(new AgentEvent.ProviderNotice(AgentEventProjector.LEVEL_WARN,
+                    "The agent session this conversation was resuming no longer exists; the turn was"
+                            + " retried without the earlier turns' context."));
+            stream(context, prompt, outcome, false);
         }
+    }
+
+    /** The prompt as the provider receives it, after the optional rewrite. */
+    private String preparePrompt(RunContext context, Outcome outcome) {
+        if (!context.isEnhance()) {
+            return context.getPrompt();
+        }
+        return promptEnhancer.enhance(context.getConfig(), context.getEngine(), context.getPrompt(),
+                chunk -> onAgentEvent(context, outcome,
+                        new AgentEvent.ThinkingDelta(chunk, ThinkingSource.ENHANCE)));
+    }
+
+    private void stream(RunContext context, String prompt, Outcome outcome, boolean allowResume) {
         Consumer<AgentEvent> events = event -> onAgentEvent(context, outcome, event);
         if (isHttpEngine(context.getEngine())) {
             streamHttp(context, prompt, events);
             return;
         }
         agentProviders.forEngine(context.getEngine())
-                .streamEvents(context.getConfig(), options(context, prompt), events);
+                .streamEvents(context.getConfig(), options(context, prompt, allowResume), events);
     }
 
     /**
@@ -337,12 +375,13 @@ public class AiRunExecutor {
                 token -> events.accept(new AgentEvent.TextDelta(token)));
     }
 
-    private AgentStreamOptions options(RunContext context, String prompt) {
+    private AgentStreamOptions options(RunContext context, String prompt, boolean allowResume) {
         RmqctlWorkspace.Preparation preparation = context.getPreparation();
         AgentStreamOptions.AgentStreamOptionsBuilder builder = AgentStreamOptions.builder()
                 .prompt(prompt)
                 .model(context.getRun().getModel())
-                .resumeSessionId(context.getResumeSessionId())
+                // Dropped for the retry: that is the whole repair.
+                .resumeSessionId(allowResume ? context.getResumeSessionId() : null)
                 .instanceId(context.getConversation().getInstanceId())
                 // Registered so a stop kills the real process tree instead of relying on an interrupt.
                 .processSink(context.getHandle())
@@ -397,7 +436,11 @@ public class AiRunExecutor {
             return;
         }
         if (event instanceof AgentEvent.ResultMeta meta) {
-            if (StringUtils.hasText(meta.runtimeSessionId())) {
+            // Only from a successful frame: a failed one echoes the *requested* session id back, so
+            // persisting it would point the next turn at a session that does not exist. The init
+            // frame's id, taken above, is a real one and survives a later failure.
+            if (AgentEventProjector.SUCCESS_SUBTYPE.equals(meta.subtype())
+                    && StringUtils.hasText(meta.runtimeSessionId())) {
                 outcome.runtimeSessionId = meta.runtimeSessionId().trim();
             }
             if (meta.inputTokens() != null) {
@@ -524,6 +567,24 @@ public class AiRunExecutor {
             conversation.setRuntimeSessionId(runtimeSessionId);
         } catch (RuntimeException exception) {
             log.warn("could not remember the runtime session id of conversation {}: {}",
+                    conversation.getId(), exception.toString());
+        }
+    }
+
+    /**
+     * Drops the {@code --resume} id the conversation remembers, so the retry — and every turn after it
+     * — starts a fresh CLI session instead of failing on the same dead one again.
+     */
+    private void forgetRuntimeSession(RunContext context) {
+        RmqAiConversation conversation = context.getConversation();
+        if (!StringUtils.hasText(conversation.getRuntimeSessionId())) {
+            return;
+        }
+        try {
+            conversationRepository.clearRuntimeSessionId(conversation.getId());
+            conversation.setRuntimeSessionId(null);
+        } catch (RuntimeException exception) {
+            log.warn("could not forget the runtime session id of conversation {}: {}",
                     conversation.getId(), exception.toString());
         }
     }
@@ -664,6 +725,21 @@ public class AiRunExecutor {
         private boolean stopRacedSuccess;
         private LlmGatewayException gatewayFailure;
         private RuntimeException unexpected;
+
+        /**
+         * Drops everything the attempt that asked for the missing session reported, so the retry's own
+         * frames decide the terminal state. Its session id in particular must not survive: it is the
+         * dead one, echoed back.
+         */
+        void forgetFirstAttempt() {
+            runtimeSessionId = null;
+            subtype = null;
+            inputTokens = null;
+            outputTokens = null;
+            providerDurationMs = null;
+            successTerminalProjected = false;
+            stopRacedSuccess = false;
+        }
     }
 
     /** The terminal state to write, and whether the projector already wrote one. */

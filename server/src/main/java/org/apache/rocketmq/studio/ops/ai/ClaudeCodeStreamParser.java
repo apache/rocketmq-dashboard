@@ -221,6 +221,9 @@ final class ClaudeCodeStreamParser {
     /** True once the terminal {@code result} frame arrived. */
     private boolean resultFrameSeen;
 
+    /** Subtype of that frame, resolved by {@link #resolveSubtype}; null while none has arrived. */
+    private String resultSubtype;
+
     /** Session id from the most recent frame that carried one; the init frame is the first. */
     private String runtimeSessionId;
 
@@ -286,6 +289,15 @@ final class ClaudeCodeStreamParser {
     /** Whether the terminal {@code result} frame arrived, i.e. whether the run explained itself. */
     boolean resultFrameSeen() {
         return resultFrameSeen;
+    }
+
+    /**
+     * The subtype of that frame, or null when none arrived. One half of the lost-resume signal: the
+     * caller pairs it with the exit code and the stderr, because a subtype alone cannot tell a
+     * vanished {@code --resume} session from a failure no retry can fix.
+     */
+    String resultSubtype() {
+        return resultSubtype;
     }
 
     /**
@@ -558,10 +570,11 @@ final class ClaudeCodeStreamParser {
             }
         }
         resultFrameSeen = true;
+        resultSubtype = resolveSubtype(node);
         JsonNode usage = node.path("usage");
         events.add(new AgentEvent.ResultMeta(runtimeSessionId, longOrNull(node, "duration_ms"),
                 intOrNull(usage, "input_tokens"), intOrNull(usage, "output_tokens"),
-                resolveSubtype(node)));
+                resultSubtype));
         return events;
     }
 
