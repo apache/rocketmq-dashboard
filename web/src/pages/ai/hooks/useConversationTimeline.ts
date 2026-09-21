@@ -56,12 +56,29 @@ export interface UseConversationTimelineOptions {
   maxPages?: number;
 }
 
+/**
+ * The run the server reported, paired with the conversation it was reported for.
+ *
+ * The pairing is the point. `refetch` is asynchronous, so after the user switches conversation the
+ * state below still holds the previous one's run for at least a commit — and a run id is the only
+ * thing the attach endpoint needs, so acting on it would stream the previous conversation's frames
+ * into the transcript on screen. See {@link UseConversationTimelineResult.activeRun}.
+ */
+interface LoadedActiveRun {
+  conversationId: number;
+  run: AiActiveRunRef | null;
+}
+
 export interface UseConversationTimelineResult {
   /** Persisted rows in `seq` order, exactly as the server returned them. */
   items: TimelineItem[];
   /** The same rows folded into transcript bubbles — what the thread renders. */
   bubbles: Bubble[];
-  /** The run still streaming, so a reload can re-attach instead of showing a dead transcript. */
+  /**
+   * The run still streaming in this conversation, so a reload can re-attach instead of showing a
+   * dead transcript. Null while that conversation's timeline has not loaded yet, even if the
+   * previous conversation's run is still the last thing the server reported.
+   */
   activeRun: AiActiveRunRef | null;
   /** Highest `seq` held; pass it to `attachRunStream` so a re-attach does not replay anything twice. */
   lastSeq: number;
@@ -83,7 +100,7 @@ export function useConversationTimeline(
   const maxPages = options.maxPages ?? TIMELINE_MAX_PAGES;
 
   const [items, setItems] = useState<TimelineItem[]>([]);
-  const [activeRun, setActiveRun] = useState<AiActiveRunRef | null>(null);
+  const [loadedActiveRun, setLoadedActiveRun] = useState<LoadedActiveRun | null>(null);
   const [nextAfter, setNextAfter] = useState<number | null>(null);
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -100,7 +117,7 @@ export function useConversationTimeline(
   const refetch = useCallback(async (): Promise<void> => {
     if (conversationId === null) {
       setItems([]);
-      setActiveRun(null);
+      setLoadedActiveRun(null);
       setNextAfter(null);
       setError('');
       setLoading(false);
@@ -129,7 +146,7 @@ export function useConversationTimeline(
       }
 
       setItems(collected);
-      setActiveRun(run);
+      setLoadedActiveRun({ conversationId, run });
       setNextAfter(cursor);
       setRunSpeeds(speeds);
     } catch (loadError) {
@@ -152,7 +169,7 @@ export function useConversationTimeline(
       const result = await getConversationTimeline(conversationId, { after, limit });
       if (id !== requestId.current) return;
       setItems((previous) => previous.concat(result.items));
-      setActiveRun(result.activeRun);
+      setLoadedActiveRun({ conversationId, run: result.activeRun });
       setNextAfter(result.nextAfter);
       setRunSpeeds((previous) => {
         const merged = new Map(previous);
@@ -179,6 +196,12 @@ export function useConversationTimeline(
 
   const bubbles = useMemo(() => groupIntoBubbles(items, runSpeeds), [items, runSpeeds]);
   const lastSeq = items.length ? items[items.length - 1].seq : 0;
+  // Only the run of the conversation on screen: a run loaded for another one is not this
+  // conversation's to attach, and it is not this conversation's to render either.
+  const activeRun =
+    loadedActiveRun !== null && loadedActiveRun.conversationId === conversationId
+      ? loadedActiveRun.run
+      : null;
 
   return {
     items,
