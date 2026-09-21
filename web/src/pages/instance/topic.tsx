@@ -1281,10 +1281,9 @@ const TopicPageContent = ({
     setImportRows([...nextRows]);
 
     if (createdTopics.length > 0) {
-      setTopics((previous) => {
-        const createdNames = new Set(createdTopics.map((topic) => topic.name));
-        return [...createdTopics, ...previous.filter((topic) => !createdNames.has(topic.name))];
-      });
+      // The inventory is server-paginated, so a local prepend leaves the rows,
+      // the header count and the pagination total disagreeing with the server.
+      await reloadTopicPage();
     }
 
     const failedCount = nextRows.filter((row) => row.status === 'failed').length;
