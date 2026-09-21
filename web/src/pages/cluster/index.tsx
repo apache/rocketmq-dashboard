@@ -156,7 +156,10 @@ const ClusterPage = () => {
   const [instanceLoadError, setInstanceLoadError] = useState<string | null>(null);
   // A failed registry load must be visible: silently emptying the tables made a
   // transient failure look like "no clusters" while the live indicator stayed green.
-  const [registryLoadError, setRegistryLoadError] = useState(false);
+  // The two loaders run concurrently, so each carries its own failure flag — a
+  // success on one must not clear the other's error.
+  const [registryClusterLoadError, setRegistryClusterLoadError] = useState(false);
+  const [nameserverLoadError, setNameserverLoadError] = useState(false);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
@@ -219,13 +222,13 @@ const ClusterPage = () => {
       const nextClusters = await listRegistryClusters();
       if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryClusters(nextClusters);
-        setRegistryLoadError(false);
+        setRegistryClusterLoadError(false);
       }
     } catch {
       // Keep any previously loaded rows; flag the failure so the UI does not
       // present an empty inventory as authoritative data.
       if (registryClustersRequest.isCurrent(requestId)) {
-        setRegistryLoadError(true);
+        setRegistryClusterLoadError(true);
       }
     } finally {
       if (registryClustersRequest.isCurrent(requestId)) {
@@ -244,11 +247,11 @@ const ClusterPage = () => {
       const entries = await listNameserverRegistry();
       if (nsRegistryRequest.isCurrent(requestId)) {
         setNsRegistry(entries);
-        setRegistryLoadError(false);
+        setNameserverLoadError(false);
       }
     } catch {
       // Same as the cluster inventory: keep previous rows and surface the failure.
-      if (nsRegistryRequest.isCurrent(requestId)) setRegistryLoadError(true);
+      if (nsRegistryRequest.isCurrent(requestId)) setNameserverLoadError(true);
     }
   }, [nsRegistryRequest]);
 
@@ -1854,7 +1857,7 @@ const ClusterPage = () => {
           style={{ marginBottom: 16 }}
         />
       )}
-      {registryLoadError && (
+      {(registryClusterLoadError || nameserverLoadError) && (
         <Alert
           type="error"
           showIcon

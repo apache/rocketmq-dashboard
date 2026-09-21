@@ -27,6 +27,7 @@ import type {
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
+  NameserverRegistryEntry,
 } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
@@ -151,6 +152,18 @@ const buildCluster = ({
   topicCount: 10,
   groupCount: 5,
   tpsHistory: [tpsIn],
+});
+
+const buildNsEntry = ({ name = 'rocketmq1' }: { name?: string } = {}): NameserverRegistryEntry => ({
+  id: 1,
+  name,
+  namesrvAddr: 'rocketmq1-nameserver:9876',
+  k8sNamespace: 'rocketmq1',
+  k8sId: 'ack-daily',
+  status: 'healthy',
+  description: 'community chart cluster',
+  gmtCreate: '',
+  gmtModified: '',
 });
 
 const deferred = <T,>() => {
@@ -1424,19 +1437,6 @@ describe('Cluster page', () => {
     // First load succeeds so the page holds real rows, then a reload transiently fails:
     // the tables must not be silently emptied and the failure must be visible with retry.
     const user = userEvent.setup();
-    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([
-      {
-        id: 1,
-        name: 'rocketmq1',
-        namesrvAddr: 'rocketmq1-nameserver:9876',
-        k8sNamespace: 'rocketmq1',
-        k8sId: 'ack-daily',
-        status: 'healthy',
-        description: 'community chart cluster',
-        gmtCreate: '',
-        gmtModified: '',
-      },
-    ]);
     renderWithProviders(<ClusterPage />);
     expect((await screen.findAllByText('ns-prod')).length).toBeGreaterThan(0);
 
@@ -1452,20 +1452,64 @@ describe('Cluster page', () => {
 
     // Retry recovers: both loaders succeed again and the banner disappears.
     clusterServiceMocks.listRegistryClusters.mockResolvedValueOnce([buildCluster()]);
-    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([
-      {
-        id: 1,
-        name: 'rocketmq1',
-        namesrvAddr: 'rocketmq1-nameserver:9876',
-        k8sNamespace: 'rocketmq1',
-        k8sId: 'ack-daily',
-        status: 'healthy',
-        description: 'community chart cluster',
-        gmtCreate: '',
-        gmtModified: '',
-      },
-    ]);
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([buildNsEntry()]);
     await user.click(within(banner).getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('keeps the error banner when the cluster loader succeeds while the nameserver load fails', async () => {
+    // The two registry loaders run concurrently; a success on one must not clear
+    // the other's failure, or the page would show healthy-looking empty tables.
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    expect((await screen.findAllByText('ns-prod')).length).toBeGreaterThan(0);
+
+    clusterServiceMocks.listRegistryClusters.mockRejectedValueOnce(new Error('blip'));
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([buildNsEntry({ name: 'rocketmq2' })]);
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    // The failed cluster load keeps the banner up and its previously loaded rows.
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent('获取数据失败');
+    expect(screen.queryAllByText('ns-prod').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the error banner when the nameserver load succeeds while the cluster load fails', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    expect((await screen.findAllByText('ns-prod')).length).toBeGreaterThan(0);
+
+    clusterServiceMocks.listRegistryClusters.mockResolvedValueOnce([buildCluster()]);
+    clusterServiceMocks.listNameserverRegistry.mockRejectedValueOnce(new Error('blip'));
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent('获取数据失败');
+    expect(screen.queryAllByText('ns-prod').length).toBeGreaterThan(0);
+  });
+
+  it('clears the nameserver error while the cluster error stays after a partial recovery', async () => {
+    // A successful nameserver reload clears only the nameserver flag; the failed
+    // cluster loader must keep its error until its own reload succeeds.
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    expect((await screen.findAllByText('ns-prod')).length).toBeGreaterThan(0);
+
+    clusterServiceMocks.listRegistryClusters.mockRejectedValueOnce(new Error('blip'));
+    clusterServiceMocks.listNameserverRegistry.mockRejectedValueOnce(new Error('blip'));
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('获取数据失败');
+
+    // Only the nameserver loader recovers: the banner must stay.
+    clusterServiceMocks.listRegistryClusters.mockRejectedValueOnce(new Error('blip-again'));
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([buildNsEntry({ name: 'rocketmq2' })]);
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('获取数据失败');
+
+    // Now the cluster loader recovers too: only then does the banner disappear.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValueOnce([buildCluster()]);
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValueOnce([buildNsEntry()]);
+    await user.click(screen.getByRole('button', { name: '刷新' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 });
