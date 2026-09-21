@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -72,6 +73,12 @@ class AuthControllerTest {
     @Test
     void statusShouldReportDisabledLoginProtection() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(false);
+        // The policy row exists and says login is not required. It has to be stubbed explicitly:
+        // an unstubbed mock returns null, and an absent policy row means "login required" here just
+        // as it does in the interceptor - see statusShouldReportLoginRequiredWhenRuntimePolicyIsMissing.
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .requireLogin(false)
+                .build());
         when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
@@ -88,6 +95,34 @@ class AuthControllerTest {
         when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .requireLogin(true)
                 .build());
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/auth/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginRequired").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+    }
+
+    @Test
+    void statusShouldReportLoginRequiredWhenRuntimePolicyIsMissing() throws Exception {
+        // AuthInterceptor fails closed when the policy row is absent, so the flag the frontend reads
+        // must not report "login not required" for the same state.
+        when(authProperties.isLoginRequired()).thenReturn(false);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(null);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/auth/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginRequired").value(true));
+    }
+
+    @Test
+    void statusShouldReportLoginRequiredWhenRuntimePolicyCannotBeRead() throws Exception {
+        // The interceptor swallows this failure and demands a login, so the endpoint that tells the
+        // frontend which screen to render must not answer with an error of its own.
+        when(authProperties.isLoginRequired()).thenReturn(false);
+        when(settingsRepository.loadGeneralSettings())
+                .thenThrow(new BusinessException(500, "Persisted general settings are invalid"));
         when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
