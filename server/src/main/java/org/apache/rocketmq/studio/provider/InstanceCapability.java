@@ -24,6 +24,7 @@ public enum InstanceCapability {
     CONSUMER_GROUP_MANAGEMENT,
     MESSAGE_QUERY,
     MESSAGE_TRACE,
+    MESSAGE_SEND,
     ACL_MANAGEMENT,
     DLQ_MANAGEMENT
 }

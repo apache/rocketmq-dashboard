@@ -280,10 +280,7 @@ public class MetadataService {
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
         requireSendMessageRequest(request);
-        if (resolve(request.getInstanceId()).vendor() != InstanceVendor.APACHE) {
-            throw new BusinessException(501, "Sending messages is not supported for cloud instances");
-        }
-        return adminClient.sendMessage(request);
+        return resolve(request.getInstanceId()).sendMessage(request);
     }
 
     /**

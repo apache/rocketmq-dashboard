@@ -40,6 +40,8 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.Filter;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
+import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
+import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
@@ -61,6 +63,8 @@ import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
@@ -126,8 +130,48 @@ class TencentInstanceProviderTest {
         assertThat(provider.capabilities())
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.MESSAGE_SEND,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
+    }
+
+    @Test
+    void sendMessageShouldMapTencentConsoleTestSendFieldsTest() throws Exception {
+        SendMessageResponse response = new SendMessageResponse();
+        response.setMsgId("MSG-TENCENT-1");
+        response.setRequestId("req-1");
+        when(client.SendMessage(any())).thenReturn(response);
+        SendMessageDTO request = SendMessageDTO.builder().instanceId(STUDIO_INSTANCE_ID).topic("orders")
+                .tag("paid").key("order-1").body("payload").build();
+        SendMessageVO result = provider.sendMessage(request);
+        ArgumentCaptor<SendMessageRequest> captor = ArgumentCaptor.forClass(SendMessageRequest.class);
+        verify(client).SendMessage(captor.capture());
+        SendMessageRequest sent = captor.getValue();
+        assertThat(sent.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(sent.getTopic()).isEqualTo("orders");
+        assertThat(sent.getMsgBody()).isEqualTo("payload");
+        assertThat(sent.getMsgKey()).isEqualTo("order-1");
+        assertThat(sent.getMsgTag()).isEqualTo("paid");
+        assertThat(result.getMsgId()).isEqualTo("MSG-TENCENT-1");
+    }
+
+    @Test
+    void sendMessageShouldRejectFieldsTencentConsoleApiCannotRepresentTest() {
+        SendMessageDTO request = SendMessageDTO.builder().instanceId(STUDIO_INSTANCE_ID).topic("orders")
+                .body("payload").properties(java.util.Map.of("tenant", "alpha")).build();
+        assertThatThrownBy(() -> provider.sendMessage(request))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("user properties");
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void sendMessageShouldRejectTencentResponseWithoutMessageIdTest() throws Exception {
+        when(client.SendMessage(any())).thenReturn(new SendMessageResponse());
+        SendMessageDTO request = SendMessageDTO.builder().instanceId(STUDIO_INSTANCE_ID)
+                .topic("orders").body("payload").build();
+        assertThatThrownBy(() -> provider.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("no message id");
     }
 
     @Test
