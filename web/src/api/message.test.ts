@@ -209,6 +209,23 @@ describe('message API', () => {
     expect(mapped?.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'wait']);
   });
 
+  it('keeps the key lookup null and node-default contracts', async () => {
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'missing', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: null });
+
+    await expect(getMessageTraceByKey('missing', 'instance-1')).resolves.toBeNull();
+
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'no-nodes', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: { consumerStatus: [] } });
+
+    await expect(getMessageTraceByKey('no-nodes', 'instance-1')).resolves.toEqual({
+      consumerStatus: [],
+      nodes: [],
+    });
+  });
+
   it('encodes message IDs before requesting trace records', async () => {
     const trace = {
       nodes: [],
