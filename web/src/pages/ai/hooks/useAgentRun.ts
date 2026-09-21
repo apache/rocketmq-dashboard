@@ -281,6 +281,7 @@ export function useAgentRun(
     async (
       targetConversationId: number,
       open: (handlers: RunStreamHandlers, signal: AbortSignal) => Promise<void>,
+      knownRunId: number | null = null,
     ): Promise<void> => {
       // Double-submit guard: Enter twice in one tick must not admit two runs (the server would
       // reject the second with 409 anyway, but the UI should not even try).
@@ -307,8 +308,11 @@ export function useAgentRun(
       // screen once this run's answer lands.
       setLastRunTokensPerSecond(null);
       setLiveTokensPerSecond(null);
-      runIdRef.current = null;
-      setRunId(null);
+      // `send` learns the id from the live `run_started` frame; an attach already knows it from
+      // the URL, and the server never replays `run_started` — without seeding it here the stop
+      // button would render but address nothing until the run finished.
+      runIdRef.current = knownRunId;
+      setRunId(knownRunId);
       setLastStatus(null);
       setError('');
       setStopRequested(false);
@@ -348,8 +352,10 @@ export function useAgentRun(
 
   const attach = useCallback(
     (targetConversationId: number, targetRunId: number, after: number): Promise<void> =>
-      startStream(targetConversationId, (handlers, signal) =>
-        attachRunStream(targetRunId, after, handlers, signal),
+      startStream(
+        targetConversationId,
+        (handlers, signal) => attachRunStream(targetRunId, after, handlers, signal),
+        targetRunId,
       ),
     [startStream],
   );

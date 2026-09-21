@@ -427,6 +427,28 @@ describe('useAgentRun', () => {
     expect(result.current.isStreaming).toBe(true);
   });
 
+  it('stopsAnAttachedRunThroughTheApiTest', async () => {
+    const { result } = render();
+
+    // The server replays persisted events on attach; the live vocabulary starts at run_started,
+    // so no `run_started` frame ever arrives on this stream.
+    await act(async () => {
+      void result.current.attach(7, 41, 12);
+    });
+    await act(async () => {
+      attachedStreams[0].emit(textDelta('resumed'));
+      await flushFrame();
+    });
+    expect(result.current.canStop).toBe(true);
+
+    await act(async () => {
+      await result.current.stop();
+    });
+
+    expect(stopRun).toHaveBeenCalledWith(41);
+    expect(result.current.stopRequested).toBe(true);
+  });
+
   it('surfacesAStreamFailureAndStillRefetchesTheTimelineTest', async () => {
     const onError = vi.fn();
     const refetchTimeline = vi.fn().mockResolvedValue(undefined);
