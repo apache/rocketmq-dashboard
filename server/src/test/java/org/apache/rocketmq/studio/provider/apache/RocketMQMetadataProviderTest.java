@@ -797,9 +797,7 @@ class RocketMQMetadataProviderTest {
         // call, so a group that never connected fails with CODE 17. That is the "no live data"
         // state the detail path already grades as offline, so the list must not report it as an
         // unavailable inventory.
-        when(admin.examineConsumerConnectionInfo("cg-brand-new")).thenThrow(new MQClientException(
-                ResponseCode.TOPIC_NOT_EXIST,
-                "No topic route info in name server for the topic: %RETRY%cg-brand-new"));
+        when(admin.examineConsumerConnectionInfo("cg-brand-new")).thenThrow(retryTopicRouteMissing("cg-brand-new"));
         ConsumeStats stats = new ConsumeStats();
         MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
         OffsetWrapper wrapper = new OffsetWrapper();
@@ -819,6 +817,56 @@ class RocketMQMetadataProviderTest {
             assertThat(group.getOnlineInstances()).isZero();
             assertThat(group.getInstances()).isEmpty();
         });
+    }
+
+    @Test
+    void groupProgressShouldReportNoStatsForAGroupWithoutARetryTopicRouteTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumeStats("cg-brand-new")).thenThrow(retryTopicRouteMissing("cg-brand-new"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        // The same "no live data" grading the list reports as offline: a group without a retry
+        // topic route has no consume stats to report, not a connectivity failure.
+        assertThat(provider.getGroupProgress("instance-a", "cg-brand-new")).isEmpty();
+    }
+
+    @Test
+    void groupSubscriptionsShouldFallBackToTheProxyWithoutARetryTopicRouteTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-brand-new")).thenThrow(retryTopicRouteMissing("cg-brand-new"));
+
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection viaProxy =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.concurrent.ConcurrentHashMap<String,
+                org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData subscription =
+                new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData();
+        subscription.setTopic("studio-normal");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        table.put("studio-normal", subscription);
+        viaProxy.setSubscriptionTable(table);
+        when(resolver.resolveConsumerConnection(null, "cg-brand-new")).thenReturn(viaProxy);
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                provider, "proxyConsumerResolver", resolver);
+
+        // Graded as offline, the read reaches the proxy fallback instead of failing the request.
+        assertThat(provider.getGroupSubscriptions(null, "cg-brand-new"))
+                .extracting(SubscriptionEntryVO::getTopic)
+                .containsExactly("studio-normal");
+    }
+
+    private static MQClientException retryTopicRouteMissing(String group) {
+        return new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: %RETRY%" + group);
     }
 
     @Test
