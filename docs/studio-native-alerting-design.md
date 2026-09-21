@@ -279,21 +279,25 @@ Silences match `domain`, rule ID, instance ID, and optional resource labels. The
 
 ## APIs
 
-The two rule menus keep separate endpoints so their domain cannot be accidentally changed by a client. Both delegate to the same `AlertRuleService`.
+The two rule menus keep separate endpoints so their domain cannot be accidentally changed by a client. Both delegate to the same `AlertService`.
 
 ```text
-GET/POST/PUT /api/business-alert-rules
-GET/POST/PUT /api/cluster-alert-rules
-POST         /api/business-alert-rules/{id}/test
-POST         /api/cluster-alert-rules/{id}/test
+GET          /api/business-alert-rules/page
+POST         /api/business-alert-rules/create
+POST         /api/business-alert-rules/update
+POST         /api/business-alert-rules/test
+GET          /api/cluster-alert-rules/page
+POST         /api/cluster-alert-rules/create
+POST         /api/cluster-alert-rules/update
+POST         /api/cluster-alert-rules/test
 
-GET          /api/system-alerts?domain=&status=&severity=&instanceId=&page=
-POST         /api/system-alerts/{id}/acknowledge
+GET          /api/system-alerts?level=&domain=&instanceId=&transition=
+POST         /api/system-alerts/acknowledge
 
 GET/POST     /api/alert-silences
 DELETE       /api/alert-silences/{id}
 GET          /api/alert-collector-status
-GET          /api/alert-metric-catalog?instanceId=&domain=
+GET          /api/native-alert-metrics?instanceId=&domain=
 ```
 
 Existing `/api/alert-rules/export` remains as a compatibility endpoint for users who deliberately export rules to Prometheus. It must not be used by the native evaluator.
