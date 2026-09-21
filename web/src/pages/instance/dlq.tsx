@@ -142,14 +142,17 @@ const DLQPage = () => {
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestIdRef = useRef(0);
+  const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
-  const resendInFlightRef = useRef(false);
+  const retryInFlightRef = useRef(false);
+  const detailResendInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
       retryRequestIdRef.current += 1;
       detailRequestIdRef.current += 1;
+      detailResendRequestIdRef.current += 1;
     },
     [],
   );
@@ -168,7 +171,15 @@ const DLQPage = () => {
     setTotal(0);
     setPage(1);
     setSelectedGroupNames([]);
+    setDetailOpen(false);
     setDetailGroup(null);
+    setDetailMessages([]);
+    setDetailTotal(0);
+    setDetailPage(1);
+    setDetailSelectedMsgIds([]);
+    setDetailLoading(false);
+    setDetailResending(false);
+    setDetailError(null);
     setRetryModalOpen(false);
     setRetryGroup(null);
     setRetryTargetTopic('');
@@ -229,7 +240,12 @@ const DLQPage = () => {
   /* ─── Handlers ─── */
   const handleInstanceChange = (instanceId: string) => {
     retryRequestIdRef.current += 1;
+    detailRequestIdRef.current += 1;
+    detailResendRequestIdRef.current += 1;
+    retryInFlightRef.current = false;
+    detailResendInFlightRef.current = false;
     setRetrySubmitting(false);
+    setDetailResending(false);
     selectInstance(instanceId);
   };
 
@@ -247,9 +263,9 @@ const DLQPage = () => {
       return;
     }
     if (!retryGroup || !selectedInstanceId) return;
-    if (resendInFlightRef.current) return;
+    if (retryInFlightRef.current || detailResendInFlightRef.current) return;
 
-    resendInFlightRef.current = true;
+    retryInFlightRef.current = true;
     const requestId = retryRequestIdRef.current + 1;
     retryRequestIdRef.current = requestId;
     const groupName = retryGroup.groupName;
@@ -283,8 +299,8 @@ const DLQPage = () => {
         setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
       }
     } finally {
-      resendInFlightRef.current = false;
       if (retryRequestIdRef.current === requestId) {
+        retryInFlightRef.current = false;
         setRetrySubmitting(false);
       }
     }
@@ -318,6 +334,10 @@ const DLQPage = () => {
 
   /* ─── DLQ Message Details Drawer ─── */
   const openDetailDrawer = (group: DLQGroup) => {
+    detailRequestIdRef.current += 1;
+    detailResendRequestIdRef.current += 1;
+    detailResendInFlightRef.current = false;
+    setDetailResending(false);
     setDetailGroup(group);
     setDetailOpen(true);
     setDetailPage(1);
@@ -358,16 +378,23 @@ const DLQPage = () => {
 
   const resendSelectedMessages = async (msgIds: string[]) => {
     if (!selectedInstanceId || !detailGroup || msgIds.length === 0) return;
-    if (resendInFlightRef.current) return;
-    resendInFlightRef.current = true;
+    if (retryInFlightRef.current || detailResendInFlightRef.current) return;
+    detailResendInFlightRef.current = true;
+    const requestId = detailResendRequestIdRef.current + 1;
+    detailResendRequestIdRef.current = requestId;
+    const instanceId = selectedInstanceId;
+    const group = detailGroup;
+    const pageToReload = detailPage;
+    const pageSizeToReload = detailPageSize;
     setDetailResending(true);
     setDetailError(null);
     try {
       const result = await resendDLQSelected({
-        instanceId: selectedInstanceId,
-        groupName: detailGroup.groupName,
+        instanceId,
+        groupName: group.groupName,
         msgIds,
       });
+      if (detailResendRequestIdRef.current !== requestId) return;
       if (result.outcome === 'FAILED' && result.failed > 0) {
         message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
       } else if (result.resent > 0 && result.failed > 0) {
@@ -376,12 +403,16 @@ const DLQPage = () => {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
       setDetailSelectedMsgIds([]);
-      await loadDetailMessages(detailGroup, detailPage, detailPageSize);
+      await loadDetailMessages(group, pageToReload, pageSizeToReload);
     } catch (error) {
-      setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+      if (detailResendRequestIdRef.current === requestId) {
+        setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+      }
     } finally {
-      resendInFlightRef.current = false;
-      setDetailResending(false);
+      if (detailResendRequestIdRef.current === requestId) {
+        detailResendInFlightRef.current = false;
+        setDetailResending(false);
+      }
     }
   };
 
@@ -795,6 +826,9 @@ const DLQPage = () => {
         open={detailOpen}
         onClose={() => {
           detailRequestIdRef.current += 1;
+          detailResendRequestIdRef.current += 1;
+          detailResendInFlightRef.current = false;
+          setDetailResending(false);
           setDetailOpen(false);
           setDetailGroup(null);
           setDetailMessages([]);
