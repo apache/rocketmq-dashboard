@@ -35,9 +35,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.never;
@@ -397,6 +399,32 @@ class CollectorSchedulerTest {
         } finally {
             scheduler.stopCollectionExecutor();
         }
+    }
+
+    @Test
+    void cleanUpSnapshotsSkipsRunWhenRetentionIsMalformedTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setSnapshotRetention("24h");
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, mock(InstanceRepository.class), List.of(),
+                List.of(), snapshots, mock(NativeAlertProcessor.class), mock(AlertCollectionLease.class));
+
+        assertDoesNotThrow(scheduler::cleanUpSnapshots);
+        verify(snapshots, never()).deleteBefore(any());
+    }
+
+    @Test
+    void cleanUpSnapshotsDeletesBeforeRetentionHorizonTest() {
+        AlertingProperties properties = new AlertingProperties();
+        properties.setSnapshotRetention("PT24H");
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, mock(InstanceRepository.class), List.of(),
+                List.of(), snapshots, mock(NativeAlertProcessor.class), mock(AlertCollectionLease.class));
+
+        scheduler.cleanUpSnapshots();
+
+        verify(snapshots).deleteBefore(argThat(horizon -> horizon.isAfter(Instant.now().minusSeconds(24 * 3600 + 600))
+                && horizon.isBefore(Instant.now().minusSeconds(24 * 3600 - 600))));
     }
 
     private static MetricSample sampleFor(InstanceVO instance) {
