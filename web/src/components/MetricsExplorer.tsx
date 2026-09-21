@@ -1041,10 +1041,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     range: RangeOption,
     customPromqlToRun?: string,
   ) => {
-    dataSourceCredentialsRef.current = null;
-    dataSourceKeyRef.current = dataSource.key;
+    // The data source switch itself is deferred to handleAuthSubmit: the current source stays
+    // active while credentials are being asked for, so cancelling the dialog leaves the
+    // explorer exactly where it was instead of stranded on an unauthenticated source.
     pendingAuthReplayRef.current = { profile, range, customPromql: customPromqlToRun };
-    setDataSourceKey(dataSource.key);
     setPendingDataSource(dataSource);
     void message.info(copy.protectedHistory);
   };

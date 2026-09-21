@@ -921,6 +921,49 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
   });
 
+  it('keeps the current data source when cancelling a protected history restore', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const sourceSelect = await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog)
+      .getByText('Consumer Lag Messages')
+      .closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    // The auth dialog's generated title id collides with the still-closing history dialog's
+    // title in jsdom, so the accessible name resolves to the wrong dialog. Match on the
+    // unique body text instead.
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    const selectContainer = sourceSelect.closest('.ant-select') as HTMLElement;
+    expect(within(selectContainer).getByText('默认数据源')).toBeInTheDocument();
+    expect(within(selectContainer).queryByText('Protected Prometheus')).not.toBeInTheDocument();
+  });
+
   it('filters query history from other instances and shows the current instance context', async () => {
     const user = userEvent.setup();
     localStorage.setItem(
