@@ -39,6 +39,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -385,15 +386,21 @@ public class ProxyAddressService {
             throw new BusinessException(400, fieldName + " must be in host:port or [ipv6]:port format");
         }
         String host = matcher.group(1);
-        if (host.startsWith("[")
-                && !INET_ADDRESS_VALIDATOR.isValidInet6Address(host.substring(1, host.length() - 1))) {
-            throw new BusinessException(400, fieldName + " contains a malformed IPv6 address");
+        String normalizedHost;
+        if (host.startsWith("[")) {
+            String ipv6 = host.substring(1, host.length() - 1);
+            if (!INET_ADDRESS_VALIDATOR.isValidInet6Address(ipv6)) {
+                throw new BusinessException(400, fieldName + " contains a malformed IPv6 address");
+            }
+            normalizedHost = "[" + ipv6.toLowerCase(Locale.ROOT) + "]";
+        } else {
+            normalizedHost = host.toLowerCase(Locale.ROOT);
         }
         int port = Integer.parseInt(matcher.group(2));
         if (port < MIN_PORT || port > MAX_PORT) {
             throw new BusinessException(400, fieldName + " port must be between 1 and 65535");
         }
-        return normalized;
+        return normalizedHost + ":" + port;
     }
 
     private void recordAudit(String operation, String resourceType, String resourceName, String clusterId) {
