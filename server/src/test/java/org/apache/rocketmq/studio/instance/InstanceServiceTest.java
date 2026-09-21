@@ -163,12 +163,12 @@ class InstanceServiceTest {
 
     @Test
     void listInstancesMarksCloudCountsUnavailableWhenProviderFails() {
-        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        InstanceVO instance = InstanceVO.builder().name("aliyun-fail").vendor(InstanceVendor.ALIYUN).build();
         instance.setId(1L);
         InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
         when(instanceRepository.findAll()).thenReturn(List.of(instance));
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
-        when(provider.countTopics("1")).thenThrow(new IllegalStateException("access denied"));
+        when(provider.countTopics("aliyun-fail")).thenThrow(new IllegalStateException("access denied"));
 
         InstanceVO result = instanceService.listInstances(null, null).get(0);
 
@@ -177,13 +177,13 @@ class InstanceServiceTest {
 
     @Test
     void listInstancesKeepsCloudCountsAvailableWhenProviderReturnsEmptyLists() {
-        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        InstanceVO instance = InstanceVO.builder().name("aliyun-empty").vendor(InstanceVendor.ALIYUN).build();
         instance.setId(2L);
         InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
         when(instanceRepository.findAll()).thenReturn(List.of(instance));
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
-        when(provider.countTopics("2")).thenReturn(0);
-        when(provider.countGroups("2")).thenReturn(0);
+        when(provider.countTopics("aliyun-empty")).thenReturn(0);
+        when(provider.countGroups("aliyun-empty")).thenReturn(0);
 
         InstanceVO result = instanceService.listInstances(null, null).get(0);
 
@@ -284,10 +284,10 @@ class InstanceServiceTest {
         when(instanceRepository.findAll()).thenReturn(List.of(apache, aliyun));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(aliyunProvider);
-        when(instanceProvider.countTopics("3")).thenReturn(3);
-        when(instanceProvider.countGroups("3")).thenReturn(2);
-        when(aliyunProvider.countTopics("4")).thenReturn(5);
-        when(aliyunProvider.countGroups("4")).thenReturn(4);
+        when(instanceProvider.countTopics("apache")).thenReturn(3);
+        when(instanceProvider.countGroups("apache")).thenReturn(2);
+        when(aliyunProvider.countTopics("aliyun")).thenReturn(5);
+        when(aliyunProvider.countGroups("aliyun")).thenReturn(4);
 
         List<InstanceVO> result = instanceService.listInstances(null, null);
 
@@ -303,7 +303,7 @@ class InstanceServiceTest {
         instance.setId(5L);
         when(instanceRepository.findAll()).thenReturn(List.of(instance));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("5"))
+        when(instanceProvider.countTopics("broken"))
                 .thenThrow(new IllegalStateException("admin unavailable"));
 
         List<InstanceVO> result = instanceService.listInstances(null, null);
@@ -321,7 +321,7 @@ class InstanceServiceTest {
         instance.setResourceCountsAvailable(true);
         when(instanceRepository.findAll()).thenReturn(List.of(instance));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("6"))
+        when(instanceProvider.countTopics("stale-counts"))
                 .thenThrow(new IllegalStateException("provider unavailable"));
 
         InstanceVO result = instanceService.listInstances(null, null).get(0);
@@ -368,7 +368,7 @@ class InstanceServiceTest {
         CountDownLatch topicCountStarted = new CountDownLatch(1);
         CountDownLatch releaseProvider = new CountDownLatch(1);
         CountDownLatch providerFinished = new CountDownLatch(1);
-        when(instanceProvider.countTopics("24")).thenAnswer(invocation -> {
+        when(instanceProvider.countTopics("slow")).thenAnswer(invocation -> {
             topicCountStarted.countDown();
             boolean interrupted = false;
             while (true) {
@@ -386,7 +386,7 @@ class InstanceServiceTest {
             }
             return 7;
         });
-        when(instanceProvider.countGroups("24")).thenAnswer(invocation -> {
+        when(instanceProvider.countGroups("slow")).thenAnswer(invocation -> {
             providerFinished.countDown();
             return 5;
         });
@@ -937,8 +937,8 @@ class InstanceServiceTest {
 
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(0);
-        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceProvider.countTopics("to-delete")).thenReturn(0);
+        when(instanceProvider.countGroups("to-delete")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
 
         instanceService.deleteInstance(1L);
@@ -970,8 +970,8 @@ class InstanceServiceTest {
                 .thenReturn(Optional.empty());
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(0);
-        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceProvider.countTopics("inst-a")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-a")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
         ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
@@ -992,9 +992,9 @@ class InstanceServiceTest {
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(failedInstance));
         when(instanceRepository.findById(2L)).thenReturn(Optional.of(deletedInstance));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException("broker unavailable"));
-        when(instanceProvider.countTopics("2")).thenReturn(0);
-        when(instanceProvider.countGroups("2")).thenReturn(0);
+        when(instanceProvider.countTopics("inst-a")).thenThrow(new IllegalStateException("broker unavailable"));
+        when(instanceProvider.countTopics("inst-b")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-b")).thenReturn(0);
         when(instanceRepository.deleteById(2L)).thenReturn(true);
         ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
@@ -1002,10 +1002,10 @@ class InstanceServiceTest {
 
         assertThat(result.getDeleted()).isEqualTo(1);
         assertThat(result.getFailed()).containsExactly("inst-a: broker unavailable");
-        verify(instanceProvider).countTopics("1");
+        verify(instanceProvider).countTopics("inst-a");
         verify(instanceRepository).findByIdentifier("inst-b");
-        verify(instanceProvider).countTopics("2");
-        verify(instanceProvider).countGroups("2");
+        verify(instanceProvider).countTopics("inst-b");
+        verify(instanceProvider).countGroups("inst-b");
         verify(instanceRepository).deleteById(2L);
     }
 
@@ -1017,7 +1017,7 @@ class InstanceServiceTest {
         when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenThrow(new IllegalStateException(oversizedMessage));
+        when(instanceProvider.countTopics("inst-a")).thenThrow(new IllegalStateException(oversizedMessage));
         ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
         BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
@@ -1042,8 +1042,8 @@ class InstanceServiceTest {
         when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(0);
-        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceProvider.countTopics("inst-a")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-a")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
         ReflectionTestUtils.setField(instanceService, "self", instanceService);
 
@@ -1071,8 +1071,8 @@ class InstanceServiceTest {
         existing.setId(1L);
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(2);
-        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceProvider.countTopics("with-topics")).thenReturn(2);
+        when(instanceProvider.countGroups("with-topics")).thenReturn(0);
 
         assertThatThrownBy(() -> instanceService.deleteInstance(1L))
                 .isInstanceOf(BusinessException.class)
@@ -1080,6 +1080,48 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById(1L);
+    }
+
+    @Test
+    void deleteInstanceShouldResolveResourceCountsByInstanceNameTest() {
+        // findByIdentifier resolves a unique name before the numeric-id fallback, so a name that
+        // looks like another instance's id would shadow it. The guard holds the already-resolved
+        // instance and must pass its canonical name, not the numeric id as a string.
+        InstanceVO existing = InstanceVO.builder().name("with-topics").build();
+        existing.setId(1L);
+
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("with-topics")).thenReturn(2);
+        when(instanceProvider.countGroups("with-topics")).thenReturn(0);
+
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete instance with managed resources: topics=2, consumerGroups=0");
+
+        verify(instanceProvider).countTopics("with-topics");
+        verify(instanceProvider).countGroups("with-topics");
+        verify(instanceProvider, never()).countTopics("1");
+        verify(instanceRepository, never()).deleteById(1L);
+    }
+
+    @Test
+    void listInstancesShouldResolveResourceCountsByInstanceNameTest() {
+        // Same shadowing contract for the list counts: the numeric id string must not be sent
+        // through the name-first identifier resolution.
+        InstanceVO apache = InstanceVO.builder().name("42").build();
+        apache.setId(3L);
+        when(instanceRepository.findAll()).thenReturn(List.of(apache));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("42")).thenReturn(3);
+        when(instanceProvider.countGroups("42")).thenReturn(2);
+
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+
+        assertThat(result.get(0).getTopicCount()).isEqualTo(3);
+        assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
+        verify(instanceProvider, never()).countTopics("3");
+        verify(instanceProvider, never()).countGroups("3");
     }
 
     @Test
@@ -1091,8 +1133,8 @@ class InstanceServiceTest {
         existing.setId(1L);
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(0);
-        when(instanceProvider.countGroups("1")).thenReturn(3);
+        when(instanceProvider.countTopics("with-consumer-groups")).thenReturn(0);
+        when(instanceProvider.countGroups("with-consumer-groups")).thenReturn(3);
 
         assertThatThrownBy(() -> instanceService.deleteInstance(1L))
                 .isInstanceOf(BusinessException.class)
@@ -1161,8 +1203,8 @@ class InstanceServiceTest {
                 .instanceIds(List.of("to-delete", "inst-2")).build();
         when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
-        when(instanceProvider.countTopics("1")).thenReturn(0);
-        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceProvider.countTopics("to-delete")).thenReturn(0);
+        when(instanceProvider.countGroups("to-delete")).thenReturn(0);
         when(instanceRepository.deleteById(1L)).thenReturn(true);
         when(settingsRepository.findAllDataSources()).thenReturn(List.of(dataSource));
         when(settingsRepository.replaceDataSource(dataSource)).thenReturn(true);
