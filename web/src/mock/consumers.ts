@@ -36,7 +36,7 @@ export interface ConsumerGroup {
   onlineInstances: number;
   totalLag: number;
   subscribedTopics: string[];
-  subscriptionDataType: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION';
+  subscriptionDataType: 'NORMAL' | 'FIFO' | 'DELAY' | 'TRANSACTION' | 'LITE';
   deliveryOrderType?: 'PARTITON_ORDER' | 'MESSAGES_ORDER';
   retryMaxTimes: number;
   gmtCreate: string;
