@@ -364,10 +364,18 @@ public class MybatisPlusAclRepository implements AclRepository {
         String defaultGroupPerm = null;
         for (AclRuleVO rule : userRules) {
             String actions = joinNormalizedCsv(rule.getActions());
+            // A rule whose action list was cleared carries no permission: concatenating the absent
+            // list would fabricate the literal string "null" (or a blank right-hand side) as a
+            // permission entry, which the write path then re-persists as a real permission. The
+            // DEFAULT_* branches below already collapse an absent action list to "not configured".
             if ("Topic".equals(rule.getResourceType())) {
-                topicPerms.add(rule.getResource() + "=" + actions);
+                if (StringUtils.hasText(actions)) {
+                    topicPerms.add(rule.getResource() + "=" + actions);
+                }
             } else if ("Group".equals(rule.getResourceType())) {
-                groupPerms.add(rule.getResource() + "=" + actions);
+                if (StringUtils.hasText(actions)) {
+                    groupPerms.add(rule.getResource() + "=" + actions);
+                }
             } else if ("Cluster".equals(rule.getResourceType()) && "*".equals(rule.getResource())) {
                 if ("DEFAULT_TOPIC".equals(rule.getResourcePattern())) {
                     defaultTopicPerm = actions;

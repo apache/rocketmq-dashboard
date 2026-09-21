@@ -505,6 +505,35 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void examineShouldSkipTopicPermissionsWhoseActionListIsEmpty() {
+        RmqAclUser user = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret-a-value"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(user));
+        // A rule can lose its action list: replaceRule/documented clearColumn path clears the
+        // column, and /api/acl/rules/create accepts a payload without actions.
+        RmqAclRule cleared = plainRuleEntity("svc-a", "orders", "Topic", null);
+        RmqAclRule granted = plainRuleEntity("svc-a", "payments", "Topic", "SUB");
+        when(ruleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(cleared, granted));
+
+        AclClusterConfigVO config = repository.examineBrokerClusterAclConfig("cluster-a");
+
+        PlainAccessConfigVO account = config.getAccounts().get(0);
+        assertThat(account.getTopicPerms()).containsExactly("payments=SUB");
+    }
+
+    @Test
+    void examineShouldSkipGroupPermissionsWhoseActionListIsBlank() {
+        RmqAclUser user = userEntity(1L, "svc-a", CredentialUtils.encodeBase64("secret-a-value"));
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(user));
+        RmqAclRule blank = plainRuleEntity("svc-a", "cg-order", "Group", "   ");
+        RmqAclRule granted = plainRuleEntity("svc-a", "cg-payment", "Group", "SUB");
+        when(ruleMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(blank, granted));
+
+        AclClusterConfigVO config = repository.examineBrokerClusterAclConfig("cluster-a");
+
+        PlainAccessConfigVO account = config.getAccounts().get(0);
+        assertThat(account.getGroupPerms()).containsExactly("cg-payment=SUB");
+    }
+    @Test
     void plainAccessUpsertShouldRejectDuplicateAccessKeys() {
         RmqAclUser first = userEntity(1L, "svc-duplicate", CredentialUtils.encodeBase64("secret-a"));
         RmqAclUser second = userEntity(2L, "svc-duplicate", CredentialUtils.encodeBase64("secret-b"));
