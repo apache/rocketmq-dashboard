@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "30a907ada71734e87305982bcf29a3ff7c6f3ae050a2211f06e87c11b0424e2d",
+	Digest:               "36db4406da0fcc5cdd0c3b3e34ef3c6c253c6db84fa489c9a3e798887710909b",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -214,6 +214,24 @@ var defaultDocument = Document{
 				},
 			},
 			ViewHint: "object",
+		},
+		{
+			Name:                 "rmq.client.list",
+			CLI:                  CLI{Resource: "client", Verb: "list"},
+			Description:          "List online client connections (producers and consumers) registered on the selected Instance. Optional filters: physical cluster name, client type, and a case-insensitive substring search over clientId, group/topic, producer group and address. Rows kept from an incomplete lookup carry partial=true; absent optional fields mean the connection query could not report them, never that the client is unhealthy.",
+			RiskLevel:            "L1",
+			Permission:           "client:read",
+			RequiredCapabilities: []string{"REMOTING"},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "clusterId", Flag: "cluster-id", Description: "Physical cluster name filter.", Kind: StringField, MinLength: 1},
+					{Name: "type", Flag: "type", Description: "Client type filter.", Kind: StringField, Enum: []string{"Producer", "Consumer"}},
+					{Name: "search", Flag: "search", Description: "Case-insensitive substring filter on clientId, group/topic, producer group and address.", Kind: StringField, MinLength: 1},
+				},
+			},
+			ViewHint:     "table",
+			TableDataKey: "items",
 		},
 		{
 			Name:                 "rmq.cluster.list",

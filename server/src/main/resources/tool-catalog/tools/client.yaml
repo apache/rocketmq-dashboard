@@ -1,0 +1,89 @@
+version: 2.0.0
+tools:
+  - name: rmq.client.list
+    cli:
+      resource: client
+      verb: list
+    description: "List online client connections (producers and consumers) registered on the selected Instance. Optional filters: physical cluster name, client type, and a case-insensitive substring search over clientId, group/topic, producer group and address. Rows kept from an incomplete lookup carry partial=true; absent optional fields mean the connection query could not report them, never that the client is unhealthy."
+    riskLevel: L1
+    permission: client:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        clusterId:
+          type: string
+          description: Physical cluster name filter.
+          minLength: 1
+        type:
+          description: Client type filter.
+          enum:
+            - Producer
+            - Consumer
+        search:
+          type: string
+          description: Case-insensitive substring filter on clientId, group/topic, producer group and address.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - clientId
+              - type
+              - address
+              - partial
+            additionalProperties: false
+            properties:
+              clientId:
+                type: string
+                minLength: 1
+              type:
+                enum:
+                  - Producer
+                  - Consumer
+              groupOrTopic:
+                type: string
+              producerGroup:
+                type: string
+              protocol:
+                enum:
+                  - gRPC
+                  - Remoting
+              address:
+                type: string
+              language:
+                enum:
+                  - Java
+                  - Go
+                  - Python
+                  - Rust
+                  - Cpp
+                  - CSharp
+                  - NodeJS
+                  - PHP
+              version:
+                type: string
+              connectedAt:
+                type: string
+                description: ISO-8601 local date-time when known.
+              partial:
+                type: boolean
+              clusterName:
+                type: string
+    viewHint: table
+    deprecated: false

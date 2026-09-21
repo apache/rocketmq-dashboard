@@ -33,6 +33,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclUserItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.AlertRuleListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.client.ClientItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
@@ -140,6 +141,12 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(
                 new AlertRuleListItem(1L, "consumer-lag", "consumer.lag.total", ">",
                         1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert")))));
+
+        samples.put("rmq.client.list", List.of(new ListOutput<>(List.of(
+                new ClientItem("10.0.0.1@1234", "Consumer", "group-a", null, "Remoting",
+                        "10.0.0.1:5678", "Java", "442", "2026-09-21T10:00", false, "rmq-a"),
+                new ClientItem("10.0.0.2@5678", "Producer", "orders", "pg-orders", null,
+                        "10.0.0.2:9999", null, null, null, true, null)))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
