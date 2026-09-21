@@ -243,11 +243,13 @@ class MetadataServiceTest {
 
     @Test
     void redeliverMessageShouldRefuseATruncatedSourcePropertySetTest() {
+        // The flag is true AND a visible user property carries an abbreviated value: the
+        // user-property set really is incomplete, so the redelivery must be refused.
         MessageRecordVO original = MessageRecordVO.builder()
                 .msgId("msg-original")
                 .topic("orders")
                 .body("payload")
-                .properties(Map.of("tenant", "alpha"))
+                .properties(Map.of("tenant", "alpha..."))
                 .propertiesTruncated(true)
                 .build();
         when(messageService.queryMessages(
@@ -261,6 +263,90 @@ class MetadataServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowATruncatedFlagCausedOnlyBySystemPropertiesTest() {
+        // propertiesTruncated is computed over the raw map including broker system keys, but
+        // redelivery discards system keys anyway: with no visible user property abbreviated,
+        // the user-property set is intact and the redelivery must go through.
+        Map<String, String> properties = new HashMap<>();
+        properties.put(MessageConst.PROPERTY_KEYS, "order-1");
+        properties.put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "uniq");
+        properties.put(MessageConst.PROPERTY_REAL_TOPIC, "orders");
+        properties.put("tenant", "alpha");
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(properties)
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties()).containsExactlyEntriesOf(Map.of("tenant", "alpha"));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowAnIntactUserPropertySetBeyondTheDisplayCapTest() {
+        // 64 broker system-key entries fill the display cap; the two user properties that fit
+        // stay complete (none abbreviated), so the redelivery is not refused.
+        Map<String, String> properties = new HashMap<>();
+        for (String key : MessageConst.STRING_HASH_SET) {
+            properties.put(key, "v");
+        }
+        properties.put("tenant", "alpha");
+        properties.put("region", "cn-hangzhou");
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(properties)
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha", "region", "cn-hangzhou"));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowNonSystemPropertiesWhoseValuesEndInEllipsisTest() {
+        // A complete user value can legitimately end in "...": without propertiesTruncated the
+        // abbreviation marker alone must never refuse a redelivery.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(Map.of("tenant", "alpha..."))
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties()).containsExactlyEntriesOf(Map.of("tenant", "alpha..."));
     }
 
     @Test
