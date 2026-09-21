@@ -2552,6 +2552,11 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Please input a new NameServer address',
   },
   'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
+  'ops.unavailableTitle': { zh: '运行时配置不可用', en: 'Runtime configuration unavailable' },
+  'ops.unavailableDescription': {
+    zh: '当前集群不支持读取或更新 Ops 配置。',
+    en: 'This cluster does not support reading or updating Ops configuration.',
+  },
 
   // ─── Alert Management ───
   'alertMgmt.title': { zh: '告警规则管理', en: 'Alert Management' },
@@ -2617,6 +2622,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
   // ─── Alert rule templates ───
   'alertAssets.title': { zh: '业务告警', en: 'Business Alerts' },
+  'alertAssets.subtitle': {
+    zh: '可复用的业务告警规则模板资产',
+    en: 'Reusable business alert rule template assets',
+  },
   'alertAssets.name': { zh: '名称', en: 'Name' },
   'alertAssets.group': { zh: '规则组', en: 'Group' },
   'alertAssets.ruleCount': { zh: '规则数', en: 'Rules' },
