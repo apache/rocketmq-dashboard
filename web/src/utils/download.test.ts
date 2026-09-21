@@ -16,7 +16,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCsv, downloadBlob } from './download';
+import { buildCsv, downloadBlob, downloadCsv } from './download';
 describe('buildCsv', () => {
   it('escapes quotes, empty values, and spreadsheet formulas', () => {
     const csv = buildCsv(
@@ -36,9 +36,41 @@ describe('buildCsv', () => {
         '"Name","Remark"',
         '"\'=SUM(A1:A2)","hello, ""mq"""',
         '"\'\nline-feed",""',
-        '"\'\'=literal","\'\'\'+two-apostrophes"',
+        "\"''=literal\",\"'''+two-apostrophes\"",
       ].join('\n'),
     );
+  });
+});
+
+describe('downloadCsv', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('prefixes a UTF-8 BOM so spreadsheet apps detect the encoding', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:csv');
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const csv = '"Name","Remark"\n"topic-a","中文备注"';
+
+    downloadCsv('export.csv', csv);
+
+    const blob = createObjectURL.mock.calls[0][0];
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    // blob.text() strips a leading BOM (TextDecoder's default), so assert the raw bytes:
+    // EF BB BF is the UTF-8 encoding of U+FEFF. Without it Excel decodes the file as
+    // ANSI/GBK and garbles every non-ASCII cell.
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    expect(await blob.text()).toBe(csv);
   });
 });
 
