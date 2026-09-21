@@ -156,6 +156,58 @@ class MessageServiceTest {
     }
 
     @Test
+    void auditsDirectConsumeFailureWhenConsumeResultIsNotSuccessTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.consumeMessageDirectly(request)).thenReturn(DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_ROLLBACK").build());
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit);
+
+        service.consumeMessageDirectly(request);
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void auditsDirectConsumeFailureWhenProviderThrowsTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.consumeMessageDirectly(request)).thenThrow(new IllegalStateException("client offline"));
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit);
+
+        assertThatThrownBy(() -> service.consumeMessageDirectly(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("client offline");
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.eq("client offline"));
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
     void rejectsOverflowingTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
