@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
@@ -72,7 +73,7 @@ func (a *App) Execute(args []string) int {
 	cmd.SetIn(a.In)
 	cmd.SetOut(a.Out)
 	cmd.SetErr(a.Err)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signalContext()
 	defer stop()
 	if len(args) == 0 {
 		_ = cmd.Help()
@@ -83,4 +84,12 @@ func (a *App) Execute(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// signalContext catches SIGTERM in addition to os.Interrupt: MCP hosts stop
+// stdio servers with SIGTERM, and the stdio proxy only runs its deferred
+// session Close (DELETE /api/mcp) when the command context is cancelled —
+// the default kill disposition would leave the session registered server-side.
+func signalContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
