@@ -306,12 +306,20 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void updateTopicShouldRejectBlankName() throws Exception {
+
         mockMvc.perform(post("/api/topics/update")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\" \"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));
+
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"orders\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("writeQueues is required"));
 
         verifyNoInteractions(metadataService);
     }
