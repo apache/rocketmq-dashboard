@@ -18,10 +18,11 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Selects the CLI agent provider (claude code / qoder) for the configured engine.
@@ -32,30 +33,17 @@ public class AgentProviderRegistry {
     private final Map<String, AgentProvider> providers;
 
     public AgentProviderRegistry(List<AgentProvider> providerList) {
-        Map<String, AgentProvider> registered = new LinkedHashMap<>();
-        for (AgentProvider provider : providerList) {
-            String engine = normalizeEngine(provider.engine());
-            if (engine.isEmpty()) {
-                throw new IllegalStateException("Agent provider engine is required");
-            }
-            if (registered.putIfAbsent(engine, provider) != null) {
-                throw new IllegalStateException("Duplicate agent provider engine: " + engine);
-            }
-        }
-        this.providers = Map.copyOf(registered);
+        this.providers = providerList.stream()
+                .collect(Collectors.toMap(AgentProvider::engine, Function.identity()));
     }
 
     public AgentProvider forEngine(String engine) {
-        AgentProvider provider = providers.get(normalizeEngine(engine));
+        AgentProvider provider = providers.get(engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT));
         if (provider == null) {
             throw new LlmGatewayException(400, "llm.config.unsupported_engine",
                     "Agent engine is not supported: " + engine,
                     "Use one of: claude-code, qoder.");
         }
         return provider;
-    }
-
-    private static String normalizeEngine(String engine) {
-        return engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT);
     }
 }

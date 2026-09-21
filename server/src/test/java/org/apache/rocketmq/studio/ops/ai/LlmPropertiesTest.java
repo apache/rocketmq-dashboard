@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LlmPropertiesTest {
 
     @Test
-    void toStringShouldNotExposeTheProviderToken() {
+    void toStringShouldNotExposeTheProviderTokenTest() {
         LlmProperties properties = new LlmProperties();
         properties.setToken("studio-llm-provider-token");
         properties.setAnthropicBaseUrl("https://llm.example");
