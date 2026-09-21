@@ -27,8 +27,11 @@ rocketmq-web）。启动 Studio 前可用
 
 共享环境可复制 `deploy/.env.example` 为 `deploy/.env`，设置
 `STUDIO_AUTH_LOGIN_REQUIRED=true`，并配置 `STUDIO_AUTH_ADMIN_USERNAME` /
-`STUDIO_AUTH_ADMIN_PASSWORD` 开启登录保护。登录接口仅接受已配置用户；
-关闭登录保护只会跳过本地开发场景下的 API 拦截。
+`STUDIO_AUTH_ADMIN_PASSWORD` 开启登录保护。这里配置的账号只是引导种子：
+针对空数据库的首次登录会把配置的用户写入 `rmq_studio_user` 表，此后数据库
+才是账号与账号状态的唯一来源。管理员可以在用户管理页维护账号（创建用户、
+启用/停用、重置密码）；浏览器使用 `HttpOnly` 会话 Cookie 认证，API 客户端
+可显式换取 bearer token。关闭登录保护只会跳过本地开发场景下的 API 拦截。
 
 ## 界面预览
 
