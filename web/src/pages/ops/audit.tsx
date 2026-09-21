@@ -362,6 +362,12 @@ const AuditPage: React.FC = () => {
       render: (_: string, record) => {
         const target = record.target;
         if (!target?.trim()) return <Text type="secondary">-</Text>;
+        const openTimeline = () =>
+          setTimelineResource({
+            resourceType: record.resourceType,
+            target,
+            clusterId: record.clusterId || null,
+          });
         return (
           <Tooltip title={describeAuditRecord(record, t)}>
             <Text
@@ -370,13 +376,13 @@ const AuditPage: React.FC = () => {
               tabIndex={0}
               aria-label={t('audit.timelineView', { target })}
               style={{ fontSize: 14, cursor: 'pointer' }}
-              onClick={() =>
-                setTimelineResource({
-                  resourceType: record.resourceType,
-                  target,
-                  clusterId: record.clusterId || null,
-                })
-              }
+              onClick={openTimeline}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  openTimeline();
+                }
+              }}
             >
               {target}
             </Text>
