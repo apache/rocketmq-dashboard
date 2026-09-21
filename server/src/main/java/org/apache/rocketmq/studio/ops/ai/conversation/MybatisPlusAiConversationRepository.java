@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -77,6 +78,17 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
     @Override
     public void update(RmqAiConversation conversation) {
         conversationMapper.updateById(conversation);
+    }
+
+    @Override
+    public void clearRuntimeSessionId(Long id) {
+        if (id == null) {
+            return;
+        }
+        // updateById skips null fields, so "forget this value" has to name the column itself.
+        conversationMapper.update(null, new UpdateWrapper<RmqAiConversation>()
+                .eq("id", id)
+                .set("runtime_session_id", null));
     }
 
     @Override

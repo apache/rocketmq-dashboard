@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.springframework.stereotype.Component;
@@ -180,7 +181,8 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
      * <p>A non-zero exit is only an error when the CLI never produced its terminal {@code result}
      * frame. When it did, the frame already said what happened — {@code error_max_turns}, an
      * {@code api_error_status}, a permission denial — and the parser turned it into events, so
-     * throwing here would replace a precise diagnosis with a generic one.
+     * throwing here would replace a precise diagnosis with a generic one. The single exception is a
+     * {@code --resume} session that no longer exists: see {@link #throwIfTheResumeSessionWasLost}.
      */
     @Override
     public void streamEvents(LlmConfigVO config, AgentStreamOptions options, Consumer<AgentEvent> sink) {
@@ -199,11 +201,32 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         SpawnResult spawn = spawn(command, childEnv(config, options), timeoutSeconds,
                 options.getWorkspaceDir(), line -> parser.parseLine(line).forEach(sink),
                 options.getProcessSink());
+        throwIfTheResumeSessionWasLost(options, parser, spawn);
         if (spawn.exitCode() != 0 && !parser.resultFrameSeen()) {
             throw new LlmGatewayException(502, "llm.provider.cli_error",
                     BINARY + " CLI failed: " + describeStderr(spawn.stderr()),
                     "Check the provider credentials, base URL, model name and the resume session id.");
         }
+    }
+
+    /**
+     * Reports the one failure a caller can repair by retrying: the conversation's {@code --resume}
+     * session is gone. The frames have already said so, so this adds no diagnosis — what the caller
+     * cannot know on its own is that the retry has to drop {@code --resume}, and the command is built
+     * here. {@link ResumeRecovery} holds the contract.
+     *
+     * <p>Both halves of the signal are needed: the stderr line is a human-readable string a CLI
+     * upgrade may reword, and {@code error_during_execution} also reports failures no retry can fix.
+     */
+    private void throwIfTheResumeSessionWasLost(AgentStreamOptions options,
+                                                ClaudeCodeStreamParser parser, SpawnResult spawn) {
+        if (!ResumeRecovery.shouldRetryWithoutResume(StringUtils.hasText(options.getResumeSessionId()),
+                spawn.exitCode(), parser.resultSubtype(), spawn.stderr())) {
+            return;
+        }
+        throw new LlmGatewayException(502, ResumeRecovery.RESUME_LOST_CODE,
+                "the session conversation resumed no longer exists: " + describeStderr(spawn.stderr()),
+                "The turn is retried once without --resume; the earlier turns' context is lost.");
     }
 
     /**

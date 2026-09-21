@@ -45,6 +45,12 @@ public interface AiConversationRepository {
 
     void update(RmqAiConversation conversation);
 
+    /**
+     * Forgets the remembered {@code --resume} session id. A method of its own because {@link #update}
+     * writes non-null fields only, so it cannot express "forget this value".
+     */
+    void clearRuntimeSessionId(Long id);
+
     int deleteById(Long id);
 
     /** Ids created strictly before the cutoff, oldest first, capped at limit. */

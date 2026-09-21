@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
@@ -273,6 +274,81 @@ class AiRunExecutorTest {
     }
 
     @Test
+    void aFailedResultFrameShouldNotPersistTheSessionIdItEchoesBackTest() {
+        // A failed frame carries the session id that was *requested*, not a live one: the parser says so
+        // in as many words. Persisting it would point the next turn at a session that does not exist.
+        provider.emit(new AgentEvent.ResultMeta("echoed-session", 12L, 1, 2, "error_max_turns"));
+
+        startAndRun();
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getRuntimeSessionId()).isNull();
+        assertThat(conversation.getRuntimeSessionId()).isNull();
+    }
+
+    @Test
+    void aLostResumeSessionShouldBeForgottenAndTheTurnRetriedWithoutResumeTest() {
+        List<String> resumedSessions = new CopyOnWriteArrayList<>();
+        conversation.setRuntimeSessionId("gone-session");
+        // The measured shape of a stale --resume: exit 1, one error_during_execution result frame with
+        // the dead id echoed back, and the stderr line naming the session.
+        provider.emit(new AgentEvent.ResultMeta("gone-session", null, null, null, "error_during_execution"));
+        provider.failure = new LlmGatewayException(502, ResumeRecovery.RESUME_LOST_CODE,
+                "the session conversation resumed no longer exists", "Retried without --resume.");
+        provider.beforeStream = options -> {
+            resumedSessions.add(options.getResumeSessionId());
+            if (provider.calls > 1) {
+                provider.scripted.clear();
+                provider.failure = null;
+                provider.emit(new AgentEvent.TextDelta("fresh answer"));
+                provider.emit(new AgentEvent.ResultMeta("new-session", 30L, 5, 6,
+                        AgentEventProjector.SUCCESS_SUBTYPE));
+            }
+        };
+
+        startAndRun("gone-session");
+
+        // The repair is a second attempt at the same turn, and it is the whole repair: no --resume on it.
+        assertThat(provider.calls).isEqualTo(2);
+        assertThat(resumedSessions).containsExactly("gone-session", null);
+        assertThat(provider.lastPrompt).isEqualTo("hello");
+        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        // The retry's session replaces the dead one, and the user is told the context is gone.
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runRow().getRuntimeSessionId()).isEqualTo("new-session");
+        assertThat(conversation.getRuntimeSessionId()).isEqualTo("new-session");
+        assertThat(types()).containsExactly("user", "error", "notice", "text", "run_status");
+        // Exactly one terminal reached the wire: the retry's, not one per attempt.
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+    }
+
+    @Test
+    void aRetryThatFailsTooShouldStillLeaveTheDeadSessionIdForgottenTest() {
+        conversation.setRuntimeSessionId("gone-session");
+        provider.emit(new AgentEvent.ResultMeta("gone-session", null, null, null, "error_during_execution"));
+        provider.failure = new LlmGatewayException(502, ResumeRecovery.RESUME_LOST_CODE,
+                "the session conversation resumed no longer exists", "Retried without --resume.");
+        provider.beforeStream = options -> {
+            if (provider.calls > 1) {
+                provider.scripted.clear();
+                provider.failure = new LlmGatewayException(504, "llm.provider.timeout",
+                        "claude CLI stream timed out after 300s", "Retry with a shorter prompt.");
+                provider.emit(new AgentEvent.TextDelta("partial"));
+            }
+        };
+
+        startAndRun("gone-session");
+
+        // A retry that fails must not put the dead id back: every turn after it would otherwise resume a
+        // session that is still gone. Null is the honest state, and the next turn starts fresh.
+        assertThat(provider.calls).isEqualTo(2);
+        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getRuntimeSessionId()).isNull();
+        assertThat(conversation.getRuntimeSessionId()).isNull();
+    }
+
+    @Test
     void anUnexpectedProviderFailureShouldNotLeaveTheRunNonTerminalTest() {
         provider.failure = new IllegalStateException("provider exploded");
 
@@ -469,11 +545,19 @@ class AiRunExecutorTest {
         executor.submit(context(ENGINE, enhance));
     }
 
+    private void startAndRun(String resumeSessionId) {
+        executor.submit(context(ENGINE, false, resumeSessionId));
+    }
+
     private AiRunExecutor.RunContext context(String engine) {
         return context(engine, false);
     }
 
     private AiRunExecutor.RunContext context(String engine, boolean enhance) {
+        return context(engine, enhance, null);
+    }
+
+    private AiRunExecutor.RunContext context(String engine, boolean enhance, String resumeSessionId) {
         AgentRunHandle handle = executor.newHandle(RUN_ID);
         AiEventSink sink = executor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
         session = executor.newSession(RUN_ID, executor.streamTimeoutMillis(engine));
@@ -483,7 +567,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         return new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(engine).model("qwen3.8-max").enabled(true).build(),
-                engine, "hello", null, enhance, Duration.ofSeconds(300), null);
+                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null);
     }
 
     private List<String> types() {
