@@ -100,6 +100,7 @@ const ChatThread = ({
   const positionedRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const [unread, setUnread] = useState(0);
+  const prevBubbleCountRef = useRef(bubbles.length);
 
   const bubbleCount = bubbles.length + (liveBlocks && liveBlocks.length > 0 ? 1 : 0);
 
@@ -149,8 +150,12 @@ const ChatThread = ({
   }, [bubbles, followToBottom, liveBlocks]);
 
   // Count what arrives while the reader is away: one per message, not one per streamed token.
+  // Only a genuine increase in bubble count is a new message — a streaming failure that removes
+  // the live bubble must not inflate the badge.
   useEffect(() => {
-    if (atBottomRef.current) return;
+    const previous = prevBubbleCountRef.current;
+    prevBubbleCountRef.current = bubbleCount;
+    if (atBottomRef.current || bubbleCount <= previous) return;
     setUnread((count) => count + 1);
   }, [bubbleCount]);
 
