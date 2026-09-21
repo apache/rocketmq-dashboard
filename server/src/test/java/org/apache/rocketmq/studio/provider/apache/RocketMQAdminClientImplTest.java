@@ -409,6 +409,58 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void previewResetOffsetShouldPreserveUnknownCurrentLagTest() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        stats.getOffsetTable().put(queue, offsetWrapper(100L, 120L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        ClusterInfo clusterInfo = clusterInfoWithMaster();
+        clusterInfo.getBrokerAddrTable().values().iterator().next().setBrokerName("broker-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(adminExt.minOffset(queue)).thenReturn(0L);
+        when(adminExt.maxOffset(queue)).thenReturn(200L);
+        when(adminExt.searchOffset("10.0.0.1:10911", "orders", 0, timestamp, 3_000L)).thenReturn(80L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(20L);
+        assertThat(preview.getQueues()).singleElement().satisfies(row -> {
+            assertThat(row.getCurrentLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(row.getProjectedLag()).isEqualTo(20L);
+        });
+        assertThat(preview.getWarnings())
+                .contains("At least one queue has unavailable lag; affected backlog totals are unavailable");
+    }
+
+    @Test
+    void previewResetOffsetShouldPreserveUnknownProjectedLagTest() throws Exception {
+        long timestamp = 1784246400000L;
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        stats.getOffsetTable().put(queue, offsetWrapper(100L, 80L));
+        when(adminExt.examineConsumeStats("cg-orders")).thenReturn(stats);
+        ClusterInfo clusterInfo = clusterInfoWithMaster();
+        clusterInfo.getBrokerAddrTable().values().iterator().next().setBrokerName("broker-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(adminExt.minOffset(queue)).thenReturn(0L);
+        when(adminExt.maxOffset(queue)).thenReturn(200L);
+        when(adminExt.searchOffset("10.0.0.1:10911", "orders", 0, timestamp, 3_000L)).thenReturn(120L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(20L);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(preview.getQueues()).singleElement().satisfies(row -> {
+            assertThat(row.getCurrentLag()).isEqualTo(20L);
+            assertThat(row.getProjectedLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        });
+    }
+
+    @Test
     void previewResetOffsetShouldMarkFailedQueuesIncomplete() throws Exception {
         long timestamp = 1784246400000L;
         ConsumeStats stats = new ConsumeStats();
