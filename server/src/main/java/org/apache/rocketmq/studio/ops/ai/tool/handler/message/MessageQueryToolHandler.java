@@ -17,18 +17,14 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-
-import java.util.List;
 
 /**
  * Unified message query: the first non-empty identifier among msgId, uniqueKey and key (in this
@@ -37,7 +33,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class MessageQueryToolHandler
-        implements ToolHandler<MessageQueryInput, ListOutput<MessageItem>> {
+        implements ToolHandler<MessageQueryInput, MessageQueryOutput> {
 
     private final MessageService messageService;
 
@@ -52,22 +48,24 @@ public class MessageQueryToolHandler
     }
 
     @Override
-    public ListOutput<MessageItem> execute(MessageQueryInput input, ToolExecutionContext context) {
+    public MessageQueryOutput execute(MessageQueryInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
-        List<MessageRecordVO> messages;
+        int limit = input.resultLimit();
         if (StringUtils.hasText(input.msgId())) {
-            messages = messageService.queryMessages(
-                    instanceId, input.topicName(), input.msgId(), null, null, null, null);
+            return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
+                    instanceId, input.topicName(), input.msgId(), null, null, null, null,
+                    1, limit), input.includeBody());
         } else if (StringUtils.hasText(input.uniqueKey())) {
-            messages = messageService.queryMessageByUniqueKey(
-                    instanceId, input.topicName(), input.uniqueKey(), input.startTime(), input.endTime());
+            return MessageQueryOutput.fromUniqueKey(messageService.queryMessageByUniqueKey(
+                    instanceId, input.topicName(), input.uniqueKey(), input.startTime(), input.endTime()),
+                    limit, input.includeBody());
         } else if (StringUtils.hasText(input.key())) {
-            messages = messageService.queryMessages(
+            return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
                     instanceId, input.topicName(), null, null, input.key(),
-                    input.startTime(), input.endTime());
+                    input.startTime(), input.endTime(), 1, limit),
+                    input.includeBody());
         } else {
             throw new BusinessException(400, "message query requires one of: msgId, uniqueKey, key");
         }
-        return new ListOutput<>(messages.stream().map(MessageItem::from).toList());
     }
 }

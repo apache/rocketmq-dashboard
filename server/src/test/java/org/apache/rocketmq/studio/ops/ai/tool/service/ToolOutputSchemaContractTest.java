@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceCapabilitiesOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryOutput;
@@ -285,8 +286,18 @@ class ToolOutputSchemaContractTest {
         MessageItem message = new MessageItem(
                 "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
                 "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
-        samples.put("rmq.message.query", List.of(new ListOutput<>(List.of(message))));
-        samples.put("rmq.message.query_by_topic", List.of(new ListOutput<>(List.of(message))));
+        MessageQueryOutput.Item withoutBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", null, null, null, 5);
+        MessageQueryOutput.Item withBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
+        samples.put("rmq.message.query", List.of(
+                new MessageQueryOutput(List.of(withoutBody), false, 0),
+                new MessageQueryOutput(List.of(withBody), false, 0)));
+        samples.put("rmq.message.query_by_topic", List.of(
+                new MessageQueryOutput(List.of(withoutBody), true, 199),
+                new MessageQueryOutput(List.of(withBody), true, 199)));
         samples.put("rmq.message.query_by_offset", List.of(new ListOutput<>(List.of(message))));
         samples.put("rmq.message.query_dlq", List.of(
                 MessageQueryDlqOutput.ofGroups(INSTANCE, 1, 20, 1L, List.of(
