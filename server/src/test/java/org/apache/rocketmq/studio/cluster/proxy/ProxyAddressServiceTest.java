@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -388,4 +389,43 @@ class ProxyAddressServiceTest {
         verify(clusterService, times(2)).listProxiesForInstance("prod-apache");
     }
 
+    @Test
+    void buildTopologyShouldProbeBracketedIpv6ProxyByItsBareAddressLiteral() {
+        proxyAddressService.addProxyAddr("[2001:db8::1]:8081");
+        List<String> probedHosts = new ArrayList<>();
+        // An address literal is resolvable only without the URI brackets: probing "[2001:db8::1]"
+        // fails name resolution and reports a reachable IPv6 proxy as down.
+        when(healthProbe.probe(anyString(), anyInt(), anyInt())).thenAnswer(invocation -> {
+            String host = invocation.getArgument(0);
+            probedHosts.add(host);
+            return "2001:db8::1".equals(host)
+                    ? ProxyHealthProbe.ProbeResult.reachable(1L)
+                    : ProxyHealthProbe.ProbeResult.unreachable();
+        });
+
+        List<ProxyTopologyVO> topology = proxyAddressService.buildTopology();
+
+        assertThat(probedHosts).contains("2001:db8::1").doesNotContain("[2001:db8::1]");
+        assertThat(topology)
+                .filteredOn(entry -> "[2001:db8::1]:8081".equals(entry.getProxyAddr()))
+                .singleElement()
+                .satisfies(entry -> {
+                    assertThat(entry.getStatus()).isEqualTo("UP");
+                    assertThat(entry.isGrpcReachable()).isTrue();
+                });
+    }
+
+    @Test
+    void instancePreviewShouldProbeBracketedIpv6ProxyByItsBareAddressLiteral() {
+        when(clusterService.listProxiesForInstance("prod-apache"))
+                .thenReturn(List.of(ProxyVO.builder().addr("[2001:db8::1]:8080")
+                        .grpcPort(8081).remotingPort(8080).build()));
+
+        ProxyTopologyVO preview = proxyAddressService.previewReloadForInstance("prod-apache",
+                "[2001:db8::1]:8080");
+
+        assertThat(preview.getGrpcPort()).isEqualTo(8081);
+        verify(healthProbe).probe(eq("2001:db8::1"), eq(8081), anyInt());
+        verify(healthProbe).probe(eq("2001:db8::1"), eq(8080), anyInt());
+    }
 }
