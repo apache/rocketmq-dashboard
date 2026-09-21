@@ -282,6 +282,38 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('clears the profile error and renders the panels again after a later load succeeds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listMetricProfiles).mockRejectedValueOnce(new Error('profiles unavailable'));
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+
+    expect(await screen.findByText('指标模板加载失败')).toBeInTheDocument();
+
+    // Switching the instance re-runs the profiles effect; this time it succeeds, so the
+    // error banner must clear and the explorer panels must come back.
+    vi.mocked(listMetricProfiles).mockResolvedValue(profiles);
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('指标模板加载失败')).not.toBeInTheDocument();
+    expect(screen.queryByText('Failed to load metric profiles')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '指标模板' }));
+    await user.click(
+      await screen.findByText('RocketMQ 4.x Exporter', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    expect(await screen.findByText('Consumer Lag Messages')).toBeInTheDocument();
+  });
+
   it('renders one panel per metric in the selected profile', async () => {
     vi.mocked(listMetricProfiles).mockResolvedValue([
       {
