@@ -195,10 +195,11 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                               String operationType, String resourceType, String target,
                               String clusterId, boolean clusterIdMissing,
                               LocalDateTime startDate, LocalDateTime endDate, String result) {
+        String pattern = escapeLike(search);
         query.and(StringUtils.hasText(search), w -> w
-                        .like("operator", search)
-                        .or().like("resource_name", search)
-                        .or().like("detail", search))
+                        .like("operator", pattern)
+                        .or().like("resource_name", pattern)
+                        .or().like("detail", pattern))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
                 .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
                 .eq(StringUtils.hasText(target), "resource_name", target)
@@ -207,6 +208,17 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .ge(startDate != null, "gmt_create", startDate)
                 .le(endDate != null, "gmt_create", endDate)
                 .eq(StringUtils.hasText(result), "result", result);
+    }
+
+    /**
+     * Escapes LIKE wildcards so a user-supplied search term matches literally instead of being
+     * interpreted as a {@code %}/{@code _} pattern.
+     */
+    private static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Override

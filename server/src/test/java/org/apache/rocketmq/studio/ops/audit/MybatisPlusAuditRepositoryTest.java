@@ -343,6 +343,45 @@ class MybatisPlusAuditRepositoryTest {
         }
     }
 
+    @Test
+    void findPageShouldEscapeLikeWildcardsInTheSearchTermTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage("a%b_c\\d", null, null, null, null, false,
+                null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqOperationAudit> query = (QueryWrapper<RmqOperationAudit>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("operator LIKE", "resource_name LIKE", "detail LIKE");
+        assertThat(query.getParamNameValuePairs().values()).containsOnly("%a\\%b\\_c\\\\d%");
+    }
+
+    @Test
+    void summarizeShouldEscapeLikeWildcardsInTheSearchTermTest() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of());
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        repository.summarize("50%_off", null, null, null, null, null, null);
+
+        List<Wrapper<RmqOperationAudit>> queries = new java.util.ArrayList<>();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> mapsCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper, times(4)).selectMaps(mapsCaptor.capture());
+        queries.addAll(mapsCaptor.getAllValues());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> listCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectList(listCaptor.capture());
+        queries.add(listCaptor.getValue());
+
+        for (Wrapper<RmqOperationAudit> captured : queries) {
+            QueryWrapper<RmqOperationAudit> query = (QueryWrapper<RmqOperationAudit>) captured;
+            assertThat(query.getSqlSegment()).contains("operator LIKE", "resource_name LIKE", "detail LIKE");
+            assertThat(query.getParamNameValuePairs().values()).containsOnly("%50\\%\\_off%");
+        }
+    }
+
     /** Builds a {@code Map<String, Object>} row so mocked result maps keep an explicit type. */
     private static Map<String, Object> row(Object... keyValues) {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
