@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -49,15 +50,15 @@ class MessageSendToolHandlerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"{", "[]", "{\"nested\":{\"key\":\"value\"}}"})
-    void malformedPropertiesFailDuringPreviewAndExecution(String properties) {
+    void malformedPropertiesFailDuringPreviewAndExecutionTest(String properties) {
         givenTopicType(TopicType.NORMAL);
         MessageSendInput request = new MessageSendInput("instance-a", "TopicA", "hello", null, null,
                 null, null, properties);
 
         assertThatThrownBy(() -> handler.preview(request, context("instance-a")))
-                .isInstanceOf(org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException.class);
+                .isInstanceOf(ToolExecutionException.class);
         assertThatThrownBy(() -> handler.execute(request, context("instance-a")))
-                .isInstanceOf(org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException.class);
+                .isInstanceOf(ToolExecutionException.class);
         verify(metadata, never()).sendMessage(any(SendMessageDTO.class));
     }
 
