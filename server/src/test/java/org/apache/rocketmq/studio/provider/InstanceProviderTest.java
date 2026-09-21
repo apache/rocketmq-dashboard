@@ -17,6 +17,9 @@
 package org.apache.rocketmq.studio.provider;
 
 import java.util.Arrays;
+import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.junit.jupiter.api.Test;
@@ -43,5 +46,31 @@ public class InstanceProviderTest {
         assertThat(result.getTotal()).isEqualTo(2);
         assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    public void listConsumerGroupsPageShouldFilterBeforePaginationTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO pushA = consumerGroup("push-a", SubscriptionMode.Push);
+        ConsumerGroupVO pop = consumerGroup("pop", SubscriptionMode.Pop);
+        ConsumerGroupVO pushB = consumerGroup("push-b", null);
+        when(provider.listConsumerGroups("instance-a", "orders"))
+                .thenReturn(Arrays.asList(pushA, pop, pushB));
+        when(provider.listConsumerGroupsPage("instance-a", null, "orders", "Push", 2, 1))
+                .thenCallRealMethod();
+
+        PageResult<ConsumerGroupVO> result =
+                provider.listConsumerGroupsPage("instance-a", null, "orders", "Push", 2, 1);
+
+        assertThat(result.getItems()).extracting(ConsumerGroupVO::getName)
+                .containsExactly("push-b");
+        assertThat(result.getTotal()).isEqualTo(2);
+    }
+
+    private static ConsumerGroupVO consumerGroup(String name, SubscriptionMode mode) {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName(name);
+        group.setSubscriptionMode(mode);
+        return group;
     }
 }

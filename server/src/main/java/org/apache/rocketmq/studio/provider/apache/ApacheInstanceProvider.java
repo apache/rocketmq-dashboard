@@ -136,13 +136,20 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
-        return metadataProvider.listConsumerGroupsPage(instanceId, null, search, page, pageSize);
+        return listConsumerGroupsPage(instanceId, null, search, null, page, pageSize);
     }
 
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
-        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, subscriptionMode,
+                page, pageSize);
     }
 
     @Override

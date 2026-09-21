@@ -309,7 +309,38 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
       search: undefined,
+      subscriptionMode: undefined,
     });
+  });
+
+  it('requests the first server page when the subscription mode changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) =>
+      groupPage([{ ...group, name: `page-${params?.page ?? 1}` }], {
+        total: 21,
+        page: params?.page ?? 1,
+      }),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('page-1');
+    await user.click(await findInteractivePageItem('.ant-pagination-item-2'));
+    expect(await screen.findByText('page-2')).toBeInTheDocument();
+
+    await user.click(screen.getByText('全部模式'));
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        subscriptionMode: 'Pop',
+      }),
+    );
   });
 
   it('clears selected consumer groups when the search scope changes', async () => {

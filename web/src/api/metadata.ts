@@ -175,6 +175,7 @@ export interface ConsumerGroupQuery {
 }
 
 export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
+  subscriptionMode?: string;
   page?: number;
   pageSize?: number;
 }

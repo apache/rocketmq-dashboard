@@ -51,6 +51,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerInstanceVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.group.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -252,6 +253,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
@@ -261,12 +268,22 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
+        applySubscriptionMode(query, SubscriptionModeFilters.normalize(subscriptionMode));
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
                 .map(this::toConsumerGroupVO)
                 .toList();
         enrichLiveStats(instanceId, groups);
         return PageResult.of(groups, result.getTotal(), page, pageSize);
+    }
+
+    private void applySubscriptionMode(LambdaQueryWrapper<RmqGroup> query, String subscriptionMode) {
+        if (SubscriptionMode.Pop.name().equals(subscriptionMode)) {
+            query.eq(RmqGroup::getMessageModel, SubscriptionMode.Pop.name());
+        } else if (SubscriptionMode.Push.name().equals(subscriptionMode)) {
+            query.and(wrapper -> wrapper.isNull(RmqGroup::getMessageModel)
+                    .or().ne(RmqGroup::getMessageModel, SubscriptionMode.Pop.name()));
+        }
     }
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;

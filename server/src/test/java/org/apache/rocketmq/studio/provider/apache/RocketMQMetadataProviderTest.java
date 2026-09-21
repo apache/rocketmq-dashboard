@@ -258,6 +258,28 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldFilterSubscriptionModeInDatabaseTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 0);
+        databasePage.setRecords(List.of());
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listConsumerGroupsPage("instance-a", null, null, "Pop", 1, 20);
+        provider.listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20);
+
+        org.mockito.ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(2)).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getAllValues().get(0).getSqlSegment())
+                .contains("message_model =")
+                .doesNotContain("message_model IS NULL");
+        assertThat(captor.getAllValues().get(1).getSqlSegment())
+                .contains("message_model IS NULL", "message_model <>");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);

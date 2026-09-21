@@ -47,6 +47,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.group.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
@@ -367,14 +368,20 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
+        String normalizedMode = SubscriptionModeFilters.normalize(subscriptionMode);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
-            return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
-                    normalizeFilter(search), page, pageSize);
+            return metadataProvider.listConsumerGroupsPage(null, normalizeFilter(clusterId),
+                    normalizeFilter(search), normalizedMode, page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
-                normalizeFilter(search), page, pageSize);
+                normalizeFilter(search), normalizedMode, page, pageSize);
     }
 
 
@@ -673,9 +680,7 @@ public class MetadataService {
         if (!selectedNames.isEmpty()) {
             groups.removeIf(group -> !selectedNames.contains(group.getName()));
         }
-        if (StringUtils.hasText(subscriptionMode) && !"ALL".equals(subscriptionMode)) {
-            groups.removeIf(group -> !subscriptionMode.equals(toText(group.getSubscriptionMode())));
-        }
+        groups = new ArrayList<>(SubscriptionModeFilters.filter(groups, subscriptionMode));
 
         groups.sort(this::compareNames);
         return buildConsumerGroupCsv(groups);

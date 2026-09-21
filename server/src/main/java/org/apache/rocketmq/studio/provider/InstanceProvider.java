@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetQueuePreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.group.SubscriptionModeFilters;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
@@ -104,12 +105,7 @@ public interface InstanceProvider {
 
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
-        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search);
-        int total = groups.size();
-        long offset = Pagination.pageOffset(page, pageSize);
-        int from = (int) Math.min(offset, total);
-        int to = from + (int) Math.min(pageSize, total - from);
-        return PageResult.of(groups.subList(from, to), total, page, pageSize);
+        return listConsumerGroupsPage(instanceId, null, search, null, page, pageSize);
     }
 
     /**
@@ -118,7 +114,18 @@ public interface InstanceProvider {
      */
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
-        return listConsumerGroupsPage(instanceId, search, page, pageSize);
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        List<ConsumerGroupVO> groups = SubscriptionModeFilters.filter(
+                listConsumerGroups(instanceId, search), subscriptionMode);
+        int total = groups.size();
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
+        return PageResult.of(groups.subList(from, to), total, page, pageSize);
     }
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
