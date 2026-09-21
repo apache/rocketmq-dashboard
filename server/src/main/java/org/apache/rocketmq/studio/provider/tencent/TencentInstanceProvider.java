@@ -222,11 +222,15 @@ public class TencentInstanceProvider implements InstanceProvider {
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeTopicListResponse response = describeTopics(context, type, search, offset, PAGE_SIZE);
             TopicItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("topic", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             topics.addAll(toTopics(data, instanceId, context, enrichTimes));
-            if (hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount()) || data.length < PAGE_SIZE) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
@@ -280,12 +284,20 @@ public class TencentInstanceProvider implements InstanceProvider {
         return topics;
     }
 
-    private static boolean hasFetchedAll(long offset, int pageSize, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && offset + pageSize >= totalCount;
+    private static void requireCompletePage(String resource, long offset, int returned, Long totalCount) {
+        if (totalCount != null && totalCount >= 0L
+                && returned < PAGE_SIZE && offset + returned < totalCount) {
+            throw new BusinessException(502,
+                    "Tencent Cloud returned an incomplete " + resource + " page");
+        }
     }
 
-    private static boolean hasFetchedAll(long fetched, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && fetched >= totalCount;
+    private static boolean hasFetchedAll(long offset, int returned, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + returned >= totalCount;
+    }
+
+    private static boolean isUnknownTotalCount(Long totalCount) {
+        return totalCount == null || totalCount < 0L;
     }
 
     private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
@@ -429,7 +441,10 @@ public class TencentInstanceProvider implements InstanceProvider {
             DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeConsumerGroupList(request));
             ConsumeGroupItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("consumer group", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             for (ConsumeGroupItem item : data) {
@@ -444,7 +459,8 @@ public class TencentInstanceProvider implements InstanceProvider {
                     groups.add(group);
                 }
             }
-            if (data.length < PAGE_SIZE || hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount())) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
@@ -987,7 +1003,6 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private List<SubscriptionData> listTopicSubscriptionsByGroup(Context context, String groupName) {
         List<SubscriptionData> all = new ArrayList<>();
-        long fetched = 0L;
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeTopicListByGroupRequest request = new DescribeTopicListByGroupRequest();
             request.setInstanceId(context.cloudInstanceId());
@@ -997,12 +1012,15 @@ public class TencentInstanceProvider implements InstanceProvider {
             DescribeTopicListByGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeTopicListByGroup(request));
             SubscriptionData[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("consumer group subscription", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
-            fetched += data.length;
             all.addAll(Arrays.asList(data));
-            if (data.length < PAGE_SIZE || hasFetchedAll(fetched, response.getTotalCount())) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }

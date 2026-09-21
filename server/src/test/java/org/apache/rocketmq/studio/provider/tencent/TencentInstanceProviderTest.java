@@ -214,6 +214,18 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listTopicsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setTotalCount(2L);
+        response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void listTopicsShouldMapAndFilterAndEnrichTimesTest() throws Exception {
         TopicItem normal = topicItem("orders", "NORMAL", 8L);
         TopicItem fifo = topicItem("orders-fifo", "FIFO", 4L);
@@ -563,6 +575,20 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_partial");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount(2L);
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void listConsumerGroupsShouldClampOversizedRetryCounts() throws Exception {
         ConsumeGroupItem item = new ConsumeGroupItem();
         item.setConsumerGroup("GID_test");
@@ -702,6 +728,18 @@ class TencentInstanceProviderTest {
                 .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
         assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
         assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setTotalCount(2L);
+        response.setData(new SubscriptionData[]{subscription("orders")});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
