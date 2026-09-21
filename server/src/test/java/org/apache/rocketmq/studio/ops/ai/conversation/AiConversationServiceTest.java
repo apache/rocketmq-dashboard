@@ -224,6 +224,16 @@ class AiConversationServiceTest {
         assertThat(AiConversationService.deriveTitle("   ")).isEqualTo(AiConversationService.DEFAULT_TITLE);
         assertThat(AiConversationService.deriveTitle(null)).isEqualTo(AiConversationService.DEFAULT_TITLE);
         assertThat(AiConversationService.capTitle("y".repeat(600))).hasSize(512);
+        // The cap is counted in code points. A rocket is two UTF-16 chars, so a char-counted cut at 40
+        // or 512 lands between its surrogates and stores half a character, which is not a code point.
+        String rocket = "\uD83D\uDE80";
+        assertThat(AiConversationService.deriveTitle("a".repeat(39) + rocket + "tail"))
+                .isEqualTo("a".repeat(39) + rocket);
+        assertThat(AiConversationService.capTitle("b".repeat(511) + rocket + "tail"))
+                .isEqualTo("b".repeat(511) + rocket);
+        // A title made only of astral characters is capped at the same budget, not at half of it.
+        assertThat(AiConversationService.deriveTitle(rocket.repeat(60)))
+                .isEqualTo(rocket.repeat(40));
     }
 
     // --- timeline --------------------------------------------------------------
