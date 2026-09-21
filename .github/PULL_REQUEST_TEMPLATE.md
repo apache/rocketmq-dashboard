@@ -1,4 +1,4 @@
-<!-- Make sure the base branch is `master`: that is the RocketMQ Studio trunk. -->
+<!-- Make sure the base branch is `rocketmq-studio`: that is the RocketMQ Studio trunk. -->
 
 ### Which Issue(s) This PR Fixes
 
