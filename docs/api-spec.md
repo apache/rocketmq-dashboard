@@ -319,22 +319,22 @@ GET /api/instances?type={type}&search={keyword}
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | `string` | 否 | 按类型过滤: `PROXY`（全部 Proxy）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
+| `type` | `string` | 否 | 按类型过滤: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
 
 **Response `data`:** `Instance[]`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 实例 ID |
+| `id` | `number` | 实例 ID |
 | `name` | `string` | 实例名称 |
 | `remark` | `string` | 备注 |
-| `type` | `string` | 接入类型: `PROXY`（兼容值）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
+| `type` | `string` | 接入类型: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
 | `topicCount` | `number` | Topic 数量 |
 | `consumerGroupCount` | `number` | 消费组数量 |
-| `createdAt` | `string` | 创建时间 |
-| `updatedAt` | `string` | 更新时间 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 
 ### 3.2 创建实例
 
@@ -347,7 +347,7 @@ POST /api/instances/create
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | Apache 实例使用 `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
+| `type` | `string` | 是 | Apache 实例使用 `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例，手工创建会被拒绝 |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
@@ -364,7 +364,7 @@ POST /api/instances/update
 |------|------|------|------|
 | `id` | `string` | 是 | 实例 ID |
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
+| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例 |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
