@@ -590,6 +590,38 @@ class AclServiceTest {
     }
 
     @Test
+    void getUserCredentialsShouldAuditTheRevealedSecretWithoutRecordingIt() {
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+
+        AclUserVO revealed = aclService.getUserCredentials("1", null);
+
+        assertThat(revealed.getSecretKey()).isEqualTo("secret-key-987654");
+        verify(operationAuditService).record(eq("REVEAL_ACL_USER_CREDENTIALS"), eq("ACL_USER"), eq("1"),
+                eq(null), argThat((String detail) -> !detail.contains("secret-key-987654")
+                        && !detail.contains("access-key-123456")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void getUserCredentialsShouldAuditTheSecretRevealedThroughTheTencentPath() {
+        InstanceVO tencent = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencent));
+        when(tencentAclService.getUserCredentials("tencent-instance", "1")).thenReturn(existingUser);
+
+        AclUserVO revealed = aclService.getUserCredentials("1", "tencent-instance");
+
+        assertThat(revealed.getSecretKey()).isEqualTo("secret-key-987654");
+        verify(operationAuditService).record(eq("REVEAL_ACL_USER_CREDENTIALS"), eq("ACL_USER"), eq("1"),
+                eq(null), argThat((String detail) -> detail.contains("tencent-instance")
+                        && !detail.contains("secret-key-987654")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
     void updateUserShouldRejectBlankUsernameWithoutSaving() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
         input.setId("1");
