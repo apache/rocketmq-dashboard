@@ -116,6 +116,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  // ─── Shared mini charts ───
+  'charts.noTrendData': { zh: '暂无趋势数据', en: 'No trend data yet' },
+  'charts.trendData': { zh: '趋势数据：{values}', en: 'Trend: {values}' },
   'dashboardTraffic.title': { zh: '流量洞察', en: 'Traffic Insights' },
   'dashboardTraffic.activeClusters': { zh: '活跃集群', en: 'Active Clusters' },
   'dashboardTraffic.topClusterShare': { zh: '最高流量占比', en: 'Top Traffic Share' },
