@@ -196,6 +196,74 @@ class MetadataServiceTest {
     }
 
     @Test
+    void redeliverMessageShouldRefuseATruncatedSourceBodyTest() {
+        // The message explorer hands out a display projection whose body stops at 64 KiB; publishing
+        // that projection as the redelivered payload drops the rest of the source message.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("x".repeat(65536))
+                .bodyEncoding("UTF-8")
+                .bodyTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", "orders-copy"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("truncated")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseABase64SourceBodyTest() {
+        // A binary body is projected as Base64 text; republishing that text stores different bytes.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("AAECAwQ=")
+                .bodyEncoding("BASE64")
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("binary")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseATruncatedSourcePropertySetTest() {
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(Map.of("tenant", "alpha"))
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("properties")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
     void redeliverMessageShouldRejectBlankGroupNameTest() {
         assertThatThrownBy(() -> metadataService.redeliverMessage(
                 "instance-a", " ", "orders", "msg-original", null))

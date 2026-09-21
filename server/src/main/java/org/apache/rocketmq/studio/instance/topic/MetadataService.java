@@ -300,6 +300,7 @@ public class MetadataService {
     public SendMessageVO redeliverMessage(String instanceId, String groupName, MessageRecordVO original,
                                           String targetTopic) {
         String group = requireName(groupName, "group name");
+        requireExactSourceMessage(original);
         String destination = StringUtils.hasText(targetTopic)
                 ? targetTopic.trim()
                 : MixAll.getRetryTopic(group);
@@ -312,6 +313,27 @@ public class MetadataService {
                 .properties(redeliveryProperties(original.getProperties()))
                 .build();
         return sendMessage(request);
+    }
+
+    /**
+     * A source loaded by {@link #findMessageForRedelivery} is the message explorer's display
+     * projection, not the stored record: the body stops at {@code MAX_BODY_DISPLAY_BYTES}, a binary
+     * body is replaced by Base64 text, and the property map is capped. Publishing that projection
+     * stores different bytes and silently drops properties, so a lossy source is refused instead.
+     */
+    private static void requireExactSourceMessage(MessageRecordVO original) {
+        if (original.isBodyTruncated()) {
+            throw new BusinessException(409,
+                    "Source message body is truncated for display and cannot be redelivered exactly");
+        }
+        if ("BASE64".equalsIgnoreCase(original.getBodyEncoding())) {
+            throw new BusinessException(409,
+                    "Source message body is binary and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated()) {
+            throw new BusinessException(409,
+                    "Source message properties are truncated for display and cannot be redelivered exactly");
+        }
     }
 
     /** Drops the system-reserved keys {@code Message.putUserProperty} would reject (§15.5.1 KEYS defect). */
