@@ -659,12 +659,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(502, "No broker available to update consumer group settings");
                 }
                 totalBrokers = brokerAddrs.size();
-                SubscriptionGroupConfig applied = null;
+                Map<String, SubscriptionGroupConfig> configsByBroker = new LinkedHashMap<>();
                 for (String brokerAddr : brokerAddrs) {
                     SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddr, name);
                     if (config == null) {
                         throw new BusinessException(404, "Consumer group not found: " + name);
                     }
+                    configsByBroker.put(brokerAddr, config);
+                }
+                SubscriptionGroupConfig applied = null;
+                for (Map.Entry<String, SubscriptionGroupConfig> entry : configsByBroker.entrySet()) {
+                    String brokerAddr = entry.getKey();
+                    SubscriptionGroupConfig config = entry.getValue();
                     config.setRetryQueueNums(command.retryQueueNums());
                     config.setRetryMaxTimes(command.retryMaxTimes());
                     if (command.consumeEnable() != null) {
