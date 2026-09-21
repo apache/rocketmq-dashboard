@@ -418,6 +418,32 @@ describe('AiPage', () => {
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('检查集群状态');
   });
 
+  it('keepsTheComposerClearedWhenAnAdmittedStreamFailsTest', async () => {
+    // The other side of "a refused send gives the draft back": a stream that already delivered a
+    // frame WAS admitted, so a failure mid-answer must not resurrect the prompt as if nothing had
+    // been sent (this one pins the boundary; it also passes before the fix).
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: '检查集群状态',
+        turn: 1,
+      });
+      handlers.onEvent({ type: 'text_delta', content: '部分回答' });
+      throw new Error('AI stream idle for more than 30s');
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('检查集群状态');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByTestId('ai-run-error')).toHaveTextContent(
+      'AI stream idle for more than 30s',
+    );
+    expect(input).toHaveValue('');
+  });
+
   it('doesNotAdmitASecondSendWhileOneIsInFlightTest', async () => {
     vi.mocked(openRunStream).mockReturnValue(new Promise(() => {}));
     renderRouted('/ai/c/7');
