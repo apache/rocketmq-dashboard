@@ -341,6 +341,10 @@ const DLQPage = () => {
     setDetailGroup(group);
     setDetailOpen(true);
     setDetailPage(1);
+    // The drawer now belongs to another group: its rows, and the total the export and the
+    // pagination are driven by, must not survive from the group that was open before.
+    setDetailMessages([]);
+    setDetailTotal(0);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
     void loadDetailMessages(group, 1, detailPageSize);
