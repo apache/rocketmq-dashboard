@@ -146,13 +146,20 @@ export function formatBytes(bytes: number, decimals = 1): string {
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const k = 1024;
+  const digits = safeDecimals(decimals);
   let i = 0;
   let value = Math.abs(bytes);
   while (value >= k && i < units.length - 1) {
     value /= k;
     i += 1;
   }
-  return `${value.toFixed(safeDecimals(decimals))} ${units[i]}`;
+  // The unit is chosen from the unrounded value, so a value just below a boundary used to render
+  // as 1024.0 KB - a mantissa of 1024 that the loop above exists to avoid.
+  while (i < units.length - 1 && Number(value.toFixed(digits)) >= k) {
+    value /= k;
+    i += 1;
+  }
+  return `${value.toFixed(digits)} ${units[i]}`;
 }
 
 /**
