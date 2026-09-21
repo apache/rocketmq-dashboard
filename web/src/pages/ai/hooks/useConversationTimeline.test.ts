@@ -213,4 +213,31 @@ describe('useConversationTimeline', () => {
     expect(result.current.bubbles).toEqual([]);
     expect(result.current.lastSeq).toBe(0);
   });
+
+  it('doesNotReportThePreviousConversationsActiveRunTest', async () => {
+    let resolveSecond: (value: AiTimelineVO) => void = () => {};
+    timelineMock.mockImplementation((id) =>
+      id === 7
+        ? Promise.resolve(page([], null, { id: 41, status: 'RUNNING' }))
+        : new Promise<AiTimelineVO>((resolve) => {
+            resolveSecond = resolve;
+          }),
+    );
+
+    const { result, rerender } = render(7);
+
+    await waitFor(() => expect(result.current.activeRun).toEqual({ id: 41, status: 'RUNNING' }));
+
+    // The refetch is asynchronous, so for a commit the last successful load is still conversation 7's.
+    // Reporting it as the run of conversation 9 is what let a switch attach the previous
+    // conversation's run, whose frames then rendered under the wrong transcript.
+    rerender({ id: 9 });
+    expect(result.current.activeRun).toBeNull();
+
+    await act(async () => {
+      resolveSecond(page([], null, { id: 77, status: 'RUNNING' }));
+    });
+
+    await waitFor(() => expect(result.current.activeRun).toEqual({ id: 77, status: 'RUNNING' }));
+  });
 });
