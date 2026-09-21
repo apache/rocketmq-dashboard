@@ -303,6 +303,58 @@ describe('DLQ page', () => {
     expect(screen.getByRole('button', { name: /导出全部/ })).toBeDisabled();
   });
 
+  it('clears the previous group messages while the next detail load is in flight', async () => {
+    let resolveSecondDetail!: (page: DLQMessagePage) => void;
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'order-dead-letter-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 11,
+            storeTime: 1_700_000_000_000,
+            keys: 'order-1',
+            body: 'dead',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<DLQMessagePage>((resolve) => {
+            resolveSecondDetail = resolve;
+          }),
+      );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    expect(await screen.findByText('order-dead-letter-1')).toBeInTheDocument();
+
+    const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
+    if (!paymentRow) throw new Error('second DLQ group row not found');
+    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+
+    // the drawer already belongs to the second group while its request is still open: the first
+    // group's rows and the total that enables the export must be gone before the response lands
+    expect(await screen.findByText('DLQ 消息明细 · -cg-"payment"')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /导出全部/ })).toBeDisabled());
+    expect(screen.queryByText('order-dead-letter-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 1 条消息')).not.toBeInTheDocument();
+
+    await act(async () => resolveSecondDetail({ items: [], total: 0, page: 1, size: 20 }));
+  });
+
   it('does not let an old-instance detail resend overwrite the new instance drawer', async () => {
     let resolveResend!: (result: DLQResendResult) => void;
     let resolveSecondDetail!: (page: DLQMessagePage) => void;
