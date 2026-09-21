@@ -119,6 +119,18 @@ class MultiBackendMetricsSourceTest {
     }
 
     @Test
+    void armsBearerAuthenticationSendsTheRawToken() {
+        // ARMS V1 token auth matches the Authorization header exactly; a "Bearer " prefix
+        // breaks it — the Aliyun ARMS HTTP API docs specify Authorization: {Token} (raw).
+        assertArmsAuthorization("bearer", "token", "token");
+    }
+
+    @Test
+    void prometheusBearerAuthenticationKeepsTheBearerPrefix() {
+        assertAuthorization("bearer", "user", "password", "token", "Bearer token");
+    }
+
+    @Test
     void authenticationModeShouldRejectMissingRequiredCredentials() {
         assertAuthenticationFailure("basic", "user", null, null,
                 "Prometheus basic authentication is incomplete");
@@ -156,6 +168,35 @@ class MultiBackendMetricsSourceTest {
                     assertThat(exception.getStatusCode()).isEqualTo(503);
                     assertThat(exception.getMessage()).isEqualTo(message);
                 });
+    }
+
+    private void assertArmsAuthorization(String authType, String bearerToken,
+                                         String expectedAuthorization) {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        server.createContext(MetricsBackendType.ARMS.getQueryPath(), exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {"status":"success","data":{"resultType":"matrix","result":[]}}
+                    """);
+        });
+
+        MetricsSourceSettings settings = MetricsSourceSettings.builder()
+                .backendType(MetricsBackendType.ARMS)
+                .baseUrl(baseUrl)
+                .authType(authType)
+                .bearerToken(bearerToken)
+                .build();
+        new ArmsMetricsSource(restClientBuilder, objectMapper, settings) {
+            @Override
+            protected void validateQueryHost(String url) {
+                if (url != null && url.startsWith(baseUrl)) {
+                    return;
+                }
+                super.validateQueryHost(url);
+            }
+        }.query(query());
+
+        assertThat(authorization.get()).isEqualTo(expectedAuthorization);
     }
 
     private MetricsSource loopbackPrometheusSource(MetricsDataSourceConfig config) {
