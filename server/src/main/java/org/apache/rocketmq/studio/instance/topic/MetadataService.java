@@ -141,8 +141,8 @@ public class MetadataService {
             return metadataProvider.listTopicsPage(normalizeFilter(clusterId),
                     normalizeFilter(type), normalizeFilter(search), page, pageSize);
         }
-        return resolve(instanceId).listTopicsPage(instanceId, normalizeFilter(type),
-                normalizeFilter(search), page, pageSize);
+        return resolve(instanceId).listTopicsPage(instanceId, normalizeFilter(clusterId),
+                normalizeFilter(type), normalizeFilter(search), page, pageSize);
     }
 
 
@@ -373,8 +373,8 @@ public class MetadataService {
             return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
                     normalizeFilter(search), page, pageSize);
         }
-        return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(search),
-                page, pageSize);
+        return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
+                normalizeFilter(search), page, pageSize);
     }
 
 
