@@ -847,8 +847,73 @@ describe('AlertsPage', () => {
   });
 
   it('stays on the page after a bulk delete clears a full page while more pages remain', async () => {
-    // 41 rules in total: page 1 holds the 20 seeded rules, page 2 holds the 21st. Deleting the
-    // full second page must refresh the same page (40 rules remain) instead of stepping back.
+    // 45 rules in total: page 2 holds a full page of 20 rules (ids 21-40). Deleting that full
+    // page leaves 25 rules across 2 pages, so page 2 is still valid and the view must refresh
+    // it in place instead of stepping back to page 1.
+    const buildRules = (from: number, count: number, name: (index: number) => string) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...cloneRule(alertRules[index % alertRules.length]),
+        id: from + index,
+        name: name(index),
+      }));
+    const pageOneRules = buildRules(1, 20, (index) => `Page one rule ${index + 1}`);
+    const pageTwoRules = buildRules(21, 20, (index) => `Second page rule ${index + 1}`);
+    const remainingAfterDelete = pageTwoRules.slice(0, 5);
+    vi.mocked(listAlertRulesPage).mockClear();
+    let deleteRequested = false;
+    vi.mocked(bulkDeleteAlertRules).mockImplementation(async () => {
+      deleteRequested = true;
+      return {
+        succeededIds: pageTwoRules.map((rule) => rule.id),
+        failures: {},
+        updatedRules: [],
+      };
+    });
+    vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, params) => {
+      const page = params?.page ?? 1;
+      if (page === 2) {
+        // After the delete, page 2 still holds five rules and the refreshed total is 25.
+        return {
+          items: deleteRequested ? remainingAfterDelete : pageTwoRules,
+          total: deleteRequested ? 25 : 45,
+          page: 2,
+          size: 20,
+        };
+      }
+      return {
+        items: pageOneRules,
+        total: 45,
+        page: 1,
+        size: 20,
+      };
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Page one rule 1');
+
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement | null;
+    if (!secondPage) throw new Error('Pagination page 2 not found');
+    await user.click(secondPage);
+    await screen.findByText('Second page rule 1');
+
+    // Select every row of the second page through the header checkbox.
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() =>
+      expect(bulkDeleteAlertRules).toHaveBeenCalledWith(pageTwoRules.map((rule) => rule.id)),
+    );
+    // The view refreshes the same page in place: the refreshed rows (five remainers) replace
+    // the deleted full page and the refreshed total (25) replaces the pre-delete one (45).
+    await screen.findByText('Second page rule 5');
+    expect(screen.queryByText('Second page rule 20')).not.toBeInTheDocument();
+    expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
+  });
+
+  it('clamps to the last valid page when a bulk delete empties the current one', async () => {
+    // 21 rules: page 2 holds only rule 21. Deleting it leaves 20 rules across 1 page, so the
+    // refresh of page 2 comes back empty and the view must clamp to the last valid page (1).
     const secondPageRules = alertRules.slice(0, 1).map((rule) => ({
       ...cloneRule(rule),
       id: 21,
@@ -858,7 +923,8 @@ describe('AlertsPage', () => {
     vi.mocked(listAlertRulesPage)
       .mockResolvedValueOnce({ items: alertRules.map(cloneRule), total: 21, page: 1, size: 20 })
       .mockResolvedValueOnce({ items: secondPageRules, total: 21, page: 2, size: 20 })
-      .mockResolvedValue({ items: secondPageRules, total: 20, page: 2, size: 20 });
+      .mockResolvedValueOnce({ items: [], total: 20, page: 2, size: 20 })
+      .mockResolvedValue({ items: alertRules.map(cloneRule), total: 20, page: 1, size: 20 });
     vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
       succeededIds: [21],
       failures: {},
@@ -881,7 +947,7 @@ describe('AlertsPage', () => {
     await waitFor(() =>
       expect(listAlertRulesPage).toHaveBeenLastCalledWith(
         'CLUSTER',
-        expect.objectContaining({ page: 2 }),
+        expect.objectContaining({ page: 1 }),
       ),
     );
   });
