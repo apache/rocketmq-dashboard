@@ -275,7 +275,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 .toList();
         session.setLiteTopics(new LinkedHashSet<>(liteTopics));
 
-        long pending = groupLag(admin, located.master, group);
+        long pending = sessionGroupLag(admin, located.master, group);
         long consumed = consumedMessages(admin, located.master, group, liteTopics);
         session.setPendingMessages(pending);
         session.setConsumedMessages(consumed);
@@ -317,7 +317,10 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                     consumed += wrapper.getConsumerOffset();
                 }
             } catch (Exception failure) {
-                log.debug("Failed to read lite offset for {}|{}: {}", group, liteTopic, failure.getMessage());
+                restoreInterrupt(failure);
+                throw new BusinessException(502,
+                        "Failed to read LiteTopic consumed offset for " + group + "|" + liteTopic
+                                + ": " + failure.getMessage());
             }
         }
         return consumed;
@@ -519,6 +522,28 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             }
         }
         return null;
+    }
+
+    private long sessionGroupLag(MQAdminExt admin, String brokerAddr, String group) {
+        try {
+            GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, null, 1);
+            if (body == null) {
+                throw new BusinessException(502, "Broker returned no LiteTopic backlog for group " + group);
+            }
+            return Math.max(body.getTotalLagCount(), 0);
+        } catch (BusinessException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            restoreInterrupt(failure);
+            throw new BusinessException(502,
+                    "Failed to read LiteTopic backlog for group " + group + ": " + failure.getMessage());
+        }
+    }
+
+    private static void restoreInterrupt(Exception failure) {
+        if (failure instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private long groupLag(MQAdminExt admin, String brokerAddr, String group) {
