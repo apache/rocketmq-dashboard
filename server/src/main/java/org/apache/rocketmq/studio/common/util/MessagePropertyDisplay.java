@@ -25,7 +25,7 @@ import java.util.Map;
 
 /**
  * Shared rendering limits for message property maps, used by the message explorer and the DLQ
- * drawer so both apply the same {@value #MAX_PROPERTIES}-entry / {@value #MAX_PROPERTY_VALUE_CHARS}-char
+ * drawer so both apply the same {@value #MAX_PROPERTIES}-entry / {@value #MAX_PROPERTY_VALUE_CODE_POINTS}-code-point
  * caps instead of duplicating the logic. {@link #userProperties} additionally drops the broker-set
  * system keys ({@link MessageConst#STRING_HASH_SET}) so a view labelled "user properties" is not
  * crowded out by system entries once the cap and alphabetical ordering are applied.
@@ -33,7 +33,14 @@ import java.util.Map;
 public final class MessagePropertyDisplay {
 
     public static final int MAX_PROPERTIES = 64;
-    public static final int MAX_PROPERTY_VALUE_CHARS = 1024;
+
+    /**
+     * Caps a single property value by code point rather than by UTF-16 {@code char}. The two differ
+     * for supplementary characters (an emoji, a CJK extension character), which occupy two chars:
+     * cutting by char can land between a high and a low surrogate and emit half a character, which
+     * is not a code point and serializes to an invalid JSON escape.
+     */
+    public static final int MAX_PROPERTY_VALUE_CODE_POINTS = 1024;
 
     private MessagePropertyDisplay() {
     }
@@ -65,16 +72,28 @@ public final class MessagePropertyDisplay {
         return limited;
     }
 
-    /** True when any value exceeds {@link #MAX_PROPERTY_VALUE_CHARS} and would be abbreviated. */
+    /**
+     * True when any value exceeds {@link #MAX_PROPERTY_VALUE_CODE_POINTS} code points and would be
+     * abbreviated. Counted in code points for the same reason {@link #abbreviate} cuts on a code
+     * point boundary: counting chars would call a value oversized that {@code abbreviate} leaves
+     * untouched, and the panel would tell the operator a value is abbreviated when it is not.
+     */
     public static boolean hasOversizedProperty(Map<String, String> properties) {
         return properties != null && properties.values().stream()
-                .anyMatch(value -> value != null && value.length() > MAX_PROPERTY_VALUE_CHARS);
+                .anyMatch(value -> value != null && codePointCount(value) > MAX_PROPERTY_VALUE_CODE_POINTS);
     }
 
     private static String abbreviate(String value) {
-        if (value == null || value.length() <= MAX_PROPERTY_VALUE_CHARS) {
+        if (value == null || codePointCount(value) <= MAX_PROPERTY_VALUE_CODE_POINTS) {
             return value;
         }
-        return value.substring(0, MAX_PROPERTY_VALUE_CHARS) + "...";
+        // offsetByCodePoints always lands on a code point boundary, so a supplementary character is
+        // kept whole or dropped whole, never split into a lone surrogate.
+        int end = value.offsetByCodePoints(0, MAX_PROPERTY_VALUE_CODE_POINTS);
+        return value.substring(0, end) + "...";
+    }
+
+    private static int codePointCount(String value) {
+        return value.codePointCount(0, value.length());
     }
 }
