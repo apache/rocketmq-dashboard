@@ -76,9 +76,9 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
         } catch (RuntimeException error) {
             log.warn("Failed to collect cloud consumer lag for instance {}: {}", instance.getName(),
                     error.getMessage());
-            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, Map.of(), collectedAt),
-                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, Map.of(), collectedAt),
-                    unavailable(TOPIC_BACKLOG_TOTAL, instance, Map.of(), collectedAt));
+            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, null, Map.of(), collectedAt),
+                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, null, Map.of(), collectedAt),
+                    unavailable(TOPIC_BACKLOG_TOTAL, instance, null, Map.of(), collectedAt));
         }
     }
 
@@ -104,9 +104,9 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
         } catch (RuntimeException error) {
             log.warn("Failed to collect cloud consumer lag for group {} on instance {}: {}", group.getName(),
                     instance.getName(), error.getMessage());
-            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, labels, collectedAt),
-                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt),
-                    unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt));
+            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), labels, collectedAt));
         }
     }
 
@@ -116,9 +116,16 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
                 MetricAvailability.AVAILABLE, collectedAt);
     }
 
-    private static MetricSample unavailable(String metric, InstanceVO instance, Map<String, String> labels,
-            Instant collectedAt) {
-        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), null, labels, null,
+    /**
+     * Builds an unavailable sample. A per-group sample keeps the group's cluster scope: a rule's
+     * cluster-name selector is matched against the sample's clusterId, and a scope-less sample is
+     * treated as a series that disappeared, so an active alert for that group would be resolved
+     * although its metric is merely unavailable. Only the whole-scope failure marker (empty labels)
+     * is deliberately scope-less.
+     */
+    private static MetricSample unavailable(String metric, InstanceVO instance, String clusterId,
+            Map<String, String> labels, Instant collectedAt) {
+        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), clusterId, labels, null,
                 MetricAvailability.UNAVAILABLE, collectedAt);
     }
 }
