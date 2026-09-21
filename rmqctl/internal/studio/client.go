@@ -37,6 +37,13 @@ const (
 	mcpPath      = "/api/mcp"
 )
 
+// clientResponseBodyLimit caps how much of a Studio response body is read into
+// memory. A Studio Server that streams an unbounded body (a stuck gateway, a
+// misconfigured proxy) would otherwise grow the rmqctl process without limit.
+// Mirrors statusErrorBodyLimit in mcp_http.go. A variable so tests can lower it
+// instead of materializing a full-size body.
+var clientResponseBodyLimit = 32 * 1024 * 1024
+
 type Target struct {
 	Server     string
 	InstanceID string
@@ -133,9 +140,12 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 		return err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
+	data, err := io.ReadAll(io.LimitReader(response.Body, int64(clientResponseBodyLimit)+1))
 	if err != nil {
 		return err
+	}
+	if len(data) > clientResponseBodyLimit {
+		return fmt.Errorf("studio response body exceeds %d bytes", clientResponseBodyLimit)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return responseError(response.StatusCode, data)
