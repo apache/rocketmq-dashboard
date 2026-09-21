@@ -645,8 +645,12 @@ describe('AiPage', () => {
     const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
     await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
 
-    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    // Captured before it takes the loading state: antd folds the spinner into the accessible name,
+    // so a by-name lookup after the click would fail.
+    const runButton = within(dialog).getByRole('button', { name: /执\s*行/ });
+    await user.click(runButton);
     await waitFor(() => expect(executeTool).toHaveBeenCalledTimes(1));
+    expect(runButton).toHaveClass('ant-btn-loading');
 
     // Switch tools while the first call is still in flight: the panel is cleared, so the late
     // response must not repopulate it under the newly selected tool.
@@ -662,6 +666,158 @@ describe('AiPage', () => {
     });
 
     expect(within(dialog).queryByTestId('tool-result')).not.toBeInTheDocument();
+    // Neither the success toast nor a stuck loading state: the discarded request is dropped whole.
+    expect(screen.queryByText('执行成功')).not.toBeInTheDocument();
+    expect(runButton).not.toHaveClass('ant-btn-loading');
+  });
+
+  it('dropsAnInFlightToolResultWhenTheClusterScopeChangesTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listClusters).mockResolvedValue([
+      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listTools).mockResolvedValue([
+      {
+        name: 'rmq.topic.list',
+        description: 'List topics.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+    ]);
+    let resolveExecute!: (value: unknown) => void;
+    vi.mocked(executeTool).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExecute = resolve;
+        }),
+    );
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await waitFor(() => expect(executeTool).toHaveBeenCalledTimes(1));
+
+    // A scope change reloads the catalog and clears the panel, so a response for the previous scope
+    // belongs to a tool selection that is gone.
+    await user.click(within(dialog).getByRole('combobox', { name: '选择集群' }));
+    await user.click(
+      await screen.findByText('全局工具', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith(undefined));
+
+    await act(async () => {
+      resolveExecute({ capabilities: ['GRPC'] });
+    });
+
+    expect(within(dialog).queryByTestId('tool-result')).not.toBeInTheDocument();
+  });
+
+  it('dropsAnInFlightToolResultAfterTheModalIsClosedTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listClusters).mockResolvedValue([
+      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listTools).mockResolvedValue([
+      {
+        name: 'rmq.topic.list',
+        description: 'List topics.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+    ]);
+    let resolveExecute!: (value: unknown) => void;
+    vi.mocked(executeTool).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExecute = resolve;
+        }),
+    );
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await waitFor(() => expect(executeTool).toHaveBeenCalledTimes(1));
+
+    // The dialog keeps its state across a close (no destroyOnHidden), so a response arriving after
+    // the operator closed it must not be waiting in the panel when they open it again.
+    await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const reopened = await screen.findByRole('dialog', { name: 'AI 工具' });
+
+    await act(async () => {
+      resolveExecute({ capabilities: ['GRPC'] });
+    });
+
+    expect(within(reopened).queryByTestId('tool-result')).not.toBeInTheDocument();
+  });
+
+  it('reportsAFailureOnlyWhileItsToolIsStillSelectedTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listClusters).mockResolvedValue([
+      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listTools).mockResolvedValue([
+      {
+        name: 'rmq.topic.list',
+        description: 'List topics.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+      {
+        name: 'rmq.instance.capabilities',
+        description: 'Describe instance capabilities.',
+        parameters: { type: 'object', properties: {} },
+        riskLevel: 'L1',
+        permission: 'cluster:read',
+      },
+    ]);
+    let rejectExecute!: (error: Error) => void;
+    vi.mocked(executeTool)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectExecute = reject;
+          }),
+      )
+      .mockRejectedValueOnce(new Error('second failure'));
+    renderPage();
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await waitFor(() => expect(executeTool).toHaveBeenCalledTimes(1));
+    await user.click(within(dialog).getByRole('combobox', { name: '选择工具' }));
+    await user.click(
+      await screen.findByText('rmq.instance.capabilities', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    // The superseded call fails after the operator moved on: reporting it would describe a tool
+    // nobody is looking at.
+    await act(async () => {
+      rejectExecute(new Error('superseded failure'));
+      await flushFrame();
+    });
+    expect(screen.queryByText('superseded failure')).not.toBeInTheDocument();
+
+    // Control: the same failure on the tool that IS selected is still reported.
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    expect(await screen.findByText('second failure')).toBeInTheDocument();
   });
 
   it('rejectsToolInputThatIsNotAJsonObjectTest', async () => {
