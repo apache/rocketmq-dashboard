@@ -284,6 +284,58 @@ describe('Clients page', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the bare group or topic name in the issues table while roll-ups keep the qualified key', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: 'unknown-proto-a',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        protocol: 'Custom',
+        version: '-',
+        address: '10.0.2.10:49152',
+      },
+      {
+        ...connection,
+        clientId: 'producer-dup',
+        type: 'Producer',
+        groupOrTopic: 'order-events',
+        address: '10.0.1.12:49152',
+      },
+      {
+        ...connection,
+        clientId: 'producer-dup',
+        type: 'Producer',
+        groupOrTopic: 'order-events',
+        address: '10.0.1.12:49152',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('unknown-proto-a');
+    const diagnostics = await screen.findByTestId('client-connection-diagnostics');
+    // The issues table displays the bare group/topic name, not the internal
+    // type-qualified roll-up key.
+    await waitFor(() =>
+      expect(within(diagnostics).queryAllByText('cg-order').length).toBeGreaterThan(0),
+    );
+    expect(within(diagnostics).queryAllByText('order-events').length).toBeGreaterThan(0);
+    // The internal type-qualified roll-up keys never surface as bare cell text.
+    expect(within(diagnostics).queryByText('Consumer:cg-order')).not.toBeInTheDocument();
+    expect(within(diagnostics).queryByText('Producer:order-events')).not.toBeInTheDocument();
+
+    // The resource-summary table keeps the bare name with the type on a second
+    // line, and per-connection issues still roll up onto the right row.
+    const orderRow = within(diagnostics)
+      .getAllByRole('row')
+      .find((row) => within(row).queryByText('cg-order') !== null);
+    expect(orderRow).toBeDefined();
+    expect(within(orderRow!).getByText('Consumer')).toBeInTheDocument();
+    expect(
+      within(orderRow!).getAllByText('3').length,
+    ).toBeGreaterThan(0);
+  });
+
   it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup();
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
