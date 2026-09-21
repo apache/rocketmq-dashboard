@@ -57,7 +57,7 @@ public class ToolMutationFilter implements ToolExecutionFilter {
             if (context.definition().requiresReason()) {
                 verifyL3Requirements(context);
             }
-            tokenService.verify(context);
+            tokenService.verifyAndConsume(context);
         }
 
         ToolPlan plan = invocation.preview();
