@@ -116,7 +116,7 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 };
 
 export const DataSourceTab = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -286,6 +286,9 @@ export const DataSourceTab = () => {
     }
   };
 
+  // The bound instance list is rendered in the table column and written to the exported CSV, so its
+  // separator follows the viewer language: the ideographic comma is Chinese punctuation and made
+  // the English UI read "instance-a、instance-b".
   const formatInstanceIds = (instanceIds: string[] | undefined) => {
     if (!instanceIds?.length) return t('settings.global');
     return instanceIds
@@ -295,7 +298,7 @@ export const DataSourceTab = () => {
             (instance) => instance.name === instanceId || String(instance.id) === instanceId,
           )?.name ?? instanceId,
       )
-      .join('、');
+      .join(lang === 'zh' ? '、' : ', ');
   };
 
   const formatStatus = (status: DataSource['status']) => {
