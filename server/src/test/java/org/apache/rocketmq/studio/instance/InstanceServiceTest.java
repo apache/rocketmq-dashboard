@@ -1106,6 +1106,29 @@ class InstanceServiceTest {
     }
 
     @Test
+    void batchDeleteShouldRouteItsResourceGuardThroughTheCanonicalNameTest() {
+        // The PR contract: batch delete funnels into the same deleteInstance guard, so the
+        // canonical name (not the numeric id string) is what reaches the provider there too.
+        InstanceVO existing = InstanceVO.builder().name("42").build();
+        existing.setId(3L);
+        when(instanceRepository.findByIdentifier("42")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findById(3L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("42")).thenReturn(0);
+        when(instanceProvider.countGroups("42")).thenReturn(0);
+        when(instanceRepository.deleteById(3L)).thenReturn(true);
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("42"));
+
+        assertThat(result.getDeleted()).isEqualTo(1);
+        verify(instanceProvider).countTopics("42");
+        verify(instanceProvider).countGroups("42");
+        verify(instanceProvider, never()).countTopics("3");
+        verify(instanceRepository).deleteById(3L);
+    }
+
+    @Test
     void listInstancesShouldResolveResourceCountsByInstanceNameTest() {
         // Same shadowing contract for the list counts: the numeric id string must not be sent
         // through the name-first identifier resolution.
