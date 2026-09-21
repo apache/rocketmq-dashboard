@@ -29,6 +29,7 @@ import type {
   NameServerConfigDiffResult,
 } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 
 const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
@@ -527,6 +528,9 @@ describe('Cluster page', () => {
 
     await user.click(screen.getByRole('button', { name: /新建 NameServer/ }));
     const dialog = await screen.findByRole('dialog', { name: /新建 NameServer/ });
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'Studio 会从服务器直接连接该地址',
+    );
     await user.type(within(dialog).getByLabelText('名称'), 'rocketmq3');
     await user.type(within(dialog).getByLabelText('NameServer 地址'), 'rocketmq3-nameserver:9876');
     await user.click(within(dialog).getByRole('button', { name: /确\s*认/ }));
@@ -567,6 +571,22 @@ describe('Cluster page', () => {
       expect(clusterServiceMocks.deleteNameserverRegistry).toHaveBeenCalledWith(1),
     );
     confirmSpy.mockRestore();
+  });
+
+  it('localizes the NameServer address guidance', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer/ }));
+    await user.click(screen.getByRole('button', { name: /New NameServer/ }));
+    const dialog = await screen.findByRole('dialog', { name: /New NameServer/ });
+
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'Studio connects to this address directly from the server',
+    );
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'ns1:9876,ns2:9876',
+    );
   });
 
   it('opens NameServer config drift details from a registry row', async () => {
