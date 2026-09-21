@@ -21,6 +21,11 @@ rocketmq-web）。启动 Studio 前可用
 
 启动后访问 **http://127.0.0.1:6789** 即可使用。
 
+默认 schema 只创建 Studio 所需的表，不写入实例、Topic、消费组或 ACL 示例数据。开发用的演示数据需从
+`deploy/mysql/` 显式导入，不属于默认部署的一部分：先导入 `upgrade-demo-instance.sql`，再导入
+`upgrade-demo-acl.sql`。两个脚本都按当前数字主键 schema 编写、可重复执行，只是示例数据装载器而非
+升级迁移脚本，切勿导入生产数据库。
+
 **Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
 
 **RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
@@ -50,7 +55,7 @@ rocketmq-web）。启动 Studio 前可用
 |------|------|
 | **监控面板** | 集群/ Broker / Topic / 消费组全局统计，TPS 趋势图 |
 | **实例管理** | 多实例接入（Proxy / Direct 模式），实例 CRUD |
-| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新 |
+| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新、NameServer 配置漂移检测 |
 | **K8s 证书** | Studio 本地 TLS / mTLS / ServiceAccount 证书配置 |
 | **Topic 管理** | Topic CRUD、路由查看、消费者列表、多类型支持（Normal / FIFO / Delay / Transaction / Lite） |
 | **消费组管理** | 消费组 CRUD、消费进度、订阅详情、位点重置、配置导入导出 |
