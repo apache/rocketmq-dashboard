@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -206,6 +206,63 @@ describe('DLQ page', () => {
     );
   });
 
+  it('debounces group search requests while typing', async () => {
+    renderWithProviders(<DLQPage />);
+    await screen.findByText('cg-order');
+    const initialCalls = vi.mocked(messageService.listDLQGroups).mock.calls.length;
+    vi.useFakeTimers();
+    try {
+      const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+      act(() => {
+        fireEvent.change(searchInput, { target: { value: 'o' } });
+        fireEvent.change(searchInput, { target: { value: 'or' } });
+        fireEvent.change(searchInput, { target: { value: 'ord' } });
+      });
+
+      expect(messageService.listDLQGroups).toHaveBeenCalledTimes(initialCalls);
+      await act(async () => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(messageService.listDLQGroups).toHaveBeenCalledTimes(initialCalls);
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+        await Promise.resolve();
+      });
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('submits an explicit group search without waiting for the debounce', async () => {
+    const { container } = renderWithProviders(<DLQPage />);
+    await screen.findByText('cg-order');
+    const initialCalls = vi.mocked(messageService.listDLQGroups).mock.calls.length;
+    vi.useFakeTimers();
+    try {
+      const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+      fireEvent.change(searchInput, { target: { value: 'ord' } });
+      const searchButton = container.querySelector('.ant-input-search-button');
+      if (!searchButton) throw new Error('DLQ search button not found');
+
+      fireEvent.click(searchButton);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20);
+      expect(messageService.listDLQGroups).toHaveBeenCalledTimes(initialCalls + 1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+        await Promise.resolve();
+      });
+      expect(messageService.listDLQGroups).toHaveBeenCalledTimes(initialCalls + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
     vi.mocked(messageService.listDLQGroups).mockRejectedValue(
       new Error('DLQ provider is not configured'),

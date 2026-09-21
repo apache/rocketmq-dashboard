@@ -112,6 +112,7 @@ const DLQPage = () => {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
@@ -189,8 +190,19 @@ const DLQPage = () => {
   }
 
   useEffect(() => {
-    const requestId = ++groupRequestIdRef.current;
+    const normalizedSearch = searchInput.trim();
+    if (normalizedSearch === search) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setSearch(normalizedSearch);
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search, searchInput]);
 
+  useEffect(() => {
+    const requestId = ++groupRequestIdRef.current;
     if (!selectedInstanceId) {
       void Promise.resolve().then(() => {
         if (groupRequestIdRef.current !== requestId) return;
@@ -648,13 +660,12 @@ const DLQPage = () => {
           <Input.Search
             placeholder="搜索 Group 名称或 DLQ Topic"
             allowClear
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             onSearch={(value) => {
-              setSearch(value);
+              const normalizedSearch = value.trim();
+              setSearchInput(value);
+              setSearch(normalizedSearch);
               setPage(1);
             }}
             style={{ width: 320 }}

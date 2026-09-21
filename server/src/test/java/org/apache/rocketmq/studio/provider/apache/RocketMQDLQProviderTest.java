@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
@@ -201,6 +202,83 @@ class RocketMQDLQProviderTest {
     }
 
 
+    @Test
+    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    void listDLQGroupsShouldLoadStatsConcurrentlyAndPreserveOrderTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-c",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "order-b"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        CountDownLatch allStatsStarted = new CountDownLatch(3);
+        when(adminExt.examineTopicStats(anyString())).thenAnswer(invocation -> {
+            allStatsStarted.countDown();
+            if (!allStatsStarted.await(2, TimeUnit.SECONDS)) {
+                throw new AssertionError("DLQ topic stats were not loaded in parallel");
+            }
+            return new TopicStatsTable();
+        });
+
+        try {
+            List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+            assertThat(groups).extracting(DLQGroupVO::getGroupName)
+                    .containsExactly("group-a", "group-c", "order-b");
+            assertThat(groups).allMatch(DLQGroupVO::isStatsAvailable);
+            verify(adminExt, times(3)).examineTopicStats(anyString());
+        } finally {
+            provider.shutdownStatsExecutor();
+        }
+    }
+
+    @Test
+    void listDLQGroupsShouldKeepOtherRowsWhenOneStatsCallFailsTest() throws Exception {
+        String unavailableTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String availableTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-b";
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(unavailableTopic, availableTopic));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(unavailableTopic)).thenThrow(new IllegalStateException("access denied"));
+        when(adminExt.examineTopicStats(availableTopic)).thenReturn(new TopicStatsTable());
+
+        try {
+            List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+            assertThat(groups).hasSize(2);
+            assertThat(groups.get(0).getGroupName()).isEqualTo("group-a");
+            assertThat(groups.get(0).getStatus()).isEqualTo("UNAVAILABLE");
+            assertThat(groups.get(0).isStatsAvailable()).isFalse();
+            assertThat(groups.get(1).getGroupName()).isEqualTo("group-b");
+            assertThat(groups.get(1).getStatus()).isEqualTo("EMPTY");
+            assertThat(groups.get(1).isStatsAvailable()).isTrue();
+        } finally {
+            provider.shutdownStatsExecutor();
+        }
+    }
+
+    @Test
+    @Timeout(value = 5, unit = TimeUnit.SECONDS)
+    void listDLQGroupsShouldKeepIdentityWhenStatsTaskFailsUnexpectedlyTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(dlqTopic));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(dlqTopic)).thenThrow(new AssertionError("unexpected failure"));
+
+        try {
+            List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+            assertThat(groups).singleElement().satisfies(group -> {
+                assertThat(group.getGroupName()).isEqualTo("group-a");
+                assertThat(group.getDlqTopic()).isEqualTo(dlqTopic);
+                assertThat(group.getStatus()).isEqualTo("UNAVAILABLE");
+                assertThat(group.isStatsAvailable()).isFalse();
+            });
+        } finally {
+            provider.shutdownStatsExecutor();
+        }
+    }
     @Test
     void resendMessagesShouldRejectInvertedTimeRangeBeforeCreatingConsumers() {
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 200L, 100L, "target-topic"))
