@@ -43,6 +43,8 @@ public class DLQMessageExcelRow {
     private long offset;
     @ExcelProperty("Store Time")
     private String storeTime;
+    @ExcelProperty("Reconsume Times")
+    private int reconsumeTimes;
     @ExcelProperty("Keys")
     private String keys;
     @ExcelProperty("Body")
@@ -56,6 +58,7 @@ public class DLQMessageExcelRow {
         row.setOffset(vo.getOffset());
         row.setStoreTime(LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
+        row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
         row.setBody(vo.getBody());
         return row;

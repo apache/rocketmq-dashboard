@@ -228,4 +228,35 @@ class DLQServiceTest {
 
         verifyNoInteractions(dlqProvider);
     }
+
+    @Test
+    void everyActionShouldRejectAnEmptyTimeWindowTest() {
+        assertThatThrownBy(() -> dlqService.resendMessages("instance-1", "group-1", 5000L, 5000L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+        assertThatThrownBy(() -> dlqService.listMessages("instance-1", "group-1", 5000L, 5000L, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+        assertThatThrownBy(() -> dlqService.exportMessages("instance-1", "group-1", 5000L, 5000L, 100))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+        assertThatThrownBy(() -> dlqService.exportExcel("instance-1", "group-1", 5000L, 5000L, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void everyActionShouldStillAcceptAOneMillisecondTimeWindowTest() {
+        dlqService.resendMessages("instance-1", "group-1", 5000L, 5001L, null);
+        dlqService.listMessages("instance-1", "group-1", 5000L, 5001L, 1, 20);
+        dlqService.exportMessages("instance-1", "group-1", 5000L, 5001L, 100);
+        dlqService.exportExcel("instance-1", "group-1", 5000L, 5001L, null);
+
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 5000L, 5001L, null);
+        verify(dlqProvider).listMessages("instance-1", "group-1", 5000L, 5001L, 1, 20);
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 5000L, 5001L, 100);
+        verify(dlqProvider).exportExcel("instance-1", "group-1", 5000L, 5001L, null);
+    }
 }
