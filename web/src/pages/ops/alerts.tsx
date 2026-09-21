@@ -613,8 +613,10 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           const succeeded = new Set(result.succeededIds);
           const failedIds = Object.keys(result.failures);
           if (succeeded.size > 0) {
-            if (rules.length === succeeded.size && page > 1) setPage((current) => current - 1);
-            else refreshRules();
+            // rules.length === succeeded.size means "the deleted rules filled this page", not
+            // "this page is now empty" — the server may still have enough rows for the page.
+            // Refresh the current page and let the refreshed total drive the pagination.
+            refreshRules();
           }
           setSelectedRuleIds(failedIds.map(Number));
           if (failedIds.length === 0) message.success(t('alerts.bulkDeleteSuccess'));

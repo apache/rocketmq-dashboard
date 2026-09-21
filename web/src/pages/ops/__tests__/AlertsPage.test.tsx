@@ -845,4 +845,44 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
     expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
+
+  it('stays on the page after a bulk delete clears a full page while more pages remain', async () => {
+    // 41 rules in total: page 1 holds the 20 seeded rules, page 2 holds the 21st. Deleting the
+    // full second page must refresh the same page (40 rules remain) instead of stepping back.
+    const secondPageRules = alertRules.slice(0, 1).map((rule) => ({
+      ...cloneRule(rule),
+      id: 21,
+      name: 'Second page rule',
+    }));
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage)
+      .mockResolvedValueOnce({ items: alertRules.map(cloneRule), total: 21, page: 1, size: 20 })
+      .mockResolvedValueOnce({ items: secondPageRules, total: 21, page: 2, size: 20 })
+      .mockResolvedValue({ items: secondPageRules, total: 20, page: 2, size: 20 });
+    vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
+      succeededIds: [21],
+      failures: {},
+      updatedRules: [],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement | null;
+    if (!secondPage) throw new Error('Pagination page 2 not found');
+    await user.click(secondPage);
+    await screen.findByText('Second page rule');
+
+    await user.click(within(getRuleRow('Second page rule')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([21]));
+    await waitFor(() =>
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith(
+        'CLUSTER',
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+  });
 });
