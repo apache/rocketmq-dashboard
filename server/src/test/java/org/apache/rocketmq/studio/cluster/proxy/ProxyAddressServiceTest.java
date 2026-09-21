@@ -305,6 +305,20 @@ class ProxyAddressServiceTest {
     }
 
     @Test
+    void addProxyAddrShouldNormalizeHostCaseAndPortLikeTheNameServerAddressParser() {
+        proxyAddressService.addProxyAddr("LocalHost:8081");
+        proxyAddressService.addProxyAddr("localhost:8081");
+        proxyAddressService.addProxyAddr("[2001:DB8::1]:080");
+
+        assertThat(proxyAddressService.getHomePage().getProxyAddrList())
+                .containsExactly("127.0.0.1:8081", "localhost:8081", "[2001:db8::1]:80");
+
+        proxyAddressService.removeProxyAddr("[2001:db8::1]:80");
+        assertThat(proxyAddressService.getHomePage().getProxyAddrList())
+                .containsExactly("127.0.0.1:8081", "localhost:8081");
+    }
+
+    @Test
     void buildTopologyShouldDegradeHungProbesWithinTotalBudgetTest() {
         // 10.0.0.21: gRPC probe hangs, remoting probe returns → PARTIAL.
         // 10.0.0.22: both probes hang → DOWN. Neither may exceed the 500 ms budget.
@@ -388,18 +402,4 @@ class ProxyAddressServiceTest {
         verify(clusterService, times(2)).listProxiesForInstance("prod-apache");
     }
 
-
-    @Test
-    void addProxyAddrShouldNormalizeHostCaseAndPortLikeTheNameServerAddressParser() {
-        proxyAddressService.addProxyAddr("LocalHost:8081");
-        proxyAddressService.addProxyAddr("localhost:8081");
-        proxyAddressService.addProxyAddr("[2001:DB8::1]:080");
-
-        assertThat(proxyAddressService.getHomePage().getProxyAddrList())
-                .containsExactly("127.0.0.1:8081", "localhost:8081", "[2001:db8::1]:80");
-
-        proxyAddressService.removeProxyAddr("[2001:db8::1]:80");
-        assertThat(proxyAddressService.getHomePage().getProxyAddrList())
-                .containsExactly("127.0.0.1:8081", "localhost:8081");
-    }
 }
