@@ -940,7 +940,7 @@ GET /api/groups?clusterId={clusterId}&search={keyword}
 | `clusterId` | `string` | 所属集群 ID |
 | `subscriptionMode` | `string` | 订阅模式: `Push` / `Pop` |
 | `consumeType` | `string` | 消费类型: `CLUSTERING` / `BROADCASTING` |
-| `onlineInstances` | `number` | 在线实例数 |
+| `onlineInstances` | `number` | 在线实例数；`-1` 表示连接信息不可用 |
 | `totalLag` | `number` | 总堆积消息数 |
 | `subscribedTopics` | `string[]` | 订阅的 Topic 列表 |
 | `subscriptionDataType` | `string` | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |

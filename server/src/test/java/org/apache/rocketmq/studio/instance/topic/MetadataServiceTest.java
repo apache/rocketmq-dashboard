@@ -914,6 +914,22 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldRenderUnavailableOnlineInstancesAsUnknownTest() {
+        ConsumerGroupVO unavailable = consumerGroup("orders-unavailable", "orders", 10, SubscriptionMode.Pop);
+        unavailable.setOnlineInstances(-1);
+        ConsumerGroupVO confirmedOffline = consumerGroup("orders-offline", "orders", 10, SubscriptionMode.Pop);
+        confirmedOffline.setOnlineInstances(0);
+        when(apacheProvider.listConsumerGroups("instance-a", null))
+                .thenReturn(List.of(unavailable, confirmedOffline));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        // The -1 sentinel must not reach the export, while a confirmed zero still exports as 0.
+        assertThat(csv).contains("\"orders-unavailable\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"unknown\"");
+        assertThat(csv).contains("\"orders-offline\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"0\"");
+    }
+
+    @Test
     void exportConsumerGroupsShouldEscapeFormulaCells() {
         ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
         when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));

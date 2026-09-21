@@ -1517,6 +1517,39 @@ describe('Consumer page', () => {
     });
   });
 
+  it('sorts groups with unavailable connections after known client counts', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-conn-cg', onlineInstances: -1 },
+        { ...group, name: 'known-conn-cg', onlineInstances: 12 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByRole('row', { name: /unknown-conn-cg/ });
+
+    // The sentinel must never reach the cell as a bare -1 ...
+    expect(screen.getByRole('row', { name: /unknown-conn-cg/ }).textContent).toContain('不可用');
+
+    // ... and must not sort as "fewer clients than zero".
+    const [clientsHeader] = screen.getAllByText('在线客户端');
+    await user.click(clientsHeader);
+    await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('tbody tr'));
+      const order = rows
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unknown-conn-cg')
+            ? 'unknown'
+            : /\bknown-conn-cg\b/.test(text)
+              ? 'known'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['known', 'unknown']);
+    });
+  });
+
   it('ignores settings responses from a previously closed group modal', async () => {
     const otherGroup = { ...group, name: 'other-cg' };
     const firstSettings = deferred<{

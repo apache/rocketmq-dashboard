@@ -328,10 +328,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private void enrichGroupLiveStats(String instanceId, ConsumerGroupVO vo) {
         // The detail modal reuses the listed group as-is, so the online instance list has to be
         // filled here too; both fields come from the same connection set to stay consistent.
-        List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(
-                resolveConsumerConnection(instanceId, vo.getName()));
+        ProxyConsumerResolver.ConsumerConnectionResolution connection =
+                resolveConsumerConnection(instanceId, vo.getName());
+        List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(connection.connection());
         vo.setInstances(instances);
-        vo.setOnlineInstances(instances.size());
+        vo.setOnlineInstances(connection.available() ? instances.size() : -1);
         try {
             ConsumeStats stats;
             if (StringUtils.hasText(instanceId)) {
@@ -375,18 +376,21 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         }
     }
 
-    private ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
+    private ProxyConsumerResolver.ConsumerConnectionResolution resolveConsumerConnection(
+            String instanceId, String group) {
         try {
-            if (StringUtils.hasText(instanceId)) {
-                return runtimeAdminClientResolver.execute(instanceId,
-                        admin -> admin.examineConsumerConnectionInfo(group));
-            }
-            return adminExecute(admin -> admin.examineConsumerConnectionInfo(group));
+            ConsumerConnection connection = StringUtils.hasText(instanceId)
+                    ? runtimeAdminClientResolver.execute(instanceId, admin -> admin.examineConsumerConnectionInfo(group))
+                    : adminExecute(admin -> admin.examineConsumerConnectionInfo(group));
+            return ProxyConsumerResolver.ConsumerConnectionResolution.available(connection);
         } catch (Exception e) {
-            if (isGroupNotOnline(e) && proxyConsumerResolver != null) {
-                return proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+            if (isGroupNotOnline(e)) {
+                return proxyConsumerResolver == null
+                        ? ProxyConsumerResolver.ConsumerConnectionResolution.available(null)
+                        : proxyConsumerResolver.resolveConsumerConnectionStatus(instanceId, group);
             }
-            return null;
+            log.debug("Consumer connection lookup unavailable for group {}: {}", group, e.getMessage());
+            return ProxyConsumerResolver.ConsumerConnectionResolution.unavailable();
         }
     }
 

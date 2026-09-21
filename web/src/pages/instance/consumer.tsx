@@ -104,6 +104,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
+import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -946,7 +947,9 @@ const ConsumerPageContent = ({
       key: 'onlineInstances',
       width: 100,
       align: 'center',
-      sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
+      sorter: (a, b) =>
+        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
+      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
     },
     {
       title: '总堆积量',
@@ -1657,6 +1660,9 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="在线实例"
                             value={selectedGroup.onlineInstances}
+                            formatter={(value) =>
+                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                            }
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
                           />
@@ -1966,11 +1972,16 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="客户端"
                             value={selectedGroupHealth.summary.onlineInstances}
+                            formatter={(value) =>
+                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                            }
                           />
                           <Text type="secondary">
-                            {selectedGroupHealth.summary.staleClientCount > 0
-                              ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                              : '心跳状态正常'}
+                            {selectedGroupHealth.summary.onlineInstances < 0
+                              ? '客户端连接信息不可用'
+                              : selectedGroupHealth.summary.staleClientCount > 0
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
+                                : '心跳状态正常'}
                           </Text>
                         </Card>
                       </Col>
