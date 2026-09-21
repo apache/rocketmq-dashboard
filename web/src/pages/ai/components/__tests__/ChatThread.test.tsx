@@ -222,6 +222,33 @@ describe('ChatThread', () => {
     expect(screen.queryByTestId('ai-thread-jump-to-latest')).not.toBeInTheDocument();
   });
 
+  it('doesNotInflateUnreadWhenStreamingFailsAndLiveBlocksDisappearTest', () => {
+    const { rerender } = renderThread({ bubbles: [userBubble('检查集群状态')] });
+    placeReader(600);
+    fireEvent.scroll(screen.getByTestId('ai-thread-scroll'));
+
+    // The answer starts streaming: one new message arrives.
+    rerender(
+      <LangProvider>
+        <ChatThread
+          bubbles={[userBubble('检查集群状态')]}
+          liveBlocks={appendText([], '部分')}
+          streaming
+        />
+      </LangProvider>,
+    );
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('1');
+
+    // Streaming fails / is aborted and the live bubble disappears without being persisted.
+    // The unread count must not increase when a bubble is removed.
+    rerender(
+      <LangProvider>
+        <ChatThread bubbles={[userBubble('检查集群状态')]} />
+      </LangProvider>,
+    );
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('1');
+  });
+
   it('rendersTheEmptySlotWhenThereIsNoTranscriptTest', () => {
     render(
       <LangProvider>
