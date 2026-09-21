@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -43,6 +44,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,6 +71,48 @@ class MybatisPlusAlertRepositoryTest {
         when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(0);
 
         assertThat(repository.replaceRule(rule)).isFalse();
+    }
+
+    @Test
+    void replaceRuleShouldExplicitlyClearOmittedOptionalColumnsTest() {
+        // The update replaces every editable field, so a null optional field on the submitted
+        // rule means "cleared". updateById omits null entity fields (MyBatis-Plus NOT_NULL
+        // strategy), so the repository must assign those columns explicitly or the stored
+        // values silently survive the update.
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .id(3L)
+                .name("Lag")
+                .metric("consumer.lag.total")
+                .operator(">")
+                .threshold(100.0)
+                .domain(AlertDomain.BUSINESS)
+                .enabled(true)
+                .consecutiveSamples(1)
+                .reminderInterval("30m")
+                .build();
+
+        when(ruleMapper.selectById(3L)).thenReturn(new RmqAlertRule());
+        when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(1);
+
+        assertThat(repository.replaceRule(rule)).isTrue();
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> clearCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).update(isNull(), clearCaptor.capture());
+        UpdateWrapper<RmqAlertRule> cleared = (UpdateWrapper<RmqAlertRule>) clearCaptor.getValue();
+        String sqlSet = cleared.getSqlSet();
+        // Every omitted optional column must be assigned NULL: "column=#{ew.paramNameValuePairs.MPGENVALn}"
+        assertThat(sqlSet).isNotBlank();
+        for (String column : new String[] {
+            "threshold_unit", "duration", "channels", "description",
+            "broker_name", "cluster_name", "severity", "instance_id",
+            "consumer_group", "topic", "notification_template"}) {
+            assertThat(sqlSet).contains(column + "=");
+        }
+        // lastTriggered is not an editable field (owned by markRuleTriggered), so it must
+        // keep the skip-on-null behaviour and stay out of the cleared assignments.
+        assertThat(sqlSet).doesNotContain("last_triggered=");
+        assertThat(cleared.getParamNameValuePairs()).allSatisfy(
+                (key, value) -> assertThat(value).isNull());
     }
 
     @Test
