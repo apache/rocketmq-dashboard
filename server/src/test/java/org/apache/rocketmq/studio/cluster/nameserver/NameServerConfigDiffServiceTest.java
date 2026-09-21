@@ -316,16 +316,16 @@ class NameServerConfigDiffServiceTest {
         when(admin.getNameServerConfig(List.of("ns-b:9876")))
                 .thenReturn(Map.of("ns-b:9876", properties("listenPort", "9876")));
 
-        List<NameServerConfigDiffService.NodeConfig> nodes = service.read("cluster-a", "instance-a");
+        NameServerConfigDiffService.NameServerConfigRead read = service.read("cluster-a", "instance-a");
 
-        assertThat(nodes)
+        assertThat(read.nodes())
                 .extracting(NameServerConfigDiffService.NodeConfig::addr)
                 .containsExactly("ns-a:9876", "ns-b:9876");
-        assertThat(nodes.get(0).config())
+        assertThat(read.nodes().get(0).config())
                 .containsEntry("listenPort", "9876")
                 .containsEntry("serverWorkerThreads", "8")
                 .doesNotContainKey("password");
-        assertThat(nodes.get(1).config()).containsEntry("listenPort", "9876");
+        assertThat(read.nodes().get(1).config()).containsEntry("listenPort", "9876");
     }
 
     @Test
@@ -339,9 +339,10 @@ class NameServerConfigDiffServiceTest {
         when(admin.getNameServerConfig(List.of("ns-b:9876")))
                 .thenThrow(new IllegalStateException("unreachable"));
 
-        List<NameServerConfigDiffService.NodeConfig> nodes = service.read("cluster-a", null);
+        NameServerConfigDiffService.NameServerConfigRead read = service.read("cluster-a", null);
 
-        assertThat(nodes).singleElement()
+        assertThat(read.unreachableEndpoints()).containsExactly("ns-b:9876");
+        assertThat(read.nodes()).singleElement()
                 .extracting(NameServerConfigDiffService.NodeConfig::addr)
                 .isEqualTo("ns-a:9876");
     }

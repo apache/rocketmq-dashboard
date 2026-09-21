@@ -17,9 +17,9 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.nameserver;
 
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,17 +51,38 @@ class NameServerConfigToolHandlerTest {
     void readsConfigThroughResolvedInstanceTest() {
         assertThat(handler.name()).isEqualTo("rmq.nameserver.config");
         when(clusterResolver.resolveInstanceId("rmq-a")).thenReturn("instance-a");
-        when(configDiffService.read("rmq-a", "instance-a")).thenReturn(List.of(
-                new NameServerConfigDiffService.NodeConfig(
-                        "ns-a:9876", Map.of("listenPort", "9876"))));
+        when(configDiffService.read("rmq-a", "instance-a")).thenReturn(new NameServerConfigDiffService.NameServerConfigRead(
+                List.of(new NameServerConfigDiffService.NodeConfig(
+                        "ns-a:9876", Map.of("listenPort", "9876"))),
+                List.of()));
 
-        ListOutput<NameserverConfigItem> result = handler.execute(
+        NameserverConfigOutput result = handler.execute(
                 new NameserverConfigInput("rmq-a"), context("instance-a"));
 
         assertThat(result.items()).singleElement().satisfies(item -> {
             assertThat(item.addr()).isEqualTo("ns-a:9876");
             assertThat(item.config()).containsEntry("listenPort", "9876");
         });
+        assertThat(result.resultMayBeTruncated()).isFalse();
+        assertThat(result.unreachableEndpoints()).isEmpty();
         verify(configDiffService).read("rmq-a", "instance-a");
+    }
+
+    @Test
+    void reportsUnreachableEndpointsAsTruncatedCoverageTest() {
+        when(clusterResolver.resolveInstanceId("rmq-a")).thenReturn("instance-a");
+        when(configDiffService.read("rmq-a", "instance-a")).thenReturn(new NameServerConfigDiffService.NameServerConfigRead(
+                List.of(new NameServerConfigDiffService.NodeConfig(
+                        "ns-a:9876", Map.of("listenPort", "9876"))),
+                List.of("ns-b:9876")));
+
+        NameserverConfigOutput result = handler.execute(
+                new NameserverConfigInput("rmq-a"), context("instance-a"));
+
+        assertThat(result.resultMayBeTruncated()).isTrue();
+        assertThat(result.unreachableEndpoints()).containsExactly("ns-b:9876");
+        assertThat(result.items())
+                .extracting(NameserverConfigItem::addr)
+                .containsExactly("ns-a:9876");
     }
 }
