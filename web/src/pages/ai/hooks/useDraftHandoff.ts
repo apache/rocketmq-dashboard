@@ -119,7 +119,19 @@ export function useDraftHandoff(
         applyDraft({ ...draft, prompt: '' });
         return;
       }
-      await startRun(start);
+      const target = await startRun(start);
+      // `startRun` settles on admission — the server accepted the send — not on the end of the
+      // answer, so both clearings below happen right away, not when the run finishes.
+      if (target === null) {
+        // A refused send (the server already has a run in flight, the provider rejected it) keeps
+        // the draft on screen on purpose: send the state away so a reload cannot replay it, but
+        // leave the text where the operator can submit it again.
+        navigate(location.pathname, { replace: true, state: null });
+        return;
+      }
+      // Admitted: clear the composer immediately (the prompt is streaming) and strip the history
+      // entry's state now — on trunk this only happened after the whole answer, leaving a window
+      // where a reload re-entered the handoff with a fresh `consumedDraftRef` and sent twice.
       applyDraft({ ...draft, prompt: '' });
       navigate(location.pathname, { replace: true, state: null });
     })();

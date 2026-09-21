@@ -368,7 +368,7 @@ describe('AiPage', () => {
     vi.mocked(openRunStream).mockRejectedValue(
       Object.assign(new Error('该会话已有正在进行的回答'), {
         name: 'AiStreamError',
-        code: 'ai.run.in_flight',
+        code: 'ai.run.busy',
         status: 409,
       }),
     );
@@ -382,6 +382,66 @@ describe('AiPage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'send'),
     );
+  });
+
+  it('givesTheDraftBackWhenTheServerRefusesTheSendTest', async () => {
+    vi.mocked(openRunStream).mockRejectedValue(
+      Object.assign(new Error('该会话已有正在进行的回答'), {
+        name: 'AiStreamError',
+        code: 'ai.run.busy',
+        status: 409,
+      }),
+    );
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('第二次发送');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    // The composer clears the draft on send and the caller must put it back when the send was
+    // refused; otherwise the operator retypes a prompt that never left the browser.
+    await waitFor(() => expect(input).toHaveValue('第二次发送'));
+  });
+
+  it('keepsTheHandoffDraftWhenTheSendIsRefusedTest', async () => {
+    vi.mocked(openRunStream).mockRejectedValue(
+      Object.assign(new Error('该会话已有正在进行的回答'), {
+        name: 'AiStreamError',
+        code: 'ai.run.busy',
+        status: 409,
+      }),
+    );
+
+    renderRouted('/ai/c/7', { prompt: '检查集群状态', mode: 'chat' });
+
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('检查集群状态');
+  });
+
+  it('keepsTheComposerClearedWhenAnAdmittedStreamFailsTest', async () => {
+    // The other side of "a refused send gives the draft back": a stream that already delivered a
+    // frame WAS admitted, so a failure mid-answer must not resurrect the prompt as if nothing had
+    // been sent (this one pins the boundary; it also passes before the fix).
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: '检查集群状态',
+        turn: 1,
+      });
+      handlers.onEvent({ type: 'text_delta', content: '部分回答' });
+      throw new Error('AI stream idle for more than 30s');
+    });
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('检查集群状态');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(await screen.findByTestId('ai-run-error')).toHaveTextContent(
+      'AI stream idle for more than 30s',
+    );
+    expect(input).toHaveValue('');
   });
 
   it('doesNotAdmitASecondSendWhileOneIsInFlightTest', async () => {
@@ -460,6 +520,50 @@ describe('AiPage', () => {
       expect(probe.state).toBeNull();
     });
     expect(openRunStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('clearsTheComposerAndHistoryStateImmediatelyWhenAnAdmittedHandoffIsStillStreamingTest', async () => {
+    // The stream stays open for the whole scenario: admission (the first `run_started` frame)
+    // settles the handoff while the answer is still generating. The composer and the history
+    // entry's state must be cleared at that point — NOT when the stream finishes, or a reload
+    // during the answer would re-enter the handoff and re-send the prompt.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(openRunStream).mockImplementation(async (_cid, _request, handlers) => {
+      handlers.onEvent({
+        type: 'run_started',
+        runId: 41,
+        conversationId: 7,
+        title: '检查集群状态',
+        turn: 1,
+      });
+      await held;
+      handlers.onEvent({ type: 'run_finished', runId: 41, status: 'COMPLETED', durationMs: 12 });
+    });
+
+    // The handoff onto an EXISTING conversation (`/ai/c/7` carries the draft) is the path whose
+    // clearing was deferred: `startRun` awaited the whole stream there before returning.
+    renderRouted('/ai/c/7', { prompt: '检查集群状态', mode: 'chat' });
+
+    // The run was admitted (its first frame arrived) while the stream is still open.
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    await flushFrame();
+
+    // Admission, not stream completion, drives the two clearings:
+    // 1. the composer no longer carries the applied prompt;
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('');
+    // 2. the history entry's state is already stripped, so a reload mid-answer cannot replay it.
+    await waitFor(() => {
+      const probe = readProbeLocation();
+      expect(probe.pathname).toBe('/ai/c/7');
+      expect(probe.state).toBeNull();
+    });
+    // The stream never finished: the answer is still generating on screen.
+    expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'stop');
+
+    release();
   });
 
   it('opensTheHistoryDrawerOnceForTheHistoryRouteIntentTest', async () => {

@@ -240,7 +240,7 @@ describe('useAgentRun', () => {
     );
     const { result } = render({ refetchTimeline });
 
-    let sent!: Promise<void>;
+    let sent!: Promise<boolean>;
     await act(async () => {
       sent = result.current.send(7, { message: 'hi' });
     });
@@ -278,7 +278,7 @@ describe('useAgentRun', () => {
     const refetchTimeline = vi.fn().mockRejectedValue(new Error('timeline unavailable'));
     const { result } = render({ refetchTimeline, onError });
 
-    let sent!: Promise<void>;
+    let sent!: Promise<boolean>;
     await act(async () => {
       sent = result.current.send(7, { message: 'hi' });
     });
@@ -302,7 +302,7 @@ describe('useAgentRun', () => {
     const refetchTimeline = vi.fn().mockRejectedValue(new Error('timeline unavailable'));
     const { result } = render({ refetchTimeline });
 
-    let sent!: Promise<void>;
+    let sent!: Promise<boolean>;
     await act(async () => {
       sent = result.current.send(7, { message: 'hi' });
     });
@@ -333,7 +333,7 @@ describe('useAgentRun', () => {
   it('stopsThroughTheApiWithoutAbortingTheStreamTest', async () => {
     const { result } = render();
 
-    let sent!: Promise<void>;
+    let sent!: Promise<boolean>;
     await act(async () => {
       sent = result.current.send(7, { message: 'hi' });
     });
@@ -454,7 +454,7 @@ describe('useAgentRun', () => {
     const refetchTimeline = vi.fn().mockResolvedValue(undefined);
     const { result } = render({ refetchTimeline, onError });
 
-    let sent!: Promise<void>;
+    let sent!: Promise<boolean>;
     await act(async () => {
       sent = result.current.send(7, { message: 'hi' });
     });
