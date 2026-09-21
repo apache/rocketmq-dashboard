@@ -27,7 +27,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "studio.auth.login-required=true")
 class QueryHistoryServiceIntegrationTest {
@@ -70,6 +73,55 @@ class QueryHistoryServiceIntegrationTest {
                     .eq("queried_by", longUsername));
             traceQueryMapper.delete(new QueryWrapper<RmqTraceQuery>()
                     .eq("queried_by", longUsername));
+        }
+    }
+
+    @Test
+    void unreadableResultSnapshotIsReportedAsFailureTest() {
+        String username = "snapshot-user";
+        try {
+            AuthenticatedUserContext.setUser(username, true);
+            RmqMessageQuery corrupt = new RmqMessageQuery();
+            corrupt.setQueryType("TOPIC");
+            corrupt.setTopic("qh-topic");
+            corrupt.setResultCount(2);
+            corrupt.setResultSnapshot("{\"not-a-json-array\":");
+            corrupt.setClusterId("qh-cluster");
+            corrupt.setQueriedBy(username);
+            messageQueryMapper.insert(corrupt);
+
+            // A snapshot the mapper cannot parse is a persistence-level failure: the stored
+            // result rows are lost, and reporting an empty list would present the loss as a
+            // query that legitimately matched nothing.
+            assertThatThrownBy(() -> queryHistoryService.getMessageQueryResults(corrupt.getId()))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                            .isEqualTo(502));
+        } finally {
+            AuthenticatedUserContext.clear();
+            messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()
+                    .eq("queried_by", username));
+        }
+    }
+
+    @Test
+    void blankResultSnapshotMeansAnEmptyResultTest() {
+        String username = "snapshot-blank-user";
+        try {
+            AuthenticatedUserContext.setUser(username, true);
+            queryHistoryService.recordMessageQuery("qh-cluster", "TOPIC", "qh-topic",
+                    null, null, null, null, null, 0, " ");
+            PageResult<MessageQueryHistoryVO> history =
+                    queryHistoryService.listMessageQueries("qh-cluster", null, null, 1, 20);
+            long id = history.getItems().iterator().next().getId();
+
+            // A blank snapshot is a legitimate "nothing stored" (e.g. an old record), not a
+            // failure: an empty result is the correct answer.
+            assertThat(queryHistoryService.getMessageQueryResults(id)).isEmpty();
+        } finally {
+            AuthenticatedUserContext.clear();
+            messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()
+                    .eq("queried_by", username));
         }
     }
 }
