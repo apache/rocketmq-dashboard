@@ -53,25 +53,23 @@ class ToolCatalogTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void messageQueriesAdvertiseNestedPagingAndOptionalBodiesTest() {
+    void messageQueriesAdvertiseBoundedResultsAndOptionalBodiesTest() {
         ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
         for (String toolName : new String[]{"rmq.message.query", "rmq.message.query_by_topic"}) {
             ToolDefinition definition = catalog.getDefinition(toolName);
             Map<String, Object> inputProperties =
                     (Map<String, Object>) definition.inputSchema().get("properties");
-            Map<String, Object> pageSchema = (Map<String, Object>) inputProperties.get("page");
-            Map<String, Object> pageProperties =
-                    (Map<String, Object>) pageSchema.get("properties");
             Map<String, Object> outputProperties =
                     (Map<String, Object>) definition.outputSchema().get("properties");
 
-            assertThat(inputProperties).containsKeys("page", "includeBody").doesNotContainKey("pageSize");
-            assertThat(pageProperties).containsKeys("page", "pageSize");
-            assertThat((Map<String, Object>) pageProperties.get("pageSize"))
-                    .containsEntry("maximum", 100);
+            assertThat(inputProperties)
+                    .containsKeys("limit", "includeBody")
+                    .doesNotContainKeys("page", "pageSize");
+            assertThat((Map<String, Object>) inputProperties.get("limit"))
+                    .containsEntry("minimum", 1);
             assertThat(outputProperties)
-                    .containsKeys("items", "total", "page", "pageSize", "resultMayBeTruncated")
-                    .doesNotContainKey("size");
+                    .containsKeys("items", "resultMayBeTruncated", "skippedCount")
+                    .doesNotContainKeys("total", "page", "pageSize", "size");
         }
     }
 
@@ -90,7 +88,7 @@ class ToolCatalogTest {
     }
 
     @Test
-    void rejectsInvalidNestedMessageQueryPagingThroughTheRuntimeSchemaTest() {
+    void rejectsInvalidMessageQueryLimitsAndLegacyPagingThroughTheRuntimeSchemaTest() {
         ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
         ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
                 new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
@@ -98,9 +96,9 @@ class ToolCatalogTest {
             ToolDefinition definition = catalog.getDefinition(toolName);
             for (Map<String, Object> invalid : List.<Map<String, Object>>of(
                     Map.of("instanceId", "instance-a", "topicName", "TopicA",
-                            "page", Map.of("page", 0)),
+                            "limit", 0),
                     Map.of("instanceId", "instance-a", "topicName", "TopicA",
-                            "page", Map.of("pageSize", 101)),
+                            "page", Map.of("page", 1, "pageSize", 10)),
                     Map.of("instanceId", "instance-a", "topicName", "TopicA", "pageSize", 10))) {
                 assertThatThrownBy(() -> validator.validateInput(definition, invalid))
                         .isInstanceOfSatisfying(ToolExecutionException.class,

@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.message.MessageService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
@@ -51,19 +50,19 @@ public class MessageQueryToolHandler
     @Override
     public MessageQueryOutput execute(MessageQueryInput input, ToolExecutionContext context) {
         String instanceId = context.instanceId();
-        PageRequest page = input.page() != null ? input.page() : new PageRequest(1, 20);
+        int limit = input.resultLimit();
         if (StringUtils.hasText(input.msgId())) {
             return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
                     instanceId, input.topicName(), input.msgId(), null, null, null, null,
-                    page.page(), page.pageSize()), input.includeBody());
+                    1, limit), input.includeBody());
         } else if (StringUtils.hasText(input.uniqueKey())) {
             return MessageQueryOutput.fromUniqueKey(messageService.queryMessageByUniqueKey(
                     instanceId, input.topicName(), input.uniqueKey(), input.startTime(), input.endTime()),
-                    page.page(), page.pageSize(), input.includeBody());
+                    limit, input.includeBody());
         } else if (StringUtils.hasText(input.key())) {
             return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
                     instanceId, input.topicName(), null, null, input.key(),
-                    input.startTime(), input.endTime(), page.page(), page.pageSize()),
+                    input.startTime(), input.endTime(), 1, limit),
                     input.includeBody());
         } else {
             throw new BusinessException(400, "message query requires one of: msgId, uniqueKey, key");

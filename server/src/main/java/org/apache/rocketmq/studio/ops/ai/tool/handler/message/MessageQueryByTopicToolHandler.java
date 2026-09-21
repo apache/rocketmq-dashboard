@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.instance.message.MessageService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryByTopicInput;
@@ -49,9 +48,8 @@ public class MessageQueryByTopicToolHandler
     @Override
     public MessageQueryOutput execute(
             MessageQueryByTopicInput input, ToolExecutionContext context) {
-        PageRequest page = input.page() != null ? input.page() : new PageRequest(1, 20);
         return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
                 context.instanceId(), input.topicName(), null, input.tag(), null,
-                input.startTime(), input.endTime(), page.page(), page.pageSize()), input.includeBody());
+                input.startTime(), input.endTime(), 1, input.resultLimit()), input.includeBody());
     }
 }

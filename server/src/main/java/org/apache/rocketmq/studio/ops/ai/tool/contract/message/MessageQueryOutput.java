@@ -17,36 +17,36 @@
 package org.apache.rocketmq.studio.ops.ai.tool.contract.message;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import org.apache.rocketmq.studio.instance.message.MessageQueryPageVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 
 import java.util.List;
 
 public record MessageQueryOutput(
-        @JsonUnwrapped PageOutput<Item> pageOutput,
-        boolean resultMayBeTruncated) {
+        List<Item> items,
+        boolean resultMayBeTruncated,
+        long skippedCount) {
 
     public static MessageQueryOutput fromPage(MessageQueryPageVO result, boolean includeBody) {
+        long skippedCount = Math.max(0, result.getTotal() - result.getItems().size());
         return new MessageQueryOutput(
-                new PageOutput<>(result.getPage(), result.getSize(), result.getTotal(),
-                        result.getItems().stream()
-                                .map(message -> Item.from(message, includeBody))
-                                .toList()),
-                result.isResultMayBeTruncated());
+                result.getItems().stream()
+                        .map(message -> Item.from(message, includeBody))
+                        .toList(),
+                result.isResultMayBeTruncated() || skippedCount > 0,
+                skippedCount);
     }
 
     public static MessageQueryOutput fromUniqueKey(
-            List<MessageRecordVO> messages, int page, int pageSize, boolean includeBody) {
-        long offset = (long) (page - 1) * pageSize;
-        int from = (int) Math.min(offset, messages.size());
-        int to = Math.min(from + pageSize, messages.size());
+            List<MessageRecordVO> messages, int limit, boolean includeBody) {
+        int to = Math.min(limit, messages.size());
+        long skippedCount = messages.size() - to;
         return new MessageQueryOutput(
-                new PageOutput<>(page, pageSize, messages.size(), messages.subList(from, to).stream()
+                messages.subList(0, to).stream()
                         .map(message -> Item.from(message, includeBody))
-                        .toList()),
-                false);
+                        .toList(),
+                skippedCount > 0,
+                skippedCount);
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

@@ -22,7 +22,6 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.message.MessageQueryPageVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageRequest;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryInput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.junit.jupiter.api.Test;
@@ -33,9 +32,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,7 +44,6 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 
 @ExtendWith(MockitoExtension.class)
 class MessageQueryToolHandlerTest {
@@ -61,50 +61,34 @@ class MessageQueryToolHandlerTest {
     }
 
     @Test
-    void msgIdWinsOverUniqueKeyAndKeyTest() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-1")
-                .topic("TopicA")
-                .tag("tag1")
-                .key("key1")
-                .body("hello")
-                .bodyEncoding("UTF-8")
-                .bodyTruncated(false)
-                .storeTime(1000L)
-                .bornHost("10.0.0.1")
-                .storeHost("10.0.0.2")
-                .size(5)
-                .build();
+    void msgIdWinsOverOtherIdentifiersAndUsesDefaultLimitTest() {
+        MessageRecordVO message = message("msg-1", "hello", false);
         when(messageService.queryMessagesPage(
                 eq("instance-a"), eq("TopicA"), eq("msg-1"),
                 isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
-                .thenReturn(MessageQueryPageVO.builder().items(List.of(message))
-                        .total(1).page(1).size(20).build());
+                .thenReturn(page(List.of(message), 1, 20, false));
 
         ToolExecutionContext request = ToolExecutionContext.of("instance-a", null, Map.of(
                 "instanceId", "instance-a", "topicName", "TopicA", "msgId", "msg-1",
                 "uniqueKey", "uniq-1", "key", "order-123", "startTime", 10L, "endTime", 20L));
         var result = handler.execute(request.convertInput(handler.inputType()), request);
 
-        assertThat(result.pageOutput().items()).hasSize(1);
-        var row = result.pageOutput().items().getFirst();
-        assertThat(row.msgId()).isEqualTo("msg-1");
-        assertThat(row.topic()).isEqualTo("TopicA");
-        assertThat(row.tag()).isEqualTo("tag1");
-        assertThat(row.storeTime()).isEqualTo(1000L);
-        assertThat(row.body()).isNull();
-        assertThat(row.bodyEncoding()).isNull();
-        assertThat(row.bodyTruncated()).isNull();
-        assertThat(row.size()).isEqualTo(5);
+        assertThat(result.items()).singleElement().satisfies(row -> {
+            assertThat(row.msgId()).isEqualTo("msg-1");
+            assertThat(row.topic()).isEqualTo("TopicA");
+            assertThat(row.body()).isNull();
+            assertThat(row.bodyEncoding()).isNull();
+            assertThat(row.bodyTruncated()).isNull();
+        });
+        assertThat(result.skippedCount()).isZero();
+        assertThat(result.resultMayBeTruncated()).isFalse();
         Map<String, Object> serialized = new LegacyJackson2Config().jackson2ObjectMapper()
                 .convertValue(result, new TypeReference<>() { });
         assertThat(serialized)
-                .containsKeys("items", "total", "page", "pageSize", "resultMayBeTruncated")
-                .doesNotContainKeys("pageOutput", "size");
+                .containsOnlyKeys("items", "resultMayBeTruncated", "skippedCount");
         Map<String, Object> item = new LegacyJackson2Config().jackson2ObjectMapper()
                 .convertValue(((List<?>) serialized.get("items")).getFirst(), new TypeReference<>() { });
         assertThat(item).doesNotContainKeys("body", "bodyEncoding", "bodyTruncated");
-        // The msgId path is a direct read: the time window never reaches the service.
         verify(messageService).queryMessagesPage(
                 eq("instance-a"), eq("TopicA"), eq("msg-1"), isNull(), isNull(), isNull(), isNull(),
                 eq(1), eq(20));
@@ -112,93 +96,61 @@ class MessageQueryToolHandlerTest {
 
     @Test
     void uniqueKeyPathPassesTimeWindowTest() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-2")
-                .topic("TopicA")
-                .storeTime(2000L)
-                .size(7)
-                .build();
         when(messageService.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 1000L, 2000L))
-                .thenReturn(List.of(message));
+                .thenReturn(List.of(message("msg-2", "private", false)));
 
         var result = handler.execute(
-                new MessageQueryInput("instance-a", "TopicA", null, "uniq-1", "order-123", 1000L, 2000L),
+                new MessageQueryInput("instance-a", "TopicA", null, "uniq-1", "order-123",
+                        1000L, 2000L),
                 context("instance-a"));
 
-        assertThat(result.pageOutput().items()).hasSize(1);
-        assertThat(result.pageOutput().items().getFirst().msgId()).isEqualTo("msg-2");
-        assertThat(result.pageOutput().items().getFirst().body()).isNull();
+        assertThat(result.items()).singleElement().satisfies(row -> {
+            assertThat(row.msgId()).isEqualTo("msg-2");
+            assertThat(row.body()).isNull();
+        });
+        assertThat(result.skippedCount()).isZero();
+        assertThat(result.resultMayBeTruncated()).isFalse();
         verify(messageService).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 1000L, 2000L);
     }
 
     @Test
-    void uniqueKeySecondPageIsEmptyButRetainsTheFirstPageTotalTest() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-2").topic("TopicA").body("private-body").build();
-        when(messageService.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null))
-                .thenReturn(List.of(message));
-
-        var result = handler.execute(new MessageQueryInput(
-                "instance-a", "TopicA", null, "uniq-1", null, null, null,
-                new PageRequest(2, 20), false), context("instance-a"));
-
-        assertThat(result.pageOutput().items()).isEmpty();
-        assertThat(result.pageOutput().total()).isEqualTo(1);
-        assertThat(result.pageOutput().page()).isEqualTo(2);
-        assertThat(result.resultMayBeTruncated()).isFalse();
-    }
-
-    @Test
-    void keyPathPassesTimeWindowTest() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-3")
-                .topic("TopicA")
-                .key("order-123")
-                .storeTime(1000L)
-                .size(5)
-                .build();
-        when(messageService.queryMessagesPage(
-                eq("instance-a"), eq("TopicA"), isNull(), isNull(),
-                eq("order-123"), eq(1000L), eq(2000L), eq(1), eq(20)))
-                .thenReturn(MessageQueryPageVO.builder().items(List.of(message))
-                        .total(1).page(1).size(20).build());
-
-        var result = handler.execute(
-                new MessageQueryInput("instance-a", "TopicA", null, null, "order-123", 1000L, 2000L),
-                context("instance-a"));
-
-        assertThat(result.pageOutput().items()).hasSize(1);
-        var row = result.pageOutput().items().getFirst();
-        assertThat(row.msgId()).isEqualTo("msg-3");
-        assertThat(row.key()).isEqualTo("order-123");
-    }
-
-    @Test
-    void keyQueryUsesNestedPageAndIncludesBodiesWhenRequestedTest() {
-        MessageRecordVO message = MessageRecordVO.builder()
-                .msgId("msg-22").topic("TopicA").body("hello").bodyEncoding("UTF-8")
-                .bodyTruncated(true).build();
+    void keyPathCapsLimitAndIncludesBodiesWhenRequestedTest() {
+        MessageRecordVO message = message("msg-3", "hello", true);
         when(messageService.queryMessagesPage("instance-a", "TopicA", null, null,
-                "order-123", 1000L, 2000L, 2, 10))
-                .thenReturn(MessageQueryPageVO.builder().items(List.of(message))
-                        .total(21).page(2).size(10).resultMayBeTruncated(true).build());
+                "order-123", 1000L, 2000L, 1, 100))
+                .thenReturn(page(Collections.nCopies(100, message), 150, 100, false));
         ToolExecutionContext request = ToolExecutionContext.of("instance-a", null, Map.of(
                 "instanceId", "instance-a", "topicName", "TopicA", "key", "order-123",
-                "startTime", 1000L, "endTime", 2000L,
-                "page", Map.of("page", 2, "pageSize", 10), "includeBody", true));
+                "startTime", 1000L, "endTime", 2000L, "limit", 500, "includeBody", true));
 
         var result = handler.execute(request.convertInput(handler.inputType()), request);
 
-        assertThat(result.pageOutput().page()).isEqualTo(2);
-        assertThat(result.pageOutput().pageSize()).isEqualTo(10);
-        assertThat(result.pageOutput().total()).isEqualTo(21);
+        assertThat(result.items()).hasSize(100);
+        assertThat(result.skippedCount()).isEqualTo(50);
         assertThat(result.resultMayBeTruncated()).isTrue();
-        var row = result.pageOutput().items().getFirst();
-        assertThat(row.body()).isEqualTo("hello");
-        assertThat(row.bodyEncoding()).isEqualTo("UTF-8");
-        assertThat(row.bodyTruncated()).isTrue();
+        assertThat(result.items().getFirst()).satisfies(row -> {
+            assertThat(row.body()).isEqualTo("hello");
+            assertThat(row.bodyEncoding()).isEqualTo("UTF-8");
+            assertThat(row.bodyTruncated()).isTrue();
+        });
         verify(messageService).queryMessagesPage("instance-a", "TopicA", null, null,
-                "order-123", 1000L, 2000L, 2, 10);
+                "order-123", 1000L, 2000L, 1, 100);
+    }
+
+    @Test
+    void providerTruncationIsPreservedWithoutLocallySkippedRowsTest() {
+        MessageRecordVO message = message("msg-4", null, false);
+        when(messageService.queryMessagesPage("instance-a", "TopicA", null, null,
+                "order-123", null, null, 1, 10))
+                .thenReturn(page(List.of(message), 1, 10, true));
+
+        var result = handler.execute(new MessageQueryInput(
+                "instance-a", "TopicA", null, null, "order-123", null, null, 10, false),
+                context("instance-a"));
+
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.skippedCount()).isZero();
+        assertThat(result.resultMayBeTruncated()).isTrue();
     }
 
     @ParameterizedTest
@@ -212,5 +164,32 @@ class MessageQueryToolHandlerTest {
                 .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
 
         verifyNoInteractions(messageService);
+    }
+
+    private MessageRecordVO message(String msgId, String body, boolean bodyTruncated) {
+        return MessageRecordVO.builder()
+                .msgId(msgId)
+                .topic("TopicA")
+                .tag("tag1")
+                .key("key1")
+                .body(body)
+                .bodyEncoding(body == null ? null : "UTF-8")
+                .bodyTruncated(bodyTruncated)
+                .storeTime(1000L)
+                .bornHost("10.0.0.1")
+                .storeHost("10.0.0.2")
+                .size(body == null ? 0 : body.length())
+                .build();
+    }
+
+    private MessageQueryPageVO page(
+            List<MessageRecordVO> items, long total, int size, boolean resultMayBeTruncated) {
+        return MessageQueryPageVO.builder()
+                .items(items)
+                .total(total)
+                .page(1)
+                .size(size)
+                .resultMayBeTruncated(resultMayBeTruncated)
+                .build();
     }
 }
