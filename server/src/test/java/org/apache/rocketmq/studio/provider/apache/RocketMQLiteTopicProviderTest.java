@@ -16,10 +16,13 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.attribute.TopicMessageType;
 import org.apache.rocketmq.common.lite.LiteUtil;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
@@ -299,6 +302,35 @@ class RocketMQLiteTopicProviderTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getCode()).isEqualTo(404));
         verify(admin, never()).createAndUpdateTopicConfig(anyString(), any());
+    }
+
+    @Test
+    void extendTtlFailsInsteadOfPartiallyUpdatingWhenAMasterCannotBeRead() throws Exception {
+        String unreachableMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, unreachableMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(unreachableMaster, PARENT))
+                .thenThrow(new RemotingTimeoutException("broker restarting"));
+
+        // The extension must fail before any master is written: the alternative is a cluster
+        // with mixed lite.topic.expiration attributes and a console that reports success.
+        assertThatThrownBy(() -> provider.extendTTL(PARENT, TimeUnit.MINUTES.toMillis(120)))
+                .isInstanceOf(RemotingTimeoutException.class);
+        verify(admin, never()).createAndUpdateTopicConfig(anyString(), any());
+    }
+
+    @Test
+    void extendTtlStillUpdatesReachableMastersWhenTheTopicIsAbsentOnAPeer() throws Exception {
+        String peerMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, peerMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(peerMaster, PARENT))
+                .thenThrow(new MQBrokerException(ResponseCode.TOPIC_NOT_EXIST, "topic not exist"));
+
+        provider.extendTTL(PARENT, TimeUnit.MINUTES.toMillis(120));
+
+        verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), any(TopicConfig.class));
+        verify(admin, never()).createAndUpdateTopicConfig(eq(peerMaster), any());
     }
 
     @Test
