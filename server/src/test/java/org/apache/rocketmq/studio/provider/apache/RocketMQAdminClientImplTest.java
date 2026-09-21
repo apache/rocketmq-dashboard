@@ -791,7 +791,11 @@ class RocketMQAdminClientImplTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
-        when(topicMapper.selectOne(any())).thenReturn(null);
+        RmqTopic created = new RmqTopic();
+        created.setName("topicA");
+        created.setInstanceId("open-source-local");
+        created.setClusterId("cluster-1");
+        when(topicMapper.selectOne(any())).thenReturn(null, null, created);
         doNothing().when(selectedAdmin).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
         when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any()))
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
@@ -807,6 +811,24 @@ class RocketMQAdminClientImplTest {
         verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("open-source-local"), any());
         verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+    }
+
+    @Test
+    void updateTopicShouldRejectMissingMetadataBeforeBrokerMutationTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("missing-topic");
+
+        assertThatThrownBy(() -> adminClient.updateTopic(topic))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(404);
+                    assertThat(error.getMessage()).isEqualTo("Topic not found: missing-topic");
+                });
+
         verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
     }
 
@@ -885,7 +907,11 @@ class RocketMQAdminClientImplTest {
     void topicWritesSendMessageTypeAttributeToBroker() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
-        when(topicMapper.selectOne(any())).thenReturn(null);
+        RmqTopic created = new RmqTopic();
+        created.setName("orders");
+        created.setClusterId("cluster-1");
+        created.setTopicType(TopicType.FIFO.name());
+        when(topicMapper.selectOne(any())).thenReturn(null, null, created);
         doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
 
         TopicVO topic = new TopicVO();
