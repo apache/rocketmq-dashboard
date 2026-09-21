@@ -76,6 +76,7 @@ public class AuthService {
     private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
+    private static final int MAX_USERNAME_LENGTH = 128;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
     private static final String STALE_CUTOFF_PARAM = "staleCutoff";
@@ -561,11 +562,17 @@ public class AuthService {
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new BusinessException(400, "Password is required");
         }
+        if (request.getUsername().trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
+        }
     }
 
     private void validateUsername(String username) {
-        if (username == null || username.isBlank() || username.trim().length() > 128) {
-            throw new BusinessException(400, "Username must contain 1 to 128 characters");
+        if (username == null || username.isBlank()
+                || username.trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
         }
     }
 
