@@ -229,9 +229,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
@@ -707,14 +707,14 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: 'tagA',
-        type: 'NORMAL',
+        type: 'TAG',
         filterMode: 'TAG',
         consistency: 'consistent',
       },
       {
         topic: 'sql-topic',
         expression: 'a > 1',
-        type: 'NORMAL',
+        type: 'SQL92',
         filterMode: 'SQL',
         consistency: 'consistent',
       },
@@ -761,9 +761,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: 'tagA',
-        type: 'NORMAL',
-        filterMode: 'Tag 过滤',
-        consistency: '不一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'inconsistent',
       },
     ]);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
@@ -803,16 +803,16 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
       {
         topic: '%RETRY%remote-cg',
         expression: '*',
-        type: 'RETRY',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     const user = userEvent.setup();
@@ -1227,15 +1227,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1243,15 +1243,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1279,15 +1279,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1295,15 +1295,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1327,8 +1327,8 @@ describe('Consumer page', () => {
       {
         topic: 'unknown-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
+        type: 'TAG',
+        filterMode: 'TAG',
         consistency: 'UNKNOWN',
       },
     ]);

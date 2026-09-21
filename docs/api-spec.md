@@ -1001,9 +1001,9 @@ GET /api/groups/:name/subscriptions
 |------|------|------|
 | `topic` | `string` | Topic 名称 |
 | `expression` | `string` | 过滤表达式 |
-| `type` | `string` | 数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
-| `filterMode` | `string` | 过滤模式: `TAG` / `SQL` / `CLASS_FILTER` |
-| `consistency` | `string` | 订阅一致性: `consistent`；无在线客户端等无法判定时为 `null` |
+| `type` | `string` | 订阅过滤表达式类型: `TAG` / `SQL92` / `CLASS_FILTER`（各 provider 均原样透传 broker/OpenAPI 的表达式类型） |
+| `filterMode` | `string` | 过滤模式（由表达式类型归一化）: `TAG` / `SQL` / `CLASS_FILTER` |
+| `consistency` | `string` | 订阅一致性。Apache 实例为 `consistent`，无在线客户端等无法判定时为 `null`；云厂商实例为厂商返回值的字符串形式（如 Aliyun 的 `true` / `false`） |
 
 ### 6.5 创建消费组
 
