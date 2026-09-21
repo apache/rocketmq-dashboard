@@ -384,6 +384,40 @@ describe('AiPage', () => {
     );
   });
 
+  it('givesTheDraftBackWhenTheServerRefusesTheSendTest', async () => {
+    vi.mocked(openRunStream).mockRejectedValue(
+      Object.assign(new Error('该会话已有正在进行的回答'), {
+        name: 'AiStreamError',
+        code: 'ai.run.in_flight',
+        status: 409,
+      }),
+    );
+    renderRouted('/ai/c/7');
+    const input = await typeAndWaitForReady('第二次发送');
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    // The composer clears the draft on send and the caller must put it back when the send was
+    // refused; otherwise the operator retypes a prompt that never left the browser.
+    await waitFor(() => expect(input).toHaveValue('第二次发送'));
+  });
+
+  it('keepsTheHandoffDraftWhenTheSendIsRefusedTest', async () => {
+    vi.mocked(openRunStream).mockRejectedValue(
+      Object.assign(new Error('该会话已有正在进行的回答'), {
+        name: 'AiStreamError',
+        code: 'ai.run.in_flight',
+        status: 409,
+      }),
+    );
+
+    renderRouted('/ai/c/7', { prompt: '检查集群状态', mode: 'chat' });
+
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('检查集群状态');
+  });
+
   it('doesNotAdmitASecondSendWhileOneIsInFlightTest', async () => {
     vi.mocked(openRunStream).mockReturnValue(new Promise(() => {}));
     renderRouted('/ai/c/7');

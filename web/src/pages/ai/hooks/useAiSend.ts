@@ -57,16 +57,17 @@ export interface UseAiSendOptions {
   conversationId: number | null;
   /** Provider ready AND no stream in flight: an armed send may fire. */
   ready: boolean;
-  /** `useAgentRun().send`. */
-  send: (conversationId: number, request: AiMessageRequest) => Promise<void>;
+  /** `useAgentRun().send`; resolves to whether the server admitted the run. */
+  send: (conversationId: number, request: AiMessageRequest) => Promise<boolean>;
   /** Conversation creation failure; the caller pairs it with an i18n fallback toast. */
   onError: (error: unknown) => void;
 }
 
 /**
  * @returns `startRun`, resolving to the conversation id the request was (or will be) sent on, or
- *   null when creating the conversation failed (already reported through `onError`; the caller
- *   restores whatever input the send consumed).
+ *   null when nothing was sent — creating the conversation failed (already reported through
+ *   `onError`) or the send on an existing conversation was refused. The caller restores whatever
+ *   input the send consumed on null.
  */
 export function useAiSend(
   options: UseAiSendOptions,
@@ -107,8 +108,10 @@ export function useAiSend(
     async ({ createBody, request, carryState }: StartRunOptions): Promise<number | null> => {
       const current = conversationIdRef.current;
       if (current !== null) {
-        void optionsRef.current.send(current, request);
-        return current;
+        // Null, not `current`, when the server refused the send: the caller pairs that with the
+        // input the composer already cleared and puts it back (see ComposerProps.onSend).
+        const admitted = await optionsRef.current.send(current, request);
+        return admitted ? current : null;
       }
       let createdId: number;
       try {

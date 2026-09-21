@@ -119,8 +119,13 @@ export function useDraftHandoff(
         applyDraft({ ...draft, prompt: '' });
         return;
       }
-      await startRun(start);
-      applyDraft({ ...draft, prompt: '' });
+      const target = await startRun(start);
+      // A refused send (the server already has a run in flight, the provider rejected it) kept the
+      // draft on screen on purpose: send the state away so a reload cannot replay it, but leave the
+      // text where the operator can submit it again.
+      if (target !== null) {
+        applyDraft({ ...draft, prompt: '' });
+      }
       navigate(location.pathname, { replace: true, state: null });
     })();
   }, [conversationId, location.pathname, location.state, navigate]);

@@ -110,9 +110,12 @@ export interface UseAgentRunResult {
   lastRunTokensPerSecond: number | null;
   /**
    * Send a message and stream the run it starts. Resolves once the terminal frames were processed
-   * and the timeline refetch settled. A no-op while another run is in flight.
+   * and the timeline refetch settled, to `true` when the server admitted the run and to `false` when
+   * the send was refused (another run in flight, a route that moved on, or a stream that failed
+   * before its first frame) — the caller uses that to hand a cleared draft back. A no-op while
+   * another run is in flight.
    */
-  send: (conversationId: number, request: AiMessageRequest) => Promise<void>;
+  send: (conversationId: number, request: AiMessageRequest) => Promise<boolean>;
   /**
    * Re-attach to a run that is already generating (a reload, or a run started in another tab).
    * `after` must be the highest `seq` the caller already rendered — `useConversationTimeline().lastSeq`
@@ -278,21 +281,21 @@ export function useAgentRun(
   );
 
   const startStream = useCallback(
-    async (
+    (
       targetConversationId: number,
       open: (handlers: RunStreamHandlers, signal: AbortSignal) => Promise<void>,
       knownRunId: number | null = null,
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       // Double-submit guard: Enter twice in one tick must not admit two runs (the server would
       // reject the second with 409 anyway, but the UI should not even try).
-      if (chatInFlightRef.current) return;
+      if (chatInFlightRef.current) return Promise.resolve(false);
       // The route already moved on to another conversation: refuse to start a stream whose frames
       // the generation guard would drop anyway.
       if (
         conversationIdRef.current !== null &&
         conversationIdRef.current !== targetConversationId
       ) {
-        return;
+        return Promise.resolve(false);
       }
       chatInFlightRef.current = true;
 
@@ -319,31 +322,64 @@ export function useAgentRun(
       setIsStreaming(true);
       bump();
 
-      let streamFailure: unknown | null = null;
-      try {
-        await open(
-          { onEvent: (event) => handleEvent(event, requestId, generation) },
-          controller.signal,
-        );
-      } catch (streamError) {
-        // Aborted means "the user navigated away": the run keeps going server-side and a later
-        // attach picks it up, so this is not an error to report.
-        if (!controller.signal.aborted) {
-          streamFailure = streamError;
-          if (requestId === streamRequestIdRef.current) {
-            setError(describeThrownMessage(streamError));
-            optionsRef.current.onError?.(streamError);
-          }
+      // A stream the server refused (409 while another run is in flight, a rejected prompt, a dead
+      // connection) produces no frame at all: that is what tells the caller its send never started,
+      // so a draft the composer already cleared can be handed back. The admission promise settles
+      // on the FIRST frame (or on refusal) — never on the terminal frames — so a caller waiting to
+      // clear the composer does not block for the whole answer; the run continues below until it
+      // finishes on its own.
+      let settleAdmission: (admitted: boolean) => void = () => undefined;
+      const admission = new Promise<boolean>((resolve) => {
+        settleAdmission = resolve;
+      });
+      let admissionSettled = false;
+      const settle = (admitted: boolean) => {
+        if (!admissionSettled) {
+          admissionSettled = true;
+          settleAdmission(admitted);
         }
-      } finally {
-        await finishStream(requestId, controller, streamFailure);
-      }
+      };
+
+      const openLifecycle = (async () => {
+        let streamFailure: unknown | null = null;
+        try {
+          await open(
+            {
+              onEvent: (event) => {
+                settle(true);
+                handleEvent(event, requestId, generation);
+              },
+            },
+            controller.signal,
+          );
+        } catch (streamError) {
+          // Aborted means "the user navigated away": the run keeps going server-side and a later
+          // attach picks it up, so this is not an error to report.
+          if (!controller.signal.aborted) {
+            streamFailure = streamError;
+            if (requestId === streamRequestIdRef.current) {
+              setError(describeThrownMessage(streamError));
+              optionsRef.current.onError?.(streamError);
+            }
+          }
+        } finally {
+          await finishStream(requestId, controller, streamFailure);
+        }
+      })();
+
+      // Refusal: `open` settled without ever delivering a frame. A frame that already arrived
+      // settled the admission as true first; `admissionSettled` guards any later second settle.
+      void openLifecycle.then(
+        () => settle(false),
+        () => settle(false),
+      );
+      return admission;
     },
     [cancelFrame, finishStream, handleEvent],
   );
 
   const send = useCallback(
-    (targetConversationId: number, request: AiMessageRequest): Promise<void> =>
+    (targetConversationId: number, request: AiMessageRequest): Promise<boolean> =>
       startStream(targetConversationId, (handlers, signal) =>
         openRunStream(targetConversationId, request, handlers, signal),
       ),
@@ -351,12 +387,13 @@ export function useAgentRun(
   );
 
   const attach = useCallback(
-    (targetConversationId: number, targetRunId: number, after: number): Promise<void> =>
-      startStream(
+    async (targetConversationId: number, targetRunId: number, after: number): Promise<void> => {
+      await startStream(
         targetConversationId,
         (handlers, signal) => attachRunStream(targetRunId, after, handlers, signal),
         targetRunId,
-      ),
+      );
+    },
     [startStream],
   );
 
