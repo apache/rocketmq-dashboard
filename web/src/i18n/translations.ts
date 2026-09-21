@@ -3109,6 +3109,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.directConsumeSelectInstance': {
+    zh: '请先选择实例',
+    en: 'Select an instance first',
+  },
+  'message.directConsumeCapabilityLoading': {
+    zh: '正在确认当前实例是否支持直接消费',
+    en: 'Checking whether this instance supports direct consumption',
+  },
+  'message.directConsumeUnsupported': {
+    zh: '当前实例不支持直接消费',
+    en: 'This instance does not support direct consumption',
+  },
+  'message.directConsumeCapabilityUnavailable': {
+    zh: '无法获取实例能力，直接消费暂不可用',
+    en: 'Instance capabilities are unavailable; direct consumption is disabled',
+  },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {

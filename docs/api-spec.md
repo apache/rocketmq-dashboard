@@ -1503,11 +1503,11 @@ POST /api/messages/direct-consume
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `consumeResult` | `string` | Broker 返回的直接消费结果 |
-| `remark` | `string` | Broker 返回的说明 |
-| `spentTimeMillis` | `number` | Broker 执行耗时（毫秒） |
-| `order` | `boolean` | 是否为顺序消费 |
-| `autoCommit` | `boolean` | 客户端是否启用自动提交 |
+| `consumeResult` | `string` | 直消费结果；Apache 路径为 Broker 的 `ConsumeMessageDirectlyResult` 名（`CR_SUCCESS` 等），Aliyun 为 `CR_SUCCESS`/`CR_FAILED`，Tencent 因 OpenAPI 不回传消费结果固定为 `REQUEST_ACCEPTED`，实际语义见 `remark` |
+| `remark` | `string` | 结果说明；Apache 路径取自 Broker，云厂商路径取自云 OpenAPI 应答（含 `requestId`） |
+| `spentTimeMillis` | `number` | 执行耗时（毫秒）；云厂商路径为 Studio 侧测得的 OpenAPI 调用耗时 |
+| `order` | `boolean` | 是否为顺序消费（云厂商路径固定 `false`） |
+| `autoCommit` | `boolean` | 客户端是否启用自动提交（云厂商路径固定 `false`） |
 
 ---
 

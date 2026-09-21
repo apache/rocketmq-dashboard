@@ -35,6 +35,7 @@ import {
   Flex,
   Progress,
   Statistic,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -90,6 +91,7 @@ const { RangePicker } = DatePicker;
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
+type DirectConsumeCapabilityStatus = 'loading' | 'supported' | 'unsupported' | 'unavailable';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const },
@@ -403,7 +405,7 @@ const MessagePageContent = ({
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
   const [directConsumeCapability, setDirectConsumeCapability] = useState<{
     instanceId: string;
-    supported: boolean;
+    status: DirectConsumeCapabilityStatus;
   } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
@@ -432,14 +434,16 @@ const MessagePageContent = ({
           setDirectConsumeOpen(false);
           setDirectConsumeCapability({
             instanceId,
-            supported: result.capabilities.includes('DIRECT_MESSAGE_CONSUME'),
+            status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
+              ? 'supported'
+              : 'unsupported',
           });
         }
       })
       .catch(() => {
         if (active) {
           setDirectConsumeOpen(false);
-          setDirectConsumeCapability({ instanceId, supported: false });
+          setDirectConsumeCapability({ instanceId, status: 'unavailable' });
         }
       });
     return () => {
@@ -447,10 +451,20 @@ const MessagePageContent = ({
     };
   }, [selectedInstanceId]);
 
-  const directConsumeSupported =
-    directConsumeCapability !== null &&
-    directConsumeCapability.instanceId === selectedInstanceId &&
-    directConsumeCapability.supported;
+  const directConsumeCapabilityStatus =
+    directConsumeCapability !== null && directConsumeCapability.instanceId === selectedInstanceId
+      ? directConsumeCapability.status
+      : 'loading';
+  const directConsumeSupported = directConsumeCapabilityStatus === 'supported';
+  const directConsumeDisabledReason = !selectedInstanceId
+    ? t('message.directConsumeSelectInstance')
+    : directConsumeCapabilityStatus === 'unavailable'
+      ? t('message.directConsumeCapabilityUnavailable')
+      : directConsumeCapabilityStatus === 'unsupported'
+        ? t('message.directConsumeUnsupported')
+        : directConsumeCapabilityStatus === 'loading'
+          ? t('message.directConsumeCapabilityLoading')
+          : undefined;
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
@@ -1297,14 +1311,18 @@ const MessagePageContent = ({
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>{t('common.close')}</Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!selectedInstanceId || !selectedMsg}
-              onClick={openDirectConsume}
-            >
-              {t('messagePage.directConsume')}
-            </Button>
+            <Tooltip title={directConsumeDisabledReason}>
+              <span>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  disabled={!directConsumeSupported || !selectedInstanceId || !selectedMsg}
+                  onClick={openDirectConsume}
+                >
+                  {t('messagePage.directConsume')}
+                </Button>
+              </span>
+            </Tooltip>
           </Flex>
         }
       >
@@ -1313,7 +1331,7 @@ const MessagePageContent = ({
 
       <Modal
         title={t('messagePage.directConsumeTitle')}
-        open={directConsumeOpen}
+        open={directConsumeOpen && directConsumeSupported}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}

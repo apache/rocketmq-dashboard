@@ -124,11 +124,42 @@ describe('instanceService mock instances', () => {
     const second = await getInstanceCapabilities('instance-direct-1');
 
     expect(second.capabilities).toEqual(
-      expect.arrayContaining(['DLQ_MANAGEMENT', 'DIRECT_MESSAGE_CONSUME']),
+      expect.arrayContaining(['MESSAGE_SEND', 'DIRECT_MESSAGE_CONSUME', 'DLQ_MANAGEMENT']),
     );
     await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
       'Instance not found: missing-instance',
     );
+  });
+
+  it('derives provider capabilities for newly created mock instances', async () => {
+    const apacheName = 'mock-capability-apache';
+    const tencentName = 'mock-capability-tencent';
+    try {
+      await createInstance({
+        name: apacheName,
+        type: 'DIRECT',
+        endpoint: 'apache:9876',
+        vendor: 'APACHE',
+      });
+      await createInstance({
+        name: tencentName,
+        type: 'CLOUD',
+        endpoint: 'tencent:8080',
+        vendor: 'TENCENT',
+      });
+
+      await expect(getInstanceCapabilities(apacheName)).resolves.toEqual(
+        expect.objectContaining({
+          capabilities: expect.arrayContaining(['DIRECT_MESSAGE_CONSUME', 'DLQ_MANAGEMENT']),
+        }),
+      );
+      const tencent = await getInstanceCapabilities(tencentName);
+      expect(tencent.capabilities).toContain('DIRECT_MESSAGE_CONSUME');
+      expect(tencent.capabilities).not.toContain('DLQ_MANAGEMENT');
+    } finally {
+      await deleteInstance(apacheName);
+      await deleteInstance(tencentName);
+    }
   });
 });
 

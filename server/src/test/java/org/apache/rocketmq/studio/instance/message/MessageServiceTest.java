@@ -259,7 +259,7 @@ class MessageServiceTest {
         when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
         when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.MESSAGE_QUERY));
         MessageService service = new MessageService(
-                fallback, registry, mock(QueryHistoryService.class), audit);
+                fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
 
         assertThatThrownBy(() -> service.consumeMessageDirectly(request))
                 .isInstanceOf(UnsupportedOperationException.class)

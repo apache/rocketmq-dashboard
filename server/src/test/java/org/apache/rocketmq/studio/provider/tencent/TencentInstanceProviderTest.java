@@ -196,8 +196,9 @@ class TencentInstanceProviderTest {
         assertThat(request.getMsgId()).isEqualTo("msg-1");
         assertThat(request.getConsumerGroup()).isEqualTo("billing");
         assertThat(request.getClientId()).isEqualTo("client-a");
-        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
-        assertThat(result.getRemark()).isEqualTo("requestId=tencent-request-1");
+        assertThat(result.getConsumeResult()).isEqualTo("REQUEST_ACCEPTED");
+        assertThat(result.getRemark())
+                .contains("verification request", "outcome is not returned", "tencent-request-1");
         assertThat(result.getSpentTimeMillis()).isNotNegative();
         assertThat(result.isOrder()).isFalse();
         assertThat(result.isAutoCommit()).isFalse();

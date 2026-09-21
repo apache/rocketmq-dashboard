@@ -709,9 +709,13 @@ public class TencentInstanceProvider implements InstanceProvider {
             throw new BusinessException(502, "Tencent direct consume returned an empty response");
         }
         String requestId = response.getRequestId();
+        String acknowledgement = "Tencent accepted the verification request; "
+                + "the consumption outcome is not returned";
         return DirectConsumeMessageResultVO.builder()
-                .consumeResult("CR_SUCCESS")
-                .remark(StringUtils.hasText(requestId) ? "requestId=" + requestId : null)
+                .consumeResult("REQUEST_ACCEPTED")
+                .remark(StringUtils.hasText(requestId)
+                        ? acknowledgement + " (requestId=" + requestId + ")"
+                        : acknowledgement)
                 .spentTimeMillis(spentTimeMillis)
                 .order(false)
                 .autoCommit(false)

@@ -380,7 +380,7 @@ describe('MessagePage async request ownership', () => {
     expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
   });
 
-  it('hidesDirectConsumeWhenTheSelectedInstanceDoesNotAdvertiseItTest', async () => {
+  it('disablesDirectConsumeWithReasonWhenTheSelectedInstanceDoesNotAdvertiseItTest', async () => {
     instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
       instanceId: '1',
       vendor: 'ALIYUN',
@@ -400,10 +400,13 @@ describe('MessagePage async request ownership', () => {
     await waitFor(() =>
       expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith(1),
     );
-    expect(within(dialog).queryByRole('button', { name: /直接消费/ })).not.toBeInTheDocument();
+    const directConsumeButton = within(dialog).getByRole('button', { name: /直接消费/ });
+    expect(directConsumeButton).toBeDisabled();
+    await user.hover(directConsumeButton.parentElement as HTMLElement);
+    expect(await screen.findByText('当前实例不支持直接消费')).toBeInTheDocument();
   });
 
-  it('hidesDirectConsumeWhenCapabilityLoadingFailsTest', async () => {
+  it('disablesDirectConsumeWithReasonWhenCapabilityLoadingFailsTest', async () => {
     instanceServiceMocks.getInstanceCapabilities.mockRejectedValue(
       new Error('capability unavailable'),
     );
@@ -420,7 +423,10 @@ describe('MessagePage async request ownership', () => {
     await waitFor(() =>
       expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith(1),
     );
-    expect(within(dialog).queryByRole('button', { name: /直接消费/ })).not.toBeInTheDocument();
+    const directConsumeButton = within(dialog).getByRole('button', { name: /直接消费/ });
+    expect(directConsumeButton).toBeDisabled();
+    await user.hover(directConsumeButton.parentElement as HTMLElement);
+    expect(await screen.findByText('无法获取实例能力，直接消费暂不可用')).toBeInTheDocument();
   });
 
   it('ignoresStaleDirectConsumeCapabilityAfterInstanceChangeTest', async () => {
@@ -482,7 +488,7 @@ describe('MessagePage async request ownership', () => {
     await user.click(within(row).getByRole('button', { name: /详情/ }));
 
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
-    expect(within(dialog).queryByRole('button', { name: /直接消费/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /直接消费/ })).toBeDisabled();
   });
 
   it('queries trace by key with a custom trace topic from the trace tab', async () => {
