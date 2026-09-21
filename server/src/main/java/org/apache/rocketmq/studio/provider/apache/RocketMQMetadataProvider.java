@@ -760,6 +760,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return true;
         }
         String message = e.getMessage();
+        // A group that never connected has no %RETRY%<group> route yet, so the tools fail with
+        // TOPIC_NOT_EXIST before they reach a broker; the same "no live data" state, graded the
+        // same way as the detail path (RocketMQAdminClientImpl.isConsumerNotOnline).
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)
+                && message != null && message.contains("%RETRY%")) {
+            return true;
+        }
         return message != null && (message.contains("not online")
                 || message.contains("Not found the consumer group connection"));
     }

@@ -786,6 +786,42 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldGradeAMissingRetryTopicRouteAsOfflineTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-brand-new");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        // rocketmq-tools locates a group through the %RETRY%<group> topic route before any broker
+        // call, so a group that never connected fails with CODE 17. That is the "no live data"
+        // state the detail path already grades as offline, so the list must not report it as an
+        // unavailable inventory.
+        when(admin.examineConsumerConnectionInfo("cg-brand-new")).thenThrow(new MQClientException(
+                ResponseCode.TOPIC_NOT_EXIST,
+                "No topic route info in name server for the topic: %RETRY%cg-brand-new"));
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(100L);
+        wrapper.setConsumerOffset(60L);
+        stats.getOffsetTable().put(queue, wrapper);
+        when(admin.examineConsumeStats("cg-brand-new")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getOnlineInstances()).isZero();
+            assertThat(group.getInstances()).isEmpty();
+        });
+    }
+
+    @Test
     void listConsumerGroupsShouldEnrichOnlineInstancesViaProxyFallbackTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-proxy");
