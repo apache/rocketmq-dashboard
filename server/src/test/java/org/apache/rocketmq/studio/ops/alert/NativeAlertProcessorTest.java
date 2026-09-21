@@ -518,6 +518,39 @@ class NativeAlertProcessorTest {
     }
 
     @Test
+    void brokerScopedUnavailableSampleKeepsActiveFingerprintTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(1L).domain(AlertDomain.CLUSTER).name("Broker disk")
+                .metric("broker.disk.usage_ratio").operator(">").threshold(0.8).enabled(true)
+                .instanceId("local").brokerName("broker-a").consecutiveSamples(1).build();
+        when(service.listRules(AlertDomain.CLUSTER)).thenReturn(List.of(rule));
+        Map<String, String> labels = Map.of("brokerName", "broker-a", "brokerAddr", "broker-a:10911");
+        MetricSample unavailable = new MetricSample("broker.disk.usage_ratio", AlertDomain.CLUSTER, "local",
+                "cluster-a", labels, null, MetricAvailability.UNAVAILABLE, Instant.now());
+        AlertStateKey key = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", labels));
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 0.9D,
+                unavailable.collectedAt().minusSeconds(60), unavailable.collectedAt().minusSeconds(60),
+                unavailable.collectedAt().minusSeconds(60), null);
+        ActiveAlertState active = new ActiveAlertState(key, firing, "local", labels);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.find(key)).thenReturn(Optional.of(firing));
+        when(states.save(eq(key), any(AlertRuleState.class))).thenReturn(true);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        AlertRepository alerts = mock(AlertRepository.class);
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.CLUSTER, "local",
+                java.util.Set.of("broker.disk.usage_ratio")), List.of(unavailable));
+
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+        verify(outbox, never()).enqueue(any(), any(), any());
+    }
+
+    @Test
     void resolvesMissingMetricEvenWhenAnotherMetricSharesTheSameLabelsTest() {
         AlertService service = mock(AlertService.class);
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).domain(AlertDomain.BUSINESS).name("Orders delay")

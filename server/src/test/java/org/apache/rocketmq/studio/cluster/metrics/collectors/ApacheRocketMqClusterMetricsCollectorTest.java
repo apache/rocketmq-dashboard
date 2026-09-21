@@ -76,6 +76,29 @@ class ApacheRocketMqClusterMetricsCollectorTest {
     }
 
     @Test
+    void emitsBrokerScopedUnavailableSamplesForMissingRuntimeFieldsTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(0L, "broker-a:10911")))));
+        KVTable runtime = new KVTable();
+        runtime.setTable(new HashMap<>());
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(admin.fetchBrokerRuntimeStats("broker-a:10911")).thenReturn(runtime);
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        assertUnavailableBrokerMetric(samples, "broker.disk.usage_ratio");
+        assertUnavailableBrokerMetric(samples, "broker.jvm.heap.usage_ratio");
+        assertUnavailableBrokerMetric(samples, "broker.send_queue.usage_ratio");
+    }
+
+    @Test
     void recordsUnavailableNameserverWhenTopologyCollectionFailsTest() {
         RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
         InstanceVO instance = apacheInstance();
@@ -98,6 +121,16 @@ class ApacheRocketMqClusterMetricsCollectorTest {
 
         assertThat(new ApacheRocketMqClusterMetricsCollector(mock(RuntimeAdminClientResolver.class)).collect(instance))
                 .isEmpty();
+    }
+
+    private static void assertUnavailableBrokerMetric(List<MetricSample> samples, String metricKey) {
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(metricKey))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.labels()).containsEntry("brokerName", "broker-a")
+                            .containsEntry("brokerAddr", "broker-a:10911");
+                });
     }
 
     private static InstanceVO apacheInstance() {
