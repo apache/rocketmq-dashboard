@@ -212,9 +212,21 @@ const newTemplateId = (): string => {
   return `custom-${random}`;
 };
 
+/**
+ * Caps a string by code point rather than by UTF-16 length. A supplementary character - an emoji, a
+ * CJK extension character - is two units, so `slice` can cut between its high and its low surrogate
+ * and keep half of one: the lone surrogate is not a character, has no UTF-8 encoding and is written
+ * to storage (and rendered in the template list) as U+FFFD. The Java side caps AI conversation
+ * titles on code point boundaries for the same reason.
+ */
+const truncateToCodePoints = (text: string, maxLength: number): string => {
+  const codePoints = Array.from(text);
+  return codePoints.length > maxLength ? codePoints.slice(0, maxLength).join('') : text;
+};
+
 const normalizeText = (value: unknown, maxLength: number): string => {
   const text = typeof value === 'string' ? value.trim() : '';
-  return text.length > maxLength ? text.slice(0, maxLength) : text;
+  return truncateToCodePoints(text, maxLength);
 };
 
 const normalizeMode = (value: unknown): ChatMode =>
@@ -397,5 +409,6 @@ export function filterPromptTemplates(
 
 export function buildPromptTemplatePreview(body: string, maxLength = 160): string {
   const compact = body.replace(/\s+/g, ' ').trim();
-  return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+  const preview = truncateToCodePoints(compact, maxLength);
+  return preview === compact ? compact : `${preview}...`;
 }
