@@ -632,7 +632,10 @@ const ClientsPage = () => {
       dataIndex: 'resource',
       key: 'resource',
       width: 160,
-      render: (resource?: string) => resource || '-',
+      // issue.resource carries the type-qualified roll-up key (e.g.
+      // "Consumer:cg-order") used to match resource-summary rows; display the
+      // bare group/topic name, matching the summary table's column above.
+      render: (resource?: string) => resource?.split(':').slice(1).join(':') || resource || '-',
     },
     {
       title: t('clients.diagnosticEvidence'),
