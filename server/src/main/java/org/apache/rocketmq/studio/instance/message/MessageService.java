@@ -70,6 +70,7 @@ public class MessageService {
         if (!StringUtils.hasText(uniqueKey)) {
             throw new BusinessException(400, "uniqueKey is required");
         }
+        validateProvidedTimeWindow(startTime, endTime);
         log.info("Querying message by unique key: topic={}, uniqueKey={}", topic, uniqueKey);
         return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
     }
@@ -202,6 +203,25 @@ public class MessageService {
 
     private static String normalizeOptional(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /**
+     * Rejects a supplied query window that cannot describe a real lookup. The window stays optional
+     * for message-id and unique-key lookups (the provider then falls back to its own default range),
+     * but a negated or inverted window used to be forwarded to the broker, which answers NO_MESSAGE:
+     * the caller then saw "no messages found" for a request that was really malformed.
+     */
+    private static void validateProvidedTimeWindow(Long startTime, Long endTime) {
+        if (isNegative(startTime) || isNegative(endTime)) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
+        }
+        if (startTime != null && endTime != null && startTime >= endTime) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
+    }
+
+    private static boolean isNegative(Long value) {
+        return value != null && value < 0;
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
