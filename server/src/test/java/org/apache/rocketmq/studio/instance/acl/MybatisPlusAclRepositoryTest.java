@@ -174,6 +174,39 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findUserPageShouldEscapeLikeWildcardsInTheSearchTerm() {
+        Page<RmqAclUser> mapperPage = new Page<RmqAclUser>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findUserPage(" svc_a% ", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclUser> query = (QueryWrapper<RmqAclUser>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("username", "access_key");
+        assertThat(query.getParamNameValuePairs().values()).containsOnly("%svc\\_a\\%%");
+    }
+
+    @Test
+    void findRulePageShouldEscapeLikeWildcardsInTheFilterTerms() {
+        Page<RmqAclRule> mapperPage = new Page<RmqAclRule>(1, 20)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findRulePage("svc_a%", "_orders", null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclRule> query = (QueryWrapper<RmqAclRule>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("principal", "resource");
+        assertThat(query.getParamNameValuePairs().values())
+                .containsOnly("%svc\\_a\\%%", "%\\_orders%");
+    }
+
+    @Test
     void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);
