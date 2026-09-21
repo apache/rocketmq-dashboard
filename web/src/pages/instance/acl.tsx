@@ -1072,7 +1072,7 @@ const AclPageContent = ({
     <div style={{ padding: 24 }}>
       <PageHeader
         title={t('acl.title')}
-        subtitle={t('acl.subtitle', { rules: rules.length, users: users.length })}
+        subtitle={t('acl.subtitle', { rules: ruleTotal, users: userTotal })}
         extra={
           <Button
             type="primary"

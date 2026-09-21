@@ -245,6 +245,51 @@ describe('ACL page', () => {
     );
   });
 
+  it('reports the whole result set in the header subtitle instead of the loaded page', async () => {
+    const ruleItems = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index + 1,
+        principal: 'remote-user',
+        resource: `acl-topic-${String(index + 1).padStart(2, '0')}`,
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        gmtCreate: '2026-07-23T00:00:00Z',
+      }));
+    const userItems = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index + 1,
+        username: `acl-user-${String(index + 1).padStart(2, '0')}`,
+        accessKey: `acce****${String(index + 1).padStart(4, '0')}`,
+        secretKey: 'secr****7654',
+        admin: false,
+        clusters: ['cluster-a'],
+      }));
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: ruleItems(20),
+      total: 45,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: userItems(20),
+      total: 37,
+      page: 1,
+      size: 20,
+    });
+
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('acl-topic-01')).toBeInTheDocument();
+    // The subtitle claims the whole result set ("共 N 条规则、N 个用户"), so it must report the
+    // backend totals (45 rules, 37 users) rather than the 20 rows loaded for this page.
+    expect(screen.getByText(/访问控制规则与用户权限管理，共/).textContent).toBe(
+      '访问控制规则与用户权限管理，共 45 条规则、37 个用户',
+    );
+  });
   it('closes an ACL rule dialog when switching to another instance', async () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.listInstances).mockResolvedValue([
