@@ -22,6 +22,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.List;
 
@@ -40,5 +41,6 @@ public class CreateCertDTO {
     private String issuer;
     private List<String> san;
     private String certPem;
+    @ToString.Exclude
     private String keyPem;
 }
