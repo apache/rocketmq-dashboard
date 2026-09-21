@@ -1168,6 +1168,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
   },
+  'deliveries.instancesLoadFailed': {
+    zh: '实例列表加载失败，实例筛选暂时不可用',
+    en: 'Failed to load the instance list; the instance filter is unavailable',
+  },
   'deliveries.retryQueued': { zh: '已加入重新投递队列', en: 'Added to the redelivery queue.' },
   'deliveries.retryFailed': {
     zh: '重新投递失败，请稍后重试',
