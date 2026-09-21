@@ -23,6 +23,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
+import * as downloadUtils from '../../../utils/download';
 
 const messageServiceMocks = vi.hoisted(() => ({
   consumeMessageDirectly: vi.fn(),
@@ -274,6 +275,71 @@ describe('Message page query history', () => {
 
     expect(screen.getByRole('button', { name: /^search查询$/ })).toBeDisabled();
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['UnsafeInteger', '{"orderId":9007199254740993}'],
+    ['Int64Max', '{"orderId":9223372036854775807}'],
+    ['SafeInteger', '{\n  "orderId": 9007199254740991\n}'],
+    ['QuotedId', '{\n  "orderId": "9223372036854775807"\n}'],
+    ['JsonWhitespace', '{\r\n\t"message": "你好",  "enabled": true\r\n}\r\n'],
+    ['PlainText', '订单状态: ready\r\n  next line\r\n'],
+  ])('preservesOriginal%sBodyWhenDownloadingTest', async (_name, body) => {
+    const user = userEvent.setup();
+    const download = vi.spyOn(downloadUtils, 'downloadBlob').mockImplementation(() => {});
+    const msgId = 'MID-DOWNLOAD';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage(msgId), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: new RegExp(msgId) });
+    await user.click(within(row).getByRole('button', { name: /下载/ }));
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const [blob, filename] = download.mock.calls[0];
+    expect(filename).toBe(`${msgId}.json`);
+    expect(blob.type).toBe('application/json');
+    await expect(blob.text()).resolves.toBe(body);
+  });
+
+  it('copiesOriginalBodyFromMessageDetailsTest', async () => {
+    const user = userEvent.setup();
+    const body = '{ "orderId":9223372036854775807 }\r\n';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage('MID-COPY'), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-COPY/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const bodyParagraph = within(dialog).getByText(/"orderId":/);
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    let copiedText: string | undefined;
+    const execCommand = vi.fn(() => {
+      copiedText = document.getSelection()?.toString();
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
+    try {
+      await user.click(within(bodyParagraph).getByRole('button'));
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(copiedText).toBe(body);
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
   });
 
   it('shows the redelivery count on the message detail panel', async () => {
