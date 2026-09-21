@@ -64,6 +64,6 @@ export const TOPIC_TYPE_MAP: Record<string, { labelKey: string; color: TagProps[
  * Protocol map — labels are i18n keys, resolved at render time via t().
  */
 export const PROTOCOL_MAP: Record<string, { labelKey: string; color: TagProps['color'] }> = {
-  REMOTING: { labelKey: 'theme.protocolRemoting', color: 'geekblue' },
-  GRPC: { labelKey: 'theme.protocolGrpc', color: 'green' },
+  Remoting: { labelKey: 'theme.protocolRemoting', color: 'geekblue' },
+  gRPC: { labelKey: 'theme.protocolGrpc', color: 'green' },
 };
