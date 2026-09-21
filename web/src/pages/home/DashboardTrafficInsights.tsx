@@ -64,7 +64,7 @@ const issueTextKey = (issue: DashboardTrafficIssue) => {
 };
 
 const DashboardTrafficInsights = ({ insights }: Props) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const visibleIssues = insights.issues.slice(0, 4);
 
   const issueText = (issue: DashboardTrafficIssue) =>
@@ -78,6 +78,12 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
             ),
       threshold: issue.threshold == null ? '-' : formatTrafficPercent(issue.threshold),
     });
+
+  // The findings line is also rendered in the English UI, so its punctuation has to follow the
+  // viewer language: the full-width colon and the ideographic comma are Chinese-only. This mirrors
+  // the language-dependent separators `pages/instance/index.tsx` already uses for joined messages.
+  const findingsLabelSeparator = lang === 'zh' ? '：' : ': ';
+  const findingsSeparator = lang === 'zh' ? '、' : ', ';
 
   // All four cards render the same structure, caption slot included. Only the top-share card has
   // something to put there, and letting the others omit it made them shorter than their
@@ -156,7 +162,7 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
                 ? 'warning'
                 : 'info'
           }
-          message={`${t('dashboardTraffic.findings')}：${visibleIssues.map(issueText).join('、')}`}
+          message={`${t('dashboardTraffic.findings')}${findingsLabelSeparator}${visibleIssues.map(issueText).join(findingsSeparator)}`}
           style={{ marginBottom: 16 }}
         />
       )}
