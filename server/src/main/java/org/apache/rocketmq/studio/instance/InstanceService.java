@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.RegionNames;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
@@ -88,8 +89,10 @@ public class InstanceService {
     static final int COUNT_PARALLELISM = 8;
     static final int COUNT_QUEUE_CAPACITY = 128;
     static final long COUNT_TIMEOUT_SECONDS = 3;
+    /** Caps a batch-delete failure message; counted in code points, not UTF-16 chars. */
     private static final int MAX_BATCH_FAILURE_MESSAGE_LENGTH = 500;
     static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
+    /** Caps one cloud-import failure detail; counted in code points, not UTF-16 chars. */
     static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
 
     private final InstanceResourceCountRunner countRunner = new InstanceResourceCountRunner(
@@ -378,10 +381,13 @@ public class InstanceService {
 
     private static String boundedCloudImportText(String value, int maxLength) {
         String singleLine = value == null ? "" : value.replaceAll("\\s+", " ").trim();
-        if (singleLine.length() <= maxLength) {
+        if (TextBounds.codePointCount(singleLine) <= maxLength) {
             return singleLine;
         }
-        return singleLine.substring(0, maxLength - 1) + "…";
+        // The cut has to land on a code point boundary: a UTF-16 char offset can sit between the
+        // two chars of a supplementary character and publish half of it. The ellipsis counts
+        // towards the budget, so the prefix keeps one code point less than the cap.
+        return TextBounds.truncate(singleLine, maxLength - 1) + "…";
     }
 
     private static final class CloudImportAccumulator {
@@ -577,9 +583,12 @@ public class InstanceService {
      * Bounds a free-text field to the width of its rmq_instance column. Letting a longer value
      * through does not store it: MySQL rejects the write, so the caller gets a 500 from the
      * persistence layer instead of the validation error the name field already returns.
+     *
+     * <p>The width is counted in code points, the unit MySQL counts a {@code varchar} in. Counting
+     * UTF-16 chars would reject a value that fits the column because its emoji are two chars each.
      */
     private static String requireTextWithin(String value, int maxLength, String field) {
-        if (value != null && value.length() > maxLength) {
+        if (TextBounds.codePointCount(value) > maxLength) {
             throw new BusinessException(400, "InstanceVO " + field + " must not exceed "
                     + maxLength + " characters");
         }
@@ -749,8 +758,11 @@ public class InstanceService {
             message = failure.getClass().getSimpleName();
         }
         message = message.trim();
-        return message.length() > MAX_BATCH_FAILURE_MESSAGE_LENGTH
-                ? message.substring(0, MAX_BATCH_FAILURE_MESSAGE_LENGTH) : message;
+        if (TextBounds.codePointCount(message) <= MAX_BATCH_FAILURE_MESSAGE_LENGTH) {
+            return message;
+        }
+        // Cut on a code point boundary so a supplementary character is never split in half.
+        return TextBounds.truncate(message, MAX_BATCH_FAILURE_MESSAGE_LENGTH);
     }
 
     private void removeDataSourceBindings(String instanceId) {

@@ -147,6 +147,25 @@ class CliAgentProviderTest {
     }
 
     @Test
+    void aFailedCliShouldAbbreviateItsOutputOnCodePointBoundariesTest() {
+        // The CLI quotes the prompt back when it fails, and the prompt is raw user text, so an emoji
+        // can sit on the 500th char. The script writes exactly that: 499 bytes of 'x', then the
+        // 4 UTF-8 bytes of U+1F600, then a tail that the cut drops.
+        String script = "head -c 499 /dev/zero | tr '\\000' x; "
+                + "printf '\\360\\237\\230\\200'; printf tail; exit 1";
+        FakeCli cli = new FakeCli(script);
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.cli_error");
+                    // A char-based cut would keep the high surrogate alone and drop the low one.
+                    assertThat(exception.getMessage())
+                            .isEqualTo("sh CLI failed: " + "x".repeat(499) + "\uD83D\uDE00" + "...");
+                });
+    }
+
+    @Test
     void completeRejectsOversizedPromptBeforeStartingCli() {
         FakeCli cli = new FakeCli("echo should-not-run");
 
