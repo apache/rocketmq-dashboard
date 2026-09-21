@@ -263,6 +263,31 @@ describe('AlertsPage', () => {
     expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
+  it('counts a rule triggered in the last 24 hours by UTC, not browser-local, time', async () => {
+    // The backend stamps lastTriggered with ZoneOffset.UTC and no offset suffix, so a direct
+    // Date parse reads it as browser-local time. At UTC+8 that moves the instant 8 hours
+    // further into the past, and a rule that fired 20 hours ago drops out of the 24h counter.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const now = Date.UTC(2026, 7, 23, 12, 0, 0);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const lastTriggered = new Date(now - 20 * 60 * 60 * 1000).toISOString().slice(0, 19);
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered }]),
+      );
+
+      renderPage();
+
+      await screen.findByText('Broker disk usage');
+      await waitFor(() =>
+        expect(screen.getByText('本页 24h 触发').parentElement?.textContent).toBe('本页 24h 触发1'),
+      );
+    } finally {
+      nowSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('allows the unavailable operator only for availability metrics', () => {
     expect(supportsUnavailableOperator('nameserver.availability')).toBe(true);
     expect(supportsUnavailableOperator('broker.availability')).toBe(true);
