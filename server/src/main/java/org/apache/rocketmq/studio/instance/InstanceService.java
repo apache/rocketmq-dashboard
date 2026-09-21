@@ -232,7 +232,7 @@ public class InstanceService {
             throw exception;
         }
         recordAudit("CREATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
-                instanceAuditDetail(saved));
+                instanceAuditDetail(saved), "SUCCESS");
         return saved;
     }
 
@@ -355,8 +355,21 @@ public class InstanceService {
                 vendor, credentialId, result.discovered, result.imported, result.skipped, result.failedCount);
         recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
                 "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
-                        + ", failed=" + result.failedCount);
+                        + ", failed=" + result.failedCount,
+                cloudImportAuditResult(result.imported, result.failedCount));
         return result.toValue();
+    }
+
+    /**
+     * Grade the import outcome with the shared audit vocabulary: a clean import is SUCCESS,
+     * a fully failed one is FAILED, and anything in between (some instances imported, some
+     * regions or rows failed) is PARTIAL — matching the DLQ resend classification.
+     */
+    private static String cloudImportAuditResult(int imported, int failedCount) {
+        if (failedCount <= 0) {
+            return "SUCCESS";
+        }
+        return imported > 0 ? "PARTIAL" : "FAILED";
     }
 
     private String normalizeCloudImportValue(String value) {
@@ -611,7 +624,7 @@ public class InstanceService {
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheClientIfChanged(existing, saved);
         recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
-                instanceAuditDetail(saved));
+                instanceAuditDetail(saved), "SUCCESS");
         return saved;
     }
 
@@ -642,7 +655,7 @@ public class InstanceService {
         }
         removeDataSourceBindings(existing.getName());
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
-                instanceAuditDetail(existing));
+                instanceAuditDetail(existing), "SUCCESS");
         completeInstanceDeletionAfterCommit(existing);
     }
 
@@ -831,9 +844,9 @@ public class InstanceService {
     }
 
     private void recordAudit(String operation, String resourceType, String resourceName,
-                             String clusterId, String detail) {
+                             String clusterId, String detail, String result) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, result, null);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());
