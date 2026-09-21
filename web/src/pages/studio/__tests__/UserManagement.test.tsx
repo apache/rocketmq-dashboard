@@ -31,6 +31,8 @@ import {
   type StudioUserSessionDetail,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
+import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
 import UserManagementPage from '../UserManagement';
 
@@ -108,7 +110,9 @@ const renderPage = () =>
   render(
     <MemoryRouter>
       <App>
-        <UserManagementPage />
+        <LangProvider>
+          <UserManagementPage />
+        </LangProvider>
       </App>
     </MemoryRouter>,
   );
@@ -395,5 +399,33 @@ describe('UserManagementPage', () => {
     expect(setStudioUserEnabled).toHaveBeenCalledTimes(1);
     expect(setStudioUserEnabled).toHaveBeenCalledWith(7, false);
     await act(async () => resolveUpdate());
+  });
+
+  it('renders the page in English when the stored language preference is en', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    try {
+      render(
+        <MemoryRouter>
+          <App>
+            <LangProvider>
+              <UserManagementPage />
+            </LangProvider>
+          </App>
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText('User Management')).toBeInTheDocument();
+      expect(
+        screen.getByText('Studio local accounts, sessions and password management'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Create User' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Change My Password' })).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search username')).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Username' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Active Sessions' })).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Filter by role' })).toBeInTheDocument();
+    } finally {
+      localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    }
   });
 });
