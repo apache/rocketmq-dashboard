@@ -70,7 +70,7 @@ public final class ResumeRecovery {
         if (exitCode == 0) {
             return false;
         }
-        if (ERROR_DURING_EXECUTION.equals(resultSubtype)) {
+        if (isLostResumeSubtype(resultSubtype)) {
             return true;
         }
         return StringUtils.hasText(stderr) && stderr.stripLeading().startsWith(SESSION_NOT_FOUND_PREFIX);
@@ -82,6 +82,15 @@ public final class ResumeRecovery {
      * @param resumeRequested true when this run was started with {@code --resume}; the recovery is
      *     meaningless otherwise
      */
+    /**
+     * The subtype arm of {@link #isLostResumeSignal}, for a caller that knows the CLI failed but never
+     * sees its exit code or its stderr — the run worker only receives the projected frames, and both of
+     * those die with the subprocess.
+     */
+    public static boolean isLostResumeSubtype(String resultSubtype) {
+        return ERROR_DURING_EXECUTION.equals(resultSubtype);
+    }
+
     public static boolean shouldRetryWithoutResume(boolean resumeRequested, int exitCode,
                                                    String resultSubtype, String stderr) {
         return resumeRequested && isLostResumeSignal(exitCode, resultSubtype, stderr);

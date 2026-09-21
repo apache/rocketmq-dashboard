@@ -45,6 +45,16 @@ public interface AiConversationRepository {
 
     void update(RmqAiConversation conversation);
 
+    /**
+     * Forgets the provider session the conversation remembers, so the next run starts a new one instead
+     * of resuming a session the agent CLI no longer has. An explicit assignment rather than
+     * {@link #update(RmqAiConversation)}: {@code updateById} omits null entity fields, so a cleared
+     * column would be silently skipped and the stale value kept.
+     *
+     * @return the number of rows updated, 0 when the conversation is already gone
+     */
+    int clearRuntimeSessionId(Long id);
+
     int deleteById(Long id);
 
     /** Ids created strictly before the cutoff, oldest first, capped at limit. */

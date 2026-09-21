@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -77,6 +78,19 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
     @Override
     public void update(RmqAiConversation conversation) {
         conversationMapper.updateById(conversation);
+    }
+
+    @Override
+    public int clearRuntimeSessionId(Long id) {
+        if (id == null) {
+            return 0;
+        }
+        // updateById omits null entity fields, so clearing a column has to be assigned explicitly.
+        // gmt_modified is deliberately left alone: this is a state repair, not user activity, and
+        // bumping it would reorder the conversation list on the strength of a failure.
+        return conversationMapper.update(null, new UpdateWrapper<RmqAiConversation>()
+                .eq("id", id)
+                .set("runtime_session_id", null));
     }
 
     @Override

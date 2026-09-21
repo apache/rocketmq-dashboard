@@ -371,6 +371,25 @@ class AiConversationPersistenceIntegrationTest {
         verifyNoCascade();
     }
 
+    @Test
+    void clearingTheRememberedProviderSessionShouldReachTheColumnTest() {
+        long conversationId = seedConversation(OWNER, "a conversation whose session is gone");
+        RmqAiConversation withSession = new RmqAiConversation();
+        withSession.setId(conversationId);
+        withSession.setRuntimeSessionId("4e943b51-9e53-42d9-b2e1-0cb2cc839ac4");
+        conversationRepository.update(withSession);
+        assertThat(conversationRepository.findById(conversationId).orElseThrow().getRuntimeSessionId())
+                .isEqualTo("4e943b51-9e53-42d9-b2e1-0cb2cc839ac4");
+
+        assertThat(conversationRepository.clearRuntimeSessionId(conversationId)).isEqualTo(1);
+
+        // updateById omits null entity fields, so without the explicit assignment the stale id would
+        // survive the clear and the next turn would resume a session the CLI no longer has.
+        assertThat(conversationRepository.findById(conversationId).orElseThrow().getRuntimeSessionId())
+                .isNull();
+        // An unknown conversation is a zero-row update, never an exception.
+        assertThat(conversationRepository.clearRuntimeSessionId(conversationId + 10_000L)).isZero();
+    }
     // --- harness ------------------------------------------------------------------
 
     private void verifyNoCascade() {

@@ -459,6 +459,31 @@ class AiRunExecutorTest {
         verify(second).waitFor(AgentRunHandle.DEFAULT_SHUTDOWN_GRACE.toMillis(), TimeUnit.MILLISECONDS);
     }
 
+    @Test
+    void aLostResumeSessionShouldNotBeResumedByTheNextTurnTest() {
+        // The measured shape of a conversation whose CLI session is gone (the per-conversation
+        // workspace lives under /tmp, so a container restart wipes it): --resume finds nothing, the CLI
+        // exits 1 and its result frame echoes the REQUESTED session id back with
+        // subtype error_during_execution. That id is not a live session, so recording it would make
+        // every later turn resume a session that does not exist and fail exactly the same way.
+        conversation.setRuntimeSessionId("gone-session");
+        run.setResumedFrom("gone-session");
+        provider.emit(new AgentEvent.ResultMeta("gone-session", 12L, 0, 0, "error_during_execution"));
+
+        executor.submit(context(ENGINE, false, "gone-session"));
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getErrorCode()).isEqualTo("llm.provider.error_during_execution");
+        // What the run tried to resume stays on the row as history...
+        assertThat(runRow().getResumedFrom()).isEqualTo("gone-session");
+        // ...but the echoed id is not this run's session...
+        assertThat(runRow().getRuntimeSessionId()).isNull();
+        // ...and the conversation must not hand it to the next turn either. The clear has to be durable:
+        // the next turn re-reads the conversation from the database before it decides what to resume.
+        assertThat(conversation.getRuntimeSessionId()).isNull();
+        verify(conversationRepository).clearRuntimeSessionId(CONVERSATION_ID);
+    }
+
     // --- harness ---------------------------------------------------------------
 
     private void startAndRun() {
@@ -474,6 +499,10 @@ class AiRunExecutorTest {
     }
 
     private AiRunExecutor.RunContext context(String engine, boolean enhance) {
+        return context(engine, enhance, null);
+    }
+
+    private AiRunExecutor.RunContext context(String engine, boolean enhance, String resumeSessionId) {
         AgentRunHandle handle = executor.newHandle(RUN_ID);
         AiEventSink sink = executor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
         session = executor.newSession(RUN_ID, executor.streamTimeoutMillis(engine));
@@ -483,7 +512,7 @@ class AiRunExecutorTest {
         session.finishReplay();
         return new AiRunExecutor.RunContext(conversation, run, sink, handle,
                 LlmConfigVO.builder().engine(engine).model("qwen3.8-max").enabled(true).build(),
-                engine, "hello", null, enhance, Duration.ofSeconds(300), null);
+                engine, "hello", resumeSessionId, enhance, Duration.ofSeconds(300), null);
     }
 
     private List<String> types() {

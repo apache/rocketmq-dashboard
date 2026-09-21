@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.RmqctlWorkspace;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
@@ -474,14 +475,22 @@ public class AiRunExecutor {
             run.setFinishedAt(finishedAt);
             run.setDurationMs(durationMs);
             run.setEndSeq(endSeq);
-            run.setRuntimeSessionId(terminal.outcome().runtimeSessionId);
+            // A failed result frame echoes the REQUESTED session id back, and a session the CLI no
+            // longer has is not a session at all: recording it would make the next turn resume it and
+            // fail identically.
+            boolean resumeSessionLost = lostResumeSession(context, terminal);
+            run.setRuntimeSessionId(resumeSessionLost ? null : terminal.outcome().runtimeSessionId);
             run.setInputTokens(terminal.outcome().inputTokens);
             run.setOutputTokens(terminal.outcome().outputTokens);
             run.setErrorCode(truncate(terminal.errorCode(), MAX_ERROR_CODE_CHARS));
             run.setErrorMessage(truncate(terminal.errorMessage(), MAX_ERROR_MESSAGE_CHARS));
             run.setGmtModified(finishedAt);
             runRepository.update(run);
-            rememberRuntimeSession(context, terminal.outcome().runtimeSessionId);
+            if (resumeSessionLost) {
+                forgetLostResumeSession(context);
+            } else {
+                rememberRuntimeSession(context, terminal.outcome().runtimeSessionId);
+            }
             // 4. The last_seq cache. close() also drains anything the timed flush left behind.
             sink.close();
             // 5. The live terminal frame.
@@ -500,6 +509,45 @@ public class AiRunExecutor {
             //    never left waiting on a stream that will not produce another frame.
             registry.finish(run.getId());
         }
+    }
+
+    /**
+     * Whether this run lost the provider session it was resuming. An agent session that is gone — the
+     * default workspace lives under {@code /tmp}, so a container restart is enough to produce it — is the
+     * one provider failure a later turn cannot recover from on its own: the id stays on the conversation,
+     * so every subsequent turn resumes it and fails the same way.
+     *
+     * <p>Only the subtype arm of {@link ResumeRecovery#isLostResumeSignal} is reachable here: the worker
+     * sees the projected frames, and the exit code and the stderr line that carry the other arm never
+     * leave the subprocess. Reaching this point at all means the run failed, which is the exit-code half
+     * of that signal.
+     */
+    private static boolean lostResumeSession(RunContext context, Terminal terminal) {
+        return RunStatus.FAILED.equals(terminal.status())
+                && StringUtils.hasText(context.getResumeSessionId())
+                && ResumeRecovery.isLostResumeSubtype(terminal.outcome().subtype);
+    }
+
+    /**
+     * Clears the session id a run could not resume, which is the second half of the recovery contract
+     * {@link ResumeRecovery} documents — without it the conversation is unusable for good. The write goes
+     * through the port because {@code updateById} omits null fields.
+     *
+     * <p>A database failure is logged rather than thrown: a run that already failed must not fail its
+     * finalisation too, which is the discipline {@link #rememberRuntimeSession} follows.
+     */
+    private void forgetLostResumeSession(RunContext context) {
+        RmqAiConversation conversation = context.getConversation();
+        try {
+            conversationRepository.clearRuntimeSessionId(conversation.getId());
+            conversation.setRuntimeSessionId(null);
+        } catch (RuntimeException exception) {
+            log.warn("could not forget the lost provider session of conversation {}: {}",
+                    conversation.getId(), exception.toString());
+            return;
+        }
+        log.info("agent run {} could not resume the provider session it was given; conversation {} "
+                + "will start a new one on its next turn", context.getRun().getId(), conversation.getId());
     }
 
     /**
