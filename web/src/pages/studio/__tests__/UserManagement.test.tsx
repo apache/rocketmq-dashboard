@@ -31,6 +31,7 @@ import {
   type StudioUserSessionDetail,
 } from '../../../api/studioUsers';
 import { downloadCsv } from '../../../utils/download';
+import { formatUtcDateTime } from '../../../utils/format';
 import UserManagementPage from '../UserManagement';
 
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
@@ -279,7 +280,7 @@ describe('UserManagementPage', () => {
 
     await screen.findByText('operator');
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
-    expect(screen.getByText(new Date('2026-08-22T09:30:00').toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatUtcDateTime('2026-08-22T09:30:00'))).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '注销' }));
     await screen.findByText('注销 operator 的活跃会话？');
@@ -287,6 +288,28 @@ describe('UserManagementPage', () => {
 
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders session timestamps as UTC values in the viewer timezone', async () => {
+    // The user/session APIs serialize UTC LocalDateTime values without an offset, so
+    // the table and drawer must not parse them as browser-local wall times. Pin the
+    // viewer zone so the expectation discriminates regardless of the runner's zone.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+
+      await screen.findByText('operator');
+      // 09:30 UTC is 17:30 in Asia/Shanghai; a browser-local misparse shows 09:30.
+      expect(screen.getByText('2026-08-22 17:30:00 GMT+8')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '会话' }));
+      const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+      expect(within(drawer).getByText('2026-08-22 17:45:00 GMT+8')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 18:00:00 GMT+8')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('revokes sessions from the detail drawer and refreshes the detail list', async () => {

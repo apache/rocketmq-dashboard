@@ -61,7 +61,7 @@ import {
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
-import { formatDelay } from '../../utils/format';
+import { formatDelay, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 interface CreateFormValues {
@@ -75,7 +75,9 @@ interface PasswordFormValues {
   newPassword: string;
 }
 
-const dateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : '-');
+// Studio user and session APIs serialize UTC LocalDateTime values without an offset,
+// so the timestamps have to be parsed as UTC before rendering in the viewer's zone.
+const dateTime = (value?: string | null) => formatUtcDateTime(value);
 const durationText = (value?: number | null) => (value == null ? '-' : formatDelay(value));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
