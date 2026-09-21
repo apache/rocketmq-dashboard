@@ -1467,13 +1467,30 @@ describe('Cluster page', () => {
     });
     expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1);
 
-    create.resolve({
+    // The failure path must release the guard: a rejected create lets the next confirm retry.
+    create.reject(new Error('registry unavailable'));
+    await waitFor(() =>
+      expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1),
+    );
+    clusterServiceMocks.createNameserverRegistry.mockResolvedValueOnce({
       id: 9,
       name: 'rocketmq9',
       namesrvAddr: 'rocketmq9-nameserver:9876',
-    });
-    // The zoom-leave animation keeps the dialog in the DOM for a moment; the request
-    // bookkeeping is what this regression pins, so assert the call count only.
-    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1);
+    } as never);
+    // The guard releases once the catch path settles; poll the click until the retry lands.
+    for (
+      let attempt = 0;
+      attempt < 20 && clusterServiceMocks.createNameserverRegistry.mock.calls.length < 2;
+      attempt++
+    ) {
+      fireEvent.click(confirmButton);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
+    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(2);
+    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'rocketmq9', namesrvAddr: 'rocketmq9-nameserver:9876' }),
+    );
   });
 });
