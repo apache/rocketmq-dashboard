@@ -1090,21 +1090,35 @@ GET /api/groups/export?names={name1,name2}
 ### 7.1 获取 ACL 规则列表
 
 ```
-GET /api/acl/rules?clusterId={clusterId}&principal={principal}
+GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&instanceId={instanceId}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `clusterId` | `string` | 否 | 按集群过滤 |
-| `principal` | `string` | 否 | 按用户过滤 |
+| `principal` | `string` | 否 | 按主体过滤 |
+| `resource` | `string` | 否 | 按资源过滤 |
+| `scope` | `string` | 否 | 按作用域过滤 |
+| `decision` | `string` | 否 | 按决策过滤 |
+| `instanceId` | `string` | 否 | 按所属实例过滤 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20` |
 
-**Response `data`:** `AclRule[]`
+**Response `data`:** `PageResult<AclRule>`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 规则 ID |
+| `items` | `AclRule[]` | 当前页规则 |
+| `total` | `number` | 总条数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 当前页大小 |
+
+#### AclRule
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 规则 ID |
 | `principal` | `string` | 主体用户名 |
 | `resource` | `string` | 资源名称/模式 |
 | `resourceType` | `string` | 资源类型: `Topic` / `Group` / `Cluster` |
@@ -1113,7 +1127,7 @@ GET /api/acl/rules?clusterId={clusterId}&principal={principal}
 | `decision` | `string` | 决策: `ALLOW` / `DENY` |
 | `scope` | `string` | 作用域: `cluster` / `namespace` |
 | `aclVersion` | `string` | ACL 版本: `1.0` / `2.0` |
-| `createdAt` | `string` | 创建时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
 
 ### 7.2 创建 ACL 规则
 
@@ -1159,13 +1173,13 @@ GET /api/acl/users
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 用户 ID |
+| `id` | `number` | 用户 ID |
 | `username` | `string` | 用户名 |
 | `accessKey` | `string` | AccessKey（脱敏显示） |
 | `secretKey` | `string` | SecretKey（脱敏显示） |
 | `admin` | `boolean` | 是否管理员 |
 | `clusters` | `string[]` | 授权集群列表 |
-| `createdAt` | `string` | 创建时间 |
+| `gmtCreate` | `string` | 创建时间 |
 
 完整的 AccessKey 和 SecretKey 仅在创建用户的响应中返回一次，后续列表查询和更新响应只返回脱敏值。
 
