@@ -182,6 +182,40 @@ describe('QueueBrowser request ownership', () => {
     expect(screen.queryByText('stale-message')).not.toBeInTheDocument();
   });
 
+  it('a stale pull does not release the pulling slot claimed by a newer pull', async () => {
+    const stalePull = createDeferred<MessageRecord | null>();
+    const freshPull = createDeferred<MessageRecord | null>();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockReturnValueOnce(stalePull.promise)
+      .mockReturnValueOnce(freshPull.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(1));
+
+    // Switching topics clears the pulling slots; topic-b resolves to a queue
+    // with the same broker-queue key, so the next pull re-claims the slot.
+    await user.click(screen.getByRole('button', { name: 'topic-b' }));
+    await waitFor(() => expect(screen.getByLabelText('topic')).toHaveTextContent('topic-b'));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      stalePull.resolve(messageRecord('stale-message'));
+    });
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(2);
+    await act(async () => freshPull.resolve(messageRecord('fresh-message')));
+  });
+
   it('deduplicates pulls for the same queue before loading state renders', async () => {
     const pull = createDeferred<MessageRecord | null>();
     vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);

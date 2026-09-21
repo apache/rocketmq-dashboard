@@ -139,8 +139,14 @@ export const useQueueBrowser = (instanceId?: string) => {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      pullingRef.current.delete(key);
-      if (requestId === requestSeqRef.current) setPulling(new Set(pullingRef.current));
+      // A stale pull must not touch the slot state at all: after a topic switch
+      // the reset already cleared pullingRef, and a newer pull for the same
+      // broker-queue key may have re-claimed the slot the stale request still
+      // remembers.
+      if (requestId === requestSeqRef.current) {
+        pullingRef.current.delete(key);
+        setPulling(new Set(pullingRef.current));
+      }
     }
   };
 
