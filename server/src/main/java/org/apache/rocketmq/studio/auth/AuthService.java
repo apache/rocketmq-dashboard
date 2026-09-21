@@ -348,7 +348,11 @@ public class AuthService {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
         if (requireCurrentPassword && !passwordHasher.matches(currentPassword, user.getPasswordHash())) {
-            throw new BusinessException(401, "Current password is incorrect");
+            // The request is already authenticated; this is a payload problem, not a session one.
+            // 401 is what the Studio client reads as "the session is gone" and answers by clearing
+            // the session and redirecting to the login page, and the same field already answers 400
+            // when it is blank (ChangePasswordDTO validation).
+            throw new BusinessException(400, "Current password is incorrect");
         }
         validatePassword(newPassword);
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
