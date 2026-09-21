@@ -78,7 +78,8 @@ import java.util.Set;
  * <h2>Retention cascades by hand</h2>
  * This project declares no foreign keys, so deleting a conversation has to delete its runs and events
  * itself, and the order is events, runs, conversations: a crash halfway leaves a parent with no
- * children, which the next pass finishes, instead of children nobody can find any more.
+ * children, which the next pass finishes, instead of children nobody can find any more. The agent
+ * workspace goes with the rows, because the conversation's lifetime is what keeps it on disk.
  */
 @Slf4j
 @Service
@@ -496,11 +497,21 @@ public class AiConversationService implements ApplicationRunner {
         return totalDeleted;
     }
 
-    /** Events, then runs, then conversations: no FK constraints here, so the cascade is this method. */
+    /**
+     * Events, then runs, then conversations: no FK constraints here, so the cascade is this method.
+     *
+     * <p>The workspace goes too, once the rows are gone: it holds the child's {@code HOME}, so the
+     * agent transcript lives there and a purge that only deletes rows keeps it on disk under an id
+     * nothing refers to any more. After the rows, not before - the workspace of a conversation a
+     * crash left visible is still reachable, while a transcript removed under a live conversation
+     * is not (the order {@link #delete(Long, String)} uses).
+     */
     private int deleteCascade(List<Long> conversationIds) {
         eventRepository.deleteByConversationIds(conversationIds);
         runRepository.deleteByConversationIds(conversationIds);
-        return conversationRepository.deleteByIds(conversationIds);
+        int deleted = conversationRepository.deleteByIds(conversationIds);
+        conversationIds.forEach(workspace::delete);
+        return deleted;
     }
 
     /**

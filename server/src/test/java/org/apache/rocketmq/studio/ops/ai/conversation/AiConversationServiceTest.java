@@ -369,6 +369,24 @@ class AiConversationServiceTest {
     }
 
     @Test
+    void retentionShouldRemoveTheWorkspaceOfEveryPurgedConversationTest() {
+        when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(500)))
+                .thenReturn(List.of(1L, 2L, 3L));
+        when(conversationRepository.deleteByIds(anyList())).thenReturn(3);
+
+        service.purgeExpired();
+
+        // The workspace holds the child's HOME, so the agent transcript lives there: a purge that
+        // only deletes rows keeps it on disk forever, under a conversation the user cannot see any
+        // more. It is removed after the rows, the same order the on-request delete uses.
+        InOrder order = inOrder(conversationRepository, workspace);
+        order.verify(conversationRepository).deleteByIds(List.of(1L, 2L, 3L));
+        order.verify(workspace).delete(1L);
+        order.verify(workspace).delete(2L);
+        order.verify(workspace).delete(3L);
+    }
+
+    @Test
     void retentionShouldKeepBatchingUntilTheBacklogIsGoneOrTheCapIsReachedTest() {
         properties.setCleanupBatchSize(2);
         properties.setCleanupMaxBatches(3);
