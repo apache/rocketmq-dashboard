@@ -608,4 +608,36 @@ class AclControllerTest extends WebMvcAuthTestSupport {
         verify(aclService).createAndUpdatePlainAccessConfig(captor.capture());
         assertThat(captor.getValue().getWhiteRemoteAddress()).isEqualTo("invalid");
     }
+
+    @Test
+    void auditRulesShouldReturnAuditReport() throws Exception {
+        AclAuditReportVO report = AclAuditReportVO.builder()
+                .instanceId("inst-audit")
+                .totalRulesAudited(5)
+                .wildcardSourceIpCount(1)
+                .overlappingSubnetCount(1)
+                .syntaxWarningCount(0)
+                .findings(List.of(
+                        AclAuditReportVO.AclAuditFindingVO.builder()
+                                .ruleId("r-1")
+                                .principal("test-user")
+                                .resource("TopicTest")
+                                .severity("CRITICAL")
+                                .category("WILDCARD_EXPOSURE")
+                                .description("Unrestricted access")
+                                .build()
+                ))
+                .build();
+        when(aclService.auditAclRules("inst-audit")).thenReturn(report);
+
+        mockMvc.perform(get("/api/acl/rules/audit").param("instanceId", "inst-audit"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.instanceId").value("inst-audit"))
+                .andExpect(jsonPath("$.data.totalRulesAudited").value(5))
+                .andExpect(jsonPath("$.data.wildcardSourceIpCount").value(1))
+                .andExpect(jsonPath("$.data.findings[0].category").value("WILDCARD_EXPOSURE"));
+
+        verify(aclService).auditAclRules("inst-audit");
+    }
 }

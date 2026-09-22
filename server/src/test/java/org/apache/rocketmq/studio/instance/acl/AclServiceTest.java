@@ -76,6 +76,9 @@ class AclServiceTest {
     @Mock
     private ClusterProvider clusterProvider;
 
+    @Mock
+    private AclSecurityAuditor aclSecurityAuditor;
+
     @InjectMocks
     private AclService aclService;
 
@@ -1106,5 +1109,33 @@ class AclServiceTest {
                 Arguments.of(null, null),
                 Arguments.of("", null),
                 Arguments.of("unknown", null));
+    }
+
+    @Test
+    void auditAclRulesShouldAggregateRepositoryRulesAndDelegate() {
+        InstanceVO instance = InstanceVO.builder()
+                .id("inst-audit-1")
+                .vendor(InstanceVendor.APACHE)
+                .type(InstanceType.ROCKETMQ_CLUSTER)
+                .build();
+        when(instanceResolver.findByIdentifier("inst-audit-1")).thenReturn(Optional.of(instance));
+
+        List<AclRuleVO> storedRules = List.of(
+                AclRuleVO.builder().id(1L).principal("p1").resource("TopicA").sourceIp("*").build()
+        );
+        PageResult<AclRuleVO> page = new PageResult<>(1, 1000, 1, storedRules);
+        when(aclRepository.findRulePage(null, null, null, null, null, 1, 1000)).thenReturn(page);
+
+        AclAuditReportVO mockReport = AclAuditReportVO.builder()
+                .instanceId("inst-audit-1")
+                .totalRulesAudited(1)
+                .wildcardSourceIpCount(1)
+                .build();
+        when(aclSecurityAuditor.auditRules("inst-audit-1", storedRules)).thenReturn(mockReport);
+
+        AclAuditReportVO result = aclService.auditAclRules("inst-audit-1");
+
+        assertThat(result).isSameAs(mockReport);
+        verify(aclSecurityAuditor).auditRules("inst-audit-1", storedRules);
     }
 }

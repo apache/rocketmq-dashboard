@@ -86,6 +86,11 @@ public class AclController {
         return Result.ok();
     }
 
+    @GetMapping("/rules/audit")
+    public Result<AclAuditReportVO> auditRules(@RequestParam String instanceId) {
+        return Result.ok(aclService.auditAclRules(instanceId));
+    }
+
     @GetMapping("/users")
     public Result<List<AclUserVO>> listUsers(
             @RequestParam(required = false) String instanceId) {

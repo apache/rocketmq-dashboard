@@ -63,6 +63,19 @@ public class AclService {
     private final InstanceResolver instanceResolver;
     private final TencentAclService tencentAclService;
     private final ClusterProvider clusterProvider;
+    private final AclSecurityAuditor aclSecurityAuditor;
+
+    public AclAuditReportVO auditAclRules(String instanceId) {
+        requireAcl2Supported(instanceId);
+        List<AclRuleVO> allRules;
+        if (isTencentInstance(instanceId)) {
+            allRules = tencentAclService.listRules(instanceId, null);
+        } else {
+            PageResult<AclRuleVO> rulePage = aclRepository.findRulePage(null, null, null, null, null, 1, 1000);
+            allRules = rulePage == null ? List.of() : rulePage.getList();
+        }
+        return aclSecurityAuditor.auditRules(instanceId, allRules);
+    }
 
     public AclCapabilitiesVO capabilities(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
