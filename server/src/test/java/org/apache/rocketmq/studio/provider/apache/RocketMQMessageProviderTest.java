@@ -231,6 +231,18 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByKeyReturnsEmptyListWhenTopicRouteIsAbsent() throws Exception {
+        // A key query against a topic whose route no longer exists (e.g. the topic was just
+        // deleted) is business-empty per the query failure grading contract, not a gateway error.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No topic route info in local cache, see the console for more info."));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L)).isEmpty();
+    }
+
+    @Test
     void queryByUniqueKeyWithoutWindowUsesTwoArgAdminLookupTest() throws Exception {
         MQAdminImpl mqAdmin = mockUniqKeyLookupAdmin();
         MessageExt message = new MessageExt();
