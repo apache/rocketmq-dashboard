@@ -293,10 +293,9 @@ public class AiConversationService implements ApplicationRunner {
     /**
      * The persisted timeline of one conversation, cursor-paged on {@code seq}.
      *
-     * <p>The repository query deliberately has no SQL {@code ORDER BY}: {@code payload} is MEDIUMTEXT
-     * and a sort MySQL cannot serve from {@code uk_ai_event_conversation_seq} materialises the whole
-     * value into {@code sort_buffer_size}. It fetches {@code limit + 1} rows so {@code nextAfter} can be
-     * derived without a second query.
+     * <p>The repository orders by {@code seq} through {@code uk_ai_event_conversation_seq} before it
+     * applies the limit, so every page is the next contiguous slice. It fetches {@code limit + 1} rows
+     * so {@code nextAfter} can be derived without a second query.
      */
     public TimelinePage timeline(Long conversationId, String owner, int afterSeq, int limit) {
         RmqAiConversation conversation = requireOwned(conversationId, owner);
