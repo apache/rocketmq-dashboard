@@ -203,18 +203,17 @@ func runTool(
 		return err
 	}
 
-	if err := confirmRisk(cmd, runtime, tool, arguments); err != nil {
+	if err := preflightRiskConfirmation(cmd, runtime, tool, arguments); err != nil {
 		return err
 	}
 
 	// L2/L3 mutations require a server-issued confirm_token from a matching
 	// dry-run preview before they execute. Unless an explicit --confirm-token
 	// or --dry-run is supplied, transparently run the preview first to obtain
-	// the token so callers need not script the two-phase handshake manually —
-	// for scripted --yes calls and for interactively confirmed runs alike,
-	// because the server rejects both with CONFIRMATION_TOKEN_REQUIRED when
-	// the token is missing. L1 tools, explicit dry-runs, and calls that
-	// already carry a confirm_token are left untouched.
+	// the token. Interactive callers see that server plan before they approve;
+	// --yes remains quiet so structured automation receives only the apply
+	// result. L1 tools, explicit dry-runs, and calls that already carry a
+	// confirm_token are left untouched.
 	if tool.RiskLevel != "L1" {
 		if _, hasToken := arguments["confirm_token"]; !hasToken {
 			if dryRun, _ := arguments["dry_run"].(bool); !dryRun {
@@ -234,8 +233,20 @@ func runTool(
 				if mutation.ConfirmToken != "" {
 					arguments["confirm_token"] = mutation.ConfirmToken
 				}
+				if requiresRiskConfirmation(runtime, tool, arguments) {
+					previewOut := cmd.ErrOrStderr()
+					fmt.Fprintln(previewOut, "Server preview:")
+					if err := output.ToolCallSummary(previewOut, previewResult); err != nil {
+						return err
+					}
+					fmt.Fprintln(previewOut)
+				}
 			}
 		}
+	}
+
+	if err := confirmRisk(cmd, runtime, tool, arguments); err != nil {
+		return err
 	}
 
 	result, err := runtime.client.CallTool(cmd.Context(), target, tool.Name, arguments)
@@ -303,6 +314,30 @@ func deprecatedMessage(tool toolcatalog.Tool) string {
 	return "use " + tool.Replacement + " instead"
 }
 
+// preflightRiskConfirmation rejects a non-interactive default prompt before the
+// safe preview request is sent. Injected confirmation callbacks are test seams
+// that model an interactive caller and perform their own input handling.
+func preflightRiskConfirmation(
+	cmd *cobra.Command,
+	runtime commandRuntime,
+	tool toolcatalog.Tool,
+	arguments map[string]any,
+) error {
+	if !requiresRiskConfirmation(runtime, tool, arguments) || runtime.confirm != nil {
+		return nil
+	}
+	return requireInteractiveConfirmation(cmd.InOrStdin(), tool.CommandPath(), tool.RiskLevel)
+}
+
+func requiresRiskConfirmation(
+	runtime commandRuntime,
+	tool toolcatalog.Tool,
+	arguments map[string]any,
+) bool {
+	dryRun, _ := arguments["dry_run"].(bool)
+	return tool.RiskLevel != "L1" && !dryRun && !runtime.options.yes
+}
+
 // confirmRisk enforces the client-side confirmation gate for L2/L3 operations.
 // L1 tools, dry-run previews and commands invoked with --yes skip the prompt.
 // Prompts go to stderr to preserve structured stdout. When App.confirm is set
@@ -310,8 +345,7 @@ func deprecatedMessage(tool toolcatalog.Tool) string {
 // implementation rejects non-interactive stdin to avoid silently executing
 // dangerous actions from scripts or pipes.
 func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.Tool, arguments map[string]any) error {
-	dryRun, _ := arguments["dry_run"].(bool)
-	if tool.RiskLevel == "L1" || dryRun || runtime.options.yes {
+	if !requiresRiskConfirmation(runtime, tool, arguments) {
 		return nil
 	}
 	confirm := runtime.confirm
@@ -325,16 +359,8 @@ func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.To
 // prompts when stdin is a character device (interactive terminal); pipes and
 // redirected input are rejected so scripts must pass --yes explicitly.
 func defaultConfirm(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
-	file, ok := in.(*os.File)
-	if !ok || file == nil {
-		return riskConfirmationRequired(commandPath, riskLevel)
-	}
-	stat, err := file.Stat()
-	if err != nil {
-		return riskConfirmationRequired(commandPath, riskLevel)
-	}
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		return riskConfirmationRequired(commandPath, riskLevel)
+	if err := requireInteractiveConfirmation(in, commandPath, riskLevel); err != nil {
+		return err
 	}
 	fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
 	fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
@@ -351,6 +377,21 @@ func defaultConfirm(in io.Reader, out io.Writer, commandPath, riskLevel, server 
 			types.CodeCommandFailed,
 			fmt.Sprintf("execution of %q cancelled", commandPath),
 			"Re-run the command and type yes, or pass --yes to skip the prompt.")
+	}
+	return nil
+}
+
+func requireInteractiveConfirmation(in io.Reader, commandPath, riskLevel string) error {
+	file, ok := in.(*os.File)
+	if !ok || file == nil {
+		return riskConfirmationRequired(commandPath, riskLevel)
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		return riskConfirmationRequired(commandPath, riskLevel)
+	}
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		return riskConfirmationRequired(commandPath, riskLevel)
 	}
 	return nil
 }
