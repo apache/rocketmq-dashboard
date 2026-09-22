@@ -40,6 +40,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -451,6 +452,65 @@ class AiRunServiceTest {
         registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("and since"));
 
         assertThat(emitters.get(0).eventText()).contains("and since");
+    }
+
+    @Test
+    void attachShouldReplayABacklogLongerThanOneTimelinePageTest() {
+        // A tool-heavy run persists two rows per tool call plus one per coalesced text or thinking block,
+        // so a client that was away for a few minutes comes back to more than one page of history. The
+        // watermark ends up at the last row read, which means anything past the first page would be
+        // neither replayed (it sits behind the client's cursor) nor sent live (it was published before
+        // this observer existed) — the reconnected transcript would carry a permanent hole.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        List<RmqAiEvent> firstPage = new ArrayList<>();
+        for (int seq = 1; seq <= 200; seq++) {
+            firstPage.add(event(seq, "text", "{\"type\":\"text\",\"text\":\"block-" + seq + "\"}"));
+        }
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenReturn(firstPage);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 200, 200))
+                .thenReturn(List.of(event(201, "text", "{\"type\":\"text\",\"text\":\"the newest block\"}")));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("block-1").contains("block-200").contains("the newest block");
+    }
+
+    @Test
+    void attachShouldNotLoseAFramePublishedWhileTheReplayIsReadTest() {
+        // The registry keeps no backlog, so a frame published before the observer is registered is fanned
+        // out to nobody and the tail cannot pick it up afterwards. Registering the observer only after the
+        // read therefore drops everything the run publishes while the replay is being loaded.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenAnswer(invocation -> {
+            registry.publish(RUN_ID, 42L, new LiveEvent.Notice("info", "published mid-replay"));
+            return List.of(event(1, "text", "{\"type\":\"text\",\"text\":\"so far\"}"));
+        });
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText()).contains("published mid-replay");
+    }
+
+    @Test
+    void attachShouldDetachTheObserverWhenTheReplayReadFailsTest() {
+        // A half-replayed observer is in the registry but has never sent a frame; nothing else would ever
+        // remove it, because the emitter only detaches on a transport callback for a response the client
+        // is still waiting for.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200))
+                .thenThrow(new IllegalStateException("connection reset"));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+
+        assertThatThrownBy(() -> service.attach(RUN_ID, 0)).isInstanceOf(IllegalStateException.class);
+
+        // Ending the run completes whoever is still subscribed; a stranded observer would show up here.
+        assertThat(registry.finish(RUN_ID)).isZero();
     }
 
     // --- resolution ------------------------------------------------------------
