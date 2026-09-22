@@ -317,6 +317,7 @@ const ConsumerPageContent = ({
   const [exporting, setExporting] = useState(false);
 
   const groupRequestIdRef = useRef(0);
+  const subscriptionRequestIdRef = useRef<Record<string, number>>({});
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
   // Consumption switches as loaded from the broker, used to detect high-risk changes
@@ -409,6 +410,8 @@ const ConsumerPageContent = ({
     async (groupName: string, force = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && subscriptionsByGroup[cacheKey]) return;
+      const requestId = (subscriptionRequestIdRef.current[cacheKey] ?? 0) + 1;
+      subscriptionRequestIdRef.current[cacheKey] = requestId;
       setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
       setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
       try {
@@ -416,12 +419,18 @@ const ConsumerPageContent = ({
           groupName,
           selectedInstanceId || undefined,
         );
-        setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
+        }
       } catch {
-        setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
-        message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+          message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+        }
       } finally {
-        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        }
       }
     },
     [subscriptionsByGroup, t, selectedInstanceId],
