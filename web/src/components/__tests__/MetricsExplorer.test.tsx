@@ -493,6 +493,31 @@ describe('MetricsExplorer', () => {
     // The range control governs the whole explorer: the profile panels re-query through
     // loadAll, so the custom panel has to follow the new window as well instead of
     // keeping the samples its previous window produced.
+    const refreshedProfileData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [{ timestamp: 1_800_000_000, value: '77' }],
+        },
+      ],
+    };
+    const refreshedCustomData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    };
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      Promise.resolve(
+        query.metric === 'sum(rocketmq_topic_number)' ? refreshedCustomData : refreshedProfileData,
+      ),
+    );
+
     await user.click(screen.getByText('6h'));
 
     const customCalls = () =>
@@ -507,6 +532,12 @@ describe('MetricsExplorer', () => {
       end: 1_800_000_000,
       step: '2m',
     });
+
+    // The custom panel re-runs beside the profile panels, so the added call must leave the
+    // other flow's request generation alone: both still publish their own result. (The
+    // cross-flow freeze of issue #3304, fixed by #3299, was the opposite behaviour.)
+    expect(await screen.findByText('77 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('cluster=prod / query=custom')).toBeInTheDocument();
   });
 
   it('queries the first metric when the version profile changes', async () => {
