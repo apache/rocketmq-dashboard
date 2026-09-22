@@ -259,6 +259,56 @@ describe('DLQ page', () => {
     );
   });
 
+  it('keeps the open drawer pinned to the time range it was opened with', async () => {
+    // Opening the drawer snapshots the picker range. Changing the group-level picker afterwards
+    // must not split banner / rows / export across two different windows; closing and reopening
+    // applies the new range.
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-1',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-1',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
+      blob: new Blob(['xlsx-bytes'], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+    const detailCallsAfterOpen = messageService.listDLQMessages.mock.calls.length;
+    expect(detailCallsAfterOpen).toBeGreaterThan(0);
+    const openWindow = messageService.listDLQMessages.mock.calls[detailCallsAfterOpen - 1][0];
+
+    // The banner names the same window the rows were loaded with.
+    const banner = screen.getByText(/明细按打开抽屉时的「导出时间范围」查询/);
+
+    await user.click(screen.getByRole('button', { name: '导出全部' }));
+    expect(messageService.exportDLQExcel).toHaveBeenCalledTimes(1);
+    const exportParams = vi.mocked(messageService.exportDLQExcel).mock.calls[0][0];
+    // Export window matches the drawer window, not some newer picker state.
+    expect(exportParams.startTime).toBe(openWindow.startTime);
+    expect(exportParams.endTime).toBe(openWindow.endTime);
+    expect(banner).toBeInTheDocument();
+  });
+
   it('does not let an old-instance detail resend overwrite the new instance drawer', async () => {
     let resolveResend!: (result: DLQResendResult) => void;
     let resolveSecondDetail!: (page: DLQMessagePage) => void;
