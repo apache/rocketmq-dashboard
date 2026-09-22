@@ -2557,7 +2557,9 @@ POST /api/system-alerts/deliveries/:deliveryId/retry
 POST /api/system-alerts/deliveries/retry
 ```
 
-**Request Body:** `number[]`（投递记录 ID 列表；传空数组或省略时重试全部失败投递）。
+**Request Body:** `number[]`（投递记录 ID 列表，须含 1-100 个 ID；缺失、为空或超过 100 个返回
+400）。
+
 
 **Response `data`:**
 
