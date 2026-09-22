@@ -70,6 +70,7 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { formatBytes } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -123,12 +124,6 @@ const TOPIC_TAG_COLORS: Record<string, string> = {
 const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startOf('day'), dayjs()];
 
 /* ─── Helpers ─── */
-
-const formatSize = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
 
 const formatTimeMs = (value: number | string): string => {
   if (!value) return '-';
@@ -799,7 +794,7 @@ const MessagePageContent = ({
       key: 'size',
       width: 80,
       align: 'right',
-      render: (size: number) => formatSize(size),
+      render: (size: number) => formatBytes(size),
     },
     {
       title: t('common.actions'),
@@ -915,7 +910,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatSize(selectedMsg.size)}
+              {formatBytes(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>

@@ -487,4 +487,25 @@ describe('Message page query history', () => {
     expect(locationItems[1]).toHaveTextContent('-');
     expect(locationItems[2]).toHaveTextContent('-');
   });
+
+  it('renders a message larger than a megabyte with the matching unit', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BIG-SIZE'), size: 5 * 1024 ** 3 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BIG-SIZE');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-BIG-SIZE/ });
+    expect(within(row).getByText('5.0 GB')).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
+  });
 });

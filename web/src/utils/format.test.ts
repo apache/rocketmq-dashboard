@@ -35,6 +35,22 @@ describe('formatBytes', () => {
     expect(formatBytes(1024 * 1024 * 1024 - 1, 2)).toBe('1.00 GB');
     expect(formatBytes(1024 ** 6)).toBe('1024.0 PB');
   });
+
+  it('keeps scaling past megabytes instead of capping at MB', () => {
+    expect(formatBytes(5 * 1024 ** 3)).toBe('5.0 GB');
+    expect(formatBytes(2 * 1024 ** 4)).toBe('2.0 TB');
+  });
+
+  it('renders whole bytes because a byte count has no fraction', () => {
+    expect(formatBytes(1)).toBe('1 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(512, 2)).toBe('512 B');
+    expect(formatBytes(-2048)).toBe('-2.0 KB');
+  });
+
+  it('promotes a sub-kilobyte value that only rounds up at whole-byte width', () => {
+    expect(formatBytes(1023.6)).toBe('1.0 KB');
+  });
   it('handles non-finite input', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('-');
