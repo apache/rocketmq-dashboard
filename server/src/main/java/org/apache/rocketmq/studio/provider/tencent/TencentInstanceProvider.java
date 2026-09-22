@@ -899,7 +899,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static String toTraceStatus(int status) {
-        return status == 0 ? "finish" : "failed";
+        return status == 0 ? "finish" : "error";
     }
 
     private static String toConsumeTraceStatus(int status) {
