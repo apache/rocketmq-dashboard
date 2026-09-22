@@ -754,6 +754,38 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldBoundEnrichmentToABatchDeadlineTest() throws Exception {
+        java.util.List<RmqGroup> entities = new java.util.ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            RmqGroup entity = new RmqGroup();
+            entity.setName("cg-slow-" + i);
+            entity.setInstanceId("instance-a");
+            entities.add(entity);
+        }
+        when(groupMapper.selectList(any())).thenReturn(entities);
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(10_000);
+            return new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        });
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        long startedNanos = System.nanoTime();
+        provider.listConsumerGroups("instance-a", null, null);
+        long elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000L;
+
+        // The enrichment budget is one deadline for the whole batch (the
+        // InstanceResourceCountRunner precedent), not a per-group timeout that
+        // multiplies by the number of groups when a broker hangs.
+        assertThat(elapsedMillis).isLessThan(6_000L);
+    }
+
+    @Test
     void listConsumerGroupsShouldMarkOnlineInstancesUnknownWhenConnectionLookupFailsTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-unknown-connections");

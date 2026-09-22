@@ -311,11 +311,20 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         for (ConsumerGroupVO vo : groups) {
             futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, vo)));
         }
-        for (int i = 0; i < groups.size(); i++) {
+        // One absolute deadline for the whole batch (the InstanceResourceCountRunner
+        // precedent): a hanging broker must not multiply the wait by the number of
+        // groups, so each future only gets the time the batch has left.
+        long startedNanos = System.nanoTime();
+        long timeoutNanos = TimeUnit.SECONDS.toNanos(ONLINE_ENRICHMENT_TIMEOUT_SECONDS);
+        for (Future<?> future : futures) {
+            long remainingNanos = timeoutNanos - (System.nanoTime() - startedNanos);
             try {
-                futures.get(i).get(ONLINE_ENRICHMENT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (remainingNanos <= 0) {
+                    throw new TimeoutException("enrichment batch deadline reached");
+                }
+                future.get(remainingNanos, TimeUnit.NANOSECONDS);
             } catch (TimeoutException e) {
-                futures.get(i).cancel(true);
+                future.cancel(true);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
