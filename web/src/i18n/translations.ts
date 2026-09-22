@@ -1560,6 +1560,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.loadFailed': {
+    zh: '审计日志加载失败，请稍后重试',
+    en: 'Failed to load the audit log. Try again later.',
+  },
+  'audit.summaryLoadFailed': {
+    zh: '审计概览加载失败，请稍后重试',
+    en: 'Failed to load the audit summary. Try again later.',
+  },
+  'audit.cleanupFailed': {
+    zh: '清理审计日志失败，请稍后重试',
+    en: 'Failed to clean up the audit log. Try again later.',
+  },
+  'audit.exportFailed': {
+    zh: '导出审计日志失败，请稍后重试',
+    en: 'Failed to export the audit log. Try again later.',
+  },
+  'audit.cleanupDaysPrefix': { zh: '清理', en: 'Clean logs older than' },
+  'audit.cleanupDaysSuffix': { zh: '天之前的日志', en: 'days' },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },

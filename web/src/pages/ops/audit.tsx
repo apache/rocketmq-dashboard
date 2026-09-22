@@ -90,6 +90,11 @@ const buildAuditFilter = (
 
 const AuditPage: React.FC = () => {
   const { t } = useLang();
+  // Hoisted out of the effects below: t is rebuilt whenever the language context renders, so
+  // depending on it directly would refetch on every render. The resolved strings are stable
+  // primitives, which is the pattern the Ops page already uses.
+  const loadFailedMessage = t('audit.loadFailed');
+  const summaryLoadFailedMessage = t('audit.summaryLoadFailed');
   const [records, setRecords] = useState<AuditRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -163,7 +168,7 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
-          message.error('审计日志加载失败，请稍后重试');
+          message.error(loadFailedMessage);
         }
       })
       .finally(() => {
@@ -179,6 +184,7 @@ const AuditPage: React.FC = () => {
     dateRange,
     resultFilter,
     refreshKey,
+    loadFailedMessage,
   ]);
 
   useEffect(
@@ -222,7 +228,7 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) message.error(summaryLoadFailedMessage);
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -230,7 +236,7 @@ const AuditPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFilter, refreshKey]);
+  }, [activeFilter, refreshKey, summaryLoadFailedMessage]);
 
   const { Text } = Typography;
 
@@ -296,7 +302,7 @@ const AuditPage: React.FC = () => {
       message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
       setCleanupModalOpen(false);
     } catch {
-      message.error('清理审计日志失败，请稍后重试');
+      message.error(t('audit.cleanupFailed'));
     }
   };
 
@@ -307,7 +313,7 @@ const AuditPage: React.FC = () => {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
     } catch {
-      message.error('导出审计日志失败，请稍后重试');
+      message.error(t('audit.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -570,14 +576,14 @@ const AuditPage: React.FC = () => {
         <Flex vertical gap={12}>
           <Text>{t('audit.cleanupDesc')}</Text>
           <Flex align="center" gap={8}>
-            <span>{t('audit.cleanup')}</span>
+            <span>{t('audit.cleanupDaysPrefix')}</span>
             <InputNumber
               min={1}
               max={365}
               value={cleanupDays}
               onChange={(v) => setCleanupDays(v ?? 30)}
             />
-            <span>天之前的日志</span>
+            <span>{t('audit.cleanupDaysSuffix')}</span>
           </Flex>
         </Flex>
       </Modal>
