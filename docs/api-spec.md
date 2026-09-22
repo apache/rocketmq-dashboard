@@ -140,6 +140,18 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 100 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 101 | POST | `/api/liteTopic/extendTTL` | 延长 LiteTopic TTL |
+| 102 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 103 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
+| 104 | GET | `/api/query-history/messages` | 消息查询历史（分页） |
+| 105 | GET | `/api/query-history/traces` | 轨迹查询历史（分页） |
+| 106 | GET | `/api/query-history/summary` | 查询历史汇总 |
+| 107 | GET | `/api/query-history/messages/:id/results` | 消息查询结果回放 |
+| 108 | GET | `/api/auth/status` | 登录策略与当前用户 |
+| 109 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 110 | POST | `/api/ai/runs/:runId/speed` | 上报 Run 生成速度 |
 
 ## 通用响应格式
 
@@ -220,6 +232,44 @@ POST /api/auth/logout
 ```
 
 **Response `data`:** `null`
+
+### 1.3 获取登录策略与当前用户
+
+```
+GET /api/auth/status
+```
+
+**Response `data`:** `AuthStatus`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `loginRequired` | `boolean` | 是否要求登录（部署配置或通用设置的 `requireLogin` 决定） |
+| `authenticated` | `boolean` | 当前请求是否已认证 |
+| `user` | `object \| null` | 已认证时的用户信息（同 1.1 `LoginVO` 的 `user`），未认证为 `null` |
+
+响应带 `Cache-Control: no-store`。
+
+### 1.4 修改当前用户密码
+
+```
+POST /api/auth/password
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `currentPassword` | `string` | 是 | 当前密码 |
+| `newPassword` | `string` | 是 | 新密码 |
+
+**Response `data`:** `null`
+
+**错误：**
+
+| 状态码 | 场景 |
+|--------|------|
+| `401` | 未认证 |
+| `503` | Studio 用户管理未初始化（本地模式无用户表） |
 
 ---
 
@@ -2645,6 +2695,31 @@ POST /api/ai/tools/:name/execute
   ]
 }
 ```
+
+---
+
+### 15.14 上报生成速度
+
+```
+POST /api/ai/runs/:runId/speed
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `runId` | `number` | 是 | Run ID |
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `tokensPerSecond` | `number` | 是 | 客户端在流式输出期间实测的生成速度（token/s，非负） |
+
+持久化客户端实测的生成速度，回放的会话记录会在回答旁显示同样的数字。Run 不属于调用者时按
+不存在处理（404）。
+
+**Response `data`:** `null`
 
 ---
 
