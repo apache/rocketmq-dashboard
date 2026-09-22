@@ -660,8 +660,17 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     let cancelled = false;
-    void listMetricProfiles()
-      .then((nextProfiles) => {
+
+    // Re-arm the flag on every re-run: this effect depends on `loadAll`, which changes with the
+    // instance prop, so switching the instance reloads the profile list. Without this the flag
+    // stays false after the first load, the skeleton never comes back, and the previous
+    // instance's panels stay on screen as if they belonged to the new selection. It is set
+    // inside the async loader rather than in the effect body so a re-run does not cascade an
+    // extra render.
+    const loadProfiles = async () => {
+      setProfilesLoading(true);
+      try {
+        const nextProfiles = await listMetricProfiles();
         if (cancelled) return;
         setProfiles(nextProfiles);
         // A re-run after an earlier failure must clear the error banner, or the recovered
@@ -677,13 +686,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         const selectedRange =
           RANGE_OPTIONS.find((range) => range.value === rangeIdRef.current) ?? RANGE_OPTIONS[0];
         void loadAll(initialProfile, selectedRange);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setProfileError(true);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setProfilesLoading(false);
-      });
+      }
+    };
+
+    void loadProfiles();
+
     return () => {
       cancelled = true;
       panelRequestIdRef.current += 1;
