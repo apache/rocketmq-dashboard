@@ -413,6 +413,36 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void createUserStampsTheBookkeepingColumnsInUtcTest() {
+        // rmq_studio_user.gmt_create/gmt_modified are declared with MySQL CURRENT_TIMESTAMP defaults,
+        // evaluated in the database session's zone, while password_changed_at is written from the UTC clock
+        // and the user table and its CSV export render gmtCreate/gmtModified as UTC (issue #4234).
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        authService.createUser("operator", "password-1", false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(captor.getValue().getGmtCreate());
+        assertThat(captor.getValue().getPasswordChangedAt()).isEqualTo(captor.getValue().getGmtCreate());
+    }
+
+    @Test
+    void disablingAUserStampsItsModificationTimeInUtcTest() {
+        RmqStudioUser operator = user(2L, "operator", false, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(operator);
+
+        authService.setUserEnabled(2L, false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
+    }
+
+    @Test
     void createUserShouldReturnConflictWhenConcurrentInsertWins() {
         when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
         when(userMapper.insert(any(RmqStudioUser.class)))
