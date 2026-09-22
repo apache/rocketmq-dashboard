@@ -1179,7 +1179,13 @@ const ConsumerPageContent = ({
       key: 'protocol',
       width: 80,
       render: (protocol: string) => {
-        const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
+        // The API reports no protocol for an online instance, so an unmapped value is "not reported"
+        // rather than a protocol to label: the fallback used to build the key from the value and hand it
+        // to t(), which rendered an empty tag.
+        const config = PROTOCOL_MAP[protocol];
+        if (!config) {
+          return <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>;
+        }
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
     },
@@ -2010,7 +2016,10 @@ const ConsumerPageContent = ({
                               ? '客户端连接信息不可用'
                               : selectedGroupHealth.summary.staleClientCount > 0
                                 ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                                : '心跳状态正常'}
+                                : selectedGroupHealth.summary.maxHeartbeatAgeSeconds === null &&
+                                    selectedGroupHealth.summary.onlineInstances > 0
+                                  ? '客户端未上报心跳时间'
+                                  : '心跳状态正常'}
                           </Text>
                         </Card>
                       </Col>

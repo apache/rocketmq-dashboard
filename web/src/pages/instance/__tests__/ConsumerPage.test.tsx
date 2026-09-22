@@ -768,6 +768,48 @@ describe('Consumer page', () => {
     expect(within(panel).getByText('处理建议')).toBeInTheDocument();
   });
 
+  it('does not call a group healthy when the API reports no client heartbeat', async () => {
+    // This is what the Apache provider actually sends: ConsumerConnections.toInstances builds each online
+    // instance from the broker connection, which carries a client id and an address only. Reading "no
+    // heartbeat" as "heartbeat is fine" told the operator the opposite of what was known, and the protocol
+    // column rendered a tag with no text in it.
+    const groupWithoutHeartbeats: ConsumerGroup = {
+      ...group,
+      onlineInstances: 2,
+      instances: [
+        {
+          clientId: 'remote-cg-0@10.0.0.1',
+          address: '10.0.0.1:49152',
+          subscribedTopics: ['remote-topic'],
+          topicLag: {},
+        },
+        {
+          clientId: 'remote-cg-1@10.0.0.2',
+          address: '10.0.0.2:49152',
+          subscribedTopics: [],
+          topicLag: {},
+        },
+      ],
+    };
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([groupWithoutHeartbeats]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const instanceRow = await screen.findByRole('row', { name: /10\.0\.0\.1:49152/ });
+    expect(within(instanceRow).getByText('不可用')).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await waitFor(() =>
+      expect(within(panel).getByText('客户端未上报心跳时间')).toBeInTheDocument(),
+    );
+    expect(within(panel).queryByText('心跳状态正常')).not.toBeInTheDocument();
+  });
+
   it('filters queue progress to the topic of the clicked distribution button', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
