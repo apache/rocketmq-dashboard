@@ -7,6 +7,7 @@
 package studio
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -119,18 +120,43 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// isPrivateHost reports whether host is a loopback, RFC1918 private-network,
-// or link-local address. Plain HTTP is permitted for these non-routable,
-// trusted networks (local development and same-VPC/intranet deployments);
-// public endpoints must still use HTTPS so that HMAC credentials are never
-// transmitted in the clear over the Internet.
+// lookupHostIPAddrs resolves a hostname so private-network support covers intranet DNS names,
+// not just literal addresses. Package-level so tests can stub resolution.
+var lookupHostIPAddrs = func(host string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		ips = append(ips, addr.IP)
+	}
+	return ips, nil
+}
+
+// isPrivateHost reports whether host is a loopback, RFC1918 private-network, or link-local
+// address, whether given as a literal IP or as a hostname that resolves exclusively to such
+// addresses. Plain HTTP is permitted for these non-routable, trusted networks (local
+// development and same-VPC/intranet deployments); public endpoints must still use HTTPS so
+// that HMAC credentials are never transmitted in the clear over the Internet. Unresolvable
+// hostnames and mixed public/private resolution stay on HTTPS.
 func isPrivateHost(host string) bool {
 	if isLoopbackHost(host) {
 		return true
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	ips, err := lookupHostIPAddrs(host)
+	if err != nil || len(ips) == 0 {
 		return false
 	}
-	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	for _, ip := range ips {
+		if !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+			return false
+		}
+	}
+	return true
 }
