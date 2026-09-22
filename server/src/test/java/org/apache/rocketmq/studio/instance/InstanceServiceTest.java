@@ -707,6 +707,30 @@ class InstanceServiceTest {
     }
 
     @Test
+    void updateInstanceShouldPreserveListOnlyFieldsInResponse() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("namesrv:9876")
+                .type(InstanceType.PROXY_CLUSTER)
+                .regionId("cn-hangzhou")
+                .regionName("Hangzhou")
+                .topicCount(7)
+                .consumerGroupCount(3)
+                .resourceCountsAvailable(false)
+                .build();
+        existing.setId(1L);
+        InstanceVO update = InstanceVO.builder().remark("updated").build();
+        update.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO result = instanceService.updateInstance(update);
+
+        assertThat(result.getRegionName()).isEqualTo("Hangzhou");
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+    }
+
+    @Test
     void updateInstanceShouldRejectInstanceIdChangeTest() {
         InstanceVO existing = InstanceVO.builder().name("old-name").endpoint("namesrv:9876").build();
         existing.setId(1L);

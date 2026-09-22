@@ -792,8 +792,10 @@ public class InstanceService {
                 .credentialId(instance.getCredentialId())
                 .adminCredentialRef(instance.getAdminCredentialRef())
                 .regionId(instance.getRegionId())
+                .regionName(instance.getRegionName())
                 .topicCount(instance.getTopicCount())
                 .consumerGroupCount(instance.getConsumerGroupCount())
+                .resourceCountsAvailable(instance.isResourceCountsAvailable())
                 .build();
         copy.setId(instance.getId());
         copy.setGmtCreate(instance.getGmtCreate());
