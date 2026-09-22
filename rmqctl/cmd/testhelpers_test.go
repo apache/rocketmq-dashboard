@@ -19,6 +19,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -132,7 +133,7 @@ func executeTestAppWithStdin(t *testing.T, client *http.Client, serverURL, insta
 	app := NewApp(stdout, stderr)
 	app.HTTP = client
 	app.Store.Getenv = testEnv
-	app.confirm = func(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
+	app.confirm = func(_ context.Context, in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
 		fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
 		fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
 		reader := bufio.NewReader(in)
@@ -164,7 +165,7 @@ func executeTestAppWithStdin(t *testing.T, client *http.Client, serverURL, insta
 
 // stubConfirmReject mimics the production non-TTY rejection: it always returns
 // the "requires interactive confirmation" error without reading stdin.
-func stubConfirmReject(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
+func stubConfirmReject(_ context.Context, in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
 	return types.NewCLIError(
 		types.CodeCommandFailed,
 		fmt.Sprintf("%q is a %s operation and requires interactive confirmation", commandPath, riskLevel),

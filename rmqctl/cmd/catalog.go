@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -318,18 +319,23 @@ func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.To
 	if confirm == nil {
 		confirm = defaultConfirm
 	}
-	return confirm(cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, runtime.targetServer())
+	return confirm(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, runtime.targetServer())
 }
 
 // defaultConfirm is the production confirmation implementation. It only
 // prompts when stdin is a character device (interactive terminal); pipes and
-// redirected input are rejected so scripts must pass --yes explicitly.
-func defaultConfirm(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
-	file, ok := in.(*os.File)
-	if !ok || file == nil {
+// redirected input are rejected so scripts must pass --yes explicitly. The
+// command context is watched while waiting for the answer so a Ctrl-C aborts
+// the prompt instead of leaving it open for a "yes" that would run the
+// mutation with an already-canceled context.
+func defaultConfirm(ctx context.Context, in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
+	// Anything that can report its own mode qualifies as a potential terminal: production passes
+	// *os.File, and the character-device check below is what actually gates interactive use.
+	statter, ok := in.(interface{ Stat() (os.FileInfo, error) })
+	if !ok || statter == nil {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
-	stat, err := file.Stat()
+	stat, err := statter.Stat()
 	if err != nil {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
@@ -338,21 +344,49 @@ func defaultConfirm(in io.Reader, out io.Writer, commandPath, riskLevel, server 
 	}
 	fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
 	fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
-	reader := bufio.NewReader(in)
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		return types.NewCLIError(
-			types.CodeCommandFailed,
-			fmt.Sprintf("confirmation for %q failed: %v", commandPath, err),
-			"Re-run the command and confirm interactively, or pass --yes to skip the prompt.")
+
+	// The stdin read itself cannot be interrupted, so run it alongside the context: a canceled
+	// context always wins over an answer that may already have been typed, and the buffered
+	// channel lets the reader goroutine retire after a canceled prompt without leaking.
+	reads := make(chan confirmRead, 1)
+	go func() {
+		reader := bufio.NewReader(in)
+		answer, err := reader.ReadString('\n')
+		reads <- confirmRead{answer: answer, err: err}
+	}()
+	if ctx.Err() != nil {
+		return confirmInterrupted(commandPath)
 	}
-	if !isAffirmative(strings.TrimSpace(answer)) {
-		return types.NewCLIError(
-			types.CodeCommandFailed,
-			fmt.Sprintf("execution of %q cancelled", commandPath),
-			"Re-run the command and type yes, or pass --yes to skip the prompt.")
+	select {
+	case <-ctx.Done():
+		return confirmInterrupted(commandPath)
+	case read := <-reads:
+		if read.err != nil {
+			return types.NewCLIError(
+				types.CodeCommandFailed,
+				fmt.Sprintf("confirmation for %q failed: %v", commandPath, read.err),
+				"Re-run the command and confirm interactively, or pass --yes to skip the prompt.")
+		}
+		if !isAffirmative(strings.TrimSpace(read.answer)) {
+			return types.NewCLIError(
+				types.CodeCommandFailed,
+				fmt.Sprintf("execution of %q cancelled", commandPath),
+				"Re-run the command and type yes, or pass --yes to skip the prompt.")
+		}
+		return nil
 	}
-	return nil
+}
+
+type confirmRead struct {
+	answer string
+	err    error
+}
+
+func confirmInterrupted(commandPath string) error {
+	return types.NewCLIError(
+		types.CodeCanceled,
+		fmt.Sprintf("confirmation for %q was interrupted", commandPath),
+		"The command was canceled (for example with Ctrl-C); rerun it if that was unintended.")
 }
 
 func riskConfirmationRequired(commandPath, riskLevel string) error {
