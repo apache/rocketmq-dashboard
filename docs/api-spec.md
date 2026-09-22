@@ -509,7 +509,14 @@ POST /api/clusters/config/update
 
 未提供的可选字段保持原配置不变。
 
-**Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `ClusterInfo` | 目标集群（同 4.1 的单条记录） |
+| `status` | `string` | 更新结果：`SUCCESS`（全部成功）/ `PARTIAL`（部分成功）/ `FAILED`（全部失败） |
+| `successfulBrokers` | `string[]` | 更新成功的 Broker 名称 |
+| `failedBrokers` | `object[]` | 更新失败的 Broker 及原因 |
 
 ### 4.4 重启 Broker
 
@@ -524,7 +531,7 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 | `clusterId` | `string` | 集群 ID |
 | `name` | `string` | Broker 名称 |
 
-**Response `data`:** `{ success: boolean, message: string }`
+**Response `data`:** `{ message: string }`（重启指令已下发；失败直接返回错误响应，无 `success` 字段）
 
 ### 4.5 创建 NameServer
 
@@ -538,6 +545,7 @@ POST /api/nameservers/create
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址，如 `10.0.1.1:9876` |
+| `version` | `string` | 否 | 期望的版本号 |
 
 **Response `data`:** `NameServerInfo`
 
@@ -553,9 +561,9 @@ POST /api/nameservers/update
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `version` | `string` | 否 | 期望的版本号 |
 
-**Response `data`:** `NameServerInfo`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.7 重启 NameServer
 
@@ -567,9 +575,10 @@ POST /api/nameservers/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.8 升级 NameServer
 
@@ -581,9 +590,11 @@ POST /api/nameservers/upgrade
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
+| `targetVersion` | `string` | 是 | 目标版本号 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.9 删除 NameServer
 
@@ -595,9 +606,10 @@ POST /api/nameservers/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.10 检查 NameServer 配置漂移
 
@@ -638,9 +650,10 @@ POST /api/proxies/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | Proxy 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.12 获取 K8s 证书列表
 
