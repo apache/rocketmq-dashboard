@@ -884,7 +884,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '配置消费积压和死信队列等业务告警规则与通知渠道',
     en: 'Configure business-flow alert rules for consumer lag, DLQ, and notification channels',
   },
-  'alerts.totalRules': { zh: '规则总数', en: 'Total Rules' },
+  'alerts.totalRules': { zh: '规则总数 {count}', en: 'Total Rules {count}' },
   'alerts.enabled': { zh: '已启用', en: 'Enabled' },
   'alerts.disabled': { zh: '已禁用', en: 'Disabled' },
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },

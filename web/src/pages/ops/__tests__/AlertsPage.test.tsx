@@ -353,8 +353,24 @@ describe('AlertsPage', () => {
         search: 'disk',
       }),
     );
-    expect(screen.getAllByText('规则总数').length).toBeGreaterThan(0);
-    expect(screen.getByText('21')).toBeInTheDocument();
+    expect(screen.getAllByText(/规则总数/).length).toBeGreaterThan(0);
+    // Both the header stat and the pagination footer now carry the substituted count.
+    expect(screen.getAllByText(/规则总数 21/).length).toBe(2);
+  });
+
+  it('renders the pagination total in the 总数 label when the language is English', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 7,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    // Header stat and pagination footer both render the substituted English label.
+    expect(screen.getAllByText('Total Rules 7').length).toBe(2);
   });
 
   it('resets page, search and status filters when the domain switches', async () => {
