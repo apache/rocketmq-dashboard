@@ -140,6 +140,15 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 100 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 101 | POST | `/api/liteTopic/extendTTL` | 延长 LiteTopic TTL |
+| 102 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 103 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
+| 104 | GET | `/api/query-history/messages` | 消息查询历史（分页） |
+| 105 | GET | `/api/query-history/traces` | 轨迹查询历史（分页） |
+| 106 | GET | `/api/query-history/summary` | 查询历史汇总 |
+| 107 | GET | `/api/query-history/messages/:id/results` | 消息查询结果回放 |
 
 ## 通用响应格式
 
@@ -916,6 +925,123 @@ POST /api/topics/send
 
 ---
 
+### 5.9 LiteTopic 会话管理
+
+LiteTopic（轻量主题）由客户端按需创建、到期自动回收。以下接口用于检查集群对 LiteTopic 的支持、
+浏览按需创建的会话，并在配额内调整 TTL。
+
+#### 5.9.1 获取 LiteTopic 会话列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 按Topic 模式过滤 |
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicItem[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | LiteTopic 模式 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 会话内 Topic 数 |
+| `consumerCount` | `number` | 消费者数 |
+| `totalBacklog` | `number` | 总堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态 |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `sessionIds` | `string[]` | 会话 ID 列表 |
+
+#### 5.9.2 获取 LiteTopic 会话详情
+
+```
+GET /api/liteTopic/session/:sessionId
+```
+
+**Response `data`:** `LiteTopicSession`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic 名称 |
+| `consumerGroup` | `string` | 消费组名称 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳） |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `ttl` | `number` | TTL（毫秒） |
+| `ttlRemaining` | `number` | TTL 剩余时间（毫秒） |
+| `status` | `string` | 会话状态 |
+| `totalMessages` | `number` | 累计消息数 |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费消息数 |
+| `popProgress` | `number` | Pop 消费进度（百分比） |
+| `liteTopicCreationCount` | `number` | 已创建 LiteTopic 数 |
+| `liteTopics` | `object[]` | 会话内 LiteTopic：`{ topicName, status, ttlRemaining }` |
+
+#### 5.9.3 延长 LiteTopic TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `topicPattern` | `string` | 是 | 目标 Topic 模式 |
+| `newTTL` | `number` | 是 | 新 TTL（毫秒） |
+
+**Response `data`:** 空
+
+#### 5.9.4 获取 LiteTopic 配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicQuota`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前 Topic 数 |
+| `maxTopicCount` | `number` | Topic 数上限 |
+| `currentSessionCount` | `number` | 当前会话数 |
+| `maxSessionCount` | `number` | 会话数上限 |
+| `currentCreationRate` | `number` | 当前创建速率 |
+| `maxCreationRate` | `number` | 创建速率上限 |
+| `usageRate` | `number` | Topic 配额使用率 |
+| `sessionUsageRate` | `number` | 会话配额使用率 |
+| `defaultTTL` | `number` | 默认 TTL（毫秒） |
+| `maxTTL` | `number` | TTL 上限（毫秒） |
+| `remainingQuota` | `number` | 剩余配额 |
+| `consumerDensity` | `number` | 消费者密度 |
+
+#### 5.9.5 检查 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 集群是否支持 LiteTopic |
+
+---
+
 ## 6. 消费组管理 Consumer Group
 
 ### 6.1 获取消费组列表
@@ -1504,6 +1630,91 @@ POST /api/messages/direct-consume
 | `spentTimeMillis` | `number` | Broker 执行耗时（毫秒） |
 | `order` | `boolean` | 是否为顺序消费 |
 | `autoCommit` | `boolean` | 客户端是否启用自动提交 |
+
+---
+
+### 8.8 查询历史
+
+消息与轨迹查询的持久化历史：最近执行的查询及其结果快照被保存下来，供回放与审计。列表接口
+`pageSize` 上限 100；时间字段 `queriedAt` 为 ISO 8601。
+
+#### 8.8.1 获取消息查询历史
+
+```
+GET /api/query-history/messages?clusterId={clusterId}&queryType={queryType}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `queryType` | `string` | 否 | 按查询类型过滤（创建查询时的类型，如 `msgId` / `uniqueKey` / `key` / `topic`） |
+| `search` | `string` | 否 | 模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1（≥1） |
+| `pageSize` | `number` | 否 | 每页条数，默认 20（1-100） |
+
+**Response `data`:** `PageResult<MessageQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `queryType` | `string` | 查询类型 |
+| `topic` | `string` | 查询的 Topic |
+| `msgId` | `string` | 查询的消息 ID（msgId 路径时） |
+| `tag` | `string` | 查询的 Tag |
+| `messageKey` | `string` | 查询的业务 Key |
+| `startTime` | `number` | 查询窗口开始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 查询窗口结束（Unix 毫秒时间戳） |
+| `resultCount` | `number` | 结果条数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.2 获取轨迹查询历史
+
+```
+GET /api/query-history/traces?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 同 8.8.1（无 `queryType`）。
+
+**Response `data`:** `PageResult<TraceQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `msgId` | `string` | 查询的消息 ID |
+| `topic` | `string` | 原始 Topic |
+| `traceTopic` | `string` | 轨迹 Topic |
+| `nodeCount` | `number` | 轨迹节点数 |
+| `consumerCount` | `number` | 消费组数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.3 获取查询历史汇总
+
+```
+GET /api/query-history/summary?clusterId={clusterId}
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `messageQueries` | `number` | 消息查询总数 |
+| `traceQueries` | `number` | 轨迹查询总数 |
+| `latestQueryAt` | `string` | 最近一次查询时间 (ISO 8601) |
+
+#### 8.8.4 回放消息查询结果
+
+```
+GET /api/query-history/messages/:id/results
+```
+
+**Response `data`:** `MessageRecord[]`（同 8.1 的 `MessageRecord` 定义），内容取保存查询时的结果
+快照；快照已过期或不存在时返回空数组。
 
 ---
 
