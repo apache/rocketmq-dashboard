@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -455,6 +456,26 @@ class AiRunServiceTest {
     }
 
     @Test
+    void attachAtTheHeadShouldReadOneEmptyPageAndThenCloseTest() {
+        // The common reconnect: the client's cursor is the newest row, so there is nothing to replay. The
+        // drain has to end on that empty page rather than ask again, and a run that is already over still
+        // has to get its terminal frame.
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(conversationService.requireOwned(CONVERSATION_ID, OWNER)).thenReturn(conversation);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 42, 200)).thenReturn(List.of());
+
+        service.attach(RUN_ID, 42);
+
+        String text = emitters.get(0).eventText();
+        assertThat(text).doesNotContain("\"type\":\"text_delta\"");
+        assertThat(text).contains("\"type\":\"run_finished\"").contains("event:done");
+        assertThat(emitters.get(0).completed()).isTrue();
+        verify(eventRepository, times(1))
+                .findByConversationIdAfterSeq(CONVERSATION_ID, 42, 200);
+    }
+
+    @Test
     void attachShouldReplayABacklogLongerThanOneTimelinePageTest() {
         // A tool-heavy run persists two rows per tool call plus one per coalesced text or thinking block,
         // so a client that was away for a few minutes comes back to more than one page of history. The
@@ -476,6 +497,9 @@ class AiRunServiceTest {
 
         assertThat(emitters.get(0).eventText())
                 .contains("block-1").contains("block-200").contains("the newest block");
+        // The second read has to continue after the last seq of the first page. Re-reading the same cursor
+        // is what would turn this loop into a stall instead of a drain.
+        verify(eventRepository).findByConversationIdAfterSeq(CONVERSATION_ID, 200, 200);
     }
 
     @Test
