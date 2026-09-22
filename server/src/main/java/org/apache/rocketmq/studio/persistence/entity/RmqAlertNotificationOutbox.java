@@ -27,5 +27,6 @@ public class RmqAlertNotificationOutbox {
     private String lastError;
     private String messageContent;
     private LocalDateTime deliveredAt;
+    private LocalDateTime gmtCreate;
     private LocalDateTime gmtModified;
 }
