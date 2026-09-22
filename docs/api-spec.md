@@ -140,6 +140,24 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 100 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 101 | POST | `/api/liteTopic/extendTTL` | 延长 LiteTopic TTL |
+| 102 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 103 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
+| 104 | GET | `/api/query-history/messages` | 消息查询历史（分页） |
+| 105 | GET | `/api/query-history/traces` | 轨迹查询历史（分页） |
+| 106 | GET | `/api/query-history/summary` | 查询历史汇总 |
+| 107 | GET | `/api/query-history/messages/:id/results` | 消息查询结果回放 |
+| 108 | GET | `/api/auth/status` | 登录策略与当前用户 |
+| 109 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 110 | POST | `/api/ai/runs/:runId/speed` | 上报 Run 生成速度 |
+| 111 | GET | `/api/cloud-credentials` | 云凭证列表（分页，脱敏） |
+| 112 | GET | `/api/cloud-credentials/export` | 导出云凭证 CSV（脱敏） |
+| 113 | POST | `/api/cloud-credentials/create` | 创建云凭证 |
+| 114 | POST | `/api/cloud-credentials/update` | 更新云凭证 |
+| 115 | POST | `/api/cloud-credentials/delete` | 删除云凭证 |
+| 116 | GET | `/api/cloud-credentials/:id/credentials` | 查看云凭证密钥（明文） |
 
 ## 通用响应格式
 
@@ -220,6 +238,46 @@ POST /api/auth/logout
 ```
 
 **Response `data`:** `null`
+
+---
+
+### 1.3 获取登录策略与当前用户
+
+```
+GET /api/auth/status
+```
+
+**Response `data`:** `AuthStatus`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `loginRequired` | `boolean` | 是否要求登录（部署配置或通用设置的 `requireLogin` 决定） |
+| `authenticated` | `boolean` | 当前请求是否已认证 |
+| `user` | `object \| null` | 已认证时的用户信息（同 1.1 `LoginVO` 的 `user`），未认证为 `null` |
+
+响应带 `Cache-Control: no-store`。
+
+### 1.4 修改当前用户密码
+
+```
+POST /api/auth/password
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `currentPassword` | `string` | 是 | 当前密码 |
+| `newPassword` | `string` | 是 | 新密码 |
+
+**Response `data`:** `null`
+
+**错误：**
+
+| 状态码 | 场景 |
+|--------|------|
+| `401` | 未认证 |
+| `503` | Studio 用户管理未初始化（本地模式无用户表） |
 
 ---
 
@@ -916,6 +974,123 @@ POST /api/topics/send
 
 ---
 
+### 5.9 LiteTopic 会话管理
+
+LiteTopic（轻量主题）由客户端按需创建、到期自动回收。以下接口用于检查集群对 LiteTopic 的支持、
+浏览按需创建的会话，并在配额内调整 TTL。
+
+#### 5.9.1 获取 LiteTopic 会话列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 按Topic 模式过滤 |
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicItem[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | LiteTopic 模式 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 会话内 Topic 数 |
+| `consumerCount` | `number` | 消费者数 |
+| `totalBacklog` | `number` | 总堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态 |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `sessionIds` | `string[]` | 会话 ID 列表 |
+
+#### 5.9.2 获取 LiteTopic 会话详情
+
+```
+GET /api/liteTopic/session/:sessionId
+```
+
+**Response `data`:** `LiteTopicSession`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic 名称 |
+| `consumerGroup` | `string` | 消费组名称 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳） |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `ttl` | `number` | TTL（毫秒） |
+| `ttlRemaining` | `number` | TTL 剩余时间（毫秒） |
+| `status` | `string` | 会话状态 |
+| `totalMessages` | `number` | 累计消息数 |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费消息数 |
+| `popProgress` | `number` | Pop 消费进度（百分比） |
+| `liteTopicCreationCount` | `number` | 已创建 LiteTopic 数 |
+| `liteTopics` | `object[]` | 会话内 LiteTopic：`{ topicName, status, ttlRemaining }` |
+
+#### 5.9.3 延长 LiteTopic TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `topicPattern` | `string` | 是 | 目标 Topic 模式 |
+| `newTTL` | `number` | 是 | 新 TTL（毫秒） |
+
+**Response `data`:** 空
+
+#### 5.9.4 获取 LiteTopic 配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicQuota`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前 Topic 数 |
+| `maxTopicCount` | `number` | Topic 数上限 |
+| `currentSessionCount` | `number` | 当前会话数 |
+| `maxSessionCount` | `number` | 会话数上限 |
+| `currentCreationRate` | `number` | 当前创建速率 |
+| `maxCreationRate` | `number` | 创建速率上限 |
+| `usageRate` | `number` | Topic 配额使用率 |
+| `sessionUsageRate` | `number` | 会话配额使用率 |
+| `defaultTTL` | `number` | 默认 TTL（毫秒） |
+| `maxTTL` | `number` | TTL 上限（毫秒） |
+| `remainingQuota` | `number` | 剩余配额 |
+| `consumerDensity` | `number` | 消费者密度 |
+
+#### 5.9.5 检查 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 集群是否支持 LiteTopic |
+
+---
+
 ## 6. 消费组管理 Consumer Group
 
 ### 6.1 获取消费组列表
@@ -1504,6 +1679,91 @@ POST /api/messages/direct-consume
 | `spentTimeMillis` | `number` | Broker 执行耗时（毫秒） |
 | `order` | `boolean` | 是否为顺序消费 |
 | `autoCommit` | `boolean` | 客户端是否启用自动提交 |
+
+---
+
+### 8.8 查询历史
+
+消息与轨迹查询的持久化历史：最近执行的查询及其结果快照被保存下来，供回放与审计。列表接口
+`pageSize` 上限 100；时间字段 `queriedAt` 为 ISO 8601。
+
+#### 8.8.1 获取消息查询历史
+
+```
+GET /api/query-history/messages?clusterId={clusterId}&queryType={queryType}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `queryType` | `string` | 否 | 按查询类型过滤（创建查询时的类型，如 `msgId` / `uniqueKey` / `key` / `topic`） |
+| `search` | `string` | 否 | 模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1（≥1） |
+| `pageSize` | `number` | 否 | 每页条数，默认 20（1-100） |
+
+**Response `data`:** `PageResult<MessageQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `queryType` | `string` | 查询类型 |
+| `topic` | `string` | 查询的 Topic |
+| `msgId` | `string` | 查询的消息 ID（msgId 路径时） |
+| `tag` | `string` | 查询的 Tag |
+| `messageKey` | `string` | 查询的业务 Key |
+| `startTime` | `number` | 查询窗口开始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 查询窗口结束（Unix 毫秒时间戳） |
+| `resultCount` | `number` | 结果条数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.2 获取轨迹查询历史
+
+```
+GET /api/query-history/traces?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 同 8.8.1（无 `queryType`）。
+
+**Response `data`:** `PageResult<TraceQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `msgId` | `string` | 查询的消息 ID |
+| `topic` | `string` | 原始 Topic |
+| `traceTopic` | `string` | 轨迹 Topic |
+| `nodeCount` | `number` | 轨迹节点数 |
+| `consumerCount` | `number` | 消费组数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.3 获取查询历史汇总
+
+```
+GET /api/query-history/summary?clusterId={clusterId}
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `messageQueries` | `number` | 消息查询总数 |
+| `traceQueries` | `number` | 轨迹查询总数 |
+| `latestQueryAt` | `string` | 最近一次查询时间 (ISO 8601) |
+
+#### 8.8.4 回放消息查询结果
+
+```
+GET /api/query-history/messages/:id/results
+```
+
+**Response `data`:** `MessageRecord[]`（同 8.1 的 `MessageRecord` 定义），内容取保存查询时的结果
+快照；快照已过期或不存在时返回空数组。
 
 ---
 
@@ -2648,6 +2908,31 @@ POST /api/ai/tools/:name/execute
 
 ---
 
+### 15.14 上报生成速度
+
+```
+POST /api/ai/runs/:runId/speed
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `runId` | `number` | 是 | Run ID |
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `tokensPerSecond` | `number` | 是 | 客户端在流式输出期间实测的生成速度（token/s，非负） |
+
+持久化客户端实测的生成速度，回放的会话记录会在回答旁显示同样的数字。Run 不属于调用者时按
+不存在处理（404）。
+
+**Response `data`:** `null`
+
+---
+
 ## 16. 监控指标 Metrics
 
 ### 16.1 查询监控指标数据
@@ -2839,6 +3124,110 @@ GET /api/metrics/grafana/dashboards/export
 |-----------|------|
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
+
+---
+
+## 17. 云凭证 Cloud Credentials
+
+管理用于访问云厂商（阿里云 / 腾讯云）OpenAPI 的 AccessKey 凭证。列表与导出接口对 `accessKey`
+脱敏、`secretKey` 置空；仅 17.6 的凭据查看接口返回完整密钥，且该接口仅管理员可用。
+
+### 17.1 分页获取云凭证列表
+
+```
+GET /api/cloud-credentials?vendor={vendor}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vendor` | `string` | 否 | 按厂商过滤: `ALIYUN` / `TENCENT` |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<CloudCredential>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 凭证 ID |
+| `name` | `string` | 凭证名称 |
+| `vendor` | `string` | 厂商: `ALIYUN` / `TENCENT` |
+| `accessKey` | `string` | AccessKey（脱敏显示） |
+| `secretKey` | `string` | 恒为 `null`（列表不返回） |
+| `remark` | `string` | 备注 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 17.2 导出云凭证列表（CSV）
+
+```
+GET /api/cloud-credentials/export?vendor={vendor}&search={search}
+```
+
+**Query Parameters:** 同 17.1（无分页参数）。
+
+**Response `data`:** `string`（CSV 文本；`accessKey` 脱敏、不含 `secretKey`）
+
+### 17.3 创建云凭证
+
+```
+POST /api/cloud-credentials/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 凭证名称 |
+| `vendor` | `string` | 是 | 厂商: `ALIYUN` / `TENCENT` |
+| `accessKey` | `string` | 是 | AccessKey |
+| `secretKey` | `string` | 是 | SecretKey |
+| `remark` | `string` | 否 | 备注 |
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 17.4 更新云凭证
+
+```
+POST /api/cloud-credentials/update
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 凭证 ID |
+| `name` | `string` | 否 | 新名称 |
+| `secretKey` | `string` | 否 | 新 SecretKey（不传则保留） |
+| `remark` | `string` | 否 | 备注 |
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 17.5 删除云凭证
+
+```
+POST /api/cloud-credentials/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 凭证 ID（数字） |
+
+**Response `data`:** `null`
+
+### 17.6 查看云凭证密钥
+
+```
+GET /api/cloud-credentials/:id/credentials
+```
+
+**Response `data`:** `CloudCredential`（`accessKey` / `secretKey` 为完整明文，仅用于需要直连云
+OpenAPI 的场景）。响应带 `Cache-Control: no-store`。仅管理员可用（`AuthInterceptor` 的
+credential-reveal 守卫）。
 
 ---
 
