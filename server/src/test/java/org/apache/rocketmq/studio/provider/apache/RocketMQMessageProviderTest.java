@@ -750,6 +750,22 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceParsesFailedProduceAsError() throws Exception {
+        String pub = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "key1", "broker:10911", "15", "50", "0", "offset-1", "false");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pub).getBytes(StandardCharsets.UTF_8));
+        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(queryResult);
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).hasSize(1);
+        assertThat(record.getNodes().get(0).getStatus()).isEqualTo("error");
+    }
+
+    @Test
     void getMessageTraceParsesEndTransactionState() throws Exception {
         String body = traceBody(traceContext("EndTransaction", "2000", "cn", "tx-group", "TopicA",
                 "msg-tx", "tag2", "key2", "broker:10911", "0", "tx-1", "COMMIT_MESSAGE", "false"));
@@ -833,7 +849,7 @@ class RocketMQMessageProviderTest {
         TraceNodeVO recall = record.getNodes().get(0);
         assertThat(recall.getTitle()).isEqualTo("recall");
         assertThat(recall.getTimestamp()).isEqualTo(2500L);
-        assertThat(recall.getStatus()).isEqualTo("failed");
+        assertThat(recall.getStatus()).isEqualTo("error");
         assertThat(recall.getCostTime()).isZero();
         assertThat(recall.getDescription()).contains("producer-group").contains("TopicA");
         assertThat(record.getConsumerStatus()).isEmpty();
