@@ -68,7 +68,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { formatDateTime } from '../../utils/format';
+import { formatDateTime, formatDelay } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -126,30 +126,6 @@ const lagColor = (lag: number): string => {
   if (lag >= 10_000) return '#ff4d4f';
   if (lag >= 1_000) return '#faad14';
   return '#52c41a';
-};
-
-/**
- * Format delay seconds into human-readable Chinese time.
- * Shows at most 3 units: days → hours → minutes → seconds.
- * e.g. 82500 → "22小时55分钟", 3725 → "1小时2分钟5秒"
- */
-const formatDelay = (totalSeconds: number): string => {
-  if (totalSeconds <= 0) return '0秒';
-
-  const days = Math.floor(totalSeconds / 86400);
-  let remaining = totalSeconds % 86400;
-  const hours = Math.floor(remaining / 3600);
-  remaining %= 3600;
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}天`);
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0) parts.push(`${minutes}分钟`);
-  if (seconds > 0 && parts.length < 3) parts.push(`${seconds}秒`);
-
-  return parts.length > 0 ? parts.join('') : '0秒';
 };
 
 const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
@@ -255,7 +231,7 @@ const ConsumerPageContent = ({
   instanceOptions,
   instancesLoading,
 }: ConsumerPageContentProps) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -993,7 +969,7 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'right',
       sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
-      render: (seconds: number) => formatDelay(seconds ?? 0),
+      render: (seconds: number) => formatDelay(seconds ?? 0, lang),
     },
     {
       title: '创建时间',
@@ -1765,7 +1741,7 @@ const ConsumerPageContent = ({
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
-                        <Text strong>{formatDelay(selectedGroup.delaySeconds)}</Text>
+                        <Text strong>{formatDelay(selectedGroup.delaySeconds, lang)}</Text>
                       </Descriptions.Item>
                       <Descriptions.Item label="最大重试次数">
                         <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
