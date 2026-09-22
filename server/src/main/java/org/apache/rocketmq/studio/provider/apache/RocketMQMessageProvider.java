@@ -44,8 +44,6 @@ import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
-import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.apache.rocketmq.tools.admin.api.TrackType;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -806,45 +804,6 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .costTime(0L)
                 .description("group=" + field(f, 3) + ", topic=" + field(f, 4))
                 .build();
-    }
-
-    private List<ConsumerStatusVO> fallbackConsumerStatus(DefaultMQAdminExt adminExt, MessageExt message) {
-        List<ConsumerStatusVO> result = new ArrayList<>();
-        try {
-            List<MessageTrack> tracks = adminExt.messageTrackDetail(message);
-            if (tracks == null) {
-                return result;
-            }
-            for (MessageTrack track : tracks) {
-                result.add(ConsumerStatusVO.builder()
-                        .group(track.getConsumerGroup())
-                        .deliveryStatus(mapTrackType(track.getTrackType()))
-                        .consumeTime(0L)
-                        .retryCount(0)
-                        .build());
-            }
-        } catch (Exception e) {
-            log.warn("messageTrackDetail fallback failed for msgId={}: {}", message.getMsgId(), e.getMessage());
-        }
-        return result;
-    }
-
-    private DeliveryStatus mapTrackType(TrackType trackType) {
-        if (trackType == null) {
-            return DeliveryStatus.pending;
-        }
-        switch (trackType) {
-            case CONSUMED:
-            case CONSUME_BROADCASTING:
-            case CONSUMED_BUT_FILTERED:
-                return DeliveryStatus.success;
-            case NOT_CONSUME_YET:
-            case PULL:
-            case NOT_ONLINE:
-                return DeliveryStatus.pending;
-            default:
-                return DeliveryStatus.failed;
-        }
     }
 
     MessageRecordVO toRecordVO(MessageExt messageExt) {
