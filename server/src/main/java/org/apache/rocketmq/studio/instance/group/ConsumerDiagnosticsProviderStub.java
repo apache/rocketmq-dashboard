@@ -31,4 +31,11 @@ public class ConsumerDiagnosticsProviderStub implements ConsumerDiagnosticsProvi
                 + "instanceId={}, groupName={}, clientId={}", instanceId, groupName, clientId);
         throw new BusinessException(501, "Consumer diagnostics provider is not configured");
     }
+
+    @Override
+    public ConsumerHangReportVO diagnoseConsumerHang(String instanceId, String groupName, String clientId) {
+        log.warn("ConsumerDiagnosticsProviderStub.diagnoseConsumerHang called without a real diagnostics provider. "
+                + "instanceId={}, groupName={}, clientId={}", instanceId, groupName, clientId);
+        throw new BusinessException(501, "Consumer diagnostics provider is not configured");
+    }
 }

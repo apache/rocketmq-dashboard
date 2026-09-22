@@ -35,6 +35,13 @@ public class ConsumerDiagnosticsService {
         return diagnosticsProvider.getConsumerStack(normalizedInstanceId, normalizedGroupName, normalizedClientId);
     }
 
+    public ConsumerHangReportVO diagnoseConsumerHang(String instanceId, String groupName, String clientId) {
+        String normalizedInstanceId = normalizeOptional(instanceId);
+        String normalizedGroupName = normalizeRequired(groupName, "groupName");
+        String normalizedClientId = normalizeRequired(clientId, "clientId");
+        return diagnosticsProvider.diagnoseConsumerHang(normalizedInstanceId, normalizedGroupName, normalizedClientId);
+    }
+
     private String normalizeRequired(String value, String fieldName) {
         if (!StringUtils.hasText(value)) {
             throw new BusinessException(400, fieldName + " is required");

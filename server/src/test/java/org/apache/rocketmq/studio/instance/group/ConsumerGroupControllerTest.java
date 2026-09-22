@@ -316,6 +316,39 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void diagnoseConsumerHangShouldReturnHangReport() throws Exception {
+        ConsumerHangReportVO hangReport = ConsumerHangReportVO.builder()
+                .groupName("cg-orders")
+                .clientId("client-1")
+                .overallHealth("CRITICAL")
+                .stalledQueueCount(1)
+                .maxStallDurationMs(150000L)
+                .queueFindings(List.of(
+                        ConsumerHangReportVO.QueueHangFindingVO.builder()
+                                .topic("TopicOrders")
+                                .queueId(0)
+                                .rootCause("BUSINESS_LISTENER_BLOCKED")
+                                .severity("CRITICAL")
+                                .build()
+                ))
+                .build();
+
+        when(consumerDiagnosticsService.diagnoseConsumerHang("instance-a", "cg-orders", "client-1"))
+                .thenReturn(hangReport);
+
+        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/hang-diagnostics")
+                        .param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
+                .andExpect(jsonPath("$.data.overallHealth").value("CRITICAL"))
+                .andExpect(jsonPath("$.data.stalledQueueCount").value(1))
+                .andExpect(jsonPath("$.data.queueFindings[0].rootCause").value("BUSINESS_LISTENER_BLOCKED"));
+
+        verify(consumerDiagnosticsService).diagnoseConsumerHang("instance-a", "cg-orders", "client-1");
+    }
+
+    @Test
     void groupRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
         when(metadataService.getGroupProgress("instance-a", "cg-orders")).thenReturn(List.of());
         when(metadataService.getGroupSubscriptions("instance-a", "cg-orders")).thenReturn(List.of());

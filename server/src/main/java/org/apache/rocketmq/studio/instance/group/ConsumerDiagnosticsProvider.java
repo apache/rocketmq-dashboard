@@ -19,4 +19,6 @@ package org.apache.rocketmq.studio.instance.group;
 
 public interface ConsumerDiagnosticsProvider {
     ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId);
+
+    ConsumerHangReportVO diagnoseConsumerHang(String instanceId, String groupName, String clientId);
 }

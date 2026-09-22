@@ -55,39 +55,43 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final org.apache.rocketmq.studio.instance.group.ConsumerHangDiagnosticEngine consumerHangDiagnosticEngine;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
 
     @Override
-    public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
-        // Clients that connect through a proxy keep their channel on the proxy and never register
-        // on a broker, so ask the proxy first; the broker only knows directly connected clients
-        // and answers "not online" for everyone else.
+    public org.apache.rocketmq.studio.instance.group.ConsumerHangReportVO diagnoseConsumerHang(
+            String instanceId, String groupName, String clientId) {
+        ConsumerRunningInfo runningInfo = resolveRunningInfo(instanceId, groupName, clientId);
+        return consumerHangDiagnosticEngine.analyze(instanceId, groupName, clientId, runningInfo);
+    }
+
+    private ConsumerRunningInfo resolveRunningInfo(String instanceId, String groupName, String clientId) {
         ConsumerRunningInfo viaProxy = proxyConsumerResolver == null
                 ? null
                 : proxyConsumerResolver.resolveConsumerRunningInfo(instanceId, groupName, clientId);
         if (viaProxy != null) {
-            return toStackTrace(groupName, clientId, viaProxy);
+            return viaProxy;
         }
         if (StringUtils.hasText(instanceId)) {
             return runtimeAdminClientResolver.execute(instanceId,
-                    admin -> getConsumerStack(admin, groupName, clientId));
+                    admin -> fetchRunningInfo(admin, groupName, clientId));
         }
         if (!StringUtils.hasText(properties.getNamesrvAddr())) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return adminFactory.execute(properties.getNamesrvAddr(), null,
-                admin -> getConsumerStack(admin, groupName, clientId));
+                admin -> fetchRunningInfo(admin, groupName, clientId));
     }
 
-    private ConsumerStackTraceVO getConsumerStack(MQAdminExt admin, String groupName, String clientId) {
+    private ConsumerRunningInfo fetchRunningInfo(MQAdminExt admin, String groupName, String clientId) {
         try {
             ConsumerRunningInfo runningInfo = admin.getConsumerRunningInfo(groupName, clientId, true);
             if (runningInfo == null) {
                 throw new BusinessException(404, "Consumer client not found: " + clientId);
             }
-            return toStackTrace(groupName, clientId, runningInfo);
+            return runningInfo;
         } catch (BusinessException e) {
             throw e;
         } catch (MQClientException e) {
@@ -98,6 +102,12 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         } catch (Exception e) {
             throw diagnosticsFailure(groupName, clientId, e);
         }
+    }
+
+    @Override
+    public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
+        ConsumerRunningInfo runningInfo = resolveRunningInfo(instanceId, groupName, clientId);
+        return toStackTrace(groupName, clientId, runningInfo);
     }
 
     private ConsumerStackTraceVO toStackTrace(String groupName, String clientId, ConsumerRunningInfo runningInfo) {

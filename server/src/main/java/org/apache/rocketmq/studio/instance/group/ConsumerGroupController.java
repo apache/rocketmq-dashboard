@@ -130,6 +130,14 @@ public class ConsumerGroupController {
         return Result.ok(consumerDiagnosticsService.getConsumerStack(instanceId, name, clientId));
     }
 
+    @GetMapping("/{name}/instances/{clientId}/hang-diagnostics")
+    public Result<ConsumerHangReportVO> diagnoseConsumerHang(
+            @PathVariable String name,
+            @PathVariable String clientId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(consumerDiagnosticsService.diagnoseConsumerHang(instanceId, name, clientId));
+    }
+
     @PostMapping("/create")
     public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
         ConsumerGroupVO vo = group.toConsumerGroupVO();

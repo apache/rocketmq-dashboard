@@ -95,4 +95,23 @@ class ConsumerDiagnosticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }
+
+    @Test
+    void diagnoseConsumerHangShouldDelegateToProvider() {
+        ConsumerHangReportVO report = ConsumerHangReportVO.builder()
+                .instanceId("instance-a")
+                .groupName("cg-orders")
+                .clientId("client-1")
+                .overallHealth("HEALTHY")
+                .build();
+
+        when(diagnosticsProvider.diagnoseConsumerHang("instance-a", "cg-orders", "client-1"))
+                .thenReturn(report);
+
+        ConsumerHangReportVO result = diagnosticsService.diagnoseConsumerHang(
+                "instance-a", "cg-orders", "client-1");
+
+        assertThat(result.getOverallHealth()).isEqualTo("HEALTHY");
+        verify(diagnosticsProvider).diagnoseConsumerHang("instance-a", "cg-orders", "client-1");
+    }
 }
