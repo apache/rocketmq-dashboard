@@ -168,7 +168,7 @@ describe('Clients page', () => {
       address: `10.0.1.${index + 1}:49152`,
     }));
     vi.mocked(connectionsService.listConnections).mockResolvedValue(pagedConnections);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const { container } = renderWithProviders(<ClientsPage />);
 
     await screen.findByText('client-00');
@@ -195,7 +195,7 @@ describe('Clients page', () => {
       { ...connection, clusterName: 'ns-prod', type: 'Consumer' },
     ];
     vi.mocked(connectionsService.listConnections).mockResolvedValue(mixedConnections);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     await screen.findAllByText('order-svc-0@10.0.1.12:49152');
@@ -285,7 +285,7 @@ describe('Clients page', () => {
   });
 
   it('updates statistics when the selected cluster filter changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
       Promise.resolve(
         query?.clusterId === 'ns-prod'
@@ -330,7 +330,7 @@ describe('Clients page', () => {
   });
 
   it('keeps cluster statistics stable when text search narrows the table', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
     renderWithProviders(<ClientsPage />);
 
@@ -351,7 +351,7 @@ describe('Clients page', () => {
   });
 
   it('keeps incomplete client metadata searchable by address', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
       {
         ...connection,
@@ -369,7 +369,7 @@ describe('Clients page', () => {
   });
 
   it('opens details for connections without client id or address', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
       {
         ...connection,
@@ -405,7 +405,7 @@ describe('Clients page', () => {
       value: revokeObjectURL,
     });
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
       {
         ...connection,
@@ -449,7 +449,7 @@ describe('Clients page', () => {
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
@@ -484,7 +484,7 @@ describe('Clients page', () => {
       value: vi.fn(),
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const billingConnections: ClientConnection[] = [
       {
         clientId: 'billing-svc-0@10.0.3.10:49155',
@@ -529,7 +529,7 @@ describe('Clients page', () => {
 
   it('clears the text search and type filter when the nameserver changes', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
@@ -591,7 +591,7 @@ describe('Clients page', () => {
     vi.mocked(connectionsService.listConnections)
       .mockRejectedValueOnce(new Error('Client connection provider is not configured'))
       .mockResolvedValueOnce([connection]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     expect(
@@ -614,7 +614,7 @@ describe('Clients page', () => {
         ? Promise.resolve([connection])
         : Promise.reject(new Error('Cluster ns-audit is unavailable')),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     await screen.findByText('order-svc-0@10.0.1.12:49152');
@@ -631,7 +631,7 @@ describe('Clients page', () => {
   });
 
   it('ignores a stale connection response after switching nameservers', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stale = deferred<ClientConnection[]>();
     const latest = deferred<ClientConnection[]>();
     vi.mocked(connectionsService.listConnections)
@@ -665,7 +665,7 @@ describe('Clients page', () => {
   });
 
   it('ignores a stale registry response after a retry', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stale = deferred<ClusterInfo[]>();
     vi.mocked(clusterService.listRegistryClusters)
       .mockRejectedValueOnce(new Error('Unable to load registry clusters'))
@@ -689,7 +689,7 @@ describe('Clients page', () => {
     vi.mocked(clusterService.listRegistryClusters)
       .mockRejectedValueOnce(new Error('Unable to load registry clusters'))
       .mockResolvedValueOnce(registryClusters);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     expect(await screen.findByText('Unable to load registry clusters')).toBeInTheDocument();
@@ -703,7 +703,7 @@ describe('Clients page', () => {
   });
 
   it('opens a client detail dialog from the connection table', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClientsPage />);
 
     const row = await screen.findByRole('row', { name: /order-svc-0@10\.0\.1\.12:49152/ });

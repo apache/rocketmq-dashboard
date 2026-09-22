@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { memo } from 'react';
 import { Alert, Flex, Tag, theme } from 'antd';
 import type { ErrorBlock as ErrorBlockData } from '../../render/blocks';
 
@@ -62,4 +63,4 @@ const ErrorBlock = ({ block }: ErrorBlockProps) => {
   );
 };
 
-export default ErrorBlock;
+export default memo(ErrorBlock);

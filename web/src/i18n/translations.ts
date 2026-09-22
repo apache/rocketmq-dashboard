@@ -1659,6 +1659,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.list.openAria': { zh: '打开会话 {title}', en: 'Open conversation {title}' },
   'ai.list.columnAction': { zh: '操作', en: 'Action' },
   'ai.list.deleteAria': { zh: '删除会话 {title}', en: 'Delete conversation {title}' },
+  'ai.list.archiveAria': { zh: '归档会话 {title}', en: 'Archive conversation {title}' },
+  'ai.list.unarchiveAria': { zh: '取消归档 {title}', en: 'Unarchive conversation {title}' },
+  'ai.list.archivedToast': { zh: '会话已归档', en: 'Conversation archived' },
+  'ai.list.unarchivedToast': {
+    zh: '会话已恢复到进行中',
+    en: 'Conversation moved back to active',
+  },
+  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2587,6 +2595,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.writeQueues': { zh: '写队列数', en: 'Write Queues' },
   'cluster.readQueues': { zh: '读队列数', en: 'Read Queues' },
   'cluster.brokerPermission': { zh: 'Broker 权限', en: 'Broker Permission' },
+  'cluster.permRW': { zh: '读写（6）', en: 'Read/Write (6)' },
+  'cluster.permR': { zh: '只读（4）', en: 'Read-only (4)' },
+  'cluster.permW': { zh: '只写（2）', en: 'Write-only (2)' },
+  'cluster.permNone': { zh: '无权限（0）', en: 'Disabled (0)' },
+  'cluster.queueMatchHint': {
+    zh: 'Broker 默认 Topic 的读写队列数需保持一致，否则会出现不可读/不可写队列',
+    en: 'RocketMQ Broker uses one default Topic queue count; read and write values must match',
+  },
   'cluster.viewDetail': { zh: '查看详情: {addr}', en: 'View detail: {addr}' },
   'cluster.proxyDetailTitle': { zh: 'Proxy 详情 - {addr}', en: 'Proxy Detail - {addr}' },
   'cluster.restartProxyConfirm': {

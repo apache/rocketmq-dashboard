@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import type { CSSProperties } from 'react';
+import { memo, type CSSProperties } from 'react';
 import { Progress, Tag, theme } from 'antd';
 import { CaretRight, CheckCircle, CircleNotch, XCircle } from '@phosphor-icons/react';
 import { useLang } from '../../../../i18n/LangContext';
@@ -49,6 +49,10 @@ import { formatBytes } from '../../../../utils/format';
  * that merely usually holds serialised JSON. The backend already stripped inline base64 and capped
  * the text at 32 KiB; `outputBytes` keeps the real size and `truncated` says whether that cap bit,
  * which is what the 已截断（N KB） badge reports.
+ *
+ * Memoised on the block object: a run with dozens of tool calls re-renders the page at display
+ * rate while the NEXT call streams, and `withToolResult` only replaces the block it fills — every
+ * finished card keeps its identity and must not reconcile its (up to 32 KiB) `<pre>` again.
  */
 
 /** Risk colour of the tool catalog: L1 reads, L2 previewable changes, L3 destructive changes. */
@@ -258,4 +262,4 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
   );
 };
 
-export default ToolBlock;
+export default memo(ToolBlock);

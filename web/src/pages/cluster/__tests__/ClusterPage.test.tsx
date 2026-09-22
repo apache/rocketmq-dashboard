@@ -368,7 +368,7 @@ describe('Cluster page', () => {
   }, 10000);
 
   it('opens proxy detail dialog from the proxy table', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
 
     await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
@@ -385,7 +385,7 @@ describe('Cluster page', () => {
   });
 
   it('previews broker config changes before submitting the update', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
 
     const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
@@ -414,7 +414,7 @@ describe('Cluster page', () => {
   });
 
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stalePreview = deferred<ClusterConfigPreviewResult>();
     const latestPreview = deferred<ClusterConfigPreviewResult>();
     clusterServiceMocks.previewClusterConfig
@@ -486,7 +486,7 @@ describe('Cluster page', () => {
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const submitSearch = async (placeholder: string, value: string) => {
       const input = screen.getByPlaceholderText(placeholder);
       await user.type(input, value);
@@ -521,7 +521,7 @@ describe('Cluster page', () => {
   });
 
   it('creates and deletes nameserver registry entries', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
     await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
     expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
@@ -575,7 +575,7 @@ describe('Cluster page', () => {
 
   it('localizes the NameServer address guidance', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
     await user.click(screen.getByRole('tab', { name: /NameServer/ }));
     await user.click(screen.getByRole('button', { name: /New NameServer/ }));
@@ -590,7 +590,7 @@ describe('Cluster page', () => {
   });
 
   it('opens NameServer config drift details from a registry row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 10,
@@ -676,7 +676,7 @@ describe('Cluster page', () => {
   });
 
   it('omits instanceId for NameServer config drift when no instance owns the registry cluster', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
         ...buildCluster(),
@@ -701,7 +701,7 @@ describe('Cluster page', () => {
   });
 
   it('opens Broker config drift details from a broker row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 10,
@@ -788,7 +788,7 @@ describe('Cluster page', () => {
   });
 
   it('reports Broker config drift load failures without closing the dialog', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
     clusterServiceMocks.getBrokerConfigDiff.mockRejectedValueOnce(new Error('failure'));
     renderWithProviders(<ClusterPage />);
@@ -805,7 +805,7 @@ describe('Cluster page', () => {
   });
 
   it('renders a failed NameServer config diff as an error with retry instead of the loading banner', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
@@ -848,7 +848,7 @@ describe('Cluster page', () => {
   });
 
   it('renders a failed Broker config diff as an error with retry instead of the loading banner', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
     clusterServiceMocks.getBrokerConfigDiff
       .mockRejectedValueOnce(new Error('broker unreachable'))

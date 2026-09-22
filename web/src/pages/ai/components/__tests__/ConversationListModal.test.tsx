@@ -24,6 +24,7 @@ import type { AiConversationListItemVO } from '../../../../api/aiEvents';
 import {
   deleteConversation,
   listConversations,
+  updateConversation,
   type PageResult,
 } from '../../../../api/aiConversations';
 import ConversationListModal from '../ConversationListModal';
@@ -31,6 +32,7 @@ import ConversationListModal from '../ConversationListModal';
 vi.mock('../../../../api/aiConversations', () => ({
   listConversations: vi.fn(),
   deleteConversation: vi.fn(),
+  updateConversation: vi.fn(),
 }));
 
 /**
@@ -55,6 +57,7 @@ vi.mock('../../../../api/aiConversations', () => ({
 
 const listMock = vi.mocked(listConversations);
 const deleteMock = vi.mocked(deleteConversation);
+const updateMock = vi.mocked(updateConversation);
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -154,8 +157,42 @@ describe('ConversationListModal', () => {
     // of its own stub.
     listMock.mockReset();
     deleteMock.mockReset();
+    updateMock.mockReset();
     vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  it('archivesAConversationFromTheActiveScopeTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock.mockResolvedValue(page([conversation(7, '检查集群状态')], 1, 1));
+    updateMock.mockResolvedValue({ id: 7 } as never);
+    renderModal();
+    await screen.findByText('检查集群状态');
+    const listCallsBefore = listMock.mock.calls.length;
+
+    await user.click(screen.getByTestId('ai-conversation-row-archive-7'));
+
+    await waitFor(() => expect(updateConversation).toHaveBeenCalledWith(7, { archived: true }));
+    // The scope reloads so the archived row leaves the active list.
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(listCallsBefore));
+  });
+
+  it('unarchivesAConversationFromTheArchivedScopeTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock.mockResolvedValue(page([conversation(7, '检查集群状态')], 1, 1));
+    updateMock.mockResolvedValue({ id: 7 } as never);
+    renderModal();
+    await screen.findByText('检查集群状态');
+
+    await user.click(screen.getByText('已归档'));
+    await waitFor(() =>
+      expect(listConversations).toHaveBeenLastCalledWith(
+        expect.objectContaining({ archived: true }),
+      ),
+    );
+
+    await user.click(screen.getByTestId('ai-conversation-row-archive-7'));
+    await waitFor(() => expect(updateConversation).toHaveBeenCalledWith(7, { archived: false }));
   });
 
   it('doesNotQueryWhileClosedTest', async () => {

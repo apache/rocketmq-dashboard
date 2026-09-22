@@ -19,7 +19,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LangProvider } from '../../../../i18n/LangContext';
-import type { Bubble } from '../../render/blocks';
+import type { Bubble, RenderBlock } from '../../render/blocks';
 import { appendText } from '../../render/blocks';
 import ChatThread from '../ChatThread';
 
@@ -75,13 +75,21 @@ function placeReader(distance: number) {
   return container;
 }
 
-function renderThread(props: { bubbles?: Bubble[]; streaming?: boolean; resetKey?: number }) {
+function renderThread(props: {
+  bubbles?: Bubble[];
+  streaming?: boolean;
+  resetKey?: number;
+  pendingUserText?: string | null;
+  liveBlocks?: RenderBlock[];
+}) {
   return render(
     <LangProvider>
       <ChatThread
         bubbles={props.bubbles ?? []}
         streaming={props.streaming}
         resetKey={props.resetKey}
+        pendingUserText={props.pendingUserText}
+        liveBlocks={props.liveBlocks}
       />
     </LangProvider>,
   );
@@ -106,6 +114,67 @@ describe('ChatThread', () => {
 
     expect(scrollIntoView).toHaveBeenCalled();
     expect(screen.queryByTestId('ai-thread-jump-to-latest')).not.toBeInTheDocument();
+  });
+
+  it('followsInstantlyWhileStreamingSoFramesDoNotStackSmoothScrollsTest', () => {
+    const { rerender } = renderThread({ bubbles: [userBubble('检查集群状态')] });
+    placeReader(0);
+    rerender(
+      <LangProvider>
+        <ChatThread bubbles={[userBubble('检查集群状态')]} liveBlocks={appendText([], '部分')} streaming />
+      </LangProvider>,
+    );
+    scrollIntoView.mockClear();
+
+    // The next frame of the SAME run: the follow must be instant. A fresh smooth scroll on every
+    // animation frame stacks concurrent scroll animations — the jank of a long streamed answer.
+    rerender(
+      <LangProvider>
+        <ChatThread
+          bubbles={[userBubble('检查集群状态')]}
+          liveBlocks={appendText([], '部分回答，还在继续')}
+          streaming
+        />
+      </LangProvider>,
+    );
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto' });
+  });
+
+  it('keepsSmoothFollowForDiscreteArrivalsWhileIdleTest', () => {
+    const { rerender } = renderThread({ bubbles: [userBubble('检查集群状态')] });
+    placeReader(0);
+    scrollIntoView.mockClear();
+
+    // A whole persisted answer arrives while no run is streaming: one discrete jump, animated.
+    rerender(
+      <LangProvider>
+        <ChatThread bubbles={[userBubble('检查集群状态'), assistantBubble('集群正常')]} />
+      </LangProvider>,
+    );
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
+  });
+
+  it('showsThePendingQuestionImmediatelyWhileTheRunStreamsTest', () => {
+    // The live stream carries no user frame and the persisted transcript only gains the row at
+    // the end-of-run refetch; the optimistic copy is what keeps the operator's own question
+    // visible from the moment they sent it.
+    renderThread({
+      bubbles: [userBubble('第一个问题'), assistantBubble('第一个回答')],
+      liveBlocks: appendText([], '正在回答'),
+      streaming: true,
+      pendingUserText: '第二个问题',
+    });
+
+    expect(screen.getByText('第二个问题')).toBeInTheDocument();
+    expect(screen.getAllByTestId('ai-bubble-user-avatar')).toHaveLength(2);
+    // The pending question sits ahead of the streaming answer.
+    const pending = screen.getByText('第二个问题');
+    const answer = screen.getByText('正在回答');
+    expect(
+      pending.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('stopsFollowingAndOffersAJumpOnceTheReaderScrollsUpTest', () => {

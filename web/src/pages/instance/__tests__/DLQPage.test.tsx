@@ -189,7 +189,7 @@ describe('DLQ page', () => {
         page: 1,
         size: 20,
       });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -232,7 +232,7 @@ describe('DLQ page', () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(
       pageOf([dlqGroup, { ...secondDlqGroup, lastEnqueueTime: null }]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -246,7 +246,7 @@ describe('DLQ page', () => {
   });
 
   it('opens a message detail drawer with the selected group metadata', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -299,7 +299,7 @@ describe('DLQ page', () => {
           resolveResend = resolve;
         }),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const firstGroupRow = (await screen.findByText('cg-order')).closest('tr');
@@ -375,7 +375,7 @@ describe('DLQ page', () => {
       page: 1,
       size: 20,
     } satisfies DLQMessagePage);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -412,7 +412,7 @@ describe('DLQ page', () => {
       page: 1,
       size: 20,
     } satisfies DLQMessagePage);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -431,7 +431,7 @@ describe('DLQ page', () => {
       }),
       meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -457,7 +457,7 @@ describe('DLQ page', () => {
       }),
       meta: { truncated: true, failedQueueCount: 2, limit: 100 },
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
@@ -472,7 +472,7 @@ describe('DLQ page', () => {
 
   it('exports summaries for the selected groups in one CSV file', async () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const batchExport = screen.getByRole('button', { name: /批量导出/ });
@@ -505,7 +505,7 @@ describe('DLQ page', () => {
         },
       ]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const row = (await screen.findByText('%DLQ%formula')).closest('tr');
@@ -521,7 +521,7 @@ describe('DLQ page', () => {
     vi.mocked(messageService.listDLQGroups)
       .mockResolvedValueOnce(pageOf([dlqGroup]))
       .mockResolvedValueOnce(pageOf([{ ...dlqGroup, messageCount: 0 }]));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
@@ -548,7 +548,7 @@ describe('DLQ page', () => {
     vi.mocked(messageService.resendDLQ).mockRejectedValue(
       new Error('DLQ provider is not configured'),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
@@ -569,7 +569,7 @@ describe('DLQ page', () => {
           resolveResend = resolve;
         }),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const row = (await screen.findByText('cg-order')).closest('tr');
@@ -595,7 +595,7 @@ describe('DLQ page', () => {
       scanIncomplete: true,
       failedQueueCount: 1,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
@@ -620,7 +620,7 @@ describe('DLQ page', () => {
             resolveSecondInstance = resolve;
           }),
       );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const orderRow = (await screen.findByText('cg-order')).closest('tr');
@@ -656,7 +656,7 @@ describe('DLQ page', () => {
     vi.mocked(messageService.listDLQGroups)
       .mockResolvedValueOnce(pageOf([dlqGroup]))
       .mockResolvedValueOnce(pageOf([secondDlqGroup]));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     const firstRow = (await screen.findByText('cg-order')).closest('tr');
@@ -694,7 +694,7 @@ describe('DLQ page', () => {
           }),
       )
       .mockResolvedValueOnce(pageOf([secondDlqGroup]));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
 
     await user.click(screen.getAllByRole('combobox')[0]);

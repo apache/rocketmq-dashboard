@@ -38,6 +38,8 @@ import {
   Alert,
   Spin,
   message,
+  Row,
+  Col,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -1389,15 +1391,20 @@ const ClusterPage = () => {
             confirmLoading={configSubmitting}
             width={720}
           >
-            <Space style={{ marginBottom: 16 }}>
+            <Flex justify="flex-end" style={{ marginBottom: 12 }}>
               <Button
+                size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
               </Button>
-            </Space>
+            </Flex>
+            {/* Two-column grid: the eight fields pair up into four rows, halving the modal
+                height. Related controls sit side by side (flush + retention, size + permission,
+                the queue pair, the two auto-create switches) so the form reads as groups
+                instead of a corridor of labels. */}
             <Form
               form={configForm}
               layout="vertical"
@@ -1407,45 +1414,83 @@ const ClusterPage = () => {
                 setConfigPreviewLoading(false);
               }}
             >
-              <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
-                <Radio.Group>
-                  <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
-                  <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
-                </Radio.Group>
-              </Form.Item>
-              <Form.Item
-                label={t('cluster.autoCreateTopic')}
-                name="autoCreateTopicEnable"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t('cluster.autoCreateSubGroup')}
-                name="autoCreateSubscriptionGroup"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
-                <InputNumber min={1} max={128} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
-                <InputNumber min={1} max={720} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.writeQueues')} name="writeQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-              <Text type="secondary" style={{ display: 'block', marginTop: -16, marginBottom: 16 }}>
-                RocketMQ Broker uses one default Topic queue count; read and write values must
-                match.
-              </Text>
-              <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
-                <InputNumber min={0} max={7} style={{ width: '100%' }} />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
+                    <Radio.Group>
+                      <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
+                      <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
+                    <InputNumber min={1} max={720} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
+                    <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  {/* Named options instead of a raw 0-7 number: the permission is a bitfield
+                      and only 6/4/2/0 carry meaning for an operator. An unusual persisted
+                      value (e.g. 7) still renders — the Select falls back to showing it raw. */}
+                  <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
+                    <Select
+                      options={[
+                        { value: 6, label: t('cluster.permRW') },
+                        { value: 4, label: t('cluster.permR') },
+                        { value: 2, label: t('cluster.permW') },
+                        { value: 0, label: t('cluster.permNone') },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.writeQueues')}
+                    name="writeQueueNums"
+                    tooltip={t('cluster.queueMatchHint')}
+                  >
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.readQueues')}
+                    name="readQueueNums"
+                    tooltip={t('cluster.queueMatchHint')}
+                  >
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.autoCreateTopic')}
+                    name="autoCreateTopicEnable"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.autoCreateSubGroup')}
+                    name="autoCreateSubscriptionGroup"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                </Col>
+              </Row>
             </Form>
             {renderConfigPreview()}
           </Modal>
