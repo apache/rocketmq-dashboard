@@ -196,8 +196,30 @@ describe('NotificationDeliveriesPage', () => {
     );
   });
 
-  it('returns to the first page when the page size changes', async () => {
+  it('returns to the first page when the page size changes from a late page', async () => {
     const user = userEvent.setup();
+    // 45 rows / 20 per page = 3 pages. Landing on page 3 and then growing the page size
+    // to 50 leaves only 1 page: without the reset, the list keeps requesting page 3 and
+    // strands an empty table under a pager claiming page 3 of 1.
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (params) => {
+      const page = params?.page ?? 1;
+      const pageSize = params?.pageSize ?? 20;
+      return {
+        items: Array.from({ length: page === 3 && pageSize === 20 ? 5 : 20 }, (_, index) => ({
+          id: (page - 1) * 20 + index + 1,
+          alertId: 3,
+          alertTitle: `Delivery ${(page - 1) * 20 + index + 1}`,
+          channel: 'dingtalk',
+          status: 'FAILED' as const,
+          attemptCount: 5,
+          createdAt: '2026-08-23T10:00:00',
+          lastError: 'Webhook rejected the request',
+        })),
+        total: 45,
+        page,
+        size: pageSize,
+      };
+    });
     render(
       <App>
         <LangProvider>
@@ -206,21 +228,27 @@ describe('NotificationDeliveriesPage', () => {
       </App>,
     );
 
-    await screen.findByText('Broker disk usage');
+    await screen.findByText('Delivery 1');
+    await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('.ant-pagination-item-3');
+      expect(element).not.toBeNull();
+    });
+    await user.click(document.querySelector<HTMLElement>('.ant-pagination-item-3')!);
+    await screen.findByText('Delivery 41');
+
     const sizeChanger = document.querySelector('.ant-pagination-options .ant-select-selector');
     expect(sizeChanger).not.toBeNull();
-
-    // Larger page size while stranded on a late page must not keep requesting that
-    // page: the reset lands on page 1 with the new size.
     await user.click(sizeChanger as HTMLElement);
     await user.click(
       await screen.findByText('50 / page', { selector: '.ant-select-item-option-content' }),
     );
 
+    // The reset lands on page 1 with the new size, and page 1's rows are visible again.
     await waitFor(() =>
       expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
         expect.objectContaining({ page: 1, pageSize: 50 }),
       ),
     );
+    expect(await screen.findByText('Delivery 1')).toBeInTheDocument();
   });
 });
