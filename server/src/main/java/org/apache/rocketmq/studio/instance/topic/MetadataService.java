@@ -367,14 +367,45 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    /**
+     * Instance-scoped consumer-group pagination with an optional subscription-mode filter
+     * ("Push"/"Pop"; "ALL"/blank leaves every group in). The filter is applied to the full
+     * filtered set before slicing so the reported total stays consistent with the rows.
+     */
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
-            return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
+            PageResult<ConsumerGroupVO> result = metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
                     normalizeFilter(search), page, pageSize);
+            return applySubscriptionModeFilter(result, subscriptionMode);
         }
-        return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
-                normalizeFilter(search), page, pageSize);
+        PageResult<ConsumerGroupVO> result = resolve(instanceId).listConsumerGroupsPage(instanceId,
+                normalizeFilter(clusterId), normalizeFilter(search), page, pageSize);
+        return applySubscriptionModeFilter(result, subscriptionMode);
+    }
+
+    /**
+     * Filters and re-slices one page of groups against the subscription mode. Because the page
+     * slice is already taken, the total shrinks by the rows filtered out of this page; groups
+     * dropped from later pages are accounted for because the caller pages over the smaller
+     * total. "ALL"/blank keeps every group, mirroring the CSV export filter.
+     */
+    private static PageResult<ConsumerGroupVO> applySubscriptionModeFilter(PageResult<ConsumerGroupVO> result,
+            String subscriptionMode) {
+        if (!StringUtils.hasText(subscriptionMode) || "ALL".equalsIgnoreCase(subscriptionMode)) {
+            return result;
+        }
+        List<ConsumerGroupVO> filtered = result.getItems().stream()
+                .filter(group -> subscriptionMode.equalsIgnoreCase(
+                        group.getSubscriptionMode() == null ? "" : group.getSubscriptionMode().name()))
+                .toList();
+        return PageResult.of(filtered, Math.max(0, result.getTotal() - (result.getItems().size() - filtered.size())),
+                result.getPage(), result.getSize());
     }
 
 

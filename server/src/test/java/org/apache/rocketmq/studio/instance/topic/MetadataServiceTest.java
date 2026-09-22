@@ -833,6 +833,49 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldApplySubscriptionModeFilterToThePage() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("cg-push");
+        pushGroup.setSubscriptionMode(SubscriptionMode.Push);
+        ConsumerGroupVO popGroup = new ConsumerGroupVO();
+        popGroup.setName("cg-pop");
+        popGroup.setSubscriptionMode(SubscriptionMode.Pop);
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(pushGroup, popGroup), 2, 1, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, "Pop", 1, 20);
+
+        assertThat(result.getItems()).containsExactly(popGroup);
+        // The total shrinks with the rows dropped from this page so the pager stays consistent.
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getPage()).isEqualTo(1);
+        assertThat(result.getSize()).isEqualTo(20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldIgnoreSubscriptionModeAllAndUnknownValues() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("cg-push");
+        pushGroup.setSubscriptionMode(SubscriptionMode.Push);
+        ConsumerGroupVO nullModeGroup = new ConsumerGroupVO();
+        nullModeGroup.setName("cg-null");
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(pushGroup, nullModeGroup), 2, 1, 20));
+
+        PageResult<ConsumerGroupVO> allResult = metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, "ALL", 1, 20);
+        assertThat(allResult.getItems()).hasSize(2);
+        assertThat(allResult.getTotal()).isEqualTo(2);
+
+        // A blank filter is "no filter"; unknown values drop unknown-mode rows instead of
+        // silently returning everything.
+        PageResult<ConsumerGroupVO> blankResult = metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, " ", 1, 20);
+        assertThat(blankResult.getItems()).hasSize(2);
+    }
+
+    @Test
     void refreshConsumerGroupShouldExactMatchWithinProviderSearchResults() {
         ConsumerGroupVO similar = new ConsumerGroupVO();
         similar.setName("cg-order-archive");
