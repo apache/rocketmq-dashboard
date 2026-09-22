@@ -372,6 +372,36 @@ describe('MetricsExplorer', () => {
     expect(chart.querySelectorAll('polyline')).toHaveLength(10);
   });
 
+  it('keeps series that differ only in a later label distinguishable', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Both series share their first three sorted labels, so the compact legend
+    // text is identical and only the dropped `pod` label tells them apart.
+    const collidingSeries = ['a', 'b'].map((pod, index) => ({
+      labels: { cluster: 'prod', job: 'rmq', namespace: 'ns', pod },
+      values: [
+        { timestamp: 1_799_996_400, value: String(40 + index * 10) },
+        { timestamp: 1_800_000_000, value: String(42 + index * 10) },
+      ],
+      histograms: [],
+    }));
+    vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: collidingSeries });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('52 messages/s')).toBeInTheDocument();
+
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect(chart.querySelectorAll('polyline')).toHaveLength(2);
+    // The visible legend stays compact, so both entries still read the same.
+    expect(screen.getAllByText('cluster=prod / job=rmq / namespace=ns')).toHaveLength(2);
+    // Their child identities are no longer shared.
+    expect(consoleError.mock.calls.filter((call) => String(call[0]).includes('same key'))).toEqual(
+      [],
+    );
+
+    consoleError.mockRestore();
+  });
+
   it('runs a custom PromQL expression from the query box', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
