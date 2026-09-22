@@ -263,9 +263,9 @@ body {
    The purple gradient is the base on purpose: the composer renders both on the AI page and on
    the home page, and the background must not depend on an `.ai-page` ancestor. */
 .ai-send-button {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   border: none;
   border-radius: 50%;
   cursor: pointer;

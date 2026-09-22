@@ -37,10 +37,17 @@ import AssistantBubble from './AssistantBubble';
 
 export interface BubbleListProps {
   bubbles: Bubble[];
-  /** Blocks of the run in flight, rendered as a trailing streaming assistant bubble. */
+  /** Blocks of the run in flight; rendered as a trailing streaming assistant bubble. */
   liveBlocks?: RenderBlock[];
   /** True while that run is streaming; drives the pending dots and the thinking auto-expand. */
   streaming?: boolean;
+  /**
+   * Optimistic text of the question the run in flight was admitted with, drawn as a user bubble
+   * ahead of the live assistant bubble: the live stream carries no user frame and the persisted
+   * transcript only gains the row at the end-of-run refetch, so without this copy the operator's
+   * own question stays invisible for the whole run.
+   */
+  pendingUserText?: string | null;
   /** Catalog from `listTools()`, so tool blocks can show a risk level. */
   toolCatalog?: readonly McpTool[];
   /** Estimated speed of the run in flight, shown live on the streaming bubble. */
@@ -65,6 +72,7 @@ const BubbleList = ({
   bubbles,
   liveBlocks,
   streaming = false,
+  pendingUserText = null,
   toolCatalog,
   liveTokensPerSecond = null,
   lastRunTokensPerSecond = null,
@@ -72,8 +80,9 @@ const BubbleList = ({
   empty,
 }: BubbleListProps) => {
   const hasLive = liveBlocks !== undefined && (streaming || liveBlocks.length > 0);
+  const hasPendingUser = pendingUserText !== null && pendingUserText.trim() !== '';
 
-  if (bubbles.length === 0 && !hasLive) return <>{empty ?? null}</>;
+  if (bubbles.length === 0 && !hasLive && !hasPendingUser) return <>{empty ?? null}</>;
 
   // The speed of the last finished run belongs to the newest persisted assistant bubble — but
   // only while no newer run is streaming (the hook resets it when one starts).
@@ -108,6 +117,14 @@ const BubbleList = ({
             }
           />
         ),
+      )}
+      {hasPendingUser && (
+        <UserBubble
+          key="user-pending"
+          // No createdAt: the persisted row's timestamp replaces this bubble at the end-of-run
+          // refetch anyway, and a client-side clock would only pretend to be it.
+          text={pendingUserText ?? ''}
+        />
       )}
       {hasLive && (
         <AssistantBubble

@@ -128,7 +128,7 @@ describe('Message page query history', () => {
   });
 
   it('requires the active query mode fields and trims submitted identifiers', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
@@ -183,7 +183,7 @@ describe('Message page query history', () => {
   });
 
   it('surfaces Topic loading failures and retries without changing instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     topicServiceMocks.listTopics
       .mockReset()
       .mockRejectedValueOnce(new Error('NameServer unavailable'))
@@ -200,7 +200,7 @@ describe('Message page query history', () => {
   });
 
   it('requires a topic even when a key or message ID is present', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
@@ -217,7 +217,7 @@ describe('Message page query history', () => {
   });
 
   it('does not report consume verification success without a backend API', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
     renderWithProviders(<MessagePage />);
 
@@ -237,7 +237,7 @@ describe('Message page query history', () => {
   });
 
   it('sorts and renders messages without tags or keys', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-NULL-FIELDS'), tag: null, key: null },
       { ...createMessage('MID-FULL-FIELDS'), tag: 'vip', key: 'order-001' },
@@ -266,7 +266,7 @@ describe('Message page query history', () => {
       selectInstance: vi.fn(),
       instanceOptions: [],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -277,7 +277,7 @@ describe('Message page query history', () => {
   });
 
   it('shows the redelivery count on the message detail panel', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-RETRY'), reconsumeTimes: 2 },
     ]);
@@ -334,7 +334,7 @@ describe('Message page query history', () => {
       instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
     topicServiceMocks.listTopics.mockRejectedValue(new Error('topic lookup failed'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await waitFor(() => expect(topicServiceMocks.listTopics).toHaveBeenCalledTimes(1));
@@ -347,7 +347,7 @@ describe('Message page query history', () => {
     messageServiceMocks.queryMessages.mockResolvedValue(
       Array.from({ length: 60 }, (_, index) => createMessage(`m-${index}`)),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await user.click(lastElement(screen.getAllByRole('combobox')));
@@ -382,7 +382,7 @@ describe('Message page query history', () => {
   });
 
   it('shows the storage location on the message detail panel', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-LOCATION')]);
     renderWithProviders(<MessagePage />);
 
@@ -441,7 +441,7 @@ describe('Message page query history', () => {
         },
       ],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('Query by Message ID'));
@@ -463,7 +463,7 @@ describe('Message page query history', () => {
   });
 
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-NO-LOCATION'), brokerName: null, queueId: null, queueOffset: null },
     ]);

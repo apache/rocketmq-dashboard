@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { TextBlock as TextBlockData } from '../../render/blocks';
@@ -30,16 +31,20 @@ import { normalizeAiMarkdown } from '../../render/markdown';
  * The same component renders a live `text_delta` accumulation and a replayed persisted `text` event:
  * both reducers coalesce adjacent text into ONE block, so a streamed answer and the same answer
  * reloaded from the database produce identical DOM.
+ *
+ * Memoised on the block object: the reducers only replace the block that actually changed, so an
+ * unchanged text keeps its identity across streaming ticks and skips the full ReactMarkdown
+ * re-parse — that parse is the single most expensive thing a transcript frame does.
  */
 
 export interface TextBlockProps {
   block: TextBlockData;
 }
 
-const TextBlock = ({ block }: TextBlockProps) => (
+const TextBlock = memo(({ block }: TextBlockProps) => (
   <div className="ai-markdown" data-testid="ai-text-block">
     <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeAiMarkdown(block.text)}</ReactMarkdown>
   </div>
-);
+));
 
 export default TextBlock;

@@ -24,7 +24,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Button, Progress, Select, Tag, Tooltip, theme } from 'antd';
+import { Button, Flex, Progress, Select, Tag, Tooltip, theme } from 'antd';
 import {
   BookOpen,
   CaretDown,
@@ -333,7 +333,9 @@ const Composer = ({
           }
         >
           <div className="flex items-center justify-between gap-3 px-3 pt-2.5">
-            <div className="flex flex-1 min-w-0 items-center gap-2">
+            {/* Wraps on narrow viewports: the selectors carry min-widths and the provider status
+                never shrinks, so without wrap the row overflows the panel instead of reflowing. */}
+            <div className="flex flex-1 min-w-0 items-center gap-2 flex-wrap">
               <span className="shrink-0 text-gray-500" style={{ fontSize: '0.893rem' }}>
                 {t('ai.composer.modelLabel')}
               </span>
@@ -519,7 +521,11 @@ const Composer = ({
                   </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
-                  {showContextBar && (
+                  {/* Context-usage meter, the pattern the AI products converged on (ChatGPT's
+                      "Context left" pill, Cursor's composer meter): a mini bar PLUS the percent
+                      number — a bare bar is unreadable at a glance — hidden while the conversation
+                      is still under 1% of the window so a fresh chat carries no noise. */}
+                  {showContextBar && contextPercent >= 1 && (
                     <Tooltip
                       title={t('ai.composer.contextUsage', {
                         used: contextTokens.toLocaleString(),
@@ -527,15 +533,30 @@ const Composer = ({
                         percent: contextPercent,
                       })}
                     >
-                      <div data-testid="ai-context-bar" style={{ width: 96 }}>
+                      <Flex
+                        align="center"
+                        gap={6}
+                        data-testid="ai-context-bar"
+                        style={{ cursor: 'default' }}
+                      >
                         <Progress
                           percent={contextPercent}
                           showInfo={false}
-                          strokeWidth={10}
+                          strokeWidth={8}
                           strokeColor={contextColor}
-                          style={{ margin: 0 }}
+                          trailColor={token.colorFillSecondary}
+                          style={{ margin: 0, width: 56 }}
                         />
-                      </div>
+                        <span
+                          style={{
+                            fontSize: 13,
+                            color: token.colorTextSecondary,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {contextPercent}%
+                        </span>
+                      </Flex>
                     </Tooltip>
                   )}
                   <SendStopButton

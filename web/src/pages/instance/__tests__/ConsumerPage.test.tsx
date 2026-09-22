@@ -313,7 +313,7 @@ describe('Consumer page', () => {
   });
 
   it('clears selected consumer groups when the search scope changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -332,7 +332,7 @@ describe('Consumer page', () => {
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     let call = 0;
     vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
       call += 1;
@@ -361,7 +361,7 @@ describe('Consumer page', () => {
   });
 
   it('reloads the server page after deleting one consumer group', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -384,7 +384,7 @@ describe('Consumer page', () => {
   });
 
   it('moves back from an emptied last consumer group page after batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -440,7 +440,7 @@ describe('Consumer page', () => {
   });
 
   it('keeps failed consumer groups selected after a partially successful batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -479,7 +479,7 @@ describe('Consumer page', () => {
   });
 
   it('submits the canonical global delivery order type', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -528,7 +528,7 @@ describe('Consumer page', () => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await screen.findByText('remote-cg');
@@ -561,7 +561,7 @@ describe('Consumer page', () => {
   });
 
   it('downloads all consumer groups matching the current filters when exporting', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
     let exportedBlob: Blob | undefined;
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
@@ -644,7 +644,7 @@ describe('Consumer page', () => {
   });
 
   it('loads subscriptions and progress when opening a group', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -675,7 +675,7 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.getConsumerProgress).mockRejectedValue(
       new Error('broker unreachable'),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -754,7 +754,7 @@ describe('Consumer page', () => {
         diffTotal: 1_100,
       },
     ]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -785,7 +785,7 @@ describe('Consumer page', () => {
         consistency: '一致',
       },
     ]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -819,7 +819,7 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([{ ...group, instanceId: 'instance-a' }]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -836,7 +836,7 @@ describe('Consumer page', () => {
   });
 
   it('previews queue impact before resetting consumer offsets', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -892,7 +892,7 @@ describe('Consumer page', () => {
   });
 
   it('invalidates the reset preview when reset parameters change', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -918,7 +918,7 @@ describe('Consumer page', () => {
   });
 
   it('supports skipping accumulation by resetting to the latest offsets', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -981,7 +981,7 @@ describe('Consumer page', () => {
         },
       ],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -1033,7 +1033,7 @@ describe('Consumer page', () => {
         size: params?.pageSize ?? 20,
       }),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1136,7 +1136,7 @@ describe('Consumer page', () => {
         },
       ]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1171,7 +1171,7 @@ describe('Consumer page', () => {
         },
       ]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1226,7 +1226,7 @@ describe('Consumer page', () => {
         },
       ]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1278,7 +1278,7 @@ describe('Consumer page', () => {
         },
       ]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1303,7 +1303,7 @@ describe('Consumer page', () => {
       },
     ]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1317,7 +1317,7 @@ describe('Consumer page', () => {
       new Error('request failed'),
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1352,7 +1352,7 @@ describe('Consumer page', () => {
       failures: [{ index: 1, name: 'cg-fail', message: 'broker rejected group' }],
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 4,
@@ -1368,7 +1368,16 @@ describe('Consumer page', () => {
     ]);
     renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
 
-    await screen.findByText(/共 0 个 Group/);
+    // NOT `findByText(/共 0 个 Group/)`: the header subtitle carries that text from the very
+    // first render (totalGroups starts at 0), so it resolves before the instance list lands.
+    // Uploading that early races `handleImportFile`'s `selectedInstanceId` guard, which then
+    // bails with 请先选择实例 and the import modal never opens. The instance-scoped fetch only
+    // fires once the selection resolved, so observing the call is the race-free readiness mark.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
     const csv = [
       '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type","Delivery Order Type"',
       '"cg-ok","Push","CLUSTERING","16","NORMAL",""',
@@ -1439,7 +1448,7 @@ describe('Consumer page', () => {
   });
 
   it('auto-refreshes the selected group while the detail modal is open', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1472,7 +1481,7 @@ describe('Consumer page', () => {
       retryQueueNums: 2,
       retryMaxTimes: 8,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1525,7 +1534,7 @@ describe('Consumer page', () => {
       consumeMessageOrderly: true,
       consumeBroadcastEnable: false,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1557,7 +1566,7 @@ describe('Consumer page', () => {
   });
 
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         { ...group, name: 'unknown-lag-cg', totalLag: -1 },
@@ -1577,7 +1586,7 @@ describe('Consumer page', () => {
   });
 
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         { ...group, name: 'unknown-lag-cg', totalLag: -1 },
@@ -1606,7 +1615,7 @@ describe('Consumer page', () => {
   });
 
   it('sorts groups with unavailable connections after known client counts', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         { ...group, name: 'unknown-conn-cg', onlineInstances: -1 },
@@ -1656,7 +1665,7 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.getConsumerGroupSettings)
       .mockImplementationOnce(() => firstSettings.promise)
       .mockImplementationOnce(() => secondSettings.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const firstRow = await screen.findByRole('row', { name: /remote-cg/ });

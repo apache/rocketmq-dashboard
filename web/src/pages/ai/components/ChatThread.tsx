@@ -53,6 +53,12 @@ export interface ChatThreadProps {
   liveBlocks?: RenderBlock[];
   /** True while that run is streaming. */
   streaming?: boolean;
+  /**
+   * Optimistic text of the question the run in flight was admitted with. The persisted transcript
+   * only gains its user row at the end-of-run refetch, so until then the question is drawn from
+   * this copy — otherwise the operator's own message stays invisible for the whole run.
+   */
+  pendingUserText?: string | null;
   /** Catalog from `listTools()`, so tool blocks can show a risk level. */
   toolCatalog?: readonly McpTool[];
   /** Estimated speed of the run in flight, shown live on the streaming bubble. */
@@ -79,6 +85,7 @@ const ChatThread = ({
   bubbles,
   liveBlocks,
   streaming = false,
+  pendingUserText = null,
   toolCatalog,
   liveTokensPerSecond = null,
   lastRunTokensPerSecond = null,
@@ -137,8 +144,12 @@ const ChatThread = ({
   }, [followToBottom, resetKey]);
 
   // Follow the stream only while the reader is already at the bottom. The first arrival after a
-  // reset positions instantly (the transcript just loaded, there is nothing to animate over);
-  // later arrivals follow smoothly.
+  // reset positions instantly (the transcript just loaded, there is nothing to animate over).
+  // While streaming this effect re-runs once per animation frame, so the follow must be instant:
+  // a fresh `smooth` scroll started on EVERY frame stacks dozens of concurrent scroll animations
+  // that fight each other and the compositor — that is the visible jank of a long answer. A
+  // per-frame instant jump is indistinguishable from smooth at display rate; the smooth behaviour
+  // is kept for discrete arrivals (a refetched transcript growing while idle).
   useEffect(() => {
     if (!atBottomRef.current) return;
     if (!positionedRef.current) {
@@ -146,8 +157,8 @@ const ChatThread = ({
       followToBottom('auto');
       return;
     }
-    followToBottom('smooth');
-  }, [bubbles, followToBottom, liveBlocks]);
+    followToBottom(streaming ? 'auto' : 'smooth');
+  }, [bubbles, followToBottom, liveBlocks, streaming]);
 
   // Count what arrives while the reader is away: one per message, not one per streamed token.
   // Only a genuine increase in bubble count is a new message — a streaming failure that removes
@@ -184,6 +195,7 @@ const ChatThread = ({
             bubbles={bubbles}
             liveBlocks={liveBlocks}
             streaming={streaming}
+            pendingUserText={pendingUserText}
             toolCatalog={toolCatalog}
             liveTokensPerSecond={liveTokensPerSecond}
             lastRunTokensPerSecond={lastRunTokensPerSecond}
