@@ -1024,7 +1024,12 @@ POST /api/proxies/addresses
 |------|------|------|------|
 | `addr` | `string` | 是 | Proxy 地址 |
 
-**Response `data`:** `OpsHomeVO`（同 19.1）
+**Response `data`:** `ProxyHome`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddrList` | `string[]` | 更新后的 Proxy 地址列表 |
+| `currentProxyAddr` | `string` | 当前生效的 Proxy 地址 |
 
 ### 4.27 删除 Proxy 地址
 
@@ -1038,7 +1043,7 @@ DELETE /api/proxies/addresses?addr={addr}
 |------|------|------|------|
 | `addr` | `string` | 是 | 要删除的 Proxy 地址 |
 
-**Response `data`:** `OpsHomeVO`（同 19.1）
+**Response `data`:** `ProxyHome`（同 4.26）
 
 ### 4.28 重载 Proxy 配置
 
