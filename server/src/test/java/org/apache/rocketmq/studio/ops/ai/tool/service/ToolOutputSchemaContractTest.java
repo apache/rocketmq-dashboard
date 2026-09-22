@@ -49,6 +49,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedelivery
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageSendOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.ops.AuditItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyConfigItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.topic.TopicDetailOutput;
@@ -201,8 +202,10 @@ class ToolOutputSchemaContractTest {
                 new NameserverListToolHandler.Item(
                         "127.0.0.1:9876", "127.0.0.1:9876", "127.0.0.1:9876",
                         null, null, "UNKNOWN", null)))));
-        samples.put("rmq.nameserver.config", List.of(new ListOutput<>(List.of(
-                new NameserverConfigItem("127.0.0.1:9876", Map.of("orderMessageEnable", "false"))))));
+        samples.put("rmq.nameserver.config", List.of(new NameserverConfigOutput(
+                List.of(new NameserverConfigItem("127.0.0.1:9876", Map.of("orderMessageEnable", "false"))),
+                true,
+                List.of("127.0.0.1:9877"))));
 
         samples.put("rmq.proxy.list", List.of(new ListOutput<>(List.of(ProxyVO.builder()
                 .addr("127.0.0.1:8081")
