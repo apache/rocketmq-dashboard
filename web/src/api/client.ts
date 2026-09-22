@@ -19,9 +19,20 @@ import axios from 'axios';
 import { message } from 'antd';
 import { clearAuthSession } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
+import translations from '../i18n/translations';
+import { getInitialLanguage } from '../i18n/languagePreference';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/status']);
+
+/**
+ * Translates outside React. The interceptor is not a component, so it cannot read the language
+ * context; `getInitialLanguage` reads the persisted selection on every call instead, which also
+ * means a toast raised after a language switch uses the language the user just picked.
+ */
+function translate(key: string): string {
+  return translations[key]?.[getInitialLanguage()] ?? key;
+}
 
 interface BusinessResponse {
   code?: unknown;
@@ -42,11 +53,10 @@ function getBusinessError(data: unknown): string | null {
   if (typeof data.code !== 'number' && !('message' in data) && !('data' in data)) {
     return null;
   }
-  return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+  return typeof data.message === 'string' && data.message.trim()
+    ? data.message
+    : translate('common.requestFailed');
 }
-
-const CORS_REJECTION_HINT =
-  '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置';
 
 /**
  * Spring CORS rejects non-whitelisted origins with 403 and a plain-text body (often
@@ -105,9 +115,10 @@ client.interceptors.response.use(
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {
-      message.error(CORS_REJECTION_HINT);
+      const corsHint = translate('common.corsRejected');
+      message.error(corsHint);
       if (error instanceof Error) {
-        error.message = CORS_REJECTION_HINT;
+        error.message = corsHint;
       }
       return Promise.reject(error);
     }

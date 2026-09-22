@@ -75,6 +75,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
   'common.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'common.requestFailed': { zh: '请求失败', en: 'Request failed' },
+  'common.corsRejected': {
+    zh: '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置',
+    en: 'The server rejected this request through CORS (Invalid CORS request): this origin is not in the backend allow-list. Check the deployed STUDIO_CORS_ALLOWED_ORIGINS configuration.',
+  },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
@@ -2256,6 +2261,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.docs': { zh: '文档中心', en: 'Documentation' },
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
+  'home.version': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Version {time} build({commit})',
+  },
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },

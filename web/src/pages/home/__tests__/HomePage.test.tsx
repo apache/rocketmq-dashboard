@@ -20,6 +20,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import HomePage from '../index';
 
 const navigateMock = vi.hoisted(() => vi.fn());
@@ -220,5 +221,15 @@ describe('HomePage footer', () => {
     expect(communityLink).toHaveAttribute('href', 'https://rocketmq.apache.org/');
     expect(communityLink).toHaveAttribute('target', '_blank');
     expect(communityLink).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('renders the build stamp in the selected language', () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderHome();
+
+    expect(
+      screen.getByText(`Version ${__BUILD_TIME__} build(${__BUILD_COMMIT__})`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/当前版本/)).not.toBeInTheDocument();
   });
 });

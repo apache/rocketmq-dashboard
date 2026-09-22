@@ -502,7 +502,7 @@ const HomePage = () => {
             <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
-              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+              {t('home.version', { time: __BUILD_TIME__, commit: __BUILD_COMMIT__ })}
             </span>
           </span>
         </footer>
