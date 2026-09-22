@@ -248,6 +248,27 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void databaseLoginStampsTheSessionCreationTimeInUtc() {
+        // rmq_studio_session.gmt_create is declared with a MySQL CURRENT_TIMESTAMP default, evaluated in the
+        // database session's zone, while last_seen_at and expires_at are written from the UTC clock and the
+        // user-management session list renders all three as UTC.
+        RmqStudioUser user = user(1L, "operator", true, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request);
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(captor.getValue().getLastSeenAt());
+    }
+
+    @Test
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);

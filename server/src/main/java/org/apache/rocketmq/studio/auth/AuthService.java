@@ -395,6 +395,10 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        // Every timestamp of this row comes from the UTC clock above, and the user-management session list
+        // renders gmt_create next to last_seen_at and expires_at as UTC. Leaving the column to its MySQL
+        // CURRENT_TIMESTAMP default evaluates it in the database session's zone instead.
+        session.setGmtCreate(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
