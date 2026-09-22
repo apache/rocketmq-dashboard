@@ -47,6 +47,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -575,6 +576,25 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.createInstance(input))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO name is required");
+    }
+
+    @Test
+    void createInstanceTranslatesUniqueKeyViolationToDuplicateNameTest() {
+        // Two concurrent creates can both pass the pre-check; the loser hits uk_instance_name and
+        // must surface as the duplicate-name error, not a raw 500.
+        InstanceVO input = InstanceVO.builder()
+                .name("racing-name")
+                .endpoint("10.0.1.1:8080")
+                .type(InstanceType.PROXY_CLUSTER)
+                .nameserverId(1L).build();
+        DataIntegrityViolationException violation = new DataIntegrityViolationException(
+                "could not execute statement",
+                new SQLException("Duplicate entry 'racing-name' for key 'uk_instance_name'"));
+        when(instanceRepository.save(any(InstanceVO.class))).thenThrow(violation);
+
+        assertThatThrownBy(() -> instanceService.createInstance(input))
+                .isInstanceOf(DuplicateInstanceNameException.class)
+                .hasMessage("Instance name already exists: racing-name");
     }
 
     @Test
