@@ -1032,6 +1032,10 @@ class AliyunInstanceProviderTest {
                 AliyunInstanceProvider.normalizeDeliveryOrderType("FIFO"));
         org.junit.jupiter.api.Assertions.assertEquals("Orderly",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("orderly"));
+        org.junit.jupiter.api.Assertions.assertEquals("Orderly",
+                AliyunInstanceProvider.normalizeDeliveryOrderType("PARTITON_ORDER"));
+        org.junit.jupiter.api.Assertions.assertEquals("Orderly",
+                AliyunInstanceProvider.normalizeDeliveryOrderType("MESSAGES_ORDER"));
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
                 AliyunInstanceProvider.normalizeDeliveryOrderType(null));
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
