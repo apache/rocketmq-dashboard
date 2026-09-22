@@ -337,8 +337,8 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
     @Test
     void listDLQMessagesShouldReturnPageTest() throws Exception {
         when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
-                .thenReturn(PageResult.of(List.of(
-                        DLQMessageVO.builder()
+                .thenReturn(DLQMessagePageVO.builder()
+                        .items(List.of(DLQMessageVO.builder()
                                 .msgId("msg-1")
                                 .topic("%DLQ%test-group")
                                 .queueId(0)
@@ -346,7 +346,12 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                                 .storeTime(150L)
                                 .keys("key-a")
                                 .body("hello dlq")
-                                .build()), 1, 1, 20));
+                                .build()))
+                        .total(1)
+                        .page(1)
+                        .size(20)
+                        .limit(5000)
+                        .build());
 
         mockMvc.perform(get("/api/dlq/test-group/messages")
                         .param("instanceId", "instance-1"))

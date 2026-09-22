@@ -18,7 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
-import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessagePageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqOutput;
@@ -75,7 +75,7 @@ public class MessageQueryDlqToolHandler implements ToolHandler<MessageQueryDlqIn
 
     private MessageQueryDlqOutput listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                int page, int pageSize) {
-        PageResult<DLQMessageVO> result = dlqService.listMessages(instanceId, groupName, startTime, endTime,
+        DLQMessagePageVO result = dlqService.listMessages(instanceId, groupName, startTime, endTime,
                 page, pageSize);
         return MessageQueryDlqOutput.ofMessages(
                 instanceId,

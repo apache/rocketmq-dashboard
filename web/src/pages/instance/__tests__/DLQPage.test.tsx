@@ -147,6 +147,9 @@ describe('DLQ page', () => {
       total: 0,
       page: 1,
       size: 20,
+      truncated: false,
+      failedQueueCount: 0,
+      limit: 5000,
     } satisfies DLQMessagePage);
   });
 
@@ -374,6 +377,9 @@ describe('DLQ page', () => {
       total: 1,
       page: 1,
       size: 20,
+      truncated: false,
+      failedQueueCount: 0,
+      limit: 5000,
     } satisfies DLQMessagePage);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
@@ -389,6 +395,42 @@ describe('DLQ page', () => {
     expect(screen.getByText('abc-123')).toBeInTheDocument();
     expect(screen.getByText('region')).toBeInTheDocument();
     expect(screen.getByText('cn-east-1')).toBeInTheDocument();
+  });
+
+  it('warns that the dead-letter list is incomplete when the scan was not', async () => {
+    // The list is sliced out of a scan bounded by 5000 messages that skips queues it cannot read, so its
+    // total is a floor. Rendering it without the flags presents a partial snapshot as the whole queue.
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-partial',
+          topic: 'orders',
+          queueId: 1,
+          offset: 3,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-partial',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+      truncated: true,
+      failedQueueCount: 2,
+      limit: 5000,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    expect(await screen.findByText('死信消息可能不完整')).toBeInTheDocument();
+    expect(screen.getByText(/扫描达到上限 5000 条/)).toBeInTheDocument();
+    expect(screen.getByText(/2 个队列无法读取/)).toBeInTheDocument();
   });
 
   it('shows the retry count in the DLQ message drawer', async () => {
@@ -411,6 +453,9 @@ describe('DLQ page', () => {
       total: 1,
       page: 1,
       size: 20,
+      truncated: false,
+      failedQueueCount: 0,
+      limit: 5000,
     } satisfies DLQMessagePage);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);

@@ -141,6 +141,11 @@ const DLQPage = () => {
   const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailScanIncomplete, setDetailScanIncomplete] = useState<{
+    truncated: boolean;
+    failedQueueCount: number;
+    limit: number;
+  } | null>(null);
   const detailRequestIdRef = useRef(0);
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
@@ -364,6 +369,15 @@ const DLQPage = () => {
       if (detailRequestIdRef.current !== requestId) return;
       setDetailMessages(result.items);
       setDetailTotal(result.total);
+      setDetailScanIncomplete(
+        result.truncated || result.failedQueueCount > 0
+          ? {
+              truncated: result.truncated,
+              failedQueueCount: result.failedQueueCount,
+              limit: result.limit,
+            }
+          : null,
+      );
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
@@ -832,6 +846,7 @@ const DLQPage = () => {
           setDetailOpen(false);
           setDetailGroup(null);
           setDetailMessages([]);
+          setDetailScanIncomplete(null);
           setDetailSelectedMsgIds([]);
           setDetailError(null);
         }}
@@ -903,6 +918,27 @@ const DLQPage = () => {
 
             {detailError && (
               <Alert showIcon type="warning" message={detailError} style={{ marginBottom: 16 }} />
+            )}
+            {detailScanIncomplete && (
+              <Alert
+                showIcon
+                type="warning"
+                style={{ marginBottom: 16 }}
+                message="死信消息可能不完整"
+                description={`${
+                  detailScanIncomplete.truncated
+                    ? `扫描达到上限 ${detailScanIncomplete.limit} 条，仅展示其中一部分`
+                    : ''
+                }${
+                  detailScanIncomplete.truncated && detailScanIncomplete.failedQueueCount > 0
+                    ? '；'
+                    : ''
+                }${
+                  detailScanIncomplete.failedQueueCount > 0
+                    ? `${detailScanIncomplete.failedQueueCount} 个队列无法读取，其消息不在列表中`
+                    : ''
+                }。`}
+              />
             )}
 
             <Table<DLQMessage>

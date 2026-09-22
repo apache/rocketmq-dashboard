@@ -173,7 +173,15 @@ export async function listDLQMessages(params: {
   pageSize?: number;
 }): Promise<DLQMessagePage> {
   if (isMockMode()) {
-    return { items: [], total: 0, page: params.page ?? 1, size: params.pageSize ?? 20 };
+    return {
+      items: [],
+      total: 0,
+      page: params.page ?? 1,
+      size: params.pageSize ?? 20,
+      truncated: false,
+      failedQueueCount: 0,
+      limit: 5000,
+    };
   }
   return messageApi.listDLQMessages(params);
 }

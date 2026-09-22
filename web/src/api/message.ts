@@ -125,9 +125,15 @@ export interface DLQMessage {
 
 export interface DLQMessagePage {
   items: DLQMessage[];
+  /** Size of the bounded scan behind this page, not the size of the dead letter queue. */
   total: number;
   page: number;
   size: number;
+  /** The scan stopped at `limit` messages, so `total` is a floor and later pages may be missing. */
+  truncated: boolean;
+  /** Queues the scan could not read; their messages are absent from `items`. */
+  failedQueueCount: number;
+  limit: number;
 }
 
 // ─── Messages ───────────────────────────────────────────────────
