@@ -81,7 +81,7 @@ public class AclService {
 
 
     public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
-            String instanceId, Integer page, Integer pageSize) {
+            String aclVersion, String instanceId, Integer page, Integer pageSize) {
         int normalizedPage = requireValidPage(page);
         int normalizedPageSize = requireValidPageSize(pageSize);
         requireAcl2Supported(instanceId);
@@ -90,12 +90,14 @@ public class AclService {
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
+                    .filter(rule -> equalsIgnoreCase(rule.getAclVersion(), aclVersion))
                     .toList();
             return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
-        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
-                principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
+        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, "
+                        + "aclVersion={}, page={}, pageSize={}",
+                principal, resource, scope, decision, aclVersion, normalizedPage, normalizedPageSize);
+        return aclRepository.findRulePage(principal, resource, scope, decision, aclVersion,
                 normalizedPage, normalizedPageSize);
     }
 
