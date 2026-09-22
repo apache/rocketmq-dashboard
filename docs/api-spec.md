@@ -2609,7 +2609,9 @@ GET /api/system-alerts/page?level={level}&domain={domain}&instanceId={instanceId
 GET /api/system-alerts/:id/related
 ```
 
-**Response `data`:** `SystemAlert[]`（同 12.1 的 `SystemAlert` 定义）：与该告警共享指纹的相邻迁移。
+**Response `data`:** `SystemAlert[]`（同 12.1 的 `SystemAlert` 定义）：另一告警域（`BUSINESS` ↔
+`CLUSTER`）中可能引发或关联本告警的记录——包括抑制来源（`suppressionCauseAlertId` 指向的记录），
+以及同实例在告警时间前后 30 分钟内处于 `FIRING` 的相关告警。告警不存在时返回 404。
 
 ### 12.6 获取告警的通知投递记录
 
