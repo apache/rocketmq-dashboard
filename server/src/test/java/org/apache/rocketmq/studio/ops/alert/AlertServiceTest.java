@@ -1339,8 +1339,28 @@ class AlertServiceTest {
 
         assertThat(result).containsExactly(related);
         verify(alertRepository).findAlertsPage(argThat(query -> query.domain() == AlertDomain.CLUSTER
-                && "local".equals(query.instanceId()) && "FIRING".equals(query.transition())
+                && "local".equals(query.instanceId()) && query.transition() == null
                 && eventTime.minusMinutes(30).equals(query.from()) && eventTime.plusMinutes(30).equals(query.to())));
+    }
+
+    @Test
+    void relatedAlertsShouldIncludeAnIncidentWhoseInWindowEventIsAReminderTest() {
+        LocalDateTime eventTime = LocalDateTime.of(2026, 8, 23, 12, 0);
+        SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .instanceId("local").time(eventTime).labels(Map.of("brokerName", "broker-a")).build();
+        // The cluster incident fired outside the correlation window and is still active only
+        // through its in-window REMINDER event; the panel must not drop it.
+        SystemAlertVO reminderOnly = SystemAlertVO.builder().id(2L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(10)).transition("REMINDER")
+                .labels(Map.of("brokerName", "broker-a")).build();
+        SystemAlertVO resolved = SystemAlertVO.builder().id(3L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(5)).transition("RESOLVED")
+                .labels(Map.of("brokerName", "broker-a")).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(source));
+        when(alertRepository.findAlertsPage(any(SystemAlertQuery.class)))
+                .thenReturn(PageResult.of(List.of(reminderOnly, resolved), 2, 1, 100));
+
+        assertThat(alertService.findRelatedAlerts(1L)).containsExactly(reminderOnly);
     }
 
     @Test
