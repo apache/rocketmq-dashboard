@@ -814,8 +814,8 @@ POST /api/topics/update
 | `namespace` | `string` | 否 | 命名空间 |
 | `type` | `string` | 是 | 类型 |
 | `clusterId` | `string` | 是 | 所属集群 |
-| `writeQueues` | `number` | 是 | 写队列数 |
-| `readQueues` | `number` | 是 | 读队列数 |
+| `writeQueues` | `number` | 是 | 写队列数（允许为 `0`；必须显式传入） |
+| `readQueues` | `number` | 是 | 读队列数（允许为 `0`；必须显式传入） |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
 

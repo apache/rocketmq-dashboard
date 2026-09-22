@@ -761,6 +761,8 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("orders");
         topic.setInstanceId("other-instance");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         TopicVO result = create ? adminClient.createTopic("selected-instance", topic)
                 : adminClient.updateTopic("selected-instance", topic);
@@ -804,6 +806,8 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("topicA");
         topic.setInstanceId("open-source-local");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         adminClient.createTopic(topic);
         adminClient.updateTopic(topic);
@@ -845,6 +849,8 @@ class RocketMQAdminClientImplTest {
         topic.setName("orders");
         topic.setType(TopicType.FIFO);
         topic.setRemark("updated remark");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         adminClient.updateTopic(topic);
 
@@ -869,6 +875,8 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("orders");
         topic.setRemark("");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         TopicVO updated = adminClient.updateTopic(topic);
 
@@ -895,6 +903,8 @@ class RocketMQAdminClientImplTest {
 
         TopicVO topic = new TopicVO();
         topic.setName("orders");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         TopicVO updated = adminClient.updateTopic(topic);
 
@@ -917,6 +927,8 @@ class RocketMQAdminClientImplTest {
         TopicVO topic = new TopicVO();
         topic.setName("orders");
         topic.setType(TopicType.FIFO);
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         adminClient.createTopic(topic);
         adminClient.updateTopic(topic);
@@ -937,6 +949,8 @@ class RocketMQAdminClientImplTest {
 
         TopicVO topic = new TopicVO();
         topic.setName("orders");
+        topic.setWriteQueues(8);
+        topic.setReadQueues(8);
 
         adminClient.updateTopic(topic);
 
@@ -947,7 +961,7 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void updateTopicPreservesQueueCountsWhenNotSpecified() throws Exception {
+    void updateTopicUsesExplicitQueueCountsForPermissionChanges() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
         existing.setWriteQueueNums(16);
@@ -960,11 +974,14 @@ class RocketMQAdminClientImplTest {
 
         TopicVO topic = new TopicVO();
         topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(16);
         topic.setPerm(TopicPerm.RO);
 
         adminClient.updateTopic(topic);
 
-        // Partial update (perm only) must not reset queues to the default of 8.
+        // The update boundary carries the existing counts explicitly, so a permission-only
+        // change cannot reset them to the create default.
         ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
         assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isEqualTo(16);
@@ -999,6 +1016,34 @@ class RocketMQAdminClientImplTest {
         assertThat(existing.getReadQueueNums()).isEqualTo(12);
         assertThat(updated.getWriteQueues()).isEqualTo(16);
         assertThat(updated.getReadQueues()).isEqualTo(12);
+    }
+
+    @Test
+    void updateTopicAppliesExplicitZeroQueueCounts() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setWriteQueues(0);
+        topic.setReadQueues(0);
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isZero();
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isZero();
+        assertThat(existing.getWriteQueueNums()).isZero();
+        assertThat(existing.getReadQueueNums()).isZero();
+        assertThat(updated.getWriteQueues()).isZero();
+        assertThat(updated.getReadQueues()).isZero();
     }
 
     @Test

@@ -11,6 +11,7 @@ import type {
   SendTopicMessageRequest,
   SendTopicMessageResult,
   ImportTopicsResult,
+  TopicUpdateRequest,
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 import { buildCsv, type CsvColumn } from '../utils/download';
@@ -154,7 +155,7 @@ export async function exportTopics(params: TopicExportQuery = {}): Promise<strin
   return metadataApi.exportTopics(params);
 }
 
-export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
+export async function updateTopic(data: TopicUpdateRequest): Promise<Topic> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);

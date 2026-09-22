@@ -272,6 +272,55 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void updateTopicShouldRejectMissingQueueCounts() throws Exception {
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"orders\",\"readQueues\":8}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("writeQueues is required"));
+
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"orders\",\"writeQueues\":8}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("readQueues is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void updateTopicShouldForwardExplicitZeroQueueCounts() throws Exception {
+        when(instanceService.normalizeIdentifier("instance-a")).thenReturn("instance-a");
+        TopicVO updated = new TopicVO();
+        updated.setName("orders");
+        updated.setWriteQueues(0);
+        updated.setReadQueues(0);
+        when(metadataService.updateTopic(any(TopicVO.class))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "orders",
+                                  "instanceId": "instance-a",
+                                  "writeQueues": 0,
+                                  "readQueues": 0
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.writeQueues").value(0))
+                .andExpect(jsonPath("$.data.readQueues").value(0));
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).updateTopic(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
+        assertThat(captor.getValue().getWriteQueues()).isZero();
+        assertThat(captor.getValue().getReadQueues()).isZero();
+    }
+
+    @Test
     void topicWriteEndpointsShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/topics/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -308,7 +357,7 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     void updateTopicShouldRejectBlankName() throws Exception {
         mockMvc.perform(post("/api/topics/update")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\" \"}"))
+                        .content("{\"name\":\" \",\"writeQueues\":8,\"readQueues\":8}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));

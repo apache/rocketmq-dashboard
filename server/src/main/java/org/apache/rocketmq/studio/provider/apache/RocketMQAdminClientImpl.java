@@ -365,17 +365,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 if (existing == null) {
                     throw new BusinessException(404, "Topic not found: " + topicName);
                 }
-                // Preserve the existing queue counts when the update request does not change them,
-                // matching the perm semantics below; defaulting to 8 would silently resize the
-                // topic on partial updates (e.g. perm or remark only).
-                int writeQueues = topic.getWriteQueues() > 0
-                        ? topic.getWriteQueues()
-                        : existing != null && existing.getWriteQueueNums() != null
-                                && existing.getWriteQueueNums() > 0 ? existing.getWriteQueueNums() : 8;
-                int readQueues = topic.getReadQueues() > 0
-                        ? topic.getReadQueues()
-                        : existing != null && existing.getReadQueueNums() != null
-                                && existing.getReadQueueNums() > 0 ? existing.getReadQueueNums() : 8;
+                // UpdateTopicDTO requires both queue counts, and AI updates merge omitted fields
+                // with the current topic before reaching this boundary. Do not infer omission
+                // from zero: zero is a valid drain-to-zero value and must reach the broker.
+                int writeQueues = topic.getWriteQueues();
+                int readQueues = topic.getReadQueues();
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
                         : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());

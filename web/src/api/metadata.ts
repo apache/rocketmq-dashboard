@@ -23,6 +23,10 @@ export interface Topic {
   gmtModified: string;
 }
 
+/** The REST update contract requires both queue counts so zero is never confused with omission. */
+export type TopicUpdateRequest = Pick<Topic, 'name' | 'writeQueues' | 'readQueues'> &
+  Partial<Pick<Topic, 'namespace' | 'clusterId' | 'instanceId' | 'type' | 'perm' | 'remark'>>;
+
 export interface TopicQuery {
   clusterId?: string;
   instanceId?: string;
@@ -237,7 +241,7 @@ export async function createTopic(data: Partial<Topic>) {
   return res.data.data;
 }
 
-export async function updateTopic(data: Partial<Topic>) {
+export async function updateTopic(data: TopicUpdateRequest) {
   const res = await client.post<{ data: Topic }>('/topics/update', data);
   return res.data.data;
 }
