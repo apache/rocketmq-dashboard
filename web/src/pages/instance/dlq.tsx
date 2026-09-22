@@ -85,7 +85,8 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
    ═══════════════════════════════════════════ */
 const DLQPage = () => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   const [groups, setGroups] = useState<DLQGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -682,6 +683,8 @@ const DLQPage = () => {
             onChange={handleInstanceChange}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Group 名称或 DLQ Topic"

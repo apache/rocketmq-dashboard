@@ -230,6 +230,8 @@ const ConsumerPageContent = ({
   selectInstance,
   instanceOptions,
   instancesLoading,
+  instancesFailed,
+  reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
   const isCloudInstance =
@@ -1440,6 +1442,8 @@ const ConsumerPageContent = ({
             onChange={selectInstance}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Group 名称或 Topic"

@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
+import * as instanceService from '../../../services/instanceService';
 import DLQPage, { formatDateTime } from '../dlq';
 
 vi.mock('../../../services/messageService', () => ({
@@ -153,6 +154,18 @@ describe('DLQ page', () => {
   afterEach(() => {
     clickSpy.mockRestore();
     vi.clearAllMocks();
+  });
+
+  it('says so when the instance list itself failed to load', async () => {
+    // Every instance-scoped request needs an instanceId, so a failed /instances request leaves the page
+    // with nothing it can show. Rendering that as an empty result tells the operator the instance has no
+    // dead-letter messages, which is the opposite of what is actually known.
+    vi.mocked(instanceService.listInstances).mockRejectedValueOnce(new Error('offline'));
+
+    renderWithProviders(<DLQPage />);
+
+    expect(await screen.findByText(/实例列表加载失败/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
   });
 
   it('renders invalid message timestamps as unavailable without throwing', () => {

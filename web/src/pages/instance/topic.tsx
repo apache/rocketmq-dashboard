@@ -344,6 +344,8 @@ const TopicPageContent = ({
   selectInstance,
   instanceOptions,
   instancesLoading,
+  instancesFailed,
+  reloadInstances,
   instances,
 }: TopicPageContentProps) => {
   const { t } = useLang();
@@ -1535,6 +1537,8 @@ const TopicPageContent = ({
             }}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Topic 名称"
