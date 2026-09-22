@@ -364,7 +364,12 @@ const ConsumerPageContent = ({
         }
         return requestId === groupRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        // A silent (auto-refresh) tick that fails must stay quiet: a toast every 2s while the
+        // backend is down turns one transient outage into an unbounded error storm. Only
+        // user-initiated loads surface the toast.
+        if (requestId === groupRequestIdRef.current && !silent) {
+          message.error(t('consumer.fetchListFailed'));
+        }
         return undefined;
       } finally {
         if (requestId === groupRequestIdRef.current) setLoading(false);
@@ -1552,6 +1557,7 @@ const ConsumerPageContent = ({
           </Button>
           <Tooltip title="开启后每 2 秒自动刷新列表">
             <Button
+              aria-label="自动刷新"
               icon={<SyncOutlined spin={autoRefresh} />}
               type={autoRefresh ? 'primary' : 'default'}
               ghost={autoRefresh}
