@@ -900,8 +900,8 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `tps` | `number` | 当前 TPS |
 | `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
-| `createdAt` | `string` | 创建时间 (ISO 8601) |
-| `updatedAt` | `string` | 更新时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
 
 ### 5.2 分页获取 Topic 列表
 
@@ -1027,11 +1027,14 @@ POST /api/topics/send
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID（缺失时由服务端解析） |
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
 | `body` | `string` | 是 | 消息体内容 |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
+| `messageGroup` | `string` | 否 | 分片键（FIFO Topic 必填） |
+| `deliveryTimestamp` | `number` | 否 | 延迟投递时间（Unix 毫秒时间戳，延迟 Topic 使用） |
 
 **Response `data`:**
 
@@ -1097,8 +1100,8 @@ GET /api/groups?clusterId={clusterId}&search={keyword}
 | `deliveryOrderType` | `string?` | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
 | `retryMaxTimes` | `number` | 最大重试次数 |
 | `delaySeconds` | `number` | 延迟秒数 |
-| `createdAt` | `string` | 创建时间 |
-| `updatedAt` | `string` | 更新时间 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 
 ### 6.2 获取消费组详情
 
@@ -1167,11 +1170,14 @@ POST /api/groups/create
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
 | `namespace` | `string` | 否 | 命名空间 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `subscriptionMode` | `string` | 是 | `Push` / `Pop` |
-| `consumeType` | `string` | 是 | `CLUSTERING` / `BROADCASTING` |
-| `subscribedTopics` | `string[]` | 否 | 订阅 Topic |
-| `retryMaxTimes` | `number` | 否 | 最大重试次数 |
+| `clusterId` | `string` | 否 | 所属集群 |
+| `subscriptionMode` | `string` | 否 | `Push` / `Pop` |
+| `consumeType` | `string` | 否 | `CLUSTERING` / `BROADCASTING` |
+| `subscriptionDataType` | `string` | 否 | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
+| `deliveryOrderType` | `string` | 否 | 顺序类型 |
+| `retryMaxTimes` | `number` | 否 | 最大重试次数（≥0） |
+| `delaySeconds` | `number` | 否 | 延迟秒数（≥0） |
+| `instanceId` | `string` | 否 | 所属实例 ID |
 
 **Response `data`:** `ConsumerGroup`
 
@@ -1199,9 +1205,10 @@ POST /api/groups/reset-offset
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
 | `name` | `string` | 是 | 消费组名称 |
-| `timestamp` | `string` | 是 | 重置到指定时间 (ISO 8601) |
-| `topic` | `string` | 否 | 指定 Topic，不传则全部重置 |
+| `timestamp` | `number` | 是 | 重置到指定时间（Unix 毫秒时间戳，正数） |
+| `topic` | `string` | 是 | 指定 Topic |
 
 **Response `data`:** `null`
 
@@ -1211,11 +1218,12 @@ POST /api/groups/reset-offset
 POST /api/groups/import
 ```
 
-**Request Body:** `multipart/form-data`
+**Request Body:** JSON
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `file` | `File` | JSON 配置文件 |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `groups` | `CreateConsumerGroupDTO[]` | 是 | 要导入的消费组配置数组 |
 
 **Response `data`:**
 
@@ -1223,7 +1231,8 @@ POST /api/groups/import
 |------|------|------|
 | `imported` | `number` | 成功导入数量 |
 | `failed` | `number` | 失败数量 |
-| `errors` | `string[]` | 错误信息列表 |
+| `groups` | `ConsumerGroup[]` | 导入后的消费组记录 |
+| `failures` | `object[]` | 失败明细：`{ index, name, message }` |
 
 ### 6.9 导出消费组配置
 
@@ -1488,6 +1497,7 @@ GET /api/messages
 | `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
 | `bornHost` | `string` | 发送方地址 |
 | `storeHost` | `string` | 存储 Broker 地址 |
+| `reconsumeTimes` | `number` | 重试次数 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
 | `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
 | `size` | `number` | 消息大小（字节） |
