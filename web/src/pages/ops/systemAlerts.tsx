@@ -198,23 +198,30 @@ const SystemAlertsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void listSystemAlertsPage({
-      ...currentQuery(),
-      page,
-      pageSize,
-    })
-      .then((data: PageResult<SystemAlert>) => {
-        if (!cancelled) {
-          setAlerts(data.items);
-          setTotal(data.total);
-        }
-      })
-      .catch(() => {
+    // Re-arm the loading flag before every request (paging, filters, manual refresh);
+    // otherwise it stays false after the first load and the table keeps rendering stale
+    // rows. It is set inside the async loader rather than in the effect body so the page
+    // does not cascade an extra render on each run.
+    const loadAlerts = async () => {
+      setLoading(true);
+      try {
+        const data: PageResult<SystemAlert> = await listSystemAlertsPage({
+          ...currentQuery(),
+          page,
+          pageSize,
+        });
+        if (cancelled) return;
+        setAlerts(data.items);
+        setTotal(data.total);
+      } catch {
         if (!cancelled) message.error(t('sysAlerts.loadFailed'));
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    void loadAlerts();
+
     void getCollectorStatus()
       .then((status) => {
         if (!cancelled) setCollectorStatus(status);
