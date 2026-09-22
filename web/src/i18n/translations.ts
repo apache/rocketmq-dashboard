@@ -68,6 +68,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.export': { zh: '导出', en: 'Export' },
   'common.detail': { zh: '详情', en: 'Detail' },
   'common.close': { zh: '关闭', en: 'Close' },
+  'common.open': { zh: '打开', en: 'Open' },
   'common.noData': { zh: '暂无数据', en: 'No Data' },
   'common.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
   'common.liveRefresh': { zh: '实时刷新', en: 'Live Refresh' },
@@ -78,6 +79,8 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.noMatchingPage': { zh: '未找到匹配页面', en: 'No matching pages' },
+  'layout.shortcutNavigate': { zh: '切换', en: 'Navigate' },
   'layout.goHome': { zh: '返回首页', en: 'Go to home' },
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
@@ -2704,6 +2707,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
   'user.logout': { zh: '退出登录', en: 'Logout' },
+  'user.logoutFailed': {
+    zh: '服务端退出失败，已清除本地登录状态',
+    en: 'Signing out on the server failed. The local session has been cleared.',
+  },
 
   // ─── User Management ───
   'userMgmt.title': { zh: '用户管理', en: 'User Management' },
