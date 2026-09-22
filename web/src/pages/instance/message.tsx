@@ -621,6 +621,10 @@ const MessagePageContent = ({
     }
   };
 
+  // Both tabs render halves of the trace payload — Trace draws the nodes, Verify draws the
+  // consumerStatus table — so a modal opened or switched straight onto either one must fetch it.
+  const rendersTracePayload = (tab: string) => tab === 'trace' || tab === 'consumer';
+
   const openDetail = (record: MessageRecord, tab = 'content') => {
     traceGenerationRef.current += 1;
     setSelectedMsg(record);
@@ -629,12 +633,12 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
-    if (tab === 'trace') void loadMessageTrace(record);
+    if (rendersTracePayload(tab)) void loadMessageTrace(record);
   };
 
   const handleModalTabChange = (tab: string) => {
     setModalTab(tab);
-    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
+    if (rendersTracePayload(tab) && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
