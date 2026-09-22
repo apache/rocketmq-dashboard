@@ -165,13 +165,16 @@ export function useAgentRun(
    */
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
 
-  const generationRef = useRef(0);
-  const streamRequestIdRef = useRef(0);
+  const generationRef = useRef(0);  const streamRequestIdRef = useRef(0);
   const chatInFlightRef = useRef(false);
   const runEndedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const frameRef = useRef<number | null>(null);
   const runIdRef = useRef<number | null>(null);
+  // Whether the in-flight run was admitted server-side: the `run_started` frame is the proof. A
+  // stream that died before any frame arrived never admitted the run, so the transcript cannot
+  // have gained the user row and the optimistic question must stay on screen.
+  const admittedRef = useRef(false);
   const conversationIdRef = useRef<number | null>(conversationId);
 
   // Callbacks arrive as fresh closures on every render; keeping them in a ref is what lets `send`,
@@ -207,6 +210,7 @@ export function useAgentRun(
 
       switch (event.type) {
         case 'run_started':
+          admittedRef.current = true;
           runIdRef.current = event.runId;
           setRunId(event.runId);
           optionsRef.current.onRunStarted?.(event);
@@ -293,8 +297,10 @@ export function useAgentRun(
       // refetch swaps the live bubble for its persisted twin, which is what displays it.
       setLastRunTokensPerSecond(speedTrackerRef.current.tokensPerSecond());
       // The refetched transcript now renders the persisted user row; drop the optimistic twin in
-      // the same commit so it never paints twice.
-      setPendingUserMessage(null);
+      // the same commit so it never paints twice. When the stream failed WITHOUT a `run_started`
+      // frame the run was never admitted: the transcript cannot have gained the user row, so the
+      // optimistic question stays instead of vanishing from the screen.
+      if (streamFailure === null || admittedRef.current) setPendingUserMessage(null);
       blocksRef.current = [];
       scheduleTick();
     },
@@ -331,6 +337,7 @@ export function useAgentRun(
 
       cancelFrame();
       blocksRef.current = [];
+      admittedRef.current = false;
       speedTrackerRef.current = createStreamSpeedTracker();
       // A fresh run starts: the speed of the previous one no longer belongs to the bubble on
       // screen once this run's answer lands.
