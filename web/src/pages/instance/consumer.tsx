@@ -343,7 +343,12 @@ const ConsumerPageContent = ({
         }
         return requestId === groupRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        // A silent (auto-refresh) tick that fails must stay quiet: a toast every 2s while the
+        // backend is down turns one transient outage into an unbounded error storm. Only
+        // user-initiated loads surface the toast.
+        if (requestId === groupRequestIdRef.current && !silent) {
+          message.error(t('consumer.fetchListFailed'));
+        }
         return undefined;
       } finally {
         if (requestId === groupRequestIdRef.current) setLoading(false);

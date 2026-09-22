@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
+import { App, Modal, message } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -337,6 +337,26 @@ describe('Consumer page', () => {
     await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'missing-group');
 
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+  });
+
+  it('stays silent when background auto-refresh ticks fail', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group]))
+      .mockRejectedValue(new Error('backend down'));
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation((() => undefined) as never);
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /自动刷新/ }));
+
+    // Enabling auto refresh fires one immediate silent reload plus the 2s interval ticks; the
+    // failed ticks must stay quiet instead of toasting on every tick.
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(4), {
+      timeout: 7000,
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   afterEach(async () => {
