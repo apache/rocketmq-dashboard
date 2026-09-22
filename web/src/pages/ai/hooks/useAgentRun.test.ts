@@ -298,6 +298,48 @@ describe('useAgentRun', () => {
     expect(result.current.isStreaming).toBe(false);
   });
 
+  it('keepsThePendingUserBubbleWhenTheStreamFailsBeforeAdmissionTest', async () => {
+    const refetchTimeline = vi.fn().mockResolvedValue(undefined);
+    const { result } = render({ refetchTimeline });
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.send(7, { message: '这个问题还会在吗' });
+    });
+    expect(result.current.pendingUserMessage).toBe('这个问题还会在吗');
+
+    // The stream dies before any frame (e.g. connection refused): the run was never admitted,
+    // so the refetched transcript has no user row and the question must stay on screen.
+    await act(async () => {
+      openedStreams[0].fail(new Error('connection refused'));
+      await flushFrame();
+      await sent;
+    });
+
+    expect(refetchTimeline).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingUserMessage).toBe('这个问题还会在吗');
+  });
+
+  it('clearsThePendingUserBubbleWhenTheRunWasAdmittedBeforeTheStreamFailedTest', async () => {
+    const refetchTimeline = vi.fn().mockResolvedValue(undefined);
+    const { result } = render({ refetchTimeline });
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.send(7, { message: '已入废的问题' });
+    });
+    await act(async () => {
+      openedStreams[0].emit(runStarted());
+      openedStreams[0].fail(new Error('stream broken mid-run'));
+      await flushFrame();
+      await sent;
+    });
+
+    // Admission happened, so the refetched transcript carries the persisted user row: the
+    // optimistic twin must go instead of painting the question twice.
+    expect(result.current.pendingUserMessage).toBeNull();
+  });
+
   it('clearsTheStoppingStateWhenTheStreamDiesWithoutTerminalFramesTest', async () => {
     const refetchTimeline = vi.fn().mockRejectedValue(new Error('timeline unavailable'));
     const { result } = render({ refetchTimeline });
