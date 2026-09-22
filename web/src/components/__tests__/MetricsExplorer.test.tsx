@@ -1013,6 +1013,53 @@ describe('MetricsExplorer', () => {
     ).toBe('1h');
   });
 
+  it('keeps the custom expression draft when a protected custom restore is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'history-custom-protected',
+          profileId: '__custom__',
+          profileName: 'Custom query',
+          metricId: 'custom',
+          metricName: 'Custom query',
+          promql: 'sum(rocketmq_topic_number)',
+          dataSourceKey: 'ds-basic',
+          dataSourceName: 'Protected Prometheus',
+        }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    // An unsaved expression the operator is still working on: the entry below overwrites the
+    // same box, so cancelling its credentials prompt has to give the draft back.
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number) + 1');
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog).getByText('Custom query').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    expect(screen.getByLabelText('自定义查询')).toHaveValue('sum(rocketmq_topic_number) + 1');
+  });
+
   it('filters query history from other instances and shows the current instance context', async () => {
     const user = userEvent.setup();
     localStorage.setItem(
