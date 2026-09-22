@@ -206,7 +206,9 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         try {
             return OBJECT_MAPPER.readValue(labelsJson, new TypeReference<>() { });
         } catch (Exception error) {
-            throw new IllegalStateException("Unable to read alert labels", error);
+            // Same contract as MybatisPlusAlertRepository.readLabels: a corrupt labels
+            // column degrades to empty labels instead of failing the state read.
+            return Map.of();
         }
     }
 }
