@@ -186,6 +186,12 @@
 | 142 | GET | `/api/groups/:name/refresh` | 刷新消费组 |
 | 143 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
 | 144 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
+| 145 | GET | `/api/metrics/profiles` | 指标画像列表 |
+| 146 | POST | `/api/metrics/query/datasource` | 按数据源查询指标 |
+| 147 | GET | `/api/llm/config` | 获取 LLM 配置 |
+| 148 | POST | `/api/llm/config` | 保存 LLM 配置 |
+| 149 | POST | `/api/llm/config/test` | 测试 LLM 配置 |
+| 150 | GET | `/api/llm/models` | 获取可用模型列表 |
 
 ## 通用响应格式
 
@@ -3429,6 +3435,8 @@ POST /api/metrics/query
 | `start` | `number` | 是 | 起始时间（Unix 时间戳，秒） |
 | `end` | `number` | 是 | 结束时间（Unix 时间戳，秒） |
 | `step` | `string` | 是 | 查询分辨率，可以是持续时间或秒数（如 `"30s"`、`"5m"`、`"1h"`） |
+| `profileId` | `string` | 否 | 指标画像 ID（与 `semanticMetric` 配合使用语义键查询） |
+| `semanticMetric` | `string` | 否 | 语义指标键（由画像映射到 PromQL） |
 
 **Request 示例：**
 
@@ -3708,6 +3716,113 @@ GET /api/cloud-credentials/:id/credentials
 **Response `data`:** `CloudCredential`（`accessKey` / `secretKey` 为完整明文，仅用于需要直连云
 OpenAPI 的场景）。响应带 `Cache-Control: no-store`。仅管理员可用（`AuthInterceptor` 的
 credential-reveal 守卫）。
+
+### 16.6 获取指标画像列表
+
+```
+GET /api/metrics/profiles
+```
+
+**Response `data`:** `MetricProfile[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `string` | 画像 ID |
+| `name` | `string` | 画像名称 |
+| `description` | `string` | 描述 |
+| `metrics` | `object[]` | 指标映射：`{ semanticMetric, name, unit, prometheusMetric, promql, labels }` |
+
+### 16.7 按数据源查询指标数据
+
+```
+POST /api/metrics/query/datasource?key={key}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | `string` | 是 | 数据源 ID |
+
+**Request Body:** 同 16.1 的查询请求，在该数据源上执行。
+
+**Response `data`:** `MetricData`（同 16.1）
+
+## 18. LLM 配置
+
+管理 AI 交互使用的 LLM 提供商连接配置。
+
+### 18.1 获取 LLM 配置
+
+```
+GET /api/llm/config
+```
+
+**Response `data`:** `LlmConfig`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `provider` | `string` | 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
+| `engine` | `string` | 执行引擎 |
+| `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
+| `apiBase` | `string` | API Base URL |
+| `model` | `string` | 模型名称 |
+| `maxTokens` | `number` | 最大输出 token 数 |
+| `temperature` | `number` | 采样温度 |
+| `enabled` | `boolean` | 是否启用 |
+| `deploymentName` | `string` | Azure 部署名 |
+| `apiVersion` | `string` | Azure API 版本 |
+| `awsRegion` | `string` | AWS 区域（Bedrock） |
+
+该接口仅管理员可用。
+
+### 18.2 保存 LLM 配置
+
+```
+POST /api/llm/config
+```
+
+**Request Body:** 18.1 的字段（`apiKey` 为新密钥，`clearApiKey` 显式清除；省略 `apiKey` 时保留现有密钥）。
+
+**Response `data`:** `LlmOperationResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码 |
+| `msg` | `string` | 提示信息 |
+| `errMsg` | `string` | 失败原因 |
+| `code` | `string` | 错误码 |
+| `hint` | `string` | 修复建议 |
+| `models` | `object[]` | 可用模型：`{ id, name }` |
+
+### 18.3 测试 LLM 配置
+
+```
+POST /api/llm/config/test
+```
+
+**Request Body:** 同 18.2（测试请求体中的配置，不落库）。
+
+**Response `data`:** `LlmOperationResult`（同 18.2）
+
+### 18.4 获取可用模型列表
+
+```
+GET /api/llm/models
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码 |
+| `data` | `object[]` | 模型列表：`{ id, name }` |
+| `source` | `string` | 模型列表来源 |
+| `warning` | `string` | 警告信息 |
+| `warningCode` | `string` | 警告码 |
+| `hint` | `string` | 修复建议 |
+
+该接口仅管理员可用。
 
 ---
 
