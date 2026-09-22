@@ -1176,6 +1176,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceMarksFailedProduceAsErrorTest() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"Status\":3,\"Duration\":2}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-3", "orders");
+
+        assertThat(trace.getNodes()).hasSize(1);
+        assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("error");
+    }
+
+    @Test
     void getMessageTraceMarksInFlightConsumeAsProcessNotFailed() throws Exception {
         MessageTraceItem consume = new MessageTraceItem();
         consume.setStage("consume");
