@@ -6,7 +6,7 @@
  */
 
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -70,6 +70,14 @@ const renderPage = () =>
       </LangProvider>
     </App>,
   );
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('SystemAlertsPage', () => {
   beforeEach(() => {
@@ -706,5 +714,79 @@ describe('SystemAlertsPage', () => {
       expect(deleteAlertSilence).toHaveBeenCalledWith(10);
       expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
+  });
+
+  it('keeps the newest maintenance-window page when an older request resolves later', async () => {
+    const pageTwo = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
+    const pageThree = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
+    vi.mocked(listAlertSilencesPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            domain: 'CLUSTER',
+            instanceId: 'page-one',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 1,
+        size: 10,
+      })
+      .mockImplementationOnce(() => pageTwo.promise)
+      .mockImplementationOnce(() => pageThree.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /维护窗口|缁存姢绐楀彛/ }));
+    await screen.findByText(/CLUSTER.*page-one/);
+    fireEvent.click(screen.getByRole('listitem', { name: '2' }));
+    fireEvent.click(screen.getByRole('listitem', { name: '3' }));
+    expect(listAlertSilencesPage).toHaveBeenNthCalledWith(2, { page: 2, pageSize: 10 });
+    expect(listAlertSilencesPage).toHaveBeenNthCalledWith(3, { page: 3, pageSize: 10 });
+
+    await act(async () => {
+      pageThree.resolve({
+        items: [
+          {
+            id: 3,
+            domain: 'BUSINESS',
+            instanceId: 'page-three',
+            startsAt: '2026-08-12T01:00',
+            endsAt: '2026-08-12T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 3,
+        size: 10,
+      });
+      await pageThree.promise;
+    });
+    expect(await screen.findByText(/BUSINESS.*page-three/)).toBeInTheDocument();
+
+    await act(async () => {
+      pageTwo.resolve({
+        items: [
+          {
+            id: 2,
+            domain: 'BUSINESS',
+            instanceId: 'page-two',
+            startsAt: '2026-08-11T01:00',
+            endsAt: '2026-08-11T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 2,
+        size: 10,
+      });
+      await pageTwo.promise;
+    });
+
+    expect(screen.getByText(/BUSINESS.*page-three/)).toBeInTheDocument();
+    expect(screen.queryByText(/page-two/)).not.toBeInTheDocument();
   });
 });
