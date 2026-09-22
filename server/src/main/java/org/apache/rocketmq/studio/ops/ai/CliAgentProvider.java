@@ -125,7 +125,7 @@ public abstract class CliAgentProvider implements AgentProvider {
         try {
             finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
-            process.destroyForcibly();
+            AgentProcessTree.destroyForcibly(process);
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
@@ -142,7 +142,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             }
             output = "";
         } catch (InterruptedException exception) {
-            process.destroyForcibly();
+            AgentProcessTree.destroyForcibly(process);
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI output collection was interrupted", "Retry the request.", exception);
@@ -150,7 +150,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             output = "";
         }
         if (!finished) {
-            process.destroyForcibly();
+            AgentProcessTree.destroyForcibly(process);
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     binaryName() + " CLI timed out after " + TIMEOUT_SECONDS + "s",
                     "Retry with a shorter prompt or check the gateway latency.");
@@ -178,7 +178,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             int read;
             while ((read = input.read(buffer)) != -1) {
                 if (read > limitBytes - output.size()) {
-                    process.destroyForcibly();
+                    AgentProcessTree.destroyForcibly(process);
                     throw new OutputLimitException(limitBytes);
                 }
                 output.write(buffer, 0, read);

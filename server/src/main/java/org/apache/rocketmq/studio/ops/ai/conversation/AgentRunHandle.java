@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.ops.ai.AgentProcessTree;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
 
 import java.time.Duration;
@@ -32,7 +33,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 /**
  * Cancellation for one run, and the thing that finally makes "stop" mean something.
@@ -258,7 +258,7 @@ public final class AgentRunHandle implements AgentStreamOptions.AgentProcessSink
                 // The parent took the signal; its children did not. rmqctl usually notices its stdio
                 // pipe close and exits, but it may be midway through a tool call with a 60s budget, so
                 // whatever is left is killed rather than left to become an invisible orphan.
-                killDescendants(child);
+                AgentProcessTree.destroyDescendants(descendantsToKill(child));
                 return;
             }
             hardKill(child);
@@ -271,8 +271,7 @@ public final class AgentRunHandle implements AgentStreamOptions.AgentProcessSink
      * to leave one reparented to init where nothing will ever find it again.
      */
     private void hardKill(Process child) {
-        killDescendants(child);
-        child.destroyForcibly();
+        AgentProcessTree.destroyForcibly(child, descendantsToKill(child));
         if (!awaitExit(child, Duration.ofSeconds(HARD_KILL_WAIT_SECONDS))) {
             log.warn("agent run {} subprocess survived SIGKILL for {}s; sending it again",
                     runId, HARD_KILL_WAIT_SECONDS);
@@ -298,11 +297,11 @@ public final class AgentRunHandle implements AgentStreamOptions.AgentProcessSink
     }
 
     /**
-     * Destroys every descendant this handle knows about: the ones snapshotted before SIGTERM plus
+     * Collects every descendant this handle knows about: the ones snapshotted before SIGTERM plus
      * whatever is enumerable now, which catches a child spawned after the snapshot. Deduplicated by pid
      * because the two lists normally overlap completely.
      */
-    private void killDescendants(Process child) {
+    private List<ProcessHandle> descendantsToKill(Process child) {
         Map<Long, ProcessHandle> known = new LinkedHashMap<>();
         List<ProcessHandle> snapshot = descendantsSnapshot.get();
         if (snapshot != null) {
@@ -311,17 +310,12 @@ public final class AgentRunHandle implements AgentStreamOptions.AgentProcessSink
         enumerate(child).forEach(handle -> known.put(handle.pid(), handle));
         known.values().forEach(descendant -> {
             log.info("killing descendant {} of agent run {}", describe(descendant), runId);
-            descendant.destroyForcibly();
         });
+        return List.copyOf(known.values());
     }
 
     private List<ProcessHandle> enumerate(Process child) {
-        try (Stream<ProcessHandle> descendants = child.descendants()) {
-            return descendants.toList();
-        } catch (RuntimeException exception) {
-            log.warn("could not enumerate the descendants of agent run {}: {}", runId, exception.toString());
-            return List.of();
-        }
+        return AgentProcessTree.descendants(child);
     }
 
     private boolean awaitExit(Process child, Duration timeout) {

@@ -306,7 +306,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
-                process.destroyForcibly();
+                AgentProcessTree.destroyForcibly(process);
                 throw new LlmGatewayException(504, "llm.provider.timeout",
                         binaryName() + " CLI stream timed out after " + timeoutSeconds + "s",
                         "Retry with a shorter prompt or check the gateway latency.");
@@ -315,14 +315,14 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             return new SpawnResult(process.exitValue(), await(stderrFuture));
         } catch (IOException exception) {
             if (process != null) {
-                process.destroyForcibly();
+                AgentProcessTree.destroyForcibly(process);
             }
             throw new LlmGatewayException(502, "llm.provider.io_error",
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
         } catch (InterruptedException exception) {
             if (process != null) {
-                process.destroyForcibly();
+                AgentProcessTree.destroyForcibly(process);
             }
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
