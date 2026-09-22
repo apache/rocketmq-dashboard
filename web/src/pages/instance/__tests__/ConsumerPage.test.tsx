@@ -309,6 +309,7 @@ describe('Consumer page', () => {
       page: 1,
       pageSize: 20,
       search: undefined,
+      subscriptionMode: undefined,
     });
   });
 
@@ -433,6 +434,7 @@ describe('Consumer page', () => {
     expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
       instanceId: 'instance-1',
       search: undefined,
+      subscriptionMode: undefined,
       page: 1,
       pageSize: 20,
     });
@@ -472,6 +474,7 @@ describe('Consumer page', () => {
     expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
       instanceId: 'instance-1',
       search: undefined,
+      subscriptionMode: undefined,
       page: 1,
       pageSize: 20,
     });
@@ -1054,6 +1057,7 @@ describe('Consumer page', () => {
         page: 1,
         pageSize: 20,
         search: undefined,
+        subscriptionMode: undefined,
       }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -1695,5 +1699,38 @@ describe('Consumer page', () => {
     });
     expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
     expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
+  });
+
+  it('applies the subscription-mode filter on the server page request', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByText('remote-cg');
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    // The filter must go to the backend together with page reset so the pager total
+    // counts only the filtered groups instead of hiding rows client-side.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        search: undefined,
+        subscriptionMode: 'Pop',
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('全部模式', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ subscriptionMode: undefined }),
+      ),
+    );
   });
 });

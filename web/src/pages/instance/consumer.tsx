@@ -152,16 +152,6 @@ const formatDelay = (totalSeconds: number): string => {
   return parts.length > 0 ? parts.join('') : '0秒';
 };
 
-const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): ConsumerGroup[] => {
-  let data = groups;
-
-  if (modeFilter !== 'ALL') {
-    data = data.filter((group) => group.subscriptionMode === modeFilter);
-  }
-
-  return data;
-};
-
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
 const isConsistentValue = (value?: string | null): boolean =>
@@ -352,6 +342,7 @@ const ConsumerPageContent = ({
         const result = await listConsumerGroupPage({
           instanceId: selectedInstanceId,
           search: search.trim() || undefined,
+          subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
           page: pageToLoad,
           pageSize: pageSizeToLoad,
         });
@@ -370,7 +361,7 @@ const ConsumerPageContent = ({
         if (requestId === groupRequestIdRef.current) setLoading(false);
       }
     },
-    [t, selectedInstanceId, search],
+    [t, selectedInstanceId, search, modeFilter],
   );
 
   const reloadConsumerGroupPage = useCallback(async () => {
@@ -491,9 +482,9 @@ const ConsumerPageContent = ({
   }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress, loadSubscriptions]);
 
   /* ─── Filtered & sorted data ─── */
-  const filtered = useMemo(() => {
-    return visibleConsumerGroups(groups, modeFilter);
-  }, [groups, modeFilter]);
+  // The subscription-mode filter is applied server-side (loadConsumerGroupPage sends
+  // subscriptionMode), so the pager's total and page count stay consistent with the rows.
+  const filtered = groups;
 
   const handleExport = async () => {
     setExporting(true);
@@ -1477,6 +1468,7 @@ const ConsumerPageContent = ({
             onChange={(value) => {
               setSelectedRowKeys([]);
               setModeFilter(value);
+              setPage(1);
             }}
             style={{ width: 140 }}
             options={[

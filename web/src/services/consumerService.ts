@@ -93,6 +93,9 @@ function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
     const kw = params.search.trim().toLowerCase();
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
   return result;
 }
 
