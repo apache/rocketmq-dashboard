@@ -269,6 +269,35 @@ describe('SystemAlertsPage', () => {
     );
   });
 
+  it('hides the previous alerts behind the loading card while a filtered reload is pending', async () => {
+    vi.mocked(listSystemAlertsPage).mockReset();
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 6,
+            level: 'WARNING',
+            title: 'Stale warning',
+            description: 'warning',
+            time: '2026-08-10 01:01',
+            acknowledged: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Stale warning');
+
+    await user.click(screen.getByRole('button', { name: /严重/ }));
+
+    await waitFor(() => expect(listSystemAlertsPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('Stale warning')).not.toBeInTheDocument());
+  });
+
   it('forwards instance, resource label, and time filters to the event feed', async () => {
     const user = userEvent.setup();
     renderPage();
