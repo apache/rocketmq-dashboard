@@ -37,6 +37,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -300,6 +301,7 @@ public class MetadataService {
     public SendMessageVO redeliverMessage(String instanceId, String groupName, MessageRecordVO original,
                                           String targetTopic) {
         String group = requireName(groupName, "group name");
+        requireExactSourceMessage(original);
         String destination = StringUtils.hasText(targetTopic)
                 ? targetTopic.trim()
                 : MixAll.getRetryTopic(group);
@@ -312,6 +314,57 @@ public class MetadataService {
                 .properties(redeliveryProperties(original.getProperties()))
                 .build();
         return sendMessage(request);
+    }
+
+    /**
+     * A source loaded by {@link #findMessageForRedelivery} is the message explorer's display
+     * projection, not the stored record: the body stops at {@code MAX_BODY_DISPLAY_BYTES}, a binary
+     * body is replaced by Base64 text, and the property map is capped. Publishing that projection
+     * stores different bytes and silently drops properties, so a lossy source is refused instead.
+     * <p>The property check only fires on provable user-property loss. {@code propertiesTruncated}
+     * is computed over the raw map including broker system keys
+     * ({@link MessagePropertyDisplay#MAX_PROPERTIES} entries), while {@link #redeliveryProperties}
+     * discards system-reserved keys anyway — a cap reached by system keys alone leaves the
+     * user-property set intact. The projection cannot prove anything about entries it dropped
+     * entirely, so the guard refuses only when a visible user property value was abbreviated.
+     * <p>Refuses display projections whose body or user properties cannot be republished exactly.
+     */
+    public void requireExactSourceMessage(MessageRecordVO original) {
+        if (original.isBodyTruncated()) {
+            throw new BusinessException(409,
+                    "Source message body is truncated for display and cannot be redelivered exactly");
+        }
+        if ("BASE64".equalsIgnoreCase(original.getBodyEncoding())) {
+            throw new BusinessException(409,
+                    "Source message body is binary and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated() && hasAbbreviatedUserProperty(original.getProperties())) {
+            throw new BusinessException(409,
+                    "Source message properties are truncated for display and cannot be redelivered exactly");
+        }
+    }
+
+    /**
+     * True when a <em>user</em> property visible in the display projection carries an abbreviated
+     * value: republishing it would store a cut value. System-reserved keys are excluded —
+     * {@link #redeliveryProperties} drops them before the send, abbreviated or not.
+     */
+    private static boolean hasAbbreviatedUserProperty(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return false;
+        }
+        return properties.entrySet().stream()
+                .anyMatch(entry -> !isSystemProperty(entry.getKey())
+                        && isAbbreviatedValue(entry.getValue()));
+    }
+
+    /**
+     * Mirrors the display projection's abbreviation: any value whose rendered form ends in the
+     * {@code ABBREVIATION_SUFFIX} marker was cut, whether it sits on a user or a system key.
+     */
+    private static boolean isAbbreviatedValue(String value) {
+        return value != null && value.length() >= MessagePropertyDisplay.ABBREVIATION_SUFFIX.length()
+                && value.endsWith(MessagePropertyDisplay.ABBREVIATION_SUFFIX);
     }
 
     /** Drops the system-reserved keys {@code Message.putUserProperty} would reject (§15.5.1 KEYS defect). */
@@ -338,7 +391,13 @@ public class MetadataService {
                 || key.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX);
     }
 
-    /** Loads the exact source message used by redelivery without exposing or publishing its body. */
+    /**
+     * Loads the message-explorer record used as the redelivery source without exposing or
+     * publishing its body. This is the explorer's <em>display projection</em>, not the stored
+     * record: the body is capped and binary bodies are Base64-text, so
+     * {@link #redeliverMessage(String, String, MessageRecordVO, String)} refuses lossy sources
+     * instead of republishing them.
+     */
     public MessageRecordVO findMessageForRedelivery(String instanceId, String sourceTopic, String msgId) {
         String messageId = requireName(msgId, "message id");
         List<MessageRecordVO> matches = messageService.queryMessages(

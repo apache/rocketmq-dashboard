@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryInput;
@@ -36,6 +37,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -85,6 +89,53 @@ class MessageRedeliveryToolHandlerTest {
         verify(metadata).redeliverMessage("instance-a", "group-a", "orders", "original", targetTopic);
         assertThat(result).isEqualTo(
                 new MessageRedeliveryOutput("original", "redelivered", "TopicB"));
+    }
+
+    @Test
+    void previewRefusesALossySourceInsteadOfPromisingAnUnexecutablePlanTest() {
+        MetadataService metadata = mock(MetadataService.class);
+        MessageRedeliveryToolHandler handler = new MessageRedeliveryToolHandler(metadata);
+        ToolExecutionContext execution = context("instance-a");
+        MessageRedeliveryInput input =
+                new MessageRedeliveryInput("instance-a", "group-a", "original", "orders", null);
+        MessageRecordVO lossySource = MessageRecordVO.builder().msgId("original").topic("orders")
+                .body("x").bodyTruncated(true).build();
+        when(metadata.findMessageForRedelivery("instance-a", "orders", "original"))
+                .thenReturn(lossySource);
+        doThrow(new BusinessException(409,
+                "Source message body is truncated for display and cannot be redelivered exactly"))
+                .when(metadata).requireExactSourceMessage(lossySource);
+
+        assertThatThrownBy(() -> handler.preview(input, execution))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("truncated");
+
+        verify(metadata).requireExactSourceMessage(lossySource);
+        verify(metadata, never()).redeliverMessage(
+                any(), any(), any(MessageRecordVO.class), any());
+    }
+
+    @Test
+    void previewAndExecuteUseTheSameExactSourceGuardTest() {
+        // The guard method called in preview is exactly the one redeliverMessage runs before
+        // publishing, so a preview that passes cannot be refused at execution time.
+        MetadataService metadata = mock(MetadataService.class);
+        MessageRedeliveryToolHandler handler = new MessageRedeliveryToolHandler(metadata);
+        ToolExecutionContext execution = context("instance-a");
+        MessageRedeliveryInput input =
+                new MessageRedeliveryInput("instance-a", "group-a", "original", "orders", null);
+        MessageRecordVO source = MessageRecordVO.builder().msgId("original").topic("orders")
+                .body("payload").build();
+        when(metadata.findMessageForRedelivery("instance-a", "orders", "original"))
+                .thenReturn(source);
+        when(metadata.redeliverMessage("instance-a", "group-a", "orders", "original", null))
+                .thenReturn(SendMessageVO.builder().msgId("redelivered").build());
+
+        ToolPlan plan = handler.preview(input, execution);
+
+        verify(metadata).requireExactSourceMessage(source);
+        assertThat(plan.summary()).isEqualTo(
+                "redeliver message 'original' for consumer group 'group-a' in instance 'instance-a'.");
     }
 
     @ParameterizedTest
