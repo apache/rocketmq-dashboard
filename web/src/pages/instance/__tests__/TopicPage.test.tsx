@@ -1144,6 +1144,33 @@ describe('TopicPage', () => {
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
 
+  it('renders an unresolvable Topic consumer lag as unavailable instead of -1', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-orders',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          // ConsumerLagResolver.UNKNOWN: the broker answered, but this group's lag is not
+          // resolvable, and metricsAvailable stays true because stats were returned.
+          diffTotal: -1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+    expect(screen.queryByText('-1')).toBeNull();
+  });
+
   it('renders subscription group names as links in the topic detail modal', async () => {
     const user = userEvent.setup();
     mockTopicsList([buildTopics(1)[0]]);

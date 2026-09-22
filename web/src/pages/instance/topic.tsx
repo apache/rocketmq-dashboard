@@ -87,6 +87,7 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv } from '../../utils/download';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
@@ -963,7 +964,7 @@ const TopicPageContent = ({
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? (
+        record.metricsAvailable === false || !isLagAvailable(n) ? (
           <Text type="secondary">不可用</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
