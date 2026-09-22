@@ -362,10 +362,14 @@ POST /api/instances/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 实例 ID |
-| `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例 |
-| `endpoint` | `string` | 是 | 接入地址 |
+| `instanceId` | `string` | 是 | 实例标识：全局唯一的实例名（数字主键作为兼容回退） |
+| `name` | `string` | 否 | 实例名称（传入时不可与现有名称不同，实例 ID 创建后不可变更） |
+| `type` | `string` | 否 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例 |
+| `endpoint` | `string` | 否 | 接入地址 |
+| `remark` | `string` | 否 | 备注 |
+| `adminCredentialRef` | `string` | 否 | 管理凭证引用（仅非云实例可改） |
+
+未提供的可选字段保持原值不变。
 
 **Response `data`:** `Instance`
 
@@ -694,7 +698,7 @@ POST /api/k8s-certs/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 证书 ID |
+| `id` | `number` | 是 | 证书 ID |
 | `name` | `string` | 否 | 证书名称 |
 | `namespace` | `string` | 否 | K8s 命名空间 |
 | `cluster` | `string` | 否 | 所属集群 |
@@ -713,7 +717,7 @@ POST /api/k8s-certs/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 证书 ID |
+| `id` | `number` | 是 | 证书 ID |
 
 **Response `data`:** `null`
 
