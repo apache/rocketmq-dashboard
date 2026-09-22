@@ -40,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -381,6 +382,29 @@ class RocketMQClusterProviderTest {
         verify(adminFactory).execute(eq("10.0.0.2:9876"), isA(AclClientRPCHook.class),
                 eq("cluster-admin"), any());
         verify(adminFactory, never()).execute(eq("10.0.0.2:9876"), isNull(), any());
+    }
+
+    @Test
+    void refreshClusterDetailShouldRejectClusterOutsideConfiguredInstanceScope() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
+        when(runtime.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtime.configuredClusterName("instance-a")).thenReturn("DefaultCluster");
+        when(runtime.execute(eq("instance-a"), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(adminExt));
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        RocketMQClusterProvider provider = new RocketMQClusterProvider(adminFactory, properties, runtime);
+
+        ClusterInfo info = clusterInfo();
+        info.getClusterAddrTable().put("OtherCluster", Set.of("broker-b"));
+        info.getBrokerAddrTable().put("broker-b", new BrokerData("OtherCluster", "broker-b",
+                new HashMap<>(Map.of(0L, "10.0.0.12:10911"))));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+
+        assertThat(provider.refreshClusterDetail("OtherCluster", "instance-a")).isNull();
+        assertThat(provider.refreshClusterDetail("DefaultCluster", "instance-a")).isNotNull();
     }
 
     private RocketMQClusterProvider newAuthenticatedInstanceProvider(MqAdminExtFactory adminFactory,
