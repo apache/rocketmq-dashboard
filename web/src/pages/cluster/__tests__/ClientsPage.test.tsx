@@ -390,6 +390,27 @@ describe('Clients page', () => {
     expect(within(dialog).getAllByText('-')).toHaveLength(2);
   });
 
+  it('labels a connection whose language the backend could not map', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: 'ruby-svc-0@10.0.1.77:49152',
+        groupOrTopic: 'ruby-topic',
+        language: null,
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    const rows = await screen.findAllByRole('row', { name: /ruby-topic/ });
+    const row = rows.find((candidate) => within(candidate).queryByRole('button', { name: /详情/ }));
+    expect(row).toBeDefined();
+    expect(within(row!).getByText('未知')).toBeInTheDocument();
+
+    const distribution = await screen.findByTestId('language-version-distribution');
+    expect(within(distribution).getByText('未知 5.0.7: 1')).toBeInTheDocument();
+    expect(within(distribution).queryByText(/null/)).not.toBeInTheDocument();
+  });
+
   it('exports the currently filtered client connections as CSV', async () => {
     const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       expect(blob).toBeInstanceOf(Blob);
