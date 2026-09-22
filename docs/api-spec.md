@@ -1597,7 +1597,8 @@ POST /api/groups/settings
 GET /api/groups/:name/refresh?instanceId={instanceId}
 ```
 
-**Response `data`:** `ConsumerGroup`（同 6.1 的单条定义）：绕过缓存从 Broker 重新读取。
+**Response `data`:** `ConsumerGroup`（同 6.1 的单条定义）。组已不存在时返回 `200` 空数据
+（前端保留现有行不变）。
 
 ### 6.13 获取消费者线程栈
 
