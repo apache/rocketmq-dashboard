@@ -437,8 +437,7 @@ public class ClusterService {
             enrichWithLiveConfig(live, instanceId);
             return live;
         }
-        return clusterRepository.findById(clusterId)
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
+        throw new BusinessException(503, "Cluster details are unavailable: " + clusterId);
     }
 
     private ClusterConfigVO copyConfig(ClusterConfigVO config) {

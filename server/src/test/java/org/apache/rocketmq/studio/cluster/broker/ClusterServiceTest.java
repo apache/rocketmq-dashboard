@@ -295,6 +295,20 @@ class ClusterServiceTest {
     }
 
     @Test
+    void previewClusterConfigShouldNotUseGlobalClusterWhenInstanceScopedLookupFails() {
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-a")).thenReturn(null);
+
+        assertThatThrownBy(() -> clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-a")
+                .flushDiskType("SYNC_FLUSH")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Cluster details are unavailable: cluster-1")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
+    }
+
+    @Test
     void listProxiesShouldUseResolvedCluster() {
         when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
 
