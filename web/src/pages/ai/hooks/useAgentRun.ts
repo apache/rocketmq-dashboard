@@ -390,6 +390,8 @@ export function useAgentRun(
     // window with nothing to address. The button stays disabled until then (`canStop`).
     if (targetRunId === null) return;
 
+    const requestId = streamRequestIdRef.current;
+    const generation = generationRef.current;
     setStopRequested(true);
     try {
       // The response is the run row, which the stream reports authoritatively anyway; the point of
@@ -398,6 +400,9 @@ export function useAgentRun(
       // Deliberately NOT aborting the fetch: the open stream is what delivers the terminal
       // `run_status` frame and `done`, and aborting would leave the button in `stopping` forever.
     } catch (stopError) {
+      // Navigation or a newer stream invalidated this Stop request. Its failure belongs to the old
+      // run and must not paint an error onto the conversation that owns the hook now.
+      if (requestId !== streamRequestIdRef.current || generation !== generationRef.current) return;
       setStopRequested(false);
       setError(describeThrownMessage(stopError));
       optionsRef.current.onError?.(stopError);
