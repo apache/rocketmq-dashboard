@@ -76,6 +76,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -426,6 +427,45 @@ class RocketMQAdminClientImplTest {
                         org.assertj.core.groups.Tuple.tuple("broker-b", 1, 170L, 20L, 30L));
         verify(adminExt, never()).resetOffsetByTimestamp(anyString(), anyString(), anyString(),
                 anyLong(), anyBoolean());
+    }
+
+    @Test
+    void previewResetOffsetAllowsOfflineGroupFromTopicRouteTest() throws Exception {
+        // An offline group has no consume stats, but resetOffsetNew still applies offline: the
+        // preview must enumerate the topic route and allow the reset instead of blocking it.
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
+                        "Not found the consumer group connection"));
+        QueueData queueData = new QueueData();
+        queueData.setBrokerName("broker-1");
+        queueData.setReadQueueNums(2);
+        queueData.setPerm(6);
+        TopicRouteData routeData = new TopicRouteData();
+        routeData.setQueueDatas(List.of(queueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeData);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(adminExt.minOffset(any(MessageQueue.class))).thenReturn(10L);
+        when(adminExt.maxOffset(any(MessageQueue.class))).thenReturn(100L);
+        when(adminExt.searchOffset(eq("10.0.0.1:10911"), eq("orders"), anyInt(), eq(timestamp), anyLong()))
+                .thenReturn(50L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                null, "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.isComplete()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(2);
+        assertThat(preview.getCurrentTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(preview.getProjectedTotalLag()).isEqualTo(100L);
+        assertThat(preview.getWarnings()).anyMatch(w -> w.contains("not online"));
+        assertThat(preview.getQueues())
+                .extracting(ResetConsumerOffsetQueuePreviewVO::getQueueId,
+                        ResetConsumerOffsetQueuePreviewVO::getTargetOffset,
+                        ResetConsumerOffsetQueuePreviewVO::getCurrentLag)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(0, 50L, ConsumerLagResolver.UNKNOWN),
+                        org.assertj.core.groups.Tuple.tuple(1, 50L, ConsumerLagResolver.UNKNOWN));
     }
 
     @Test
