@@ -288,6 +288,38 @@ class AclServiceTest {
     }
 
     @Test
+    void updateRuleShouldRejectBlankPrincipalBeforeRepositoryWrite() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal(" ")
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL principal is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
+    void updateRuleShouldRejectBlankResourceBeforeRepositoryWrite() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal("user1")
+                .resource(" ")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL resource is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(aclRepository);
+    }
+
+    @Test
     void updateRuleShouldReplaceExistingRule() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 0, 0);
         AclRuleVO input = AclRuleVO.builder()
