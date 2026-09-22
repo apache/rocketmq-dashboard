@@ -647,6 +647,36 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldKeepPartitionOrderedGroupsOrderlyTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        // exactly what the console form submits when the subscription data type is FIFO
+        group.setDeliveryOrderType("PARTITON_ORDER");
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        CreateConsumerGroupRequest request = captor.getValue();
+        assertThat(request.getDeliveryOrderType()).isEqualTo("Orderly");
+        // ordered groups reject DefaultRetryPolicy, so the retry policy has to travel with the type
+        assertThat(request.getConsumeRetryPolicy().getRetryPolicy()).isEqualTo("FixedRetryPolicy");
+        assertThat(request.getConsumeRetryPolicy().getFixedIntervalRetryTime()).isEqualTo(10);
+        assertThat(request.getConsumeRetryPolicy().getMaxRetryTimes()).isEqualTo(5);
+        assertThat(created.getDeliveryOrderType()).isEqualTo("Orderly");
+    }
+
+    @Test
     void resetOffsetShouldUseSpecifiedTimeTest() {
         stubInstance();
         stubCallThrough();
@@ -1036,6 +1066,27 @@ class AliyunInstanceProviderTest {
                 AliyunInstanceProvider.normalizeDeliveryOrderType(null));
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"));
+    }
+
+    /**
+     * The consumer group form never submits FIFO/ORDERLY. It submits the RocketMQ order-type
+     * spellings - PARTITON_ORDER for partition ordered and MESSAGES_ORDER for globally ordered -
+     * and the CSV importer additionally accepts PARTITION_ORDER. An unrecognised spelling used to
+     * fall through to Concurrently, so an ordered group created on an Aliyun instance came back
+     * concurrent with no error anywhere.
+     */
+    @Test
+    void normalizeDeliveryOrderTypeShouldMapConsoleOrderTypesToOrderlyTest() {
+        for (String value : List.of("PARTITON_ORDER", "MESSAGES_ORDER", "PARTITION_ORDER",
+                "partiton_order", " PARTITON_ORDER ")) {
+            assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType(value))
+                    .as("value " + value)
+                    .isEqualTo("Orderly");
+        }
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"))
+                .isEqualTo("Concurrently");
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("   "))
+                .isEqualTo("Concurrently");
     }
 
     @Test
