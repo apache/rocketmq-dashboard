@@ -10,6 +10,7 @@ import {
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
+  parseAlertTimestamp,
 } from './format';
 
 describe('formatBytes', () => {
@@ -79,5 +80,34 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('parseAlertTimestamp', () => {
+  it('parses an offset-less alert timestamp as UTC, not the browser zone', () => {
+    // '2026-08-23T23:30:00Z' == 1755982200000; browser-local parsing would shift by
+    // the viewer offset and misread the age of the alert.
+    expect(parseAlertTimestamp('2026-08-23T23:30:00')).toBe(Date.parse('2026-08-23T23:30:00Z'));
+    expect(parseAlertTimestamp('2026-08-23 23:30:00')).toBe(Date.parse('2026-08-23T23:30:00Z'));
+  });
+
+  it('honors an explicit offset or Z suffix as written', () => {
+    expect(parseAlertTimestamp('2026-08-23T23:30:00Z')).toBe(Date.parse('2026-08-23T23:30:00Z'));
+    expect(parseAlertTimestamp('2026-08-23T23:30:00+02:00')).toBe(
+      Date.parse('2026-08-23T21:30:00Z'),
+    );
+  });
+
+  it('returns NaN for blank and unparseable values instead of throwing', () => {
+    expect(Number.isNaN(parseAlertTimestamp(null))).toBe(true);
+    expect(Number.isNaN(parseAlertTimestamp(undefined))).toBe(true);
+    expect(Number.isNaN(parseAlertTimestamp(''))).toBe(true);
+    expect(Number.isNaN(parseAlertTimestamp('   '))).toBe(true);
+    expect(Number.isNaN(parseAlertTimestamp('not-a-date'))).toBe(true);
+  });
+
+  it('passes through Date instances as their epoch value', () => {
+    const date = new Date(Date.UTC(2026, 7, 23, 23, 30, 0));
+    expect(parseAlertTimestamp(date)).toBe(date.getTime());
   });
 });
