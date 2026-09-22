@@ -188,12 +188,14 @@ final class AliyunConverters {
             for (Map.Entry<String, DataTopicLagMapValue> entry : topicLagMap.entrySet()) {
                 long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
                         ? 0L : entry.getValue().getReadyCount();
+                // The Aliyun API reports the lag per topic, so the row carries no queue offsets;
+                // report the unknown sentinel instead of a zero that reads like a measurement.
                 rows.add(QueueProgressVO.builder()
                         .topic(entry.getKey())
                         .broker("topic:" + entry.getKey())
                         .queueId(0)
-                        .brokerOffset(0L)
-                        .consumerOffset(0L)
+                        .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                        .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                         .diffTotal(ready)
                         .build());
             }
@@ -206,8 +208,8 @@ final class AliyunConverters {
             rows.add(QueueProgressVO.builder()
                     .broker("total")
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(totalLag.getReadyCount())
                     .build());
         }

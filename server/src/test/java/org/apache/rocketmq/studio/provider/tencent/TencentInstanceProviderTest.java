@@ -708,6 +708,25 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getGroupProgressShouldReportUnknownQueueOffsetsTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        // The Tencent API exposes the lag per topic and no per-queue offsets, so the row must not
+        // claim offsets of zero next to the real lag.
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getDiffTotal()).isEqualTo(42L);
+                });
+    }
+
+    @Test
     void previewResetOffsetShouldAllowLimitedCloudPreviewTest() throws Exception {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setTopic("orders");
