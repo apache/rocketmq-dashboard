@@ -540,8 +540,10 @@ class AliyunInstanceProviderTest {
         assertThat(first.getBornHost()).isEqualTo("10.0.0.1");
         assertThat(first.getProperties()).containsEntry("a", "b");
         MessageRecordVO second = records.get(1);
+        // "{}" is not Base64, so the API handed back literal text; the shared contract has no
+        // "TEXT" label and UTF-8 is the one that describes a plain string body.
         assertThat(second.getBody()).isEqualTo("{}");
-        assertThat(second.getBodyEncoding()).isEqualTo("TEXT");
+        assertThat(second.getBodyEncoding()).isEqualTo("UTF-8");
 
         List<MessageRecordVO> filtered = provider.queryMessages(STUDIO_INSTANCE_ID, "topic-a", null,
                 "tagB", null, null, null);
