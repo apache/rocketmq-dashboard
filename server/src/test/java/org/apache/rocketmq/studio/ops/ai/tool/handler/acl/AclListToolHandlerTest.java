@@ -74,7 +74,7 @@ class AclListToolHandlerTest {
                 .aclVersion("v1")
                 .gmtCreate(LocalDateTime.of(2024, 1, 1, 12, 0))
                 .build();
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(),
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq("cluster-1"), eq(1), eq(20)))
                 .thenReturn(PageResult.of(List.of(rule), 1, 1, 20));
 
@@ -87,7 +87,7 @@ class AclListToolHandlerTest {
         assertThat(item.id()).isEqualTo("1");
         assertThat(item.principal()).isEqualTo("user-1");
         assertThat(item.decision()).isEqualTo("GRANT");
-        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(),
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq("cluster-1"), eq(1), eq(20));
     }
 
@@ -104,7 +104,7 @@ class AclListToolHandlerTest {
                 .principal("user-1")
                 .resource("TopicA")
                 .build();
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(),
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq("cluster-1"), eq(1), eq(20)))
                 .thenReturn(PageResult.of(List.of(sparseRule), 1, 1, 20));
 

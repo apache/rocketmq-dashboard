@@ -45,9 +45,10 @@ public class AclListToolHandler implements ToolHandler<AclListInput, PageOutput<
 
     @Override
     public PageOutput<AclRuleItem> execute(AclListInput input, ToolExecutionContext context) {
+        // The tool contract exposes no ACL version filter, so every version is listed.
         PageResult<AclRuleVO> result = aclService.listRules(
                 input.principal(), input.resource(), input.scope(),
-                input.decision(), context.instanceId(),
+                input.decision(), null, context.instanceId(),
                 input.page().page(), input.page().pageSize());
         return PageOutput.from(result, AclRuleItem::from);
     }
