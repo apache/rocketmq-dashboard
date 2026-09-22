@@ -76,6 +76,13 @@ public class MessageController {
         return Result.ok(messageService.getMessageTraceByKey(instanceId, key, topic, traceTopic));
     }
 
+    @GetMapping("/trace-waterfall")
+    public Result<MessageTraceWaterfallVO> getMessageTraceWaterfall(@RequestParam String instanceId,
+                                                                    @RequestParam String msgId,
+                                                                    @RequestParam(required = false) String topic) {
+        return Result.ok(messageService.getMessageTraceWaterfall(instanceId, msgId, topic));
+    }
+
     @GetMapping("/queues")
     public Result<List<QueueOffsetVO>> getQueueOffsets(@RequestParam String instanceId,
                                                        @RequestParam String topic) {

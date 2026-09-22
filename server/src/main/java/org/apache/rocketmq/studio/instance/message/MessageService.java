@@ -27,7 +27,6 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class MessageService {
 
@@ -39,6 +38,37 @@ public class MessageService {
     private final InstanceProviderRegistry providerRegistry;
     private final QueryHistoryService queryHistoryService;
     private final OperationAuditService operationAuditService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private MessageTraceLifecycleAggregator messageTraceLifecycleAggregator;
+
+    public MessageService(MessageProvider messageProvider,
+                          InstanceProviderRegistry providerRegistry,
+                          QueryHistoryService queryHistoryService,
+                          OperationAuditService operationAuditService) {
+        this.messageProvider = messageProvider;
+        this.providerRegistry = providerRegistry;
+        this.queryHistoryService = queryHistoryService;
+        this.operationAuditService = operationAuditService;
+        this.messageTraceLifecycleAggregator = new MessageTraceLifecycleAggregator();
+    }
+
+    public MessageService(MessageProvider messageProvider,
+                          InstanceProviderRegistry providerRegistry,
+                          QueryHistoryService queryHistoryService,
+                          OperationAuditService operationAuditService,
+                          MessageTraceLifecycleAggregator messageTraceLifecycleAggregator) {
+        this.messageProvider = messageProvider;
+        this.providerRegistry = providerRegistry;
+        this.queryHistoryService = queryHistoryService;
+        this.operationAuditService = operationAuditService;
+        this.messageTraceLifecycleAggregator = messageTraceLifecycleAggregator != null
+                ? messageTraceLifecycleAggregator : new MessageTraceLifecycleAggregator();
+    }
+
+    public MessageTraceWaterfallVO getMessageTraceWaterfall(String instanceId, String msgId, String topic) {
+        TraceRecordVO traceRecord = getMessageTrace(instanceId, msgId, topic);
+        return messageTraceLifecycleAggregator.aggregate(msgId, topic, traceRecord);
+    }
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {

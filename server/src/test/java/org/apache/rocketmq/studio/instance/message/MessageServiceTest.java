@@ -406,4 +406,30 @@ class MessageServiceTest {
 
         verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L);
     }
+
+    @Test
+    void getMessageTraceWaterfallShouldDelegateToAggregator() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        MessageTraceLifecycleAggregator aggregator = mock(MessageTraceLifecycleAggregator.class);
+
+        MessageService service = new MessageService(provider, registry, history, audit, aggregator);
+        TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.getMessageTrace("instance-a", "msg-1", "TopicA")).thenReturn(trace);
+
+        MessageTraceWaterfallVO waterfall = MessageTraceWaterfallVO.builder()
+                .msgId("msg-1")
+                .topic("TopicA")
+                .totalDurationMs(100L)
+                .build();
+        when(aggregator.aggregate("msg-1", "TopicA", trace)).thenReturn(waterfall);
+
+        MessageTraceWaterfallVO result = service.getMessageTraceWaterfall("instance-a", "msg-1", "TopicA");
+
+        assertThat(result).isSameAs(waterfall);
+        verify(aggregator).aggregate("msg-1", "TopicA", trace);
+    }
 }

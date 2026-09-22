@@ -138,6 +138,29 @@ class MessageControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void traceWaterfallShouldDelegateToService() throws Exception {
+        MessageTraceWaterfallVO waterfall = MessageTraceWaterfallVO.builder()
+                .msgId("msg-001")
+                .topic("orders")
+                .totalDurationMs(120L)
+                .bottleneckStage("NONE")
+                .build();
+        when(messageService.getMessageTraceWaterfall("instance-a", "msg-001", "orders"))
+                .thenReturn(waterfall);
+
+        mockMvc.perform(get("/api/messages/trace-waterfall")
+                        .param("instanceId", "instance-a")
+                        .param("msgId", "msg-001")
+                        .param("topic", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.msgId").value("msg-001"))
+                .andExpect(jsonPath("$.data.totalDurationMs").value(120));
+
+        verify(messageService).getMessageTraceWaterfall("instance-a", "msg-001", "orders");
+    }
+
+    @Test
     void directConsumeShouldPassValidatedRequestTest() throws Exception {
         DirectConsumeMessageResultVO result = DirectConsumeMessageResultVO.builder()
                 .consumeResult("CR_SUCCESS").remark("ok").spentTimeMillis(8).build();
