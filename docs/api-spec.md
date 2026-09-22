@@ -158,6 +158,20 @@
 | 114 | POST | `/api/cloud-credentials/update` | 更新云凭证 |
 | 115 | POST | `/api/cloud-credentials/delete` | 删除云凭证 |
 | 116 | GET | `/api/cloud-credentials/:id/credentials` | 查看云凭证密钥（明文） |
+| 117 | GET | `/api/alert-rules/page` | 告警规则分页列表 |
+| 118 | GET | `/api/alert-rules/runtime` | 告警规则运行时状态 |
+| 119 | GET | `/api/alert-rules/export` | 导出告警规则 YAML |
+| 120 | GET | `/api/alert-rules/transfer` | 导出告警规则传输格式 |
+| 121 | POST | `/api/alert-rules/test` | 测试告警规则 |
+| 122 | POST | `/api/alert-rules/bulk-toggle` | 批量切换规则启用状态 |
+| 123 | POST | `/api/alert-rules/bulk-delete` | 批量删除规则 |
+| 124 | GET | `/api/system-alerts/page` | 系统告警分页列表 |
+| 125 | GET | `/api/system-alerts/:id/related` | 关联告警 |
+| 126 | GET | `/api/system-alerts/:id/deliveries` | 告警通知投递记录 |
+| 127 | GET | `/api/system-alerts/deliveries/page` | 通知投递分页列表 |
+| 128 | POST | `/api/system-alerts/deliveries/:deliveryId/retry` | 重试单条投递 |
+| 129 | POST | `/api/system-alerts/deliveries/retry` | 批量重试投递 |
+| 130 | POST | `/api/alert-rules/import` | 导入告警规则 |
 
 ## 通用响应格式
 
@@ -2027,6 +2041,128 @@ POST /api/alert-rules/delete
 
 **Response `data`:** `null`
 
+### 11.6 分页获取告警规则
+
+```
+GET /api/alert-rules/page?search={search}&enabled={enabled}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `enabled` | `boolean` | 否 | 按启用状态过滤 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<AlertRule>`（同 11.1 的 `AlertRule` 定义）。
+
+### 11.7 获取告警规则运行时状态
+
+```
+GET /api/alert-rules/runtime
+```
+
+**Response `data`:** `AlertRuleRuntime[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `ruleId` | `number` | 规则 ID |
+| `fingerprint` | `string` | 运行时状态指纹 |
+| `status` | `string` | 状态: `OK` / `PENDING` / `FIRING` / `RESOLVED` / `ACKED` |
+| `consecutiveHits` | `number` | 连续命中次数 |
+| `currentValue` | `number` | 当前指标值 |
+| `lastNotifiedAt` | `string` | 最近通知时间 (ISO 8601) |
+| `nextReminderAt` | `string` | 下次提醒时间 (ISO 8601) |
+
+### 11.8 导出告警规则（YAML）
+
+```
+GET /api/alert-rules/export
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `rules` | `string` | 规则的 YAML 文本 |
+
+### 11.9 导出告警规则（传输格式）
+
+```
+GET /api/alert-rules/transfer
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `version` | `number` | 传输格式版本 |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `rules` | `object[]` | 规则数组，元素即 11.2 的请求体（可用 11.13 的 import 端点回导） |
+
+### 11.10 测试告警规则
+
+```
+POST /api/alert-rules/test
+```
+
+**Request Body:** 同 11.2 的创建请求。
+
+对规则当前绑定的指标与实例执行一次采样评估，不落库、不发通知。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `samples` | `object[]` | 采样结果：`{ labels, availability, currentValue, conditionMet, unavailableReason }` |
+
+### 11.11 批量切换告警规则启用状态
+
+```
+POST /api/alert-rules/bulk-toggle
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表（非空） |
+| `enabled` | `boolean` | 是 | 启用/禁用 |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 成功的规则 ID |
+| `failures` | `object` | 失败明细：`{ 规则ID: 原因 }` |
+| `updatedRules` | `AlertRule[]` | 变更后的规则记录 |
+
+### 11.12 批量删除告警规则
+
+```
+POST /api/alert-rules/bulk-delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表（非空） |
+
+**Response `data`:** 同 11.11（`updatedRules` 为删除后的存量规则）。
+
+### 11.13 导入告警规则
+
+```
+POST /api/alert-rules/import
+```
+
+**Request Body:** 11.9 的传输格式（`{ version, domain, rules[] }`）。
+
+**Response `data`:** `AlertRule[]`（导入后的规则记录）。
+
 ---
 
 ## 12. 系统告警 System Alerts
@@ -2079,6 +2215,103 @@ POST /api/system-alerts/clear-acknowledged
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `cleared` | `number` | 清除数量 |
+
+### 12.4 分页获取系统告警
+
+```
+GET /api/system-alerts/page?level={level}&domain={domain}&instanceId={instanceId}&transition={transition}&labelKey={labelKey}&labelValue={labelValue}&from={from}&to={to}&notificationSuppressed={suppressed}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 全部可选。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `level` | `string` | 按级别过滤: `error` / `warning` / `info` |
+| `domain` | `string` | 按告警域过滤: `BUSINESS` / `CLUSTER` |
+| `instanceId` | `string` | 按实例过滤 |
+| `transition` | `string` | 按状态迁移过滤 |
+| `labelKey` / `labelValue` | `string` | 按标签键值过滤 |
+| `from` / `to` | `string` | 时间范围 (ISO 8601) |
+| `notificationSuppressed` | `boolean` | 是否只看被抑制通知的告警 |
+| `page` / `pageSize` | `number` | 分页，默认 1 / 20 |
+
+**Response `data`:** `PageResult<SystemAlert>`（同 12.1 的 `SystemAlert` 定义）。
+
+### 12.5 获取关联告警
+
+```
+GET /api/system-alerts/:id/related
+```
+
+**Response `data`:** `SystemAlert[]`（同 12.1 的 `SystemAlert` 定义）：与该告警共享指纹的相邻迁移。
+
+### 12.6 获取告警的通知投递记录
+
+```
+GET /api/system-alerts/:id/deliveries
+```
+
+**Response `data`:** `NotificationDelivery[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态: `PENDING` / `SENDING` / `DELIVERED` / `RETRY_WAIT` / `FAILED` |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+
+### 12.7 分页获取通知投递记录
+
+```
+GET /api/system-alerts/deliveries/page?channel={channel}&status={status}&instanceId={instanceId}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** `channel` / `status` / `instanceId` 可选过滤，`page` 默认 1，`pageSize` 默认 20。
+
+**Response `data`:** `PageResult<NotificationDeliveryPage>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `alertId` | `number` | 关联告警 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态（同 12.6） |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+| `createdAt` | `string` | 创建时间 (ISO 8601) |
+| `messageContent` | `string` | 通知内容 |
+| `alertTitle` | `string` | 告警标题 |
+| `alertDomain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `transition` | `string` | 状态迁移描述 |
+| `instanceId` | `string` | 关联实例 ID |
+
+### 12.8 重试单条失败投递
+
+```
+POST /api/system-alerts/deliveries/:deliveryId/retry
+```
+
+**Response `data`:** `null`
+
+### 12.9 批量重试失败投递
+
+```
+POST /api/system-alerts/deliveries/retry
+```
+
+**Request Body:** `number[]`（投递记录 ID 列表；传空数组或省略时重试全部失败投递）。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 重试成功的投递 ID |
+| `failures` | `object` | 失败明细：`{ 投递ID: 原因 }` |
 
 ---
 
