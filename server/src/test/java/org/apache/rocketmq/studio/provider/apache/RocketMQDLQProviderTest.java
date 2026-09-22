@@ -40,6 +40,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessagePageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
@@ -354,7 +355,7 @@ class RocketMQDLQProviderTest {
         PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
         when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt())).thenReturn(pullResult);
 
-        PageResult<DLQMessageVO> page = provider.listMessages(
+        DLQMessagePageVO page = provider.listMessages(
                 "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
 
         assertThat(page.getItems()).hasSize(1);
@@ -379,7 +380,7 @@ class RocketMQDLQProviderTest {
         PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
         when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt())).thenReturn(pullResult);
 
-        PageResult<DLQMessageVO> page = provider.listMessages(
+        DLQMessagePageVO page = provider.listMessages(
                 "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
 
         DLQMessageVO message = page.getItems().get(0);
@@ -402,7 +403,7 @@ class RocketMQDLQProviderTest {
         PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
         when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt())).thenReturn(pullResult);
 
-        PageResult<DLQMessageVO> page = provider.listMessages(
+        DLQMessagePageVO page = provider.listMessages(
                 "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
 
         assertThat(page.getItems()).hasSize(1);
@@ -504,7 +505,7 @@ class RocketMQDLQProviderTest {
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
                 .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
 
-        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+        DLQMessagePageVO page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
 
         assertThat(page.getTotal()).isZero();
         assertThat(page.getItems()).isEmpty();
@@ -534,7 +535,7 @@ class RocketMQDLQProviderTest {
                 .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE,
                         "query message by key finished, but no message."));
 
-        PageResult<DLQMessageVO> page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
+        DLQMessagePageVO page = provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20);
 
         assertThat(page.getTotal()).isZero();
         assertThat(page.getItems()).isEmpty();
