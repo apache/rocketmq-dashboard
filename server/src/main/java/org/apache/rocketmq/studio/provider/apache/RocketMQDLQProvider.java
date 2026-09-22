@@ -57,8 +57,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -134,7 +132,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
         long messageCount = 0L;
-        LocalDateTime lastEnqueueTime = null;
+        String lastEnqueueTime = null;
         boolean statsAvailable = true;
         try {
             TopicStatsTable statsTable = adminExt.examineTopicStats(dlqTopic);
@@ -151,8 +149,10 @@ public class RocketMQDLQProvider implements DLQProvider {
                     }
                 }
                 if (latestUpdate > 0L) {
-                    lastEnqueueTime = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(latestUpdate), ZoneId.systemDefault());
+                    // Serialize with an explicit UTC offset: a zoneless timestamp would be parsed
+                    // as browser-local time on the client and mislabel the instant whenever the
+                    // server timezone differs from the operator's.
+                    lastEnqueueTime = Instant.ofEpochMilli(latestUpdate).toString();
                 }
             }
         } catch (Exception e) {
