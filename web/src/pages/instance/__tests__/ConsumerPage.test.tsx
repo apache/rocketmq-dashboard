@@ -325,6 +325,26 @@ describe('Consumer page', () => {
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
   });
 
+  it('stays silent when background auto-refresh ticks fail', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group]))
+      .mockRejectedValue(new Error('backend down'));
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation((() => undefined) as never);
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '自动刷新' }));
+
+    // Enabling auto refresh fires one immediate silent reload plus the 2s interval ticks; the
+    // failed ticks must stay quiet instead of toasting on every tick.
+    await waitFor(
+      () => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(4),
+      { timeout: 7000 },
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   afterEach(() => {
     cleanup();
     Modal.destroyAll();
