@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -128,7 +128,7 @@ describe('Message page query history', () => {
   });
 
   it('requires the active query mode fields and trims submitted identifiers', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
@@ -183,7 +183,7 @@ describe('Message page query history', () => {
   });
 
   it('surfaces Topic loading failures and retries without changing instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     topicServiceMocks.listTopics
       .mockReset()
       .mockRejectedValueOnce(new Error('NameServer unavailable'))
@@ -200,7 +200,7 @@ describe('Message page query history', () => {
   });
 
   it('requires a topic even when a key or message ID is present', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
@@ -217,7 +217,7 @@ describe('Message page query history', () => {
   });
 
   it('does not report consume verification success without a backend API', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
     renderWithProviders(<MessagePage />);
 
@@ -237,7 +237,7 @@ describe('Message page query history', () => {
   });
 
   it('sorts and renders messages without tags or keys', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-NULL-FIELDS'), tag: null, key: null },
       { ...createMessage('MID-FULL-FIELDS'), tag: 'vip', key: 'order-001' },
@@ -266,7 +266,7 @@ describe('Message page query history', () => {
       selectInstance: vi.fn(),
       instanceOptions: [],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -277,7 +277,7 @@ describe('Message page query history', () => {
   });
 
   it('shows the redelivery count on the message detail panel', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-RETRY'), reconsumeTimes: 2 },
     ]);
@@ -334,7 +334,7 @@ describe('Message page query history', () => {
       instanceOptions: [{ value: 1, label: 'Instance A' }],
     });
     topicServiceMocks.listTopics.mockRejectedValue(new Error('topic lookup failed'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await waitFor(() => expect(topicServiceMocks.listTopics).toHaveBeenCalledTimes(1));
@@ -347,7 +347,7 @@ describe('Message page query history', () => {
     messageServiceMocks.queryMessages.mockResolvedValue(
       Array.from({ length: 60 }, (_, index) => createMessage(`m-${index}`)),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<MessagePage />);
 
     await user.click(lastElement(screen.getAllByRole('combobox')));
@@ -382,7 +382,7 @@ describe('Message page query history', () => {
   });
 
   it('shows the storage location on the message detail panel', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-LOCATION')]);
     renderWithProviders(<MessagePage />);
 
@@ -405,8 +405,65 @@ describe('Message page query history', () => {
     expect(locationItems[2]).toHaveTextContent('0');
   });
 
+  it('renders trace diagnostics in English when the UI language is English', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-TRACE-EN')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+        {
+          title: 'Broker 存储',
+          timestamp: '2026-07-31T00:00:01.600Z',
+          costTime: 720,
+          status: 'finish',
+          description: 'broker persisted the message',
+        },
+        {
+          title: 'Consumer 消费',
+          timestamp: '2026-07-31T00:00:02.100Z',
+          costTime: 6200,
+          status: 'error',
+          description: 'consumer returned failure',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('Query by Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('Enter message ID'), 'MID-TRACE-EN');
+    await user.click(screen.getByRole('button', { name: /^searchQuery$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-TRACE-EN/ });
+    await user.click(within(row).getByRole('button', { name: /Trace/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Message Detail' });
+    expect(await within(dialog).findByText('Trace Diagnostics')).toBeInTheDocument();
+    expect(within(dialog).getByText('Delivery Critical')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('Trace stage failed')).not.toHaveLength(0);
+    expect(
+      within(dialog).getByText(/Check the producer, broker, or consumer logs/),
+    ).toBeInTheDocument();
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
       { ...createMessage('MID-NO-LOCATION'), brokerName: null, queueId: null, queueOffset: null },
     ]);

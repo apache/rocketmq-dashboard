@@ -104,6 +104,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
+import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -303,6 +304,7 @@ const ConsumerPageContent = ({
   );
   const [showOnlyInconsistent, setShowOnlyInconsistent] = useState(false);
   const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+  const [progressErrorByGroup, setProgressErrorByGroup] = useState<Record<string, boolean>>({});
   const [stackModalOpen, setStackModalOpen] = useState(false);
   const [stackLoading, setStackLoading] = useState(false);
   const [selectedStack, setSelectedStack] = useState<ConsumerStackTrace | null>(null);
@@ -317,6 +319,7 @@ const ConsumerPageContent = ({
   const [exporting, setExporting] = useState(false);
 
   const groupRequestIdRef = useRef(0);
+  const progressRequestIdRef = useRef<Record<string, number>>({});
   const subscriptionRequestIdRef = useRef<Record<string, number>>({});
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
@@ -407,12 +410,14 @@ const ConsumerPageContent = ({
   }, [autoRefresh, selectedInstanceId, triggerRefresh]);
 
   const loadSubscriptions = useCallback(
-    async (groupName: string, force = false) => {
+    async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && subscriptionsByGroup[cacheKey]) return;
       const requestId = (subscriptionRequestIdRef.current[cacheKey] ?? 0) + 1;
       subscriptionRequestIdRef.current[cacheKey] = requestId;
-      setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+      if (!silent) {
+        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+      }
       setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
       try {
         const subscriptions = await getConsumerSubscriptions(
@@ -425,10 +430,12 @@ const ConsumerPageContent = ({
       } catch {
         if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
           setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
-          message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+          if (!silent) {
+            message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+          }
         }
       } finally {
-        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
           setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
         }
       }
@@ -440,11 +447,23 @@ const ConsumerPageContent = ({
     async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && progressByGroup[cacheKey]) return;
+      const requestId = (progressRequestIdRef.current[cacheKey] ?? 0) + 1;
+      progressRequestIdRef.current[cacheKey] = requestId;
       try {
         const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
-        setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
+        if (progressRequestIdRef.current[cacheKey] === requestId) {
+          setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
+          setProgressErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        }
       } catch {
-        if (!silent) message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        // A failed read is not an empty result: the progress tab and the health
+        // diagnosis must not present it as "the group is offline". A stale request
+        // must not write the flag either, or it could mark a group as failed after
+        // a newer read already succeeded.
+        if (progressRequestIdRef.current[cacheKey] === requestId) {
+          setProgressErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+          if (!silent) message.error(t('consumer.fetchProgressFailed', { name: groupName }));
+        }
       }
     },
     [progressByGroup, t, selectedInstanceId],
@@ -464,6 +483,10 @@ const ConsumerPageContent = ({
           setSelectedGroup((prev) => (prev && prev.name === groupName ? refreshed : prev));
         }
         await loadProgress(groupName, true, true);
+        // The modal advertises "每 2s 自动刷新" for the whole diagnostic result, which includes
+        // the subscription consistency verdict, not only the progress table. Refresh it silently
+        // so a failing backend does not toast every 2s and the check spinner does not flicker.
+        await loadSubscriptions(groupName, true, true);
       } catch {
         // 自动刷新失败静默处理，避免每 2s 弹错
       } finally {
@@ -472,7 +495,7 @@ const ConsumerPageContent = ({
     };
     const interval = window.setInterval(() => void tick(), 2000);
     return () => window.clearInterval(interval);
-  }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress]);
+  }, [modalOpen, selectedGroupName, selectedInstanceId, loadProgress, loadSubscriptions]);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -641,6 +664,7 @@ const ConsumerPageContent = ({
     () => (selectedGroupName ? (progressByGroup[selectedDiagnosticKey] ?? []) : []),
     [progressByGroup, selectedDiagnosticKey, selectedGroupName],
   );
+  const selectedProgressFailed = Boolean(progressErrorByGroup[selectedDiagnosticKey]);
   const progressTopicOptions = useMemo(
     () => Array.from(new Set(selectedProgress.map((q) => q.topic).filter(Boolean))).sort(),
     [selectedProgress],
@@ -670,6 +694,9 @@ const ConsumerPageContent = ({
         : null,
     [selectedGroup, selectedProgress, selectedSubscriptions],
   );
+  // A failed progress read leaves the queues unknown; the diagnosis stays useful
+  // for the loaded data but must never read as "everything is healthy".
+  const selectedGroupHealthIsPartial = selectedProgressFailed && selectedSubscriptions.length > 0;
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
@@ -948,7 +975,9 @@ const ConsumerPageContent = ({
       key: 'onlineInstances',
       width: 100,
       align: 'center',
-      sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
+      sorter: (a, b) =>
+        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
+      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
     },
     {
       title: '总堆积量',
@@ -1438,10 +1467,12 @@ const ConsumerPageContent = ({
             allowClear
             value={search}
             onChange={(e) => {
+              setSelectedRowKeys([]);
               setSearch(e.target.value);
               setPage(1);
             }}
             onSearch={(value) => {
+              setSelectedRowKeys([]);
               setSearch(value);
               setPage(1);
             }}
@@ -1450,7 +1481,10 @@ const ConsumerPageContent = ({
           />
           <Select
             value={modeFilter}
-            onChange={setModeFilter}
+            onChange={(value) => {
+              setSelectedRowKeys([]);
+              setModeFilter(value);
+            }}
             style={{ width: 140 }}
             options={[
               { value: 'ALL', label: '全部模式' },
@@ -1560,6 +1594,7 @@ const ConsumerPageContent = ({
             showTotal: (total) => `共 ${total} 个 Group`,
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
+              setSelectedRowKeys([]);
               setPage(nextPage);
               setPageSize(nextPageSize);
             },
@@ -1653,6 +1688,9 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="在线实例"
                             value={selectedGroup.onlineInstances}
+                            formatter={(value) =>
+                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                            }
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
                           />
@@ -1897,6 +1935,14 @@ const ConsumerPageContent = ({
                       />
                     )}
 
+                    {selectedGroupHealthIsPartial && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="消费进度加载失败，诊断未包含队列进度。"
+                      />
+                    )}
+
                     <Row gutter={16}>
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
@@ -1962,11 +2008,16 @@ const ConsumerPageContent = ({
                           <Statistic
                             title="客户端"
                             value={selectedGroupHealth.summary.onlineInstances}
+                            formatter={(value) =>
+                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                            }
                           />
                           <Text type="secondary">
-                            {selectedGroupHealth.summary.staleClientCount > 0
-                              ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                              : '心跳状态正常'}
+                            {selectedGroupHealth.summary.onlineInstances < 0
+                              ? '客户端连接信息不可用'
+                              : selectedGroupHealth.summary.staleClientCount > 0
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
+                                : '心跳状态正常'}
                           </Text>
                         </Card>
                       </Col>
@@ -2014,6 +2065,15 @@ const ConsumerPageContent = ({
                 ),
                 children: (
                   <div>
+                    {selectedProgressFailed && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message="消费进度加载失败，无法判断消费组是否在线"
+                        description="队列进度与堆积统计暂不可用，请稍后重试。"
+                      />
+                    )}
                     {progressTopicOptions.length > 0 && (
                       <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
                         <Text type="secondary">Topic 筛选:</Text>
@@ -2081,7 +2141,12 @@ const ConsumerPageContent = ({
                       size="small"
                       tableLayout="fixed"
                       scroll={{ x: tableScrollX(queueColumns), y: 380 }}
-                      locale={{ emptyText: '消费组不在线，暂无队列进度数据' }}
+                      locale={{
+                        emptyText: selectedProgressFailed
+                          ? // A failed read must not assert that the group is offline.
+                            '队列进度暂不可用'
+                          : '消费组不在线，暂无队列进度数据',
+                      }}
                     />
                   </div>
                 ),

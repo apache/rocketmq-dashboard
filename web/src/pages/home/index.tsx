@@ -17,25 +17,21 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RobotOutlined } from '@ant-design/icons';
-import { Select, ConfigProvider, theme } from 'antd';
+import { ConfigProvider, theme, App } from 'antd';
 import {
   Stethoscope,
   ChatCircleDots,
-  ClockCounterClockwise,
-  SlidersHorizontal,
-  Sparkle,
   Microphone,
-  ArrowUp,
   MagnifyingGlass,
-  CaretDown,
   MegaphoneSimple,
   Database,
 } from '@phosphor-icons/react';
-import { getLlmConfig } from '../../api/llm';
+import { getLlmConfig, type LlmConfig } from '../../api/llm';
 import { useEngineStore } from '../../stores/engineStore';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useLang } from '../../i18n/LangContext';
+import Composer from '../ai/components/Composer';
+import type { ChatMode } from '../ai/chatDraft';
 
 /* ─── Time-aware greeting key ─── */
 function getGreetingKey(): string {
@@ -60,12 +56,6 @@ interface ModelOption {
   recommended: boolean;
 }
 
-const ENGINE_OPTIONS = [
-  { value: 'claude-code', label: 'Claude Code' },
-  { value: 'qoder', label: 'Qoder' },
-  { value: 'http', label: 'HTTP' },
-];
-
 const ROCKETMQ_DOCS_URL = 'https://rocketmq.apache.org/docs/';
 const ROCKETMQ_COMMUNITY_URL = 'https://rocketmq.apache.org/';
 
@@ -74,6 +64,11 @@ const HOME_MODELS = [
   'qwen3.8-max',
   'qwen3.7-max',
   'qwen3.7-plus',
+  'gpt-5',
+  'gpt-5.1',
+  'claude-fable-5',
+  'claude-opus-5',
+  'claude-sonnet-5',
   'deepseek-v4-pro',
   'deepseek-v4-flash',
   'MiniMax-M2.5',
@@ -90,13 +85,20 @@ const HomePage = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const engine = useEngineStore((s) => s.engine);
   const setEnginePreference = useEngineStore((s) => s.setEngine);
+  const useMock = useDataModeStore((s) => s.useMock);
   const [promoteOn, setPromoteOn] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeBarRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { t, lang } = useLang();
+  const { message } = App.useApp();
+
+  // Mirrors useLlmRuntime's formula on the AI page: the provider answers and a model is chosen.
+  // Mock mode counts as ready — the handoff only navigates, the AI page explains mock mode.
+  const homeLlmReady =
+    useMock || Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,12 +111,13 @@ const HomePage = () => {
           HOME_MODELS.map((value) => ({ value, recommended: value === RECOMMENDED_MODEL })),
         );
         setSelectedModel((current) =>
-          current && HOME_MODELS.includes(current) ? current : HOME_MODELS[0] || '',
+          current && HOME_MODELS.includes(current) ? current : RECOMMENDED_MODEL,
         );
         return;
       }
       const config = await getLlmConfig().catch(() => null);
       if (cancelled) return;
+      setLlmConfig(config);
 
       const configuredModel = config?.model?.trim() ?? '';
       const values = Array.from(
@@ -127,15 +130,11 @@ const HomePage = () => {
       setModelOptions(
         values.map((value) => ({
           value,
-          recommended:
-            value ===
-            (configuredModel && HOME_MODELS.includes(configuredModel)
-              ? configuredModel
-              : RECOMMENDED_MODEL),
+          recommended: value === RECOMMENDED_MODEL,
         })),
       );
       setSelectedModel((current) =>
-        current && values.includes(current) ? current : configuredModel || values[0] || '',
+        current && values.includes(current) ? current : RECOMMENDED_MODEL,
       );
     };
 
@@ -175,33 +174,12 @@ const HomePage = () => {
     }
   }, [lang, activeMode]);
 
-  /* ─── Auto-resize textarea ─── */
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const handler = () => {
-      ta.style.height = 'auto';
-      ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
-    };
-    ta.addEventListener('input', handler);
-    return () => ta.removeEventListener('input', handler);
-  }, []);
-
-  /* ─── Keyboard shortcut: Enter to send ─── */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handlePromptSubmit();
-    }
-  };
-
   const handleEngineChange = (value: string) => {
     setEnginePreference(value as 'claude-code' | 'qoder' | 'http');
   };
 
-  const handlePromptSubmit = () => {
-    const prompt = inputValue.trim();
+  const handlePromptSubmit = (text: string) => {
+    const prompt = text.trim();
     navigate('/ai', {
       state: prompt
         ? {
@@ -430,134 +408,57 @@ const HomePage = () => {
                 </div>
               </div>
 
-              {/* Main Input Box */}
-              <div className="relative overflow-visible border-[1.5px] backdrop-blur-xl border-white mx-auto rounded-2xl bg-white/80 shadow-[0_20px_60px_-20px_rgba(80,90,180,0.18)]">
-                {/* Model Selector & History */}
-                <div className="flex items-center justify-between gap-3 px-3.5 pt-4">
-                  <div className="flex flex-1 min-w-0 items-center gap-2">
-                    <Select
-                      size="small"
-                      value={selectedModel || undefined}
-                      onChange={(val) => setSelectedModel(val)}
-                      disabled={modelOptions.length === 0}
-                      placeholder={lang === 'zh' ? '选择模型' : 'Select model'}
-                      notFoundContent={lang === 'zh' ? '未配置模型' : 'No configured models'}
-                      options={modelOptions.map((m) => ({
-                        value: m.value,
-                        label: m.recommended ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            {m.value}
-                            <span className="px-1 py-0.5 rounded text-[0.625rem] leading-none bg-purple-50 text-purple-600 font-medium">
-                              {lang === 'zh' ? '推荐' : 'Rec.'}
-                            </span>
-                          </span>
-                        ) : (
-                          m.value
-                        ),
-                      }))}
-                      variant="borderless"
-                      popupMatchSelectWidth={false}
-                      suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
-                      className="model-selector"
-                      style={{ fontSize: '0.893rem' }}
-                    />
-                    <Select
-                      size="small"
-                      value={engine}
-                      onChange={(val) => void handleEngineChange(val)}
-                      options={ENGINE_OPTIONS}
-                      variant="borderless"
-                      popupMatchSelectWidth={false}
-                      suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
-                      title={lang === 'zh' ? '执行引擎' : 'Agent engine'}
-                      style={{ fontSize: '0.893rem', minWidth: 110 }}
-                    />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
-                      aria-label={t('ai.history.title')}
-                      title={t('ai.history.title')}
-                      onClick={handleHistoryOpen}
-                    >
-                      <ClockCounterClockwise size={20} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Textarea */}
-                <div className="relative flex flex-col">
-                  <textarea
-                    ref={textareaRef}
-                    className="chat-input"
-                    placeholder="向 RocketMQ Bot 提问，全程加密、安全、可信"
-                    value={inputValue}
-                    onChange={(event) => setInputValue(event.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                  <RobotOutlined
-                    className="text-gray-400"
-                    style={{
-                      position: 'absolute',
-                      top: 18,
-                      left: 26,
-                      fontSize: 17,
-                    }}
-                  />
-                </div>
-
-                {/* Bottom Toolbar */}
-                <div className="flex justify-between text-sm items-center px-3.5 py-3 border-t border-gray-100/80">
-                  <div className="flex flex-1 gap-1 items-center min-w-0">
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
-                          <button className="tool-btn">
-                            <SlidersHorizontal size={17} />
-                            <span>工具</span>
-                          </button>
-                          <button
-                            className="tool-btn"
-                            onClick={() => setPromoteOn((current) => !current)}
-                            title={
-                              lang === 'zh'
-                                ? '开启后，提交前用 LLM 把提问改写为结构化 prompt'
-                                : 'When enabled, rewrite your prompt with an LLM before sending'
-                            }
-                            style={
-                              promoteOn
-                                ? {
-                                    background: '#f9f0ff',
-                                    color: '#722ed1',
-                                    boxShadow: 'inset 0 0 0 1px #d3adf7',
-                                  }
-                                : undefined
-                            }
-                          >
-                            <Sparkle size={17} weight={promoteOn ? 'fill' : 'regular'} />
-                            <span>Prompt 增强</span>
-                          </button>
-                          <button
-                            className="tool-btn"
-                            style={{ minHeight: 30, minWidth: 32, padding: 6 }}
-                          >
-                            <Microphone size={17} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="shrink-0 flex items-center gap-1">
-                        <button
-                          className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                          onClick={handlePromptSubmit}
-                        >
-                          <ArrowUp size={19} weight="bold" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* Main Input Box — the SAME Composer component as the AI page, so the input
+                  panel has one source of truth; home-specific bits are props. */}
+              <Composer
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={handlePromptSubmit}
+                onStop={() => undefined}
+                isStreaming={false}
+                stopRequested={false}
+                llmReady={homeLlmReady}
+                llmConfig={llmConfig}
+                model={selectedModel}
+                modelOptions={modelOptions.map((m) => ({
+                  value: m.value,
+                  label: m.value,
+                  recommended: m.recommended,
+                }))}
+                modelsLoading={modelOptions.length === 0}
+                onModelChange={setSelectedModel}
+                engine={engine}
+                onEngineChange={(value) => handleEngineChange(value)}
+                mode={activeMode as ChatMode}
+                onModeChange={(mode) => setActiveMode(mode)}
+                enhance={promoteOn}
+                onEnhanceChange={setPromoteOn}
+                onOpenTools={() => navigate('/ai', { state: { toolsIntent: 'open' } })}
+                onOpenHistory={handleHistoryOpen}
+                showQuickActions={false}
+                showContextBar={false}
+                showModeSelect={false}
+                showTemplates={false}
+                panelBorderless
+                placeholder={
+                  lang === 'zh'
+                    ? '向 RocketMQ Bot 提问，全程加密、安全、可信'
+                    : 'Ask RocketMQ Bot — encrypted, secure, trusted'
+                }
+                toolbarExtra={
+                  <button
+                    type="button"
+                    className="tool-btn"
+                    style={{ minHeight: 30, minWidth: 32, padding: 6 }}
+                    title={
+                      lang === 'zh' ? '语音输入（暂未支持）' : 'Voice input (not supported yet)'
+                    }
+                    onClick={() => message.info(t('home.voiceNotSupported'))}
+                  >
+                    <Microphone size={17} />
+                  </button>
+                }
+              />
             </div>
           </div>
         </div>

@@ -73,7 +73,7 @@ func TestCatalogMutationRoundTrip(t *testing.T) {
 		instanceKey: "instance-dev", "topicName": "orders", "writeQueues": float64(8), "dry_run": true,
 	}
 	if call.method != http.MethodPost || call.path != "/api/mcp/tools/call" ||
-		!strings.HasPrefix(call.authorization, "RMQ-HMAC-SHA256 Credential=test-ak, Signature=") ||
+		!strings.HasPrefix(call.authorization, "rmq-hmac-sha256 Credential=test-ak, Signature=") ||
 		!reflect.DeepEqual(call.request.Arguments, wantArguments) {
 		t.Fatalf("unexpected preview request: %#v", call)
 	}
@@ -244,7 +244,7 @@ func TestCatalogPassesExplicitInstanceIDToArgumentsAndHeader(t *testing.T) {
 	if value := call.request.Arguments[instanceKey]; value != "instance-profile" {
 		t.Fatalf("%s = %v, want the explicit --instance-id value", instanceKey, value)
 	}
-	if !strings.HasPrefix(call.authorization, "RMQ-HMAC-SHA256 Credential=test-ak, Signature=") {
+	if !strings.HasPrefix(call.authorization, "rmq-hmac-sha256 Credential=test-ak, Signature=") {
 		t.Fatalf("authorization = %q, want HMAC signature", call.authorization)
 	}
 }
@@ -325,5 +325,63 @@ func TestCatalogInteractiveConfirmAcceptsYes(t *testing.T) {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil || result["status"] != "EXECUTED" {
 		t.Fatalf("expected only JSON result in stdout: %s, err=%v", stdout, err)
+	}
+}
+
+// TestCatalogInteractiveConfirmAutoFetchesToken verifies that after the user
+// answers the interactive confirmation prompt, the client transparently runs
+// the dry-run preview to obtain the confirm_token: the server rejects any
+// non-dry-run mutation without a token, so without this the "Type yes to
+// continue" flow would always end in CONFIRMATION_TOKEN_REQUIRED.
+func TestCatalogInteractiveConfirmAutoFetchesToken(t *testing.T) {
+	const confirmToken = "interactive-confirmation"
+	instanceKey := catalogInstanceArgumentKey(t, "rmq.topic.update")
+	observed := make(chan observedToolCall, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request types.ToolCallRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		observed <- observedToolCall{r.Method, r.URL.Path, r.Header.Get("Authorization"), request}
+		mutation := map[string]any{
+			"status":        "PLANNED",
+			"instanceId":    request.Arguments[instanceKey],
+			"plan":          map[string]any{"summary": "Update topic orders"},
+			"confirm_token": confirmToken,
+		}
+		if dryRun, ok := request.Arguments["dry_run"]; !ok || dryRun != true {
+			mutation["status"] = "EXECUTED"
+			mutation["result"] = map[string]any{"topic": request.Arguments["topicName"]}
+		}
+		writeStudioSuccess(t, w, mutation)
+	}))
+	defer server.Close()
+
+	stdout, stderr, exitCode := executeTestAppWithStdin(t, server.Client(), server.URL, "dev",
+		"yes\n",
+		"--output", "json",
+		"topic", "update", "--topic-name", "orders", "--write-queues", "8",
+	)
+	if exitCode != 0 {
+		t.Fatalf("interactive confirm should proceed: exit=%d stderr=%s", exitCode, stderr)
+	}
+	if !strings.Contains(stderr, "Type \"yes\" to continue:") {
+		t.Fatalf("expected confirmation prompt in stderr: %s", stderr)
+	}
+
+	preview := <-observed
+	if preview.request.Arguments["dry_run"] != true ||
+		preview.request.Arguments["confirm_token"] != nil {
+		t.Fatalf("expected an auto dry-run preview first: %#v", preview.request)
+	}
+	applyCall := <-observed
+	if applyCall.request.Arguments["dry_run"] != nil ||
+		applyCall.request.Arguments["confirm_token"] != confirmToken {
+		t.Fatalf("expected the apply call to carry the auto-fetched token: %#v", applyCall.request)
+	}
+	var apply map[string]any
+	if err := json.Unmarshal([]byte(stdout), &apply); err != nil || apply["status"] != "EXECUTED" {
+		t.Fatalf("unexpected apply output: %#v, err=%v", apply, err)
 	}
 }

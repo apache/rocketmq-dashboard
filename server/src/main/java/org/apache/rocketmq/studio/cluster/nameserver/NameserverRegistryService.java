@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.nameserver;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
@@ -36,6 +37,16 @@ public class NameserverRegistryService {
         return nameserverMapper.selectList(new QueryWrapper<RmqNameserver>().orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
+    }
+
+    public String requireRegisteredAddress(String rawAddress) {
+        String normalized = NamesrvAddrParser.normalize(rawAddress);
+        Long matches = nameserverMapper.selectCount(new QueryWrapper<RmqNameserver>()
+                .eq("namesrv_addr", normalized));
+        if (matches == null || matches == 0L) {
+            throw new BusinessException(404, "NameServer endpoint is not registered: " + normalized);
+        }
+        return normalized;
     }
 
     public NameserverRegistryVO create(CreateNameserverRegistryDTO command) {
@@ -90,6 +101,7 @@ public class NameserverRegistryService {
             // The unique index is the final guard against concurrent rename collisions.
             throw duplicateName(name);
         }
+        clearOmittedOptionalColumns(entity);
         RmqNameserver stored = nameserverMapper.selectById(entity.getId());
         if (stored == null) {
             // The row vanished between the update and the reload; do not convert null to a VO.
@@ -140,5 +152,32 @@ public class NameserverRegistryService {
                 .gmtCreate(entity.getGmtCreate())
                 .gmtModified(entity.getGmtModified())
                 .build();
+    }
+
+    /**
+     * The registry update replaces every editable field of the entry, but MyBatis-Plus
+     * {@code updateById} omits null entity fields. An omitted k8s namespace, k8s id or
+     * description would therefore silently keep its previous value even though the request
+     * submitted no value for it; assign those columns explicitly so the stored entry matches
+     * what the request asked for.
+     */
+    private void clearOmittedOptionalColumns(RmqNameserver entity) {
+        UpdateWrapper<RmqNameserver> cleared = new UpdateWrapper<>();
+        boolean anyCleared = false;
+        if (entity.getK8sNamespace() == null) {
+            cleared.set("k8s_namespace", null);
+            anyCleared = true;
+        }
+        if (entity.getK8sId() == null) {
+            cleared.set("k8s_id", null);
+            anyCleared = true;
+        }
+        if (entity.getDescription() == null) {
+            cleared.set("description", null);
+            anyCleared = true;
+        }
+        if (anyCleared) {
+            nameserverMapper.update(null, cleared.eq("id", entity.getId()));
+        }
     }
 }

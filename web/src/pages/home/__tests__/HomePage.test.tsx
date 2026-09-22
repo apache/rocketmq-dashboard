@@ -78,7 +78,7 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
-  it('selects the model saved in the LLM configuration', async () => {
+  it('defaults to the recommended model even when another model is saved', async () => {
     llmApiMocks.getLlmConfig.mockResolvedValue({
       provider: 'deepseek',
       apiBase: 'https://api.deepseek.com/v1',
@@ -90,7 +90,7 @@ describe('HomePage LLM models', () => {
     });
     const user = userEvent.setup();
     renderHome();
-    await screen.findByText('deepseek-v4-flash');
+    await screen.findByText('qwen3.8-max');
 
     await user.type(
       screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
@@ -99,9 +99,37 @@ describe('HomePage LLM models', () => {
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/ai', {
-        state: expect.objectContaining({ model: 'deepseek-v4-flash' }),
+        state: expect.objectContaining({ model: 'qwen3.8-max' }),
       });
     });
+  });
+
+  it('keeps the recommended badge on qwen3.8-max when another model is saved', async () => {
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'tongyi',
+      apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen3.7-max',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      ready: true,
+    });
+    const user = userEvent.setup();
+    const { container } = renderHome();
+    await screen.findByText('qwen3.8-max');
+
+    const selector = container.querySelector('.model-selector .ant-select-selector');
+    expect(selector).not.toBeNull();
+    await user.click(selector as Element);
+
+    const optionText = (model: string) =>
+      Array.from(document.querySelectorAll('.ant-select-item-option'))
+        .map((el) => el.textContent ?? '')
+        .find((text) => text.includes(model));
+
+    await waitFor(() => expect(optionText('qwen3.7-max')).toBeDefined());
+    expect(optionText('qwen3.8-max')).toContain('推荐');
+    expect(optionText('qwen3.7-max')).not.toContain('推荐');
   });
 
   it('does not fetch LLM config in Mock mode', async () => {

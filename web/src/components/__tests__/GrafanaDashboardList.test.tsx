@@ -171,6 +171,34 @@ describe('GrafanaDashboardList', () => {
     expect(within(dialog).getByText(/"uid": "rocketmq-overview"/)).toBeInTheDocument();
   });
 
+  it('renders a failed preview as an error with a retry instead of an empty pane', async () => {
+    vi.mocked(getGrafanaDashboard)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(dashboardModel);
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const viewButtons = screen.getAllByRole('button', { name: /View|查看/ });
+    await userEvent.click(viewButtons[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    const retryButton = await within(dialog).findByRole('button', { name: /Retry|重试/ });
+    expect(getGrafanaDashboard).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(retryButton);
+
+    expect(await within(dialog).findByText(/"uid": "rocketmq-overview"/)).toBeInTheDocument();
+    expect(getGrafanaDashboard).toHaveBeenCalledTimes(2);
+    expect(within(dialog).queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
+  });
+
   it('keeps the latest preview when an earlier request resolves last', async () => {
     let resolveOverview!: (value: typeof dashboardModel) => void;
     let resolveBroker!: (value: typeof dashboardModel) => void;

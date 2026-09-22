@@ -67,7 +67,7 @@ describe('NotificationDeliveriesPage', () => {
   });
 
   it('retries a failed delivery from the list and refreshes its status', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <LangProvider>
@@ -145,7 +145,7 @@ describe('NotificationDeliveriesPage', () => {
             size: 20,
           },
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <LangProvider>
@@ -167,6 +167,32 @@ describe('NotificationDeliveriesPage', () => {
     expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
+    );
+  });
+
+  it('surfaces a failed instance-list load with a retry instead of an empty filter', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(listInstances)
+      .mockRejectedValueOnce(new Error('the instance service is down'))
+      .mockResolvedValueOnce([]);
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    // An empty instance filter reads as "this deployment has no instances", which is not something a
+    // failed request can establish. The retry is the affordance the silent catch never offered.
+    const retry = await screen.findByRole('button', { name: /^重\s*试$/ });
+
+    await user.click(retry);
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
     );
   });
 });

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	HMACAlgorithm   = "RMQ-HMAC-SHA256"
+	HMACAlgorithm   = "rmq-hmac-sha256"
 	HeaderInstance  = "x-rmq-instance-id"
 	HeaderTimestamp = "x-rmq-timestamp"
 )
@@ -117,4 +117,20 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// isPrivateHost reports whether host is a loopback, RFC1918 private-network,
+// or link-local address. Plain HTTP is permitted for these non-routable,
+// trusted networks (local development and same-VPC/intranet deployments);
+// public endpoints must still use HTTPS so that HMAC credentials are never
+// transmitted in the clear over the Internet.
+func isPrivateHost(host string) bool {
+	if isLoopbackHost(host) {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }

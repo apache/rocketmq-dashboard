@@ -53,20 +53,22 @@ class ProducerConnectionServiceTest {
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
                 .build();
-        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
-                .thenReturn(List.of(producer));
+        when(clientProvider.scanProducerConnections("instance-1", "order-topic", "pg-order"))
+                .thenReturn(ProducerConnectionScanResult.complete(List.of(producer)));
 
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+        ProducerConnectionResultVO result = producerConnectionService.listConnections(
                 "instance-1", "order-topic", "pg-order");
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
-        assertThat(result.get(0).getClientAddr()).isEqualTo("10.0.0.1:38888");
-        assertThat(result.get(0).getTopic()).isEqualTo("order-topic");
-        assertThat(result.get(0).getProducerGroup()).isEqualTo("pg-order");
-        assertThat(result.get(0).getLanguage()).isEqualTo("Java");
-        assertThat(result.get(0).getVersionDesc()).isEqualTo("5.1.0");
-        verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
+        assertThat(result.getConnectionSet()).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("producer-1");
+            assertThat(connection.getClientAddr()).isEqualTo("10.0.0.1:38888");
+            assertThat(connection.getTopic()).isEqualTo("order-topic");
+            assertThat(connection.getProducerGroup()).isEqualTo("pg-order");
+            assertThat(connection.getLanguage()).isEqualTo("Java");
+            assertThat(connection.getVersionDesc()).isEqualTo("5.1.0");
+        });
+        assertThat(result.isComplete()).isTrue();
+        verify(clientProvider).scanProducerConnections("instance-1", "order-topic", "pg-order");
     }
 
     @Test
@@ -80,25 +82,41 @@ class ProducerConnectionServiceTest {
 
     @Test
     void listConnectionsShouldAllowMissingProducerGroupForAllGroupScan() {
-        when(clientProvider.findProducerConnections("instance-1", "order-topic", null))
-                .thenReturn(List.of());
+        when(clientProvider.scanProducerConnections("instance-1", "order-topic", null))
+                .thenReturn(ProducerConnectionScanResult.complete(List.of()));
 
-        List<ProducerConnectionVO> result =
+        ProducerConnectionResultVO result =
                 producerConnectionService.listConnections("instance-1", "order-topic", " ");
 
-        assertThat(result).isEmpty();
-        verify(clientProvider).findProducerConnections("instance-1", "order-topic", null);
+        assertThat(result.getConnectionSet()).isEmpty();
+        verify(clientProvider).scanProducerConnections("instance-1", "order-topic", null);
     }
 
     @Test
     void listConnectionsShouldTrimRequiredValues() {
-        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
-                .thenReturn(List.of());
+        when(clientProvider.scanProducerConnections("instance-1", "order-topic", "pg-order"))
+                .thenReturn(ProducerConnectionScanResult.complete(List.of()));
 
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+        ProducerConnectionResultVO result = producerConnectionService.listConnections(
                 " instance-1 ", " order-topic ", " pg-order ");
-        assertThat(result).isEmpty();
-        verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
+        assertThat(result.getConnectionSet()).isEmpty();
+        verify(clientProvider).scanProducerConnections("instance-1", "order-topic", "pg-order");
+    }
+
+    @Test
+    void listConnectionsShouldPreservePartialScanMetadataTest() {
+        when(clientProvider.scanProducerConnections("instance-1", "order-topic", null))
+                .thenReturn(new ProducerConnectionScanResult(
+                        List.of(), List.of("broker-a:10911"), List.of("pg-orders")));
+
+        ProducerConnectionResultVO result =
+                producerConnectionService.listConnections("instance-1", "order-topic", null);
+
+        assertThat(result.isComplete()).isFalse();
+        assertThat(result.getFailedBrokers()).containsExactly("broker-a:10911");
+        assertThat(result.getFailedProducerGroups()).containsExactly("pg-orders");
+        assertThat(result.getSummary().getWarnings())
+                .contains(ProducerConnectionSummaryVO.INCOMPLETE_SCAN);
     }
 
     @Test

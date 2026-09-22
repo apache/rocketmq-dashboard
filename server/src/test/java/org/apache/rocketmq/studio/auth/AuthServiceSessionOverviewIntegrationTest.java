@@ -56,7 +56,10 @@ class AuthServiceSessionOverviewIntegrationTest {
 
     @Test
     void sessionOverviewAggregatesEveryBucketFromOneExecutedQueryTest() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // Whole seconds on purpose: the session columns are `datetime` without fractional precision and
+        // MySQL ROUNDS on insert, so a sub-second `now` shifts every stored timestamp by up to a
+        // second and the exact idle/remaining bounds asserted below flip by one with the clock.
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).withNano(0);
         RmqStudioUser user = new RmqStudioUser();
         user.setUsername("session-overview-it-" + System.nanoTime());
         user.setPasswordHash("not-a-real-password-hash");
@@ -96,7 +99,10 @@ class AuthServiceSessionOverviewIntegrationTest {
 
     @Test
     void listActiveSessionsForUserReturnsOnlyThatUsersActiveSessionDetailsTest() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // Whole seconds on purpose: the session columns are `datetime` without fractional precision and
+        // MySQL ROUNDS on insert, so a sub-second `now` shifts every stored timestamp by up to a
+        // second and the exact idle/remaining bounds asserted below flip by one with the clock.
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).withNano(0);
         RmqStudioUser user = studioUser("session-detail-it-" + System.nanoTime(), now);
         RmqStudioUser otherUser = studioUser("other-session-detail-it-" + System.nanoTime(), now);
         userMapper.insert(user);

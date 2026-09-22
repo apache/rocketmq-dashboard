@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Modal, message } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -45,7 +45,6 @@ import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
 import { logout as requestLogout } from '../api/auth';
 import useAuthStore from '../stores/authStore';
-import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import {
   filterNavigationEntries,
   isNavigationSearchShortcut,
@@ -74,9 +73,11 @@ const MainLayout = () => {
   const [searchText, setSearchText] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
   const admin = useAuthStore((state) => state.admin);
+  const username = useAuthStore((state) => state.user);
   const useMock = useDataModeStore((state) => state.useMock);
   const toggleDataMode = useDataModeStore((state) => state.toggle);
   const [capabilityState, setCapabilityState] = useState<{
@@ -91,6 +92,10 @@ const MainLayout = () => {
   };
 
   const handleUserMenuClick = async ({ key }: { key: string }) => {
+    if (key === 'dataMode') {
+      handleDataModeToggle();
+      return;
+    }
     if (key === 'profile') {
       navigate('/settings');
       return;
@@ -106,7 +111,6 @@ const MainLayout = () => {
     } catch {
       message.warning('服务端退出失败，已清除本地登录状态');
     } finally {
-      clearAiChatHistories();
       clearAuth();
       navigate('/login', { replace: true });
     }
@@ -304,6 +308,12 @@ const MainLayout = () => {
           if (isInstanceIdSegment) {
             return null;
           }
+          // Same for the AI conversation path (/ai/c/<id>): everything after /ai is
+          // conversation identity, not a navigation level.
+          const isAiConversationSegment = index >= 1 && pathSnippets[0] === 'ai';
+          if (isAiConversationSegment) {
+            return null;
+          }
           const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
           const leafTitle = isSectionLeaf
             ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
@@ -322,6 +332,23 @@ const MainLayout = () => {
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
       ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
+      {
+        key: 'dataMode',
+        icon: (
+          <span
+            aria-hidden
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: useMock ? '#faad14' : '#52c41a',
+              display: 'inline-block',
+            }}
+          />
+        ),
+        label: `${t('layout.dataMode')}: ${useMock ? 'Mock' : 'Real'}`,
+        title: useMock ? t('layout.switchToRealData') : t('layout.switchToMockData'),
+      },
       { type: 'divider' as const },
       { key: 'logout', label: t('user.logout'), danger: true },
     ],
@@ -331,6 +358,17 @@ const MainLayout = () => {
   const siderBg = darkMode ? '#2a2a2e' : '#ffffff';
   const topBarBg = darkMode ? 'rgba(42,42,46,0.85)' : 'rgba(255,255,255,0.7)';
   const logoColor = darkMode ? '#e5e5e5' : '#1b1b1a';
+  const kbdStyle: CSSProperties = {
+    fontSize: 12,
+    lineHeight: '18px',
+    padding: '0 6px',
+    borderRadius: 6,
+    background: darkMode ? '#333' : '#f5f5f5',
+    border: `1px solid ${borderColor}`,
+    color: darkMode ? '#a1a1aa' : '#9CA3AF',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+  };
   const navigationEntries: NavigationSearchEntry[] = useMemo(
     () =>
       menuItems
@@ -338,7 +376,37 @@ const MainLayout = () => {
         .map((item) => ({ key: String(item.key), label: String(item.label), icon: item.icon })),
     [menuItems],
   );
-  const searchResults = filterNavigationEntries(navigationEntries, searchText);
+  const filteredEntries = filterNavigationEntries(navigationEntries, searchText);
+  // Group filtered results by their navigation section for the grid layout; the
+  // top-level pages (home / audit / AI / settings) share a single "general" bucket.
+  const resultSections = useMemo(() => {
+    const matched = new Set(filteredEntries.map((entry) => entry.key));
+    const sections: { title: string; entries: NavigationSearchEntry[] }[] = [];
+    const general: NavigationSearchEntry[] = [];
+    for (const item of menuItems) {
+      if ('children' in item && item.children) {
+        const entries = item.children
+          .map((child) => ({
+            key: String(child.key),
+            label: String(child.label),
+            icon: child.icon,
+          }))
+          .filter((entry) => matched.has(entry.key));
+        if (entries.length > 0) sections.push({ title: String(item.label), entries });
+      } else {
+        const entry = { key: String(item.key), label: String(item.label), icon: item.icon };
+        if (matched.has(entry.key)) general.push(entry);
+      }
+    }
+    if (general.length > 0)
+      sections.unshift({ title: t('layout.searchGeneral'), entries: general });
+    return sections;
+  }, [menuItems, filteredEntries, t]);
+  // Keyboard navigation follows the visual (grouped) order.
+  const searchResults = useMemo(
+    () => resultSections.flatMap((section) => section.entries),
+    [resultSections],
+  );
   const isAiRoute = location.pathname === '/ai';
 
   return (
@@ -441,67 +509,22 @@ const MainLayout = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 12px',
-                  borderRadius: 6,
+                  gap: 8,
+                  width: 280,
+                  padding: '6px 8px 6px 14px',
+                  borderRadius: 999,
                   border: `1px solid ${borderColor}`,
                   cursor: 'pointer',
                   fontSize: 14,
                   color: '#9CA3AF',
-                  minWidth: 160,
-                  background: 'transparent',
+                  background: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
                   font: 'inherit',
-                }}
-              >
-                <MagnifyingGlass size={14} />
-                <span>{t('common.search')}</span>
-                <span
-                  style={{
-                    marginLeft: 'auto',
-                    fontSize: 14,
-                    padding: '1px 6px',
-                    borderRadius: 4,
-                    background: darkMode ? '#333' : '#f5f5f5',
-                    border: `1px solid ${borderColor}`,
-                  }}
-                >
-                  ⌘K
-                </span>
-              </button>
-
-              {/* Data mode toggle */}
-              <button
-                type="button"
-                aria-label={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
-                aria-pressed={useMock}
-                onClick={handleDataModeToggle}
-                style={{
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${borderColor}`,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: useMock ? '#d48806' : '#389e0d',
                   transition: 'all 0.2s',
-                  background: 'transparent',
-                  font: 'inherit',
                 }}
-                title={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
               >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: useMock ? '#faad14' : '#52c41a',
-                    display: 'inline-block',
-                  }}
-                />
-                {useMock ? 'Mock' : 'Real'}
+                <MagnifyingGlass size={15} />
+                <span style={{ flex: 1, textAlign: 'left' }}>{t('common.search')}</span>
+                <kbd style={kbdStyle}>⌘K</kbd>
               </button>
 
               {/* Language toggle */}
@@ -579,9 +602,15 @@ const MainLayout = () => {
                 >
                   <Avatar
                     size={28}
-                    style={{ backgroundColor: '#1677ff' }}
-                    icon={<UserGear size={16} />}
-                  />
+                    style={{
+                      background: 'linear-gradient(135deg, #7c3aed, #d946ef)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#ffffff',
+                    }}
+                  >
+                    {(username ?? 'U').charAt(0).toUpperCase()}
+                  </Avatar>
                 </button>
               </Dropdown>
             </div>
@@ -615,22 +644,32 @@ const MainLayout = () => {
         closable={false}
         styles={{
           body: { padding: 0 },
-          content: { padding: 0, overflow: 'hidden', borderRadius: 12 },
+          content: {
+            padding: 0,
+            overflow: 'hidden',
+            borderRadius: 16,
+            border: `1px solid ${borderColor}`,
+            boxShadow: '0 24px 80px -24px rgba(0, 0, 0, 0.35)',
+          },
         }}
-        width={600}
-        style={{ top: '12vh' }}
+        width={640}
+        style={{ top: '14vh' }}
+        afterOpenChange={(open) => {
+          if (open) searchInputRef.current?.focus();
+        }}
       >
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            padding: '14px 20px',
+            gap: 12,
+            padding: '16px 20px',
             borderBottom: `1px solid ${borderColor}`,
           }}
         >
           <MagnifyingGlass size={18} color="#9CA3AF" />
           <input
+            ref={searchInputRef}
             placeholder={t('common.searchPlaceholder')}
             value={searchText}
             onChange={(e) => {
@@ -658,81 +697,102 @@ const MainLayout = () => {
               flex: 1,
               border: 'none',
               outline: 'none',
-              fontSize: 16,
+              fontSize: 15,
               background: 'transparent',
               color: 'inherit',
             }}
           />
-          <span
-            style={{
-              fontSize: 14,
-              color: '#9CA3AF',
-              padding: '1px 6px',
-              borderRadius: 4,
-              background: darkMode ? '#333' : '#f5f5f5',
-              border: `1px solid ${borderColor}`,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            ESC
-          </span>
+          <kbd style={kbdStyle}>ESC</kbd>
         </div>
-        <div style={{ maxHeight: 380, overflow: 'auto', padding: 8 }}>
-          {searchResults.length ? (
-            searchResults.map((item, index) => {
-              const active = index === activeIndex;
-              return (
-                <button
-                  type="button"
-                  key={item.key}
-                  ref={(el) => {
-                    if (el && active) el.scrollIntoView?.({ block: 'nearest' });
-                  }}
-                  onClick={() => {
-                    navigate(item.key as string);
-                    setSearchOpen(false);
-                    setSearchText('');
-                    setActiveIndex(0);
-                  }}
-                  onMouseEnter={() => setActiveIndex(index)}
+        <div style={{ maxHeight: 420, overflow: 'auto', padding: '12px 16px' }}>
+          {resultSections.length ? (
+            resultSections.map((section) => (
+              <div key={section.title} style={{ marginBottom: 12 }}>
+                <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    width: '100%',
-                    border: 0,
-                    background: active ? (darkMode ? '#1f2937' : '#eff6ff') : 'transparent',
-                    color: 'inherit',
-                    textAlign: 'left',
-                    font: 'inherit',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#9CA3AF',
+                    padding: '0 4px',
+                    marginBottom: 6,
                   }}
                 >
-                  <span style={{ color: active ? '#1677ff' : '#9CA3AF', display: 'flex' }}>
-                    {item.icon}
-                  </span>
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {active && (
-                    <span
-                      aria-hidden
-                      style={{
-                        fontSize: 14,
-                        color: '#9CA3AF',
-                        padding: '0 6px',
-                        borderRadius: 4,
-                        background: darkMode ? '#333' : '#f5f5f5',
-                        border: `1px solid ${borderColor}`,
-                      }}
-                    >
-                      ↵
-                    </span>
-                  )}
-                </button>
-              );
-            })
+                  {section.title}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: 8,
+                  }}
+                >
+                  {section.entries.map((item) => {
+                    const active = searchResults[activeIndex]?.key === item.key;
+                    return (
+                      <button
+                        type="button"
+                        key={item.key}
+                        ref={(el) => {
+                          if (el && active) el.scrollIntoView?.({ block: 'nearest' });
+                        }}
+                        onClick={() => {
+                          navigate(item.key as string);
+                          setSearchOpen(false);
+                          setSearchText('');
+                          setActiveIndex(0);
+                        }}
+                        onMouseEnter={() => {
+                          const index = searchResults.findIndex((r) => r.key === item.key);
+                          if (index >= 0) setActiveIndex(index);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          borderRadius: 10,
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          border: `1px solid ${active ? 'rgba(124, 58, 237, 0.35)' : 'transparent'}`,
+                          background: active
+                            ? darkMode
+                              ? 'rgba(124, 58, 237, 0.18)'
+                              : 'rgba(124, 58, 237, 0.08)'
+                            : darkMode
+                              ? 'rgba(255, 255, 255, 0.04)'
+                              : 'rgba(0, 0, 0, 0.025)',
+                          color: 'inherit',
+                          textAlign: 'left',
+                          font: 'inherit',
+                          transition: 'background 0.15s, border-color 0.15s',
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: active ? '#7c3aed' : '#9CA3AF',
+                            display: 'flex',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {item.icon}
+                        </span>
+                        <span
+                          style={{
+                            fontWeight: active ? 600 : 500,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            minWidth: 0,
+                          }}
+                        >
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -744,17 +804,28 @@ const MainLayout = () => {
         <div
           style={{
             display: 'flex',
+            alignItems: 'center',
             gap: 16,
-            padding: '8px 20px',
+            padding: '10px 20px',
             borderTop: `1px solid ${borderColor}`,
-            fontSize: 14,
+            fontSize: 12,
             color: '#9CA3AF',
             background: darkMode ? '#26262a' : '#fafafa',
           }}
         >
-          <span>↑↓ 切换</span>
-          <span>↵ 打开</span>
-          <span>ESC 关闭</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <kbd style={kbdStyle}>↑</kbd>
+            <kbd style={kbdStyle}>↓</kbd>
+            切换
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <kbd style={kbdStyle}>↵</kbd>
+            打开
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <kbd style={kbdStyle}>ESC</kbd>
+            关闭
+          </span>
         </div>
       </Modal>
     </>

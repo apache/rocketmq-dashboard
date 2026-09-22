@@ -217,7 +217,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (proxyConsumerResolver == null) {
             return;
         }
-        ConsumerConnection viaProxy = proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+        ProxyConsumerResolver.ConsumerConnectionResolution resolution =
+                proxyConsumerResolver.resolveConsumerConnectionStatus(instanceId, group);
+        if (!resolution.available()) {
+            vo.setOnlineInstances(-1);
+            return;
+        }
+        ConsumerConnection viaProxy = resolution.connection();
         if (viaProxy == null) {
             return;
         }
@@ -356,6 +362,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                                 .eq(RmqTopic::getClusterId, clusterName)
                                 .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
                                 .eq(RmqTopic::getName, topicName));
+                if (existing == null) {
+                    throw new BusinessException(404, "Topic not found: " + topicName);
+                }
                 // Preserve the existing queue counts when the update request does not change them,
                 // matching the perm semantics below; defaulting to 8 would silently resize the
                 // topic on partial updates (e.g. perm or remark only).
@@ -659,12 +668,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(502, "No broker available to update consumer group settings");
                 }
                 totalBrokers = brokerAddrs.size();
-                SubscriptionGroupConfig applied = null;
+                Map<String, SubscriptionGroupConfig> configsByBroker = new LinkedHashMap<>();
                 for (String brokerAddr : brokerAddrs) {
                     SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddr, name);
                     if (config == null) {
                         throw new BusinessException(404, "Consumer group not found: " + name);
                     }
+                    configsByBroker.put(brokerAddr, config);
+                }
+                SubscriptionGroupConfig applied = null;
+                for (Map.Entry<String, SubscriptionGroupConfig> entry : configsByBroker.entrySet()) {
+                    String brokerAddr = entry.getKey();
+                    SubscriptionGroupConfig config = entry.getValue();
                     config.setRetryQueueNums(command.retryQueueNums());
                     config.setRetryMaxTimes(command.retryMaxTimes());
                     if (command.consumeEnable() != null) {
@@ -860,10 +875,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "No consume offset data found for topic " + topic);
             }
 
-            long currentTotalLag = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum();
-            long projectedTotalLag = queues.stream()
-                    .mapToLong(ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
-                    .sum();
+            long currentTotalLag = aggregateResetPreviewLag(queues, false);
+            long projectedTotalLag = aggregateResetPreviewLag(queues, true);
             long totalOffsetDelta = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum();
             int rewindQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
             int fastForwardQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
@@ -999,6 +1012,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (rewindQueueCount > 0) {
             warnings.add(rewindQueueCount + " queue(s) will move backward and may replay consumed messages");
         }
+        if (queues.stream().anyMatch(queue -> queue.getCurrentLag() == ConsumerLagResolver.UNKNOWN
+                || queue.getProjectedLag() == ConsumerLagResolver.UNKNOWN)) {
+            warnings.add("At least one queue has unavailable lag; affected backlog totals are unavailable");
+        }
         if (queues.stream().anyMatch(queue -> queue.getMinOffset() >= 0
                 && queue.getTargetOffset() == queue.getMinOffset())) {
             warnings.add("At least one queue will reset to the minimum retained offset");
@@ -1010,8 +1027,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return warnings;
     }
 
+    private long aggregateResetPreviewLag(List<ResetConsumerOffsetQueuePreviewVO> queues, boolean projected) {
+        long total = 0L;
+        for (ResetConsumerOffsetQueuePreviewVO queue : queues) {
+            long lag = projected ? queue.getProjectedLag() : queue.getCurrentLag();
+            if (lag == ConsumerLagResolver.UNKNOWN) {
+                return ConsumerLagResolver.UNKNOWN;
+            }
+            total += lag;
+        }
+        return total;
+    }
+
     private long resolveLag(long brokerOffset, long consumerOffset) {
-        return Math.max(0L, brokerOffset - consumerOffset);
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, null);
     }
 
     private long clampOffset(long offset, long minOffset, long maxOffset) {

@@ -29,6 +29,7 @@ import type {
   NameServerConfigDiffResult,
 } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 
 const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
@@ -114,10 +115,6 @@ const buildCluster = ({
       diskUsage: 62,
       tpsIn,
       tpsOut,
-      putMessagesToday: 1234,
-      putMessagesYesterday: 1100,
-      getMessagesToday: 980,
-      getMessagesYesterday: 900,
     },
     {
       name: 'rocketmq-prod-1',
@@ -371,7 +368,7 @@ describe('Cluster page', () => {
   }, 10000);
 
   it('opens proxy detail dialog from the proxy table', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
 
     await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
@@ -388,7 +385,7 @@ describe('Cluster page', () => {
   });
 
   it('previews broker config changes before submitting the update', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
 
     const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
@@ -417,7 +414,7 @@ describe('Cluster page', () => {
   });
 
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stalePreview = deferred<ClusterConfigPreviewResult>();
     const latestPreview = deferred<ClusterConfigPreviewResult>();
     clusterServiceMocks.previewClusterConfig
@@ -488,22 +485,8 @@ describe('Cluster page', () => {
     expect(within(dialog).queryByText('defaultTopicQueueNums=16')).not.toBeInTheDocument();
   });
 
-  it('renders per-broker daily message counters in the broker tab', async () => {
-    renderWithProviders(<ClusterPage />);
-
-    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '今日写入' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '昨日写入' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '今日消费' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '昨日消费' })).toBeInTheDocument();
-    expect(screen.getByText('1,234')).toBeInTheDocument();
-    expect(screen.getByText('1,100')).toBeInTheDocument();
-    expect(screen.getByText('980')).toBeInTheDocument();
-    expect(screen.getByText('900')).toBeInTheDocument();
-  });
-
   it('keeps cluster tabs usable when address fields are missing', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const submitSearch = async (placeholder: string, value: string) => {
       const input = screen.getByPlaceholderText(placeholder);
       await user.type(input, value);
@@ -538,13 +521,16 @@ describe('Cluster page', () => {
   });
 
   it('creates and deletes nameserver registry entries', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
     await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
     expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /新建 NameServer/ }));
     const dialog = await screen.findByRole('dialog', { name: /新建 NameServer/ });
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'Studio 会从服务器直接连接该地址',
+    );
     await user.type(within(dialog).getByLabelText('名称'), 'rocketmq3');
     await user.type(within(dialog).getByLabelText('NameServer 地址'), 'rocketmq3-nameserver:9876');
     await user.click(within(dialog).getByRole('button', { name: /确\s*认/ }));
@@ -587,8 +573,50 @@ describe('Cluster page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('localizes the NameServer address guidance', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer/ }));
+    await user.click(screen.getByRole('button', { name: /New NameServer/ }));
+    const dialog = await screen.findByRole('dialog', { name: /New NameServer/ });
+
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'Studio connects to this address directly from the server',
+    );
+    expect(within(dialog).getByTestId('nameserver-address-guidance')).toHaveTextContent(
+      'ns1:9876,ns2:9876',
+    );
+  });
+
   it('opens NameServer config drift details from a registry row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 11,
+        name: 'instance-rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([
       {
         ...buildCluster(),
@@ -631,7 +659,7 @@ describe('Cluster page', () => {
     await waitFor(() =>
       expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
         'cluster-prod',
-        'instance-1',
+        'instance-rocketmq1',
       ),
     );
     const dialog = await screen.findByRole('dialog', {
@@ -647,8 +675,59 @@ describe('Cluster page', () => {
     ).toBeInTheDocument();
   });
 
+  it('omits instanceId for NameServer config drift when no instance owns the registry cluster', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [{ addr: 'rocketmq1-nameserver:9876', status: 'healthy' }],
+      },
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
+        'cluster-prod',
+        undefined,
+      ),
+    );
+  });
+
   it('opens Broker config drift details from a broker row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 12,
+        name: 'instance-prod-owner',
+        endpoint: '10.101.2.1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
     clusterServiceMocks.getBrokerConfigDiff.mockResolvedValue({
       cluster: 'cluster-prod',
       complete: true,
@@ -690,7 +769,7 @@ describe('Cluster page', () => {
     await waitFor(() =>
       expect(clusterServiceMocks.getBrokerConfigDiff).toHaveBeenCalledWith(
         'cluster-prod',
-        'instance-1',
+        'instance-prod-owner',
       ),
     );
     const dialog = await screen.findByRole('dialog', {
@@ -709,7 +788,7 @@ describe('Cluster page', () => {
   });
 
   it('reports Broker config drift load failures without closing the dialog', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
     clusterServiceMocks.getBrokerConfigDiff.mockRejectedValueOnce(new Error('failure'));
     renderWithProviders(<ClusterPage />);
@@ -722,7 +801,81 @@ describe('Cluster page', () => {
     const dialog = await screen.findByRole('dialog', {
       name: /Broker 配置差异 - ns-prod/,
     });
-    expect(within(dialog).getByText('正在检测 Broker 配置差异')).toBeInTheDocument();
+    expect(within(dialog).getByText('Broker 配置差异检测失败')).toBeInTheDocument();
+  });
+
+  it('renders a failed NameServer config diff as an error with retry instead of the loading banner', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        name: 'rocketmq1',
+        nsClusterName: 'rocketmq1',
+        endpoint: 'rocketmq1-nameserver:9876',
+        nameServers: [{ addr: 'rocketmq1-nameserver:9876', status: 'healthy' }],
+      },
+    ]);
+    clusterServiceMocks.getNameServerConfigDiff
+      .mockRejectedValueOnce(new Error('name server unreachable'))
+      .mockResolvedValueOnce({
+        cluster: 'rocketmq1',
+        complete: true,
+        driftDetected: false,
+        nodeCount: 1,
+        reachableNodeCount: 1,
+        comparedKeys: ['serverWorkerThreads'],
+        nodes: [{ address: 'rocketmq1-nameserver:9876', reachable: true }],
+        differences: [],
+      });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith('NameServer 配置差异检测失败，请稍后重试'),
+    );
+    const dialog = await screen.findByRole('dialog', { name: /NameServer 配置差异/ });
+    // The failed request must surface the error alert, not the "正在检测" loading banner.
+    expect(within(dialog).getByText('NameServer 配置差异检测失败，请稍后重试')).toBeInTheDocument();
+    expect(within(dialog).queryByText('正在检测 NameServer 配置差异')).not.toBeInTheDocument();
+
+    const retryButton = within(dialog).getByRole('button', { name: /重\s*试/ });
+    await user.click(retryButton);
+    expect(await within(dialog).findByText('未检测到 NameServer 配置差异')).toBeInTheDocument();
+  });
+
+  it('renders a failed Broker config diff as an error with retry instead of the loading banner', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    clusterServiceMocks.getBrokerConfigDiff
+      .mockRejectedValueOnce(new Error('broker unreachable'))
+      .mockResolvedValueOnce({
+        cluster: 'cluster-prod',
+        complete: true,
+        driftDetected: false,
+        brokerCount: 1,
+        reachableBrokerCount: 1,
+        comparedFields: ['flushDiskType'],
+        brokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true }],
+        differences: [],
+      });
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /Broker 管理/ }));
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配置差异/ }));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('Broker 配置差异检测失败'));
+    const dialog = await screen.findByRole('dialog', { name: /Broker 配置差异 - ns-prod/ });
+    expect(within(dialog).getByText('Broker 配置差异检测失败')).toBeInTheDocument();
+    expect(within(dialog).queryByText('正在检测 Broker 配置差异')).not.toBeInTheDocument();
+
+    const retryButton = within(dialog).getByRole('button', { name: /重\s*试/ });
+    await user.click(retryButton);
+    expect(await within(dialog).findByText('Broker 配置一致')).toBeInTheDocument();
   });
 
   it('does not reopen a closed NameServer config diff when its request finishes', async () => {

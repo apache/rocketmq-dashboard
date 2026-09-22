@@ -80,6 +80,8 @@ const ProducerPage = () => {
   const [connectionSummary, setConnectionSummary] = useState<ProducerConnectionSummary | null>(
     null,
   );
+  const [failedBrokers, setFailedBrokers] = useState<string[]>([]);
+  const [failedProducerGroups, setFailedProducerGroups] = useState<string[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -126,6 +128,8 @@ const ProducerPage = () => {
     queryInFlightRef.current = null;
     setConnectionList([]);
     setConnectionSummary(null);
+    setFailedBrokers([]);
+    setFailedProducerGroups([]);
     setLoading(false);
   };
 
@@ -205,6 +209,8 @@ const ProducerPage = () => {
     queryInFlightRef.current = requestId;
     setConnectionList([]);
     setConnectionSummary(null);
+    setFailedBrokers([]);
+    setFailedProducerGroups([]);
     setLoading(true);
     try {
       const result = await queryProducerConnection(
@@ -216,7 +222,9 @@ const ProducerPage = () => {
       const connections = result.connectionSet;
       setConnectionList(connections);
       setConnectionSummary(result.summary);
-      if (connections.length === 0) {
+      setFailedBrokers(result.failedBrokers);
+      setFailedProducerGroups(result.failedProducerGroups);
+      if (connections.length === 0 && result.complete) {
         message.info(t('producer.noConnections'));
       }
     } catch {
@@ -267,6 +275,7 @@ const ProducerPage = () => {
     DUPLICATE_CLIENT_ID: t('producer.warningDuplicateClientId'),
     MIXED_CLIENT_VERSION: t('producer.warningMixedVersion'),
     INCOMPLETE_CLIENT_METADATA: t('producer.warningIncompleteMetadata'),
+    INCOMPLETE_SCAN: t('producer.warningIncompleteScan'),
   };
 
   const renderDistribution = (items: ProducerConnectionSummary['languages']) =>
@@ -398,6 +407,16 @@ const ProducerPage = () => {
                   {connectionSummary.warnings.map((warning) => (
                     <Tag key={warning} color="warning">
                       {warningLabel[warning] ?? warning}
+                    </Tag>
+                  ))}
+                  {failedBrokers.map((broker) => (
+                    <Tag key={`broker:${broker}`} color="error">
+                      {t('producer.failedBroker', { name: broker })}
+                    </Tag>
+                  ))}
+                  {failedProducerGroups.map((group) => (
+                    <Tag key={`group:${group}`} color="error">
+                      {t('producer.failedGroup', { name: group })}
                     </Tag>
                   ))}
                 </Flex>

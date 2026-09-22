@@ -32,7 +32,7 @@ func TestCallTool(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != toolCallPath ||
 			!strings.HasPrefix(r.Header.Get("Authorization"),
-				"RMQ-HMAC-SHA256 Credential=test-ak, Signature=") ||
+				"rmq-hmac-sha256 Credential=test-ak, Signature=") ||
 			r.Header.Get(HeaderInstance) != "instance-dev" {
 			http.Error(w, "unexpected request", http.StatusUnauthorized)
 			return
@@ -60,6 +60,30 @@ func TestCallTool(t *testing.T) {
 	resultMap, ok := result.(map[string]any)
 	if err != nil || !ok || resultMap["items"] == nil {
 		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestCallToolIgnoresNonPositiveTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 200, "message": "success",
+			"data": map[string]any{"items": []any{}},
+		})
+	}))
+	defer server.Close()
+
+	for name, timeout := range map[string]time.Duration{"zero": 0, "negative": -time.Second} {
+		t.Run(name, func(t *testing.T) {
+			client := NewClient(server.Client())
+			result, err := client.CallTool(context.Background(), Target{
+				Server: server.URL, InstanceID: "instance-dev",
+				Credential: Credential{AccessKey: "test-ak", SecretKey: "test-sk"}, Timeout: timeout,
+			}, "rmq.topic.list", map[string]any{"instanceId": "instance-dev"})
+			resultMap, ok := result.(map[string]any)
+			if err != nil || !ok || resultMap["items"] == nil {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+		})
 	}
 }
 

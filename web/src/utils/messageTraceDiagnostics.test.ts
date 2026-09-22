@@ -57,6 +57,7 @@ describe('message trace diagnostics', () => {
     const diagnostics = analyzeMessageTrace(baseTrace());
 
     expect(diagnostics.status).toBe('healthy');
+    expect(diagnostics.statusKey).toBe('messagePage.traceStatusHealthy');
     expect(diagnostics.score).toBe(100);
     expect(diagnostics.summary).toMatchObject({
       nodeCount: 3,
@@ -70,20 +71,24 @@ describe('message trace diagnostics', () => {
       valueMs: 70,
     });
     expect(diagnostics.issues).toEqual([]);
-    expect(diagnostics.recommendations).toEqual([]);
+    expect(diagnostics.recommendationCodes).toEqual([]);
   });
 
   it('returns guidance when trace nodes are missing', () => {
     const diagnostics = analyzeMessageTrace({ nodes: [], consumerStatus: [] });
 
     expect(diagnostics.status).toBe('warning');
+    expect(diagnostics.statusKey).toBe('messagePage.traceStatusWarning');
     expect(diagnostics.summary.endToEndLatencyMs).toBeNull();
     expect(diagnostics.issues).toEqual([
-      expect.objectContaining({ code: 'NO_TRACE_NODES', severity: 'warning' }),
+      expect.objectContaining({
+        code: 'NO_TRACE_NODES',
+        severity: 'warning',
+        titleKey: 'messagePage.issue.NO_TRACE_NODES.title',
+        descriptionKey: 'messagePage.issue.NO_TRACE_NODES.description',
+      }),
     ]);
-    expect(diagnostics.recommendations).toContain(
-      '确认消息轨迹已开启，并检查是否需要指定自定义轨迹 Topic。',
-    );
+    expect(diagnostics.recommendationCodes).toContain('NO_TRACE_NODES');
   });
 
   it('flags failed and waiting trace phases with latency hotspots', () => {
@@ -99,6 +104,7 @@ describe('message trace diagnostics', () => {
     );
 
     expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.statusKey).toBe('messagePage.traceStatusDeliveryCritical');
     expect(diagnostics.summary).toMatchObject({
       failedNodeCount: 1,
       waitingNodeCount: 1,
@@ -120,6 +126,28 @@ describe('message trace diagnostics', () => {
         'SLOW_TRACE_GAP',
       ]),
     );
+    const failedIssue = diagnostics.issues.find((issue) => issue.code === 'FAILED_TRACE_NODE');
+    expect(failedIssue).toMatchObject({
+      titleKey: 'messagePage.issue.FAILED_TRACE_NODE.title',
+      descriptionKey: 'messagePage.issue.FAILED_TRACE_NODE.description',
+      params: { phase: 'Consumer 消费' },
+    });
+    const slowNodeIssue = diagnostics.issues.find(
+      (issue) => issue.code === 'SLOW_TRACE_NODE' && issue.subject === '2:Consumer 消费',
+    );
+    expect(slowNodeIssue).toMatchObject({
+      params: { phase: 'Consumer 消费', cost: 9000 },
+    });
+    const slowGapIssue = diagnostics.issues.find((issue) => issue.code === 'SLOW_TRACE_GAP');
+    expect(slowGapIssue).toMatchObject({
+      params: { phase: 'Broker 存储', gap: 2200 },
+    });
+    expect(diagnostics.recommendationCodes).toEqual([
+      'SLOW_TRACE_NODE',
+      'SLOW_TRACE_GAP',
+      'FAILED_TRACE_NODE',
+      'WAITING_TRACE_NODE',
+    ]);
   });
 
   it('flags consumer delivery failures, pending statuses, unknown states and retries', () => {
@@ -162,6 +190,19 @@ describe('message trace diagnostics', () => {
         'INVALID_CONSUME_TIME',
       ]),
     );
+    const retriedIssue = diagnostics.issues.find(
+      (issue) => issue.code === 'RETRIED_CONSUMER_DELIVERY' && issue.subject === '1:cg-billing',
+    );
+    expect(retriedIssue).toMatchObject({
+      titleKey: 'messagePage.issue.RETRIED_CONSUMER_DELIVERY.title',
+      params: { group: 'cg-billing', retry: 3 },
+    });
+    const unknownIssue = diagnostics.issues.find(
+      (issue) => issue.code === 'UNKNOWN_CONSUMER_DELIVERY',
+    );
+    expect(unknownIssue).toMatchObject({
+      params: { group: 'cg-search', status: 'paused' },
+    });
   });
 
   it('detects invalid timing, timestamp regressions and slow end-to-end traces', () => {

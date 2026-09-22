@@ -46,7 +46,7 @@ func TestSessionStreamsPostSSEWithoutContinuousGet(t *testing.T) {
 			t.Errorf("URL = %s", request.URL)
 		}
 		if !strings.HasPrefix(request.Header.Get("Authorization"),
-			"RMQ-HMAC-SHA256 Credential=test-ak, Signature=") {
+			"rmq-hmac-sha256 Credential=test-ak, Signature=") {
 			t.Errorf("Authorization = %q", request.Header.Get("Authorization"))
 		}
 		if request.Method == http.MethodGet {

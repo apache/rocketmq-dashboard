@@ -30,6 +30,8 @@ import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -67,6 +69,15 @@ public interface InstanceProvider {
         return PageResult.of(topics.subList(from, to), total, page, pageSize);
     }
 
+    /**
+     * Instance-scoped topic pagination with an optional physical cluster filter. Providers that
+     * do not support physical cluster scoping retain the existing instance-wide fallback.
+     */
+    default PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        return listTopicsPage(instanceId, type, search, page, pageSize);
+    }
+
     TopicVO createTopic(String instanceId, TopicVO topic);
 
     TopicVO updateTopic(String instanceId, TopicVO topic);
@@ -99,6 +110,15 @@ public interface InstanceProvider {
         int from = (int) Math.min(offset, total);
         int to = from + (int) Math.min(pageSize, total - from);
         return PageResult.of(groups.subList(from, to), total, page, pageSize);
+    }
+
+    /**
+     * Instance-scoped consumer-group pagination with an optional physical cluster filter.
+     * Providers without physical cluster scoping retain the existing instance-wide fallback.
+     */
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, search, page, pageSize);
     }
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
@@ -174,6 +194,10 @@ public interface InstanceProvider {
     }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    default SendMessageVO sendMessage(SendMessageDTO request) {
+        throw new UnsupportedOperationException("Message sending is not supported");
+    }
 
     default DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
         throw new UnsupportedOperationException("Direct message consumption is not supported");

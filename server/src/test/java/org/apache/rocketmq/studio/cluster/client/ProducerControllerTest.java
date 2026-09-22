@@ -76,7 +76,7 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
                 .versionDesc("5.1.0")
                 .build();
         when(producerConnectionService.listConnections("instance-1", "order-topic", "pg-order"))
-                .thenReturn(List.of(connection));
+                .thenReturn(new ProducerConnectionResultVO(List.of(connection)));
 
         mockMvc.perform(get("/api/producer/connection")
                         .param("instanceId", "instance-1")
@@ -93,7 +93,10 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.summary.totalConnections").value(1))
                 .andExpect(jsonPath("$.summary.uniqueClientCount").value(1))
                 .andExpect(jsonPath("$.summary.uniqueAddressCount").value(1))
-                .andExpect(jsonPath("$.summary.readiness").value("READY"));
+                .andExpect(jsonPath("$.summary.readiness").value("READY"))
+                .andExpect(jsonPath("$.complete").value(true))
+                .andExpect(jsonPath("$.failedBrokers").isEmpty())
+                .andExpect(jsonPath("$.failedProducerGroups").isEmpty());
 
         verify(producerConnectionService).listConnections("instance-1", "order-topic", "pg-order");
     }
@@ -113,7 +116,7 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
     @Test
     void listConnectionsShouldAllowMissingProducerGroup() throws Exception {
         when(producerConnectionService.listConnections("instance-1", "order-topic", null))
-                .thenReturn(List.of());
+                .thenReturn(new ProducerConnectionResultVO(List.of()));
 
         mockMvc.perform(get("/api/producer/connection")
                         .param("instanceId", "instance-1")
@@ -121,9 +124,28 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connectionSet").isArray())
                 .andExpect(jsonPath("$.summary.totalConnections").value(0))
-                .andExpect(jsonPath("$.summary.readiness").value("UNAVAILABLE"));
+                .andExpect(jsonPath("$.summary.readiness").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.complete").value(true));
 
         verify(producerConnectionService).listConnections("instance-1", "order-topic", null);
+    }
+
+    @Test
+    void listConnectionsShouldExposePartialScanMetadataTest() throws Exception {
+        when(producerConnectionService.listConnections("instance-1", "order-topic", null))
+                .thenReturn(new ProducerConnectionResultVO(
+                        List.of(), false, List.of("broker-a:10911"), List.of("pg-orders")));
+
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "order-topic"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.complete").value(false))
+                .andExpect(jsonPath("$.failedBrokers[0]").value("broker-a:10911"))
+                .andExpect(jsonPath("$.failedProducerGroups[0]").value("pg-orders"))
+                .andExpect(jsonPath("$.summary.readiness").value("WARNING"))
+                .andExpect(jsonPath("$.summary.warnings[0]").value("NO_CONNECTIONS"))
+                .andExpect(jsonPath("$.summary.warnings[1]").value("INCOMPLETE_SCAN"));
     }
 
     @Test

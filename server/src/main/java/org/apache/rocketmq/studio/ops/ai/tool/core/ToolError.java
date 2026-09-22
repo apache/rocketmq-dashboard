@@ -73,8 +73,8 @@ public enum ToolError {
             "Provide instanceId for the selected Instance and retry the tool call."),
 
     TOOL_TARGET_MISMATCH(HttpStatus.FORBIDDEN, "PERMISSION_DENIED",
-            "instanceId does not match the authenticated Instance",
-            "Use the same instanceId for authentication and tool arguments."),
+            "instanceId does not match the authenticated Instance; this MCP session is bound to '%s'",
+            "Pass that exact instanceId on every tool call; the session cannot reach any other Instance."),
 
     TOOL_CAPABILITY_UNSUPPORTED(HttpStatus.BAD_REQUEST, "TOOL_CAPABILITY_UNSUPPORTED",
             "Instance target does not support tool: %s. Call rmq.instance.capabilities or select another target.",

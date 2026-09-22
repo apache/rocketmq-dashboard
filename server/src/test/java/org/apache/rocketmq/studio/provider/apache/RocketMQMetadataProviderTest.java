@@ -754,6 +754,38 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldMarkOnlineInstancesUnknownWhenConnectionLookupFailsTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-unknown-connections");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-unknown-connections"))
+                .thenThrow(new IllegalStateException("nameserver unavailable"));
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(100L);
+        wrapper.setConsumerOffset(60L);
+        stats.getOffsetTable().put(queue, wrapper);
+        when(admin.examineConsumeStats("cg-unknown-connections")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getOnlineInstances()).isEqualTo(-1);
+            assertThat(group.getTotalLag()).isEqualTo(40L);
+            assertThat(group.getInstances()).isEmpty();
+        });
+    }
+
+    @Test
     void listConsumerGroupsShouldEnrichOnlineInstancesViaProxyFallbackTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-proxy");
@@ -780,7 +812,8 @@ class RocketMQMetadataProviderTest {
         conn.setClientAddr("10.0.3.104:50124");
         connections.add(conn);
         viaProxy.setConnectionSet(connections);
-        when(resolver.resolveConsumerConnection("instance-a", "cg-proxy")).thenReturn(viaProxy);
+        when(resolver.resolveConsumerConnectionStatus("instance-a", "cg-proxy"))
+                .thenReturn(ProxyConsumerResolver.ConsumerConnectionResolution.available(viaProxy));
 
         RocketMQMetadataProvider provider = newLiveProvider(admin);
         org.springframework.test.util.ReflectionTestUtils.setField(

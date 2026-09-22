@@ -66,6 +66,9 @@ const renderWithProviders = (ui: React.ReactElement) => {
 
 const producerResult = (connectionSet: ProducerConnection[]): ProducerConnectionResult => ({
   connectionSet,
+  complete: true,
+  failedBrokers: [],
+  failedProducerGroups: [],
   summary: {
     totalConnections: connectionSet.length,
     uniqueClientCount: new Set(connectionSet.map((connection) => connection.clientId)).size,
@@ -267,6 +270,9 @@ describe('ProducerPage', () => {
           versionDesc: '5.2.0',
         },
       ],
+      complete: true,
+      failedBrokers: [],
+      failedProducerGroups: [],
       summary: {
         totalConnections: 2,
         uniqueClientCount: 1,
@@ -299,6 +305,42 @@ describe('ProducerPage', () => {
     expect(screen.getByText('JAVA: 2')).toBeInTheDocument();
   });
 
+  it('surfaces partial topic-wide producer scans with failed targets', async () => {
+    vi.mocked(queryProducerConnection).mockResolvedValue({
+      connectionSet: [],
+      complete: false,
+      failedBrokers: ['broker-a:10911'],
+      failedProducerGroups: ['pg-orders'],
+      summary: {
+        totalConnections: 0,
+        uniqueClientCount: 0,
+        uniqueAddressCount: 0,
+        uniqueLanguageCount: 0,
+        uniqueVersionCount: 0,
+        languages: [],
+        versions: [],
+        duplicateClientIds: [],
+        warnings: ['NO_CONNECTIONS', 'INCOMPLETE_SCAN'],
+        readiness: 'WARNING',
+      },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    expect(await screen.findByText('扫描结果不完整')).toBeInTheDocument();
+    expect(screen.getByText('Broker 失败：broker-a:10911')).toBeInTheDocument();
+    expect(screen.getByText('生产者组失败：pg-orders')).toBeInTheDocument();
+    expect(screen.queryByText('暂无生产者连接')).not.toBeInTheDocument();
+  });
+
   it('exports the current producer connection diagnostics as CSV', async () => {
     const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       expect(blob).toBeInstanceOf(Blob);
@@ -326,6 +368,9 @@ describe('ProducerPage', () => {
           versionDesc: '5.1.0',
         },
       ],
+      complete: true,
+      failedBrokers: [],
+      failedProducerGroups: [],
       summary: {
         totalConnections: 1,
         uniqueClientCount: 1,

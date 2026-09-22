@@ -29,6 +29,8 @@ import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -65,6 +67,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
                 InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.MESSAGE_SEND,
                 InstanceCapability.ACL_MANAGEMENT,
                 InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -92,6 +95,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public PageResult<TopicVO> listTopicsPage(String instanceId, String type, String search,
             int page, int pageSize) {
         return metadataProvider.listTopicsPage(instanceId, null, type, search, page, pageSize);
+    }
+
+    @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, clusterId, type, search, page, pageSize);
     }
 
     @Override
@@ -128,6 +137,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String search,
             int page, int pageSize) {
         return metadataProvider.listConsumerGroupsPage(instanceId, null, search, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
     }
 
     @Override
@@ -181,6 +196,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
+    }
+
+    @Override
+    public SendMessageVO sendMessage(SendMessageDTO request) {
+        return adminClient.sendMessage(request);
     }
 
     @Override

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Alert,
   Button,
@@ -61,6 +61,20 @@ const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
 const typeConfig: Record<string, { color: string; label: string }> = {
   Producer: { color: 'blue', label: 'Producer' },
   Consumer: { color: 'green', label: 'Consumer' },
+};
+
+/**
+ * One clipped line inside a diagnostics-table cell. The project-wide
+ * `.ant-table-cell { white-space: nowrap }` keeps long values (trace-producer resource names,
+ * client ids, risk descriptions) from wrapping, so without an explicit ellipsis they spill over
+ * the neighbouring column; each line clips itself and carries its full text in a `title`.
+ */
+const diagnosticCellLine: CSSProperties = {
+  display: 'block',
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const protocolConfig: Record<string, { color: string; label: string }> = {
@@ -191,6 +205,8 @@ const ClientsPage = () => {
     setSelectedEndpoint(endpoint);
     setConnections([]);
     setClusterFilter('ALL');
+    setSearch('');
+    setTypeFilter('ALL');
     // Column filters describe the previous endpoint's rows; keeping them (or antd's
     // uncontrolled internal filter state) would hide every row of the new endpoint.
     setColumnFilters({});
@@ -529,11 +545,20 @@ const ClientsPage = () => {
       title: t('clients.groupOrTopic'),
       key: 'resource',
       width: 220,
+      // Unbounded resource names (_INNER_TRACE_PRODUCER-…-CONSUME-1) must clip inside the
+      // cell: the project-wide `.ant-table-cell { white-space: nowrap }` otherwise lets them
+      // spill over the neighbouring column. Each line ellipsises on its own with a native
+      // title tooltip, the ConversationListModal title-column idiom.
+      ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <Space direction="vertical" size={2}>
-          <Text strong>{record.resource}</Text>
-          <Text type="secondary">{record.type}</Text>
-        </Space>
+        <div style={{ minWidth: 0 }}>
+          <Text strong style={diagnosticCellLine} title={record.resource}>
+            {record.resource}
+          </Text>
+          <Text type="secondary" style={diagnosticCellLine}>
+            {record.type}
+          </Text>
+        </div>
       ),
     },
     {
@@ -608,11 +633,18 @@ const ClientsPage = () => {
       title: t('clients.diagnosticIssue'),
       key: 'issue',
       width: 260,
+      // The description is a full sentence; clipped to one line with the full text on hover,
+      // never wrapped (project table rule) and never spilling into the Client ID column.
+      ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <Space direction="vertical" size={2}>
-          <Text strong>{record.title}</Text>
-          <Text type="secondary">{record.description}</Text>
-        </Space>
+        <div style={{ minWidth: 0 }}>
+          <Text strong style={diagnosticCellLine} title={record.title}>
+            {record.title}
+          </Text>
+          <Text type="secondary" style={diagnosticCellLine} title={record.description}>
+            {record.description}
+          </Text>
+        </div>
       ),
     },
     {
@@ -620,9 +652,12 @@ const ClientsPage = () => {
       dataIndex: 'clientId',
       key: 'clientId',
       width: 180,
+      ellipsis: { showTitle: false },
       render: (clientId?: string) =>
         clientId ? (
-          <Text style={{ fontFamily: 'monospace' }}>{clientId}</Text>
+          <Text style={{ ...diagnosticCellLine, fontFamily: 'monospace' }} title={clientId}>
+            {clientId}
+          </Text>
         ) : (
           <Text type="secondary">-</Text>
         ),
@@ -632,6 +667,7 @@ const ClientsPage = () => {
       dataIndex: 'resource',
       key: 'resource',
       width: 160,
+      ellipsis: true,
       render: (resource?: string) => resource || '-',
     },
     {

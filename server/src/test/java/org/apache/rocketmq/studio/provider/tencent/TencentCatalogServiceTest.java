@@ -22,6 +22,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeInstanceResponse;
 import com.tencentcloudapi.trocket.v20230308.models.Endpoint;
 import com.tencentcloudapi.trocket.v20230308.models.InstanceItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
@@ -34,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -131,6 +133,46 @@ class TencentCatalogServiceTest {
         assertThat(instances).singleElement()
                 .extracting(CloudInstanceOptionVO::getInstanceId)
                 .isEqualTo("rmq-valid");
+    }
+
+    @Test
+    void listCloudInstancesShouldRejectIncompleteEmptyPageWhenTotalCountRequiresDataTest() {
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setTotalCount(1L);
+        response.setData(null);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(
+                        ((BusinessException) error).getCode())
+                        .isEqualTo(502));
+    }
+
+    @Test
+    void listCloudInstancesShouldRejectIncompleteShortPageWhenTotalCountRequiresMoreTest() {
+        InstanceItem item = new InstanceItem();
+        item.setInstanceId("rmq-only-row");
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setTotalCount(2L);
+        response.setData(new InstanceItem[]{item});
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(
+                        ((BusinessException) error).getCode())
+                        .isEqualTo(502));
+    }
+
+    @Test
+    void listCloudInstancesShouldKeepGenuineEmptyCatalogTest() {
+        DescribeInstanceListResponse response = new DescribeInstanceListResponse();
+        response.setTotalCount(0L);
+        response.setData(null);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        assertThat(service.listCloudInstances(CREDENTIAL_ID, REGION, null)).isEmpty();
     }
 
     @Test

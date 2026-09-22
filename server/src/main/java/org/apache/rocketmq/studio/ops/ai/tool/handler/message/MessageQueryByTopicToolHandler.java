@@ -17,11 +17,10 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.instance.message.MessageService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryByTopicInput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -32,7 +31,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class MessageQueryByTopicToolHandler
-        implements ToolHandler<MessageQueryByTopicInput, ListOutput<MessageItem>> {
+        implements ToolHandler<MessageQueryByTopicInput, MessageQueryOutput> {
 
     private final MessageService messageService;
 
@@ -47,13 +46,10 @@ public class MessageQueryByTopicToolHandler
     }
 
     @Override
-    public ListOutput<MessageItem> execute(
+    public MessageQueryOutput execute(
             MessageQueryByTopicInput input, ToolExecutionContext context) {
-        return new ListOutput<>(messageService.queryMessages(
-                        context.instanceId(), input.topicName(), null, input.tag(), null,
-                        input.startTime(), input.endTime())
-                .stream()
-                .map(MessageItem::from)
-                .toList());
+        return MessageQueryOutput.fromPage(messageService.queryMessagesPage(
+                context.instanceId(), input.topicName(), null, input.tag(), null,
+                input.startTime(), input.endTime(), 1, input.resultLimit()), input.includeBody());
     }
 }
