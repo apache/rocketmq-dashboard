@@ -99,6 +99,14 @@ public class TopicController {
         return Result.ok();
     }
 
+    @GetMapping("/{name}/precheck-shrink")
+    public Result<TopicShrinkPrecheckVO> precheckTopicQueueShrink(
+            @PathVariable String name,
+            @RequestParam int targetQueueNum,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.precheckTopicQueueShrink(instanceId, name, targetQueueNum));
+    }
+
     @GetMapping("/{name}/routes")
     public Result<List<BrokerRouteVO>> getTopicRoutes(
             @PathVariable String name,

@@ -82,6 +82,17 @@ public class MetadataService {
     private final OperationAuditService operationAuditService;
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final TopicQueueShrinkGuardEngine topicQueueShrinkGuardEngine;
+
+    public TopicShrinkPrecheckVO precheckTopicQueueShrink(String instanceId, String topic, int targetQueueNum) {
+        TopicVO topicVO = getTopic(instanceId, topic);
+        if (topicVO == null) {
+            throw new BusinessException(404, "Topic not found: " + topic);
+        }
+        int currentQueueNum = topicVO.getWriteQueueNums() == null ? 8 : topicVO.getWriteQueueNums();
+        List<TopicQueueStatsVO> stats = getTopicQueueStats(instanceId, topic);
+        return topicQueueShrinkGuardEngine.precheckQueueShrink(topic, currentQueueNum, targetQueueNum, stats);
+    }
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical

@@ -388,4 +388,29 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(metadataService);
     }
+
+    @Test
+    void precheckTopicQueueShrinkShouldReturnPrecheckReport() throws Exception {
+        TopicShrinkPrecheckVO precheckVO = TopicShrinkPrecheckVO.builder()
+                .topic("test-topic")
+                .currentQueueNum(8)
+                .targetQueueNum(4)
+                .safeToShrink(true)
+                .totalUnconsumedMessagesOnTruncatedQueues(0L)
+                .build();
+        when(metadataService.precheckTopicQueueShrink("instance-a", "test-topic", 4))
+                .thenReturn(precheckVO);
+
+        mockMvc.perform(get("/api/topics/test-topic/precheck-shrink")
+                        .param("instanceId", "instance-a")
+                        .param("targetQueueNum", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.topic").value("test-topic"))
+                .andExpect(jsonPath("$.data.currentQueueNum").value(8))
+                .andExpect(jsonPath("$.data.targetQueueNum").value(4))
+                .andExpect(jsonPath("$.data.safeToShrink").value(true));
+
+        verify(metadataService).precheckTopicQueueShrink("instance-a", "test-topic", 4);
+    }
 }

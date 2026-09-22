@@ -106,6 +106,9 @@ class MetadataServiceTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private TopicQueueShrinkGuardEngine topicQueueShrinkGuardEngine;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -1077,7 +1080,28 @@ class MetadataServiceTest {
         request.setReadQueues(8);
         request.setPerm(TopicPerm.RW);
         return request;
-
     }
 
+    @Test
+    void precheckTopicQueueShrinkShouldDelegateToEngine() {
+        TopicVO topicVO = topic("orders");
+        topicVO.setWriteQueueNums(8);
+        when(apacheProvider.getTopic("instance-a", "orders")).thenReturn(topicVO);
+        when(apacheProvider.getTopicQueueStats("instance-a", "orders")).thenReturn(List.of());
+
+        TopicShrinkPrecheckVO precheckVO = TopicShrinkPrecheckVO.builder()
+                .topic("orders")
+                .currentQueueNum(8)
+                .targetQueueNum(4)
+                .safeToShrink(true)
+                .build();
+        when(topicQueueShrinkGuardEngine.precheckQueueShrink("orders", 8, 4, List.of()))
+                .thenReturn(precheckVO);
+
+        TopicShrinkPrecheckVO result = metadataService.precheckTopicQueueShrink("instance-a", "orders", 4);
+
+        assertThat(result.isSafeToShrink()).isTrue();
+        assertThat(result.getTargetQueueNum()).isEqualTo(4);
+        verify(topicQueueShrinkGuardEngine).precheckQueueShrink("orders", 8, 4, List.of());
+    }
 }
