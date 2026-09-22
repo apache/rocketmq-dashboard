@@ -810,6 +810,37 @@ describe('Consumer page', () => {
     expect(within(panel).queryByText('心跳状态正常')).not.toBeInTheDocument();
   });
 
+  it('still grades a group healthy when the reported heartbeat is fresh', async () => {
+    // The other half of the split: a heartbeat that was reported keeps the healthy verdict. Without this,
+    // the new "not reported" branch could swallow the case the card exists for and no test would notice.
+    const groupWithAFreshHeartbeat: ConsumerGroup = {
+      ...group,
+      onlineInstances: 1,
+      instances: [
+        {
+          clientId: 'remote-cg-0@10.0.0.1',
+          protocol: 'Remoting',
+          address: '10.0.0.1:49152',
+          subscribedTopics: ['remote-topic'],
+          lastHeartbeat: new Date().toISOString(),
+          topicLag: {},
+        },
+      ],
+    };
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([groupWithAFreshHeartbeat]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+
+    await waitFor(() => expect(within(panel).getByText('心跳状态正常')).toBeInTheDocument());
+    expect(within(panel).queryByText('客户端未上报心跳时间')).not.toBeInTheDocument();
+  });
+
   it('filters queue progress to the topic of the clicked distribution button', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
