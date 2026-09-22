@@ -2421,7 +2421,7 @@ POST /api/settings/datasources/test
 | `durationMs` | `number?` | 耗时（毫秒） |
 | `inputTokens` | `number?` | 输入 token 数 |
 | `outputTokens` | `number?` | 输出 token 数 |
-| `stopReason` | `string?` | 非成功终态的原因：`USER_STOP` / `SHUTDOWN` / `TIMEOUT` / `OUTPUT_LIMIT` / `PROVIDER_ERROR` / `SERVER_RESTART` / `OVERLOADED` / `ORPHANED` |
+| `stopReason` | `string?` | 非成功终态的原因：`USER_STOP` / `SHUTDOWN` / `TIMEOUT` / `OUTPUT_LIMIT` / `PROVIDER_ERROR` / `SERVER_RESTART` / `OVERLOADED` / `ORPHANED` / `RETENTION` |
 | `errorCode` | `string?` | 失败时的错误码 |
 | `errorMessage` | `string?` | 失败时的错误信息 |
 
@@ -3137,7 +3137,7 @@ GET /api/metrics/grafana/dashboards/export
 | **AI 会话模式** | `chat`, `diagnose`, `manage`, `query` |
 | **AI 引擎** | `http`, `claude-code`, `qoder` |
 | **AI Run 状态** | `QUEUED`, `RUNNING`, `COMPLETED`, `STOPPED`, `FAILED`（后三者为终态） |
-| **AI 停止原因** | `USER_STOP`, `SHUTDOWN`, `TIMEOUT`, `OUTPUT_LIMIT`, `PROVIDER_ERROR`, `SERVER_RESTART`, `OVERLOADED`, `ORPHANED` |
+| **AI 停止原因** | `USER_STOP`, `SHUTDOWN`, `TIMEOUT`, `OUTPUT_LIMIT`, `PROVIDER_ERROR`, `SERVER_RESTART`, `OVERLOADED`, `ORPHANED`, `RETENTION` |
 | **AI 思维链来源** | `model`（模型推理）, `enhance`（Studio 的 prompt 增强改写） |
 | **AI 通知级别** | `info`, `warn`, `error` |
 | **AI live 事件类型**（SSE `event: agent`） | `run_started`, `text_delta`, `thinking`, `tool_start`, `tool_done`, `notice`, `error`, `run_finished` |

@@ -499,6 +499,8 @@ public class AiConversationService implements ApplicationRunner {
 
     /**
      * Events, then runs, then conversations: no FK constraints here, so the cascade is this method.
+     * A run the registry still owns is stopped first, so a retention purge cannot strand an active
+     * run writing into a conversation whose rows are about to disappear.
      *
      * <p>The workspace goes too, once the rows are gone: it holds the child's {@code HOME}, so the
      * agent transcript lives there and a purge that only deletes rows keeps it on disk under an id
@@ -507,6 +509,13 @@ public class AiConversationService implements ApplicationRunner {
      * is not (the order {@link #delete(Long, String)} uses).
      */
     private int deleteCascade(List<Long> conversationIds) {
+        for (Long conversationId : conversationIds) {
+            runRepository.findActiveByConversationId(conversationId).ifPresent(active -> {
+                log.info("stopping agent run {} before retention purge of conversation {}",
+                        active.getId(), conversationId);
+                registry.stop(active.getId(), AbortReason.RETENTION);
+            });
+        }
         eventRepository.deleteByConversationIds(conversationIds);
         runRepository.deleteByConversationIds(conversationIds);
         int deleted = conversationRepository.deleteByIds(conversationIds);
