@@ -74,7 +74,7 @@ public class DLQService {
         return dlqProvider.exportMessages(instanceId, normalizedGroupName, startTime, endTime, maxCount);
     }
 
-    public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                  int page, int pageSize) {
         requireApacheInstance(instanceId);
         String normalizedGroupName = requireGroupName(groupName);
