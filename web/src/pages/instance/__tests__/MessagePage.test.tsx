@@ -405,6 +405,56 @@ describe('Message page query history', () => {
     expect(locationItems[2]).toHaveTextContent('0');
   });
 
+  it('warns on the detail panel when the body was truncated or is not text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-BODY-FLAGS'),
+        body: 'AAEC',
+        bodyEncoding: 'BASE64',
+        bodyTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-FLAGS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-FLAGS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not warn on the detail panel when the body is complete UTF-8 text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BODY-PLAIN'), bodyEncoding: 'UTF-8', bodyTruncated: false },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-PLAIN');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-PLAIN')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+  });
+
   it('renders trace diagnostics in English when the UI language is English', async () => {
     localStorage.setItem('rocketmq-studio-language', 'en');
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-TRACE-EN')]);

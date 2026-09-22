@@ -942,6 +942,22 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             {t('topic.messageBody')}
           </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t('messagePage.bodyTruncatedWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          {selectedMsg.bodyEncoding === 'BASE64' && (
+            <Alert
+              showIcon
+              type="info"
+              message={t('messagePage.bodyBinaryWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Paragraph
             copyable
             style={{

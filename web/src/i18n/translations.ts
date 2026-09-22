@@ -559,6 +559,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '查询结果达到服务端扫描上限，当前总数可能不完整。',
     en: 'The query reached the server-side scan limit; the total count may be incomplete.',
   },
+  'messagePage.bodyTruncatedWarning': {
+    zh: '消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。',
+    en: 'The body exceeds the server display limit and was truncated, so what is shown and downloaded here is incomplete.',
+  },
+  'messagePage.bodyBinaryWarning': {
+    zh: '消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。',
+    en: 'The body is not UTF-8 text and the server returned it BASE64-encoded; below is the encoded form.',
+  },
   'messagePage.queryFailed': {
     zh: '消息查询失败，请稍后重试',
     en: 'Failed to query messages, please try again later',
