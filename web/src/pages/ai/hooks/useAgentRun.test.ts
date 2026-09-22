@@ -494,4 +494,31 @@ describe('useAgentRun', () => {
     expect(result.current.error).toBe('');
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it('keepsTheNewStreamGuardWhenAnAbortedStreamSettlesTest', async () => {
+    const { result, rerender } = render();
+    let firstSend!: Promise<void>;
+    await act(async () => {
+      firstSend = result.current.send(7, { message: 'first conversation' });
+    });
+
+    await act(async () => {
+      rerender({ id: 8 });
+    });
+    expect(openedStreams[0].signal.aborted).toBe(true);
+
+    await act(async () => {
+      void result.current.send(8, { message: 'new conversation' });
+    });
+    await act(async () => {
+      openedStreams[0].fail(new DOMException('Aborted', 'AbortError'));
+      await firstSend;
+    });
+
+    await act(async () => {
+      void result.current.send(8, { message: 'duplicate send' });
+    });
+    expect(openedStreams).toHaveLength(2);
+    expect(result.current.isStreaming).toBe(true);
+  });
 });
