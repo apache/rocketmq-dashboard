@@ -546,11 +546,60 @@ class RocketMQMessageProviderTest {
         mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
 
-        List<MessageRecordVO> messages = provider.queryMessages(
+        MessageQueryResult result = provider.queryMessagesDetailed(
                 "instance-a", "TopicA", null, null, null, 100L, 200L);
 
-        assertThat(messages).isEmpty();
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
         verify(pullConsumer, times(1)).pull(queue, "*", 10L, 32);
+    }
+
+    @Test
+    void queryByTopicMarksResultIncompleteWhenPullResultIsNull() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(null);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void queryByTopicMarksResultIncompleteForMalformedFoundResponse() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        PullResult malformedResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L, null);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 11L, 11L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(malformedResult);
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void queryByTopicMarksResultIncompleteAfterRepeatedIllegalOffsets() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 100L, 100L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> {
+                    long offset = invocation.getArgument(2);
+                    return new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 100L, null);
+                });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(pullConsumer, times(4)).pull(eq(queue), eq("*"), anyLong(), eq(32));
     }
 
     @Test
@@ -989,12 +1038,13 @@ class RocketMQMessageProviderTest {
         when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
                 .thenAnswer(invocation -> topicPullBatch(invocation.getArgument(2), maxOffsetExclusive, begin));
 
-        List<MessageRecordVO> messages = provider.queryMessages(
+        MessageQueryResult result = provider.queryMessagesDetailed(
                 "instance-a", "TopicA", null, null, null, begin, end);
 
-        assertThat(messages).hasSize(200);
-        assertThat(messages.get(0).getMsgId()).isEqualTo("msg-39999");
-        assertThat(messages.get(199).getMsgId()).isEqualTo("msg-39800");
+        assertThat(result.messages()).hasSize(200);
+        assertThat(result.messages().get(0).getMsgId()).isEqualTo("msg-39999");
+        assertThat(result.messages().get(199).getMsgId()).isEqualTo("msg-39800");
+        assertThat(result.mayBeTruncated()).isTrue();
         verify(pullConsumer).pull(queue, "*", maxOffsetExclusive - TOPIC_TAIL_SCAN_BUDGET, 32);
         verify(pullConsumer, never()).pull(queue, "*", 0L, 32);
     }

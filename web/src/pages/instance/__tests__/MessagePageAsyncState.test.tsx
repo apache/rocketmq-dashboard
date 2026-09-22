@@ -205,7 +205,7 @@ describe('MessagePage async request ownership', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     expect(await screen.findByText('message-on-page-two')).toBeInTheDocument();
     expect(screen.getByText('共 101 条消息')).toBeInTheDocument();
-    expect(screen.getByText(/查询结果达到服务端扫描上限/)).toBeInTheDocument();
+    expect(screen.getByText(/查询结果可能因服务端扫描上限/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /重置/ }));
 

@@ -91,7 +91,7 @@ tools:
                 type: integer
         resultMayBeTruncated:
           type: boolean
-          description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
+          description: True when rows were omitted by a limit or the provider could not prove that every queue was scanned completely.
         skippedCount:
           type: integer
           description: Rows omitted by limit from the provider-bounded result; more may exist when resultMayBeTruncated is true.
@@ -176,7 +176,7 @@ tools:
                 type: integer
         resultMayBeTruncated:
           type: boolean
-          description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
+          description: True when rows were omitted by a limit or the provider could not prove that every queue was scanned completely.
         skippedCount:
           type: integer
           description: Rows omitted by limit from the provider-bounded result; more may exist when resultMayBeTruncated is true.
