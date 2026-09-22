@@ -172,6 +172,20 @@
 | 128 | POST | `/api/system-alerts/deliveries/:deliveryId/retry` | 重试单条投递 |
 | 129 | POST | `/api/system-alerts/deliveries/retry` | 批量重试投递 |
 | 130 | POST | `/api/alert-rules/import` | 导入告警规则 |
+| 131 | GET | `/api/clusters/registry` | 主机注册表集群列表 |
+| 132 | POST | `/api/clusters/test-connection` | 测试集群连接 |
+| 133 | POST | `/api/clusters/config/preview` | 预览集群配置变更 |
+| 134 | GET | `/api/clusters/:id/broker-config-diff` | 检查 Broker 配置漂移 |
+| 135 | GET | `/api/nameservers/registry` | NameServer 注册表列表 |
+| 136 | POST | `/api/nameservers/registry/create` | 创建注册项 |
+| 137 | POST | `/api/nameservers/registry/update` | 更新注册项 |
+| 138 | POST | `/api/nameservers/registry/delete` | 删除注册项 |
+| 139 | GET | `/api/groups/page` | 消费组分页列表 |
+| 140 | GET | `/api/groups/:name/settings` | 消费组运行时设置 |
+| 141 | POST | `/api/groups/settings` | 更新消费组运行时设置 |
+| 142 | GET | `/api/groups/:name/refresh` | 刷新消费组 |
+| 143 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
+| 144 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
 
 ## 通用响应格式
 
@@ -789,6 +803,139 @@ POST /api/k8s-certs/delete
 
 **Response `data`:** `null`
 
+### 4.16 获取主机注册表集群列表
+
+```
+GET /api/clusters/registry
+```
+
+**Response `data`:** `ClusterInfo[]`（同 4.1 的单条记录）：主机注册表中登记的集群。
+
+### 4.17 测试集群连接
+
+```
+POST /api/clusters/test-connection
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namesrvAddr` | `string` | 是 | NameServer 地址 |
+
+**Response `data`:** `ClusterProbeResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `connected` | `boolean` | 是否连接成功 |
+| `namesrvAddr` | `string` | 探测的地址 |
+| `clusterName` | `string` | 集群名称 |
+| `brokerCount` | `number` | Broker 数量 |
+| `brokerNames` | `string[]` | Broker 名称列表 |
+| `elapsedMillis` | `number` | 探测耗时（毫秒） |
+| `message` | `string` | 补充信息 |
+
+### 4.18 预览集群配置变更
+
+```
+POST /api/clusters/config/preview
+```
+
+**Request Body:** 同 4.3 的更新请求。
+
+**Response `data`:** `ClusterConfigPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `ClusterInfo` | 目标集群 |
+| `currentConfig` | `object` | 当前配置 |
+| `proposedConfig` | `object` | 拟变更配置 |
+| `targetBrokers` | `object[]` | 目标 Broker：`{ name, address }` |
+| `brokerProperties` | `object` | 字段到 Broker property 的映射 |
+| `changes` | `object[]` | 变更明细：`{ field, currentValue, proposedValue, brokerProperty }` |
+| `changed` | `boolean` | 是否存在实际变更 |
+
+### 4.19 检查 Broker 配置漂移
+
+```
+GET /api/clusters/:id/broker-config-diff?instanceId={instanceId}
+```
+
+**Response `data`:** `BrokerConfigDiff`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 Broker |
+| `driftDetected` | `boolean` | 可达 Broker 间是否存在差异 |
+| `brokerCount` | `number` | Broker 总数 |
+| `reachableBrokerCount` | `number` | 成功读取的 Broker 数 |
+| `comparedFields` | `string[]` | 本次比较的字段 |
+| `brokers` | `object[]` | Broker：`{ name, address, reachable, message }` |
+| `differences` | `object[]` | 差异：`{ field, brokerProperty, values: [{ brokerName, address, configured, value }] }` |
+
+### 4.20 获取 NameServer 注册表列表
+
+```
+GET /api/nameservers/registry
+```
+
+**Response `data`:** `NameserverRegistry[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 注册项 ID |
+| `name` | `string` | 名称 |
+| `namesrvAddr` | `string` | NameServer 地址 |
+| `k8sNamespace` | `string` | K8s 命名空间 |
+| `k8sId` | `string` | K8s 标识 |
+| `status` | `string` | 状态 |
+| `description` | `string` | 描述 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 4.21 创建 NameServer 注册项
+
+```
+POST /api/nameservers/registry/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 名称 |
+| `namesrvAddr` | `string` | 是 | NameServer 地址 |
+| `k8sNamespace` | `string` | 否 | K8s 命名空间 |
+| `k8sId` | `string` | 否 | K8s 标识 |
+| `description` | `string` | 否 | 描述 |
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.22 更新 NameServer 注册项
+
+```
+POST /api/nameservers/registry/update
+```
+
+**Request Body:** 同 4.21，另加必填 `id`（`number`）。
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.23 删除 NameServer 注册项
+
+```
+POST /api/nameservers/registry/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 注册项 ID |
+
+**Response `data`:** `null`
+
 ---
 
 ## 5. Topic 管理
@@ -1271,6 +1418,106 @@ GET /api/groups/export?names={name1,name2}
 ```
 
 **Response:** `Content-Type: application/json`, `Content-Disposition: attachment`
+
+### 6.9 分页获取消费组列表
+
+```
+GET /api/groups/page?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<ConsumerGroup>`（同 6.1 的 `ConsumerGroup` 定义）。
+
+### 6.10 获取消费组运行时设置
+
+```
+GET /api/groups/:name/settings?instanceId={instanceId}
+```
+
+**Response `data`:** `ConsumerGroupSettings`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `retryQueueNums` | `number` | 重试队列数 |
+| `retryMaxTimes` | `number` | 最大重试次数 |
+| `consumeEnable` | `boolean` | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 是否允许广播消费 |
+
+### 6.11 更新消费组运行时设置
+
+```
+POST /api/groups/settings
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `retryQueueNums` | `number` | 是 | 重试队列数 |
+| `retryMaxTimes` | `number` | 是 | 最大重试次数 |
+| `consumeEnable` | `boolean` | 否 | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 否 | 是否顺序消费 |
+
+**Response `data`:** `ConsumerGroupSettings`（同 6.10）
+
+### 6.12 刷新消费组
+
+```
+GET /api/groups/:name/refresh?instanceId={instanceId}
+```
+
+**Response `data`:** `ConsumerGroup`（同 6.1 的单条定义）：绕过缓存从 Broker 重新读取。
+
+### 6.13 获取消费者线程栈
+
+```
+GET /api/groups/:name/instances/:clientId/stack
+```
+
+**Response `data`:** `ConsumerStackTrace`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `clientId` | `string` | 客户端 ID |
+| `capturedAt` | `string` | 抓取时间 (ISO 8601) |
+| `threadCount` | `number` | 线程数 |
+| `threads` | `object[]` | 线程栈明细 |
+
+### 6.14 预览重置消费位点
+
+```
+POST /api/groups/reset-offset/preview
+```
+
+**Request Body:** 同 6.7 的重置请求。
+
+**Response `data`:** `ResetOffsetPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 所属实例 ID |
+| `groupName` | `string` | 消费组名称 |
+| `topic` | `string` | Topic 名称 |
+| `timestamp` | `number` | 目标时间（Unix 毫秒时间戳） |
+| `complete` | `boolean` | 是否完整读取全部队列 |
+| `allowReset` | `boolean` | 是否允许重置 |
+| `queueCount` | `number` | 队列总数 |
+| `warningCount` | `number` | 有警告的队列数 |
+| `rewindQueueCount` | `number` | 会回退的队列数 |
+| `fastForwardQueueCount` | `number` | 会前跳的队列数 |
 
 ---
 
