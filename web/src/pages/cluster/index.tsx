@@ -685,6 +685,7 @@ const ClusterPage = () => {
   };
 
   // Broker config handler
+  const originalMaxMessageSizeRef = useRef<number | null>(null);
   const handleConfigOpen = (cluster: ClusterInfo) => {
     const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
     configPreviewRequest.invalidate();
@@ -692,6 +693,7 @@ const ClusterPage = () => {
     setConfigPreview(null);
     setConfigPreviewLoading(false);
     setConfigSubmitting(false);
+    originalMaxMessageSizeRef.current = cfg.maxMessageSize ?? 4194304;
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -710,12 +712,17 @@ const ClusterPage = () => {
   ): ClusterConfigRequest | null => {
     if (!selectedCluster) return null;
     const { maxMessageSizeMB, ...configValues } = values;
+    // The form edits whole MiB while the broker stores bytes; a value that is not MiB-aligned was
+    // DISPLAYED rounded. While the field still equals that rounded display, resend the original
+    // bytes so a no-op save cannot silently rewrite the broker's maxMessageSize.
+    const original = originalMaxMessageSizeRef.current;
+    const untouched = original !== null && Math.round(original / 1048576) === maxMessageSizeMB;
     return {
       id: selectedCluster.id,
       instanceId: selectedInstanceIdRef.current,
       ...(selectedCluster.config ?? {}),
       ...configValues,
-      maxMessageSize: maxMessageSizeMB * 1048576,
+      maxMessageSize: untouched && original !== null ? original : maxMessageSizeMB * 1048576,
     };
   };
 
