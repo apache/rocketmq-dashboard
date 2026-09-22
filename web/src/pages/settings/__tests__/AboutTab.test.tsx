@@ -19,6 +19,10 @@ import { render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { AboutTab } from '../AboutTab';
 
+vi.mock('../../../i18n/LangContext', () => ({
+  useLang: () => ({ t: (key: string) => key }),
+}));
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -47,5 +51,25 @@ describe('AboutTab', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('2024-01-15 14:30:00')).not.toBeInTheDocument();
+  });
+
+  it('reads every label from the language context', () => {
+    render(<AboutTab />);
+
+    // t is mocked to identity, so a rendered key proves the text came from the dictionary
+    // instead of a literal left in the component.
+    for (const key of [
+      'settings.aboutVersion',
+      'settings.aboutBuildCommit',
+      'settings.aboutBuildTime',
+      'settings.aboutSupportedVersions',
+      'settings.aboutFrontendStack',
+      'settings.aboutBackendStack',
+      'settings.aboutRelatedLinks',
+      'settings.aboutDocs',
+      'settings.aboutCommunity',
+    ]) {
+      expect(screen.getByText(key), key).toBeInTheDocument();
+    }
   });
 });

@@ -18,42 +18,64 @@
 import { Descriptions, Divider, Space, Typography } from 'antd';
 import { BookOutlined, GithubOutlined, GlobalOutlined } from '@ant-design/icons';
 
+import { useLang } from '../../i18n/LangContext';
+
 const { Title, Text, Link: TypoLink } = Typography;
 
-export const AboutTab = () => (
-  <div style={{ maxWidth: 800 }}>
-    <Descriptions column={1} bordered size="small">
-      <Descriptions.Item label="版本">0.1.0</Descriptions.Item>
-      <Descriptions.Item label="构建提交">{__BUILD_COMMIT__}</Descriptions.Item>
-      <Descriptions.Item label="构建时间">{__BUILD_TIME__}</Descriptions.Item>
-      <Descriptions.Item label="RocketMQ 支持版本">4.x / 5.x</Descriptions.Item>
-      <Descriptions.Item label="前端框架">React 18 + Ant Design 5</Descriptions.Item>
-      <Descriptions.Item label="后端框架">Spring Boot 3 + RocketMQ MCP Server</Descriptions.Item>
-      <Descriptions.Item label="License">Apache 2.0</Descriptions.Item>
-    </Descriptions>
+export const AboutTab = () => {
+  const { t } = useLang();
 
-    <Divider />
+  return (
+    <div style={{ maxWidth: 800 }}>
+      <Descriptions column={1} bordered size="small">
+        <Descriptions.Item label={t('settings.aboutVersion')}>0.1.0</Descriptions.Item>
+        <Descriptions.Item label={t('settings.aboutBuildCommit')}>
+          {__BUILD_COMMIT__}
+        </Descriptions.Item>
+        <Descriptions.Item label={t('settings.aboutBuildTime')}>{__BUILD_TIME__}</Descriptions.Item>
+        <Descriptions.Item label={t('settings.aboutSupportedVersions')}>
+          4.x / 5.x
+        </Descriptions.Item>
+        <Descriptions.Item label={t('settings.aboutFrontendStack')}>
+          React 18 + Ant Design 5
+        </Descriptions.Item>
+        <Descriptions.Item label={t('settings.aboutBackendStack')}>
+          Spring Boot 3 + RocketMQ MCP Server
+        </Descriptions.Item>
+        <Descriptions.Item label="License">Apache 2.0</Descriptions.Item>
+      </Descriptions>
 
-    <Title level={5}>相关链接</Title>
-    <Space size="middle" style={{ marginBottom: 24 }}>
-      <TypoLink href="https://github.com/apache/rocketmq" target="_blank" rel="noopener noreferrer">
-        <GithubOutlined /> GitHub
-      </TypoLink>
-      <TypoLink href="https://rocketmq.apache.org/docs/" target="_blank" rel="noopener noreferrer">
-        <BookOutlined /> 文档中心
-      </TypoLink>
-      <TypoLink href="https://rocketmq.apache.org/" target="_blank" rel="noopener noreferrer">
-        <GlobalOutlined /> RocketMQ 社区
-      </TypoLink>
-    </Space>
+      <Divider />
 
-    <Divider />
+      <Title level={5}>{t('settings.aboutRelatedLinks')}</Title>
+      <Space size="middle" style={{ marginBottom: 24 }}>
+        <TypoLink
+          href="https://github.com/apache/rocketmq"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <GithubOutlined /> GitHub
+        </TypoLink>
+        <TypoLink
+          href="https://rocketmq.apache.org/docs/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <BookOutlined /> {t('settings.aboutDocs')}
+        </TypoLink>
+        <TypoLink href="https://rocketmq.apache.org/" target="_blank" rel="noopener noreferrer">
+          <GlobalOutlined /> {t('settings.aboutCommunity')}
+        </TypoLink>
+      </Space>
 
-    <Text type="secondary">
-      Copyright © {__BUILD_TIME__.slice(0, 4)} Apache Software Foundation. Licensed under the Apache
-      License, Version 2.0.
-    </Text>
-  </div>
-);
+      <Divider />
+
+      <Text type="secondary">
+        Copyright © {__BUILD_TIME__.slice(0, 4)} Apache Software Foundation. Licensed under the
+        Apache License, Version 2.0.
+      </Text>
+    </div>
+  );
+};
 
 export default AboutTab;
