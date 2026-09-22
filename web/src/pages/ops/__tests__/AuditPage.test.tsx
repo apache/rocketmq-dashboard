@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as opsService from '../../../services/opsService';
 import AuditPage from '../audit';
 
@@ -388,5 +389,21 @@ describe('Audit page', () => {
     await user.click(await screen.findByRole('button', { name: '确认清理' }));
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
+  });
+
+  it('renders the summary cards and cleanup dialog in English', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const user = userEvent.setup();
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('Matched Records')).toBeInTheDocument();
+    expect(screen.queryByText('匹配记录')).not.toBeInTheDocument();
+    expect(screen.getByText('Success Rate')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cleanup' }));
+
+    expect(await screen.findByText('days ago')).toBeInTheDocument();
+    expect(screen.queryByText('天之前的日志')).not.toBeInTheDocument();
   });
 });
