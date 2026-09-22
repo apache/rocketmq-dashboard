@@ -51,6 +51,7 @@ class AliyunConvertersTest {
         SubscriptionEntryVO entry = AliyunConverters.toSubscriptionEntry(data);
 
         assertThat(entry.getFilterMode()).isEqualTo("SQL");
+        assertThat(entry.getConsistency()).isEqualTo("consistent");
     }
 
     @Test
@@ -65,5 +66,23 @@ class AliyunConvertersTest {
         SubscriptionEntryVO entry = AliyunConverters.toSubscriptionEntry(data);
 
         assertThat(entry.getFilterMode()).isEqualTo("TAG");
+    }
+
+    @Test
+    void toSubscriptionEntryShouldMapTheVendorConsistencyFlagTest() {
+        assertThat(AliyunConverters.toSubscriptionEntry(subscription(Boolean.TRUE)).getConsistency())
+                .isEqualTo("consistent");
+        assertThat(AliyunConverters.toSubscriptionEntry(subscription(Boolean.FALSE)).getConsistency())
+                .isEqualTo("inconsistent");
+        assertThat(AliyunConverters.toSubscriptionEntry(subscription(null)).getConsistency()).isNull();
+    }
+
+    private static ListConsumerGroupSubscriptionsResponseBody.Data subscription(Boolean consistency) {
+        return ListConsumerGroupSubscriptionsResponseBody.Data.builder()
+                .topicName("orders")
+                .filterExpression("tag-a")
+                .filterExpressionType("TAG")
+                .consistency(consistency)
+                .build();
     }
 }
