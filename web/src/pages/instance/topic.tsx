@@ -173,15 +173,20 @@ const visibleTopics = (
   selectedInstanceId: string | undefined,
   searchText: string,
   typeFilter: string,
-) =>
-  topics
+) => {
+  // The server-side query trims the keyword before matching, so the client-side filter has
+  // to trim too — otherwise a keyword with surrounding spaces matches on the server (total
+  // > 0) but filters out every row here, leaving an empty table under a non-empty pager.
+  const keyword = searchText.trim().toLowerCase();
+  return topics
     .filter((topic) => {
       if (selectedInstanceId && topic.instanceId !== selectedInstanceId) return false;
-      if (searchText && !topic.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      if (keyword && !topic.name.toLowerCase().includes(keyword)) return false;
       if (typeFilter && topic.type !== typeFilter) return false;
       return true;
     })
     .sort((left, right) => left.name.localeCompare(right.name));
+};
 
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
