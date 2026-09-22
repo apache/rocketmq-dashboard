@@ -698,13 +698,6 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     void loadAll(nextProfile, selectedRange);
   };
 
-  const handleRangeChange = (nextRangeId: RangeOption['value']) => {
-    const nextRange =
-      RANGE_OPTIONS.find((range) => range.value === nextRangeId) ?? RANGE_OPTIONS[0];
-    setRangeId(nextRangeId);
-    void loadAll(selectedProfile, nextRange);
-  };
-
   const runCustomQuery = useCallback(
     async (promql: string, range: RangeOption) => {
       const trimmed = promql.trim();
@@ -769,6 +762,18 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     },
     [copy.customTitle, instanceId, queryErrorFallback, runQuery],
   );
+
+  const handleRangeChange = (nextRangeId: RangeOption['value']) => {
+    const nextRange =
+      RANGE_OPTIONS.find((range) => range.value === nextRangeId) ?? RANGE_OPTIONS[0];
+    setRangeId(nextRangeId);
+    void loadAll(selectedProfile, nextRange);
+    // The range control scopes the whole explorer, so a committed custom query follows the new
+    // window the same way the refresh button and an instance switch already make it follow.
+    if (appliedCustomPromql) {
+      void runCustomQuery(appliedCustomPromql, nextRange);
+    }
+  };
 
   const activateDataSource = (
     nextKey: string,

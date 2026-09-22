@@ -474,6 +474,41 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('cluster=prod / query=custom')).toBeInTheDocument();
   });
 
+  it('re-runs the committed custom query when the range changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+
+    // The range control governs the whole explorer: the profile panels re-query through
+    // loadAll, so the custom panel has to follow the new window as well instead of
+    // keeping the samples its previous window produced.
+    await user.click(screen.getByText('6h'));
+
+    const customCalls = () =>
+      vi
+        .mocked(queryMetrics)
+        .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)');
+    await waitFor(() => expect(customCalls()).toHaveLength(2));
+    const rerun = customCalls()[customCalls().length - 1];
+    expect(rerun[0]).toEqual({
+      metric: 'sum(rocketmq_topic_number)',
+      start: 1_799_978_400,
+      end: 1_800_000_000,
+      step: '2m',
+    });
+  });
+
   it('queries the first metric when the version profile changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
