@@ -919,8 +919,8 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `tps` | `number` | 当前 TPS |
 | `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
-| `createdAt` | `string` | 创建时间 (ISO 8601) |
-| `updatedAt` | `string` | 更新时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
 
 ### 5.2 分页获取 Topic 列表
 
@@ -1055,6 +1055,8 @@ POST /api/topics/send
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
 | `body` | `string` | 是 | 消息体内容 |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
+| `messageGroup` | `string` | 否 | 分片键（FIFO Topic 必填） |
+| `deliveryTimestamp` | `number` | 否 | 延迟投递时间（Unix 毫秒时间戳，延迟 Topic 使用） |
 
 **Response `data`:**
 
@@ -1120,8 +1122,8 @@ GET /api/groups?clusterId={clusterId}&search={keyword}
 | `deliveryOrderType` | `string?` | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
 | `retryMaxTimes` | `number` | 最大重试次数 |
 | `delaySeconds` | `number` | 延迟秒数 |
-| `createdAt` | `string` | 创建时间 |
-| `updatedAt` | `string` | 更新时间 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 
 ### 6.2 获取消费组详情
 
@@ -1226,6 +1228,7 @@ POST /api/groups/reset-offset
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
 | `name` | `string` | 是 | 消费组名称 |
 | `instanceId` | `string` | 是 | 实例 ID |
 | `timestamp` | `number` | 是 | 重置到的时间（Unix 毫秒时间戳，必须为正数） |
@@ -1518,6 +1521,7 @@ GET /api/messages
 | `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
 | `bornHost` | `string` | 发送方地址 |
 | `storeHost` | `string` | 存储 Broker 地址 |
+| `reconsumeTimes` | `number` | 重试次数 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
 | `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
 | `size` | `number` | 消息大小（字节） |
