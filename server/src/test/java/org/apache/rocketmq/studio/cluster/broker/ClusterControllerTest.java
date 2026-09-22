@@ -328,6 +328,30 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void auditClusterConfigDriftShouldReturnReport() throws Exception {
+        BrokerConfigAuditReportVO report = BrokerConfigAuditReportVO.builder()
+                .clusterId("cluster-1")
+                .instanceId("instance-1")
+                .totalBrokers(2)
+                .onlineBrokers(2)
+                .driftedFieldCount(1)
+                .clusterConsistencyScore(83.4)
+                .baselineBrokerAddress("10.0.0.1:10911")
+                .build();
+        when(brokerConfigDiffService.auditClusterConfigDrift("cluster-1", "instance-1")).thenReturn(report);
+
+        mockMvc.perform(get("/api/clusters/cluster-1/config-drift-audit")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.clusterId").value("cluster-1"))
+                .andExpect(jsonPath("$.data.totalBrokers").value(2))
+                .andExpect(jsonPath("$.data.clusterConsistencyScore").value(83.4));
+
+        verify(brokerConfigDiffService).auditClusterConfigDrift("cluster-1", "instance-1");
+    }
+
+    @Test
     void updateConfigShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/clusters/config/update")
                         .contentType(MediaType.APPLICATION_JSON)

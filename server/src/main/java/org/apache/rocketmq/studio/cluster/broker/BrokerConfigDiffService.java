@@ -48,6 +48,27 @@ public class BrokerConfigDiffService {
 
     private final ClusterService clusterService;
     private final RocketMQBrokerConfigService brokerConfigService;
+    private final BrokerConfigDriftEngine brokerConfigDriftEngine;
+
+    public BrokerConfigAuditReportVO auditClusterConfigDrift(String clusterId, String instanceId) {
+        String normalizedClusterId = requireClusterId(clusterId);
+        String normalizedInstanceId = normalizeInstanceId(instanceId);
+        ClusterVO cluster = normalizedInstanceId == null
+                ? clusterService.getCluster(normalizedClusterId)
+                : clusterService.getCluster(normalizedClusterId, normalizedInstanceId);
+        List<BrokerTarget> brokers = collectBrokerTargets(cluster);
+        Map<String, ClusterConfigVO> configs = new LinkedHashMap<>();
+        for (BrokerTarget b : brokers) {
+            try {
+                ClusterConfigVO cfg = brokerConfigService.getBrokerConfig(b.address(), normalizedInstanceId);
+                if (cfg != null) {
+                    configs.put(b.address(), cfg);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return brokerConfigDriftEngine.auditClusterConfigDrift(normalizedClusterId, normalizedInstanceId, configs);
+    }
 
     public BrokerConfigDiffVO compareForInstance(String instanceId) {
         ClusterVO cluster = clusterService.requireSingleCluster(instanceId);

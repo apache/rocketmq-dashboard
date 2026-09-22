@@ -44,11 +44,14 @@ class BrokerConfigDiffServiceTest {
     @Mock
     private RocketMQBrokerConfigService brokerConfigService;
 
+    @Mock
+    private BrokerConfigDriftEngine brokerConfigDriftEngine;
+
     private BrokerConfigDiffService service;
 
     @BeforeEach
     void setUp() {
-        service = new BrokerConfigDiffService(clusterService, brokerConfigService);
+        service = new BrokerConfigDiffService(clusterService, brokerConfigService, brokerConfigDriftEngine);
     }
 
     @Test
@@ -253,6 +256,28 @@ class BrokerConfigDiffServiceTest {
         assertThat(result.getCluster()).isEqualTo("DefaultCluster");
         assertThat(result.isComplete()).isTrue();
         verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "prod-apache");
+    }
+
+    @Test
+    void auditClusterConfigDriftShouldAggregateAndDelegateToEngine() {
+        ClusterVO cluster = cluster(broker("broker-a", "10.0.0.1:10911"));
+        when(clusterService.getCluster("cluster-a", "inst-1")).thenReturn(cluster);
+        ClusterConfigVO cfg = config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04");
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "inst-1")).thenReturn(cfg);
+
+        BrokerConfigAuditReportVO mockReport = BrokerConfigAuditReportVO.builder()
+                .clusterId("cluster-a")
+                .instanceId("inst-1")
+                .totalBrokers(1)
+                .clusterConsistencyScore(100.0)
+                .build();
+        when(brokerConfigDriftEngine.auditClusterConfigDrift(eq("cluster-a"), eq("inst-1"), any()))
+                .thenReturn(mockReport);
+
+        BrokerConfigAuditReportVO result = service.auditClusterConfigDrift("cluster-a", "inst-1");
+
+        assertThat(result.getClusterConsistencyScore()).isEqualTo(100.0);
+        verify(brokerConfigDriftEngine).auditClusterConfigDrift(eq("cluster-a"), eq("inst-1"), any());
     }
 
 }
