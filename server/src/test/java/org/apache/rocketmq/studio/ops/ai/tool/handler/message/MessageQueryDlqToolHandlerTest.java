@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessagePageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQService;
@@ -96,7 +97,7 @@ class MessageQueryDlqToolHandlerTest {
                 .build();
         when(dlqService.listMessages(eq("instance-a"), eq("group-1"),
                 eq(1000L), eq(2000L), eq(1), eq(20)))
-                .thenReturn(PageResult.of(List.of(message), 1, 1, 20));
+                .thenReturn(DLQMessagePageVO.of(PageResult.of(List.of(message), 1, 1, 20), false, 0));
 
         MessageQueryDlqOutput response = handler.execute(new MessageQueryDlqInput(
                 "instance-a", "group-1", null, new TimeRange(1000L, 2000L), new PageRequest(1, 20)),
