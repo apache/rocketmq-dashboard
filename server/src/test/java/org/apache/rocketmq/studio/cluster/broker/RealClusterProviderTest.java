@@ -20,7 +20,9 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,13 +48,16 @@ class RealClusterProviderTest {
     @Mock
     private MqAdminExtFactory adminFactory;
 
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
     private final MqAdminProperties properties = new MqAdminProperties();
 
     private RealClusterProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new RealClusterProvider(adminFactory, properties);
+        provider = new RealClusterProvider(adminFactory, properties, runtimeAdminClientResolver);
     }
 
     @SuppressWarnings("unchecked")
@@ -184,6 +189,26 @@ class RealClusterProviderTest {
 
         assertThat(clusters).hasSize(1);
         assertThat(clusters.get(0).getBrokers()).hasSize(2);
+    }
+
+    @Test
+    void discoverClustersForSelectedInstanceShouldReturnItsClusters() throws Exception {
+        InstanceVO instance = InstanceVO.builder()
+                .name("instance-a")
+                .type(InstanceType.DIRECT)
+                .endpoint("10.0.0.1:9876")
+                .build();
+        MQAdminExt admin = org.mockito.Mockito.mock(MQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sampleClusterInfo());
+        when(runtimeAdminClientResolver.resolveInstance("instance-a")).thenReturn(instance);
+        when(runtimeAdminClientResolver.execute(eq(instance), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+            return action.apply(admin);
+        });
+
+        List<ClusterVO> clusters = provider.discoverClusters("instance-a");
+
+        assertThat(clusters).extracting(ClusterVO::getId).containsExactly("DefaultCluster");
     }
 
     @Test

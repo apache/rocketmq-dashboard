@@ -26,7 +26,6 @@ import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -48,11 +47,22 @@ import java.util.Set;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class RealClusterProvider implements ClusterProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final MqAdminProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    public RealClusterProvider(MqAdminExtFactory adminFactory, MqAdminProperties properties,
+                               RuntimeAdminClientResolver runtimeAdminClientResolver) {
+        this.adminFactory = adminFactory;
+        this.properties = properties;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
+    }
+
+    RealClusterProvider(MqAdminExtFactory adminFactory, MqAdminProperties properties) {
+        this(adminFactory, properties, null);
+    }
 
     @Override
     public List<ClusterVO> discoverClusters() {
@@ -62,6 +72,19 @@ public class RealClusterProvider implements ClusterProvider {
             return List.of();
         }
         return describeClusters(namesrvAddr);
+    }
+
+    @Override
+    public List<ClusterVO> discoverClusters(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            return discoverClusters();
+        }
+        if (runtimeAdminClientResolver == null) {
+            return discoverClusters();
+        }
+        var instance = runtimeAdminClientResolver.resolveInstance(instanceId.trim());
+        return runtimeAdminClientResolver.execute(instance,
+                admin -> toClusterVOs(instance.getEndpoint(), admin.examineBrokerClusterInfo()));
     }
 
     @Override
