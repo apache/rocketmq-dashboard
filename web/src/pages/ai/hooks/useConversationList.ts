@@ -87,6 +87,12 @@ export function useConversationList(
       if (id !== requestId.current) return;
       setItems(result.items);
       setTotal(result.total);
+      // Archiving or deleting the last row of the last page leaves the pinned page empty. Clamp
+      // to the last valid page so the list never rests on a blank page after a mutation; the
+      // clamped page refetches through the normal `page` effect and converges.
+      if (result.items.length === 0 && result.total > 0 && page > 1) {
+        setPage(Math.max(1, Math.ceil(result.total / pageSize)));
+      }
     } catch (loadError) {
       if (id !== requestId.current) return;
       setItems([]);

@@ -126,6 +126,32 @@ describe('useConversationList', () => {
     expect(result.current.page).toBe(1);
   });
 
+  it('clampsBackToTheLastValidPageWhenTheCurrentPageBecomesEmptyTest', async () => {
+    // Page 2 held the only conversation of the last page; archiving or deleting it must pull the
+    // list back to a populated page instead of resting on a blank one.
+    listMock.mockImplementation(async (params) =>
+      params.page === 2
+        ? resultPage([], 15, 2)
+        : resultPage(
+            Array.from({ length: 15 }, (_, index) => listItem(index + 1, `会话 ${index + 1}`)),
+            15,
+            1,
+          ),
+    );
+
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      result.current.setPage(2);
+    });
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 })),
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(15));
+    expect(result.current.page).toBe(1);
+  });
+
   it('discardsAResponseSupersededByANewerQueryTest', async () => {
     let releaseStale: (value: PageResult<AiConversationListItemVO>) => void = () => undefined;
     const stale = new Promise<PageResult<AiConversationListItemVO>>((resolve) => {
