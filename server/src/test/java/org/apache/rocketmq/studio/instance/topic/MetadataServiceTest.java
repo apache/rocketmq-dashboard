@@ -232,6 +232,10 @@ class MetadataServiceTest {
         lenient().when(providerRegistry.byInstanceId("cloud-instance")).thenReturn(java.util.Optional.of(cloudProvider));
         lenient().when(instanceResolver.findByIdentifier(org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.Optional.empty());
+        // Topic lookups (message-send topic-type policies) default to "unknown topic" so plain-send
+        // behavior is preserved unless a test registers the topic type explicitly.
+        lenient().when(apacheProvider.listTopics(any(), any(), any())).thenReturn(List.of());
+        lenient().when(cloudProvider.listTopics(any(), any(), any())).thenReturn(List.of());
     }
 
     @Test
@@ -732,6 +736,98 @@ class MetadataServiceTest {
         assertThat(result.getOffsetMsgId()).isEqualTo("offset-001");
         verify(apacheProvider).sendMessage(request);
         verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void sendMessageShouldRejectFifoTopicWithoutMessageGroupTest() {
+        when(apacheProvider.listTopics("instance-a", null, "orders"))
+                .thenReturn(List.of(topic("orders", "app", TopicType.FIFO)));
+
+        assertThatThrownBy(() -> metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("orders")
+                .body("hello")
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(((BusinessException) exception).getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessage("messageGroup is required for FIFO topic");
+                });
+        verify(apacheProvider, never()).sendMessage(any());
+    }
+
+    @Test
+    void sendMessageShouldAcceptFifoTopicWithMessageGroupTest() {
+        when(apacheProvider.listTopics("instance-a", null, "orders"))
+                .thenReturn(List.of(topic("orders", "app", TopicType.FIFO)));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-fifo").build());
+
+        metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("orders")
+                .body("hello")
+                .messageGroup("order-1")
+                .build());
+
+        verify(apacheProvider).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void sendMessageShouldRejectDelayTopicWithoutFutureDeliveryTimestampTest() {
+        when(apacheProvider.listTopics("instance-a", null, "delayed"))
+                .thenReturn(List.of(topic("delayed", "app", TopicType.DELAY)));
+
+        assertThatThrownBy(() -> metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("delayed")
+                .body("hello")
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(((BusinessException) exception).getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessage("deliveryTimestamp is required for DELAY topic");
+                });
+
+        assertThatThrownBy(() -> metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("delayed")
+                .body("hello")
+                .deliveryTimestamp(System.currentTimeMillis() - 1000L)
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception).hasMessage("deliveryTimestamp must be in the future for DELAY topic");
+                });
+        verify(apacheProvider, never()).sendMessage(any());
+    }
+
+    @Test
+    void sendMessageShouldRejectTransactionTopicTest() {
+        when(apacheProvider.listTopics("instance-a", null, "tx"))
+                .thenReturn(List.of(topic("tx", "app", TopicType.TRANSACTION)));
+
+        assertThatThrownBy(() -> metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a")
+                .topic("tx")
+                .body("hello")
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception).hasMessage("sending transaction messages is not supported");
+                });
+        verify(apacheProvider, never()).sendMessage(any());
+    }
+
+    @Test
+    void sendMessageShouldKeepPlainSendBehaviorForUnregisteredTopicsTest() {
+        // The topic list does not contain "test-topic": no registered type, so the plain send
+        // path is preserved (the pre-policy behavior for unregistered topics).
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-plain").build());
+
+        SendMessageVO result = metadataService.sendMessage(SendMessageDTO.builder()
+                .topic("test-topic")
+                .body("hello")
+                .build());
+
+        assertThat(result.getMsgId()).isEqualTo("msg-plain");
     }
 
     @Test

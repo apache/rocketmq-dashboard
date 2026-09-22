@@ -17,7 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.message;
 
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.topic.MessageSendPolicies;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -111,27 +111,9 @@ public class MessageSendToolHandler extends MutationToolHandler<MessageSendInput
     }
 
     private static void validateForTopicType(TopicType topicType, MessageSendInput input) {
-        if (topicType == null) {
-            return;
-        }
-        switch (topicType) {
-            case FIFO -> {
-                if (!StringUtils.hasText(input.messageGroup())) {
-                    throw new BusinessException(400, "messageGroup is required for FIFO topic");
-                }
-            }
-            case DELAY -> {
-                if (input.deliveryTimestamp() == null) {
-                    throw new BusinessException(400, "deliveryTimestamp is required for DELAY topic");
-                }
-                if (input.deliveryTimestamp() <= System.currentTimeMillis()) {
-                    throw new BusinessException(400, "deliveryTimestamp must be in the future for DELAY topic");
-                }
-            }
-            case TRANSACTION -> throw new BusinessException(400, "sending transaction messages is not supported");
-            default -> {
-            }
-        }
+        // The same rule guards the REST send path (MetadataService.sendMessage) through
+        // MessageSendPolicies, so both surfaces refuse the same requests with the same messages.
+        MessageSendPolicies.validateForTopicType(topicType, input.messageGroup(), input.deliveryTimestamp());
     }
 
     private static Map<String, String> parseProperties(String json) {
