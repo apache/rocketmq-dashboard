@@ -76,7 +76,10 @@ public class MessageService {
             throw new BusinessException(400, "uniqueKey is required");
         }
         log.info("Querying message by unique key: topic={}, uniqueKey={}", topic, uniqueKey);
-        return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime))
+                .orElseGet(() -> messageProvider.queryMessageByUniqueKey(
+                        instanceId, topic, uniqueKey, startTime, endTime));
     }
 
     public MessageQueryPageVO queryMessagesPage(String instanceId, String topic, String msgId, String tag,
@@ -118,7 +121,9 @@ public class MessageService {
         if (!StringUtils.hasText(topic)) {
             throw new BusinessException(400, "topic is required");
         }
-        return messageProvider.getQueueOffsets(instanceId, topic);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.getQueueOffsets(instanceId, topic))
+                .orElseGet(() -> messageProvider.getQueueOffsets(instanceId, topic));
     }
 
     public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
@@ -135,7 +140,10 @@ public class MessageService {
         if (offset < 0) {
             throw new BusinessException(400, "offset must not be negative");
         }
-        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset))
+                .orElseGet(() -> messageProvider.pullMessageAtOffset(
+                        instanceId, topic, brokerName, queueId, offset));
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {

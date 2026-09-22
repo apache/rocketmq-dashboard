@@ -437,4 +437,52 @@ class MessageServiceTest {
 
         verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L);
     }
+
+    @Test
+    void instanceScopedMessageOperationsResolveTheSelectedProviderBeforeFallbackTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class));
+        BusinessException unsupported = new BusinessException(501,
+                "Selected instance does not support this message operation");
+        when(registry.byInstanceId("cloud-instance")).thenThrow(unsupported);
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey(
+                "cloud-instance", "TopicA", "uniq-1", null, null))
+                .isSameAs(unsupported);
+        assertThatThrownBy(() -> service.getQueueOffsets("cloud-instance", "TopicA"))
+                .isSameAs(unsupported);
+        assertThatThrownBy(() -> service.pullMessageAtOffset(
+                "cloud-instance", "TopicA", "broker-a", 0, 0))
+                .isSameAs(unsupported);
+
+        verify(registry, org.mockito.Mockito.times(3)).byInstanceId("cloud-instance");
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void instanceScopedMessageOperationsUseTheSelectedProviderResultsTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class));
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        QueueOffsetVO queue = QueueOffsetVO.builder().brokerName("broker-a").queueId(0).build();
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.queryMessageByUniqueKey("cloud-instance", "TopicA", "uniq-1", 100L, 200L))
+                .thenReturn(List.of(record));
+        when(provider.getQueueOffsets("cloud-instance", "TopicA")).thenReturn(List.of(queue));
+        when(provider.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(record);
+
+        assertThat(service.queryMessageByUniqueKey("cloud-instance", "TopicA", "uniq-1", 100L, 200L))
+                .containsExactly(record);
+        assertThat(service.getQueueOffsets("cloud-instance", "TopicA")).containsExactly(queue);
+        assertThat(service.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .isSameAs(record);
+
+        verifyNoInteractions(fallback);
+    }
 }
