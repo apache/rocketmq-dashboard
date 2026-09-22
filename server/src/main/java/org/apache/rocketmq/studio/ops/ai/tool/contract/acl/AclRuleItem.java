@@ -36,7 +36,7 @@ public record AclRuleItem(
 
     public static AclRuleItem from(AclRuleVO rule) {
         return new AclRuleItem(
-                rule.getId() == null ? null : rule.getId().toString(),
+                identifier(rule),
                 rule.getPrincipal(),
                 rule.getResource(),
                 rule.getResourceType(),
@@ -46,5 +46,15 @@ public record AclRuleItem(
                 rule.getScope(),
                 rule.getAclVersion(),
                 rule.getGmtCreate() == null ? null : rule.getGmtCreate().toString());
+    }
+
+    /**
+     * The tool contract requires an {@code id}. Rules stored in the Studio ACL tables carry a
+     * numeric primary key, but a role-backed instance (Tencent) projects its rules from the
+     * cloud role and has none, so the principal identifies the rule there — which is also
+     * what {@code AclService.getRule}/{@code deleteRule} accept for such an instance.
+     */
+    private static String identifier(AclRuleVO rule) {
+        return rule.getId() == null ? rule.getPrincipal() : rule.getId().toString();
     }
 }

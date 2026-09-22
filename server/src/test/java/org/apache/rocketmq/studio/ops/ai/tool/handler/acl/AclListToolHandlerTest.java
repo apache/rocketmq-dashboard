@@ -117,4 +117,37 @@ class AclListToolHandlerTest {
         assertThatCode(() -> validator.validateOutput(
                 catalog.getDefinition("rmq.acl.list"), result)).doesNotThrowAnyException();
     }
+
+    /**
+     * A role-backed instance (Tencent) has no numeric primary key for its ACL rules: the
+     * projection is built from the cloud role, so {@code id} is {@code null} and the
+     * record omits it. The output schema requires {@code id}, so listing a single role
+     * aborted the whole tool call, and the identifier the caller needs for a follow-up
+     * {@code rmq.acl.get} was missing.
+     */
+    @Test
+    void executeShouldIdentifyARuleThatHasNoNumericId() {
+        AclRuleVO roleRule = AclRuleVO.builder()
+                .principal("role-a")
+                .resource("*")
+                .resourceType("CLUSTER")
+                .resourcePattern("PLAIN")
+                .actions(List.of("PUB", "SUB"))
+                .decision("GRANT")
+                .scope("CLUSTER")
+                .aclVersion("v1")
+                .build();
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(),
+                eq("cluster-1"), eq(1), eq(20)))
+                .thenReturn(PageResult.of(List.of(roleRule), 1, 1, 20));
+
+        PageOutput<AclRuleItem> result = handler.execute(new AclListInput(
+                "cluster-1", null, null, null, null, new PageRequest(1, 20)), context("cluster-1"));
+
+        assertThat(result.items()).hasSize(1);
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.acl.list"), result)).doesNotThrowAnyException();
+        assertThat(result.items().getFirst().id()).isEqualTo("role-a");
+        assertThat(result.items().getFirst().principal()).isEqualTo("role-a");
+    }
 }

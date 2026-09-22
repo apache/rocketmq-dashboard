@@ -115,4 +115,27 @@ class UserGetToolHandlerTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL user not found");
     }
+
+    /**
+     * A role-backed instance (Tencent) has no numeric primary key for its ACL users
+     * either: the projection is built from the cloud role, so {@code id} is {@code null}
+     * and the record omits it. The output schema requires {@code id}, so reading one user
+     * aborted the tool call instead of returning the role.
+     */
+    @Test
+    void executeShouldIdentifyAUserThatHasNoNumericId() {
+        when(aclService.getUser(eq("role-a"), eq("instance-a"))).thenReturn(AclUserVO.builder()
+                .username("role-a")
+                .admin(false)
+                .clusters(List.of("rmq-xxx"))
+                .build());
+
+        AclUserItem item = handler.execute(
+                new UserGetInput("instance-a", "role-a"), context("instance-a"));
+
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.user.get"), item)).doesNotThrowAnyException();
+        assertThat(item.id()).isEqualTo("role-a");
+        assertThat(item.username()).isEqualTo("role-a");
+    }
 }

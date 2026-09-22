@@ -30,9 +30,19 @@ public record AclUserItem(
 
     public static AclUserItem from(AclUserVO user) {
         return new AclUserItem(
-                user.getId() == null ? null : user.getId().toString(),
+                identifier(user),
                 user.getUsername(),
                 user.isAdmin(),
                 user.getClusters());
+    }
+
+    /**
+     * The tool contract requires an {@code id}. Users stored in the Studio ACL tables carry a
+     * numeric primary key, but a role-backed instance (Tencent) projects its users from the
+     * cloud role and has none, so the username identifies the user there — which is also what
+     * {@code AclService.getUser} accepts for such an instance.
+     */
+    private static String identifier(AclUserVO user) {
+        return user.getId() == null ? user.getUsername() : user.getId().toString();
     }
 }
