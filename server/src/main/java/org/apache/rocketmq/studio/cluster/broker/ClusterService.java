@@ -244,7 +244,8 @@ public class ClusterService {
                 }
             }
         }
-        if (cluster.getConfig() == null && cluster.getId() != null) {
+        if ((instanceId == null || instanceId.isBlank())
+                && cluster.getConfig() == null && cluster.getId() != null) {
             clusterRepository.findById(cluster.getId()).ifPresent(stored -> cluster.setConfig(stored.getConfig()));
         }
     }
