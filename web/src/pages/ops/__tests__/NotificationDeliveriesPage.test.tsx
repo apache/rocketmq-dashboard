@@ -195,4 +195,32 @@ describe('NotificationDeliveriesPage', () => {
       expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
     );
   });
+
+  it('returns to the first page when the page size changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const sizeChanger = document.querySelector('.ant-pagination-options .ant-select-selector');
+    expect(sizeChanger).not.toBeNull();
+
+    // Larger page size while stranded on a late page must not keep requesting that
+    // page: the reset lands on page 1 with the new size.
+    await user.click(sizeChanger as HTMLElement);
+    await user.click(
+      await screen.findByText('50 / page', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 50 }),
+      ),
+    );
+  });
 });
