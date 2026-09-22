@@ -747,14 +747,17 @@ class AliyunInstanceProviderTest {
         assertThat(trace.getNodes()).hasSize(3);
         TraceNodeVO producer = trace.getNodes().get(0);
         assertThat(producer.getTitle()).isEqualTo("Producer");
-        assertThat(producer.getStatus()).isEqualTo("SEND_OK");
+        assertThat(producer.getStatus()).isEqualTo("finish");
         assertThat(producer.getCostTime()).isEqualTo(12L);
         assertThat(producer.getTimestamp())
                 .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:08"));
         assertThat(trace.getNodes().get(1).getTitle()).isEqualTo("Broker store");
+        // GetTrace carries no status for broker operations; the node must still stay inside the
+        // wait / process / finish / error vocabulary instead of reporting null.
+        assertThat(trace.getNodes().get(1).getStatus()).isEqualTo("wait");
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
-        assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+        assertThat(consumer.getStatus()).isEqualTo("finish");
         assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
             assertThat(status.getGroup()).isEqualTo("GID_test");
             assertThat(status.getDeliveryStatus().name()).isEqualTo("success");
