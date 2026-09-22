@@ -20,7 +20,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { formatTimeMs, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -111,26 +111,19 @@ function QueueBrowserResultsProbe() {
   const firstQueue = state.queues[0];
   return (
     <div>
-      <button type="button" onClick={() => state.setTopic('topic-a')}>topic-a</button>
-      <button type="button" onClick={() => void state.loadQueues()}>load</button>
-      <button type="button" onClick={() => firstQueue && void state.handlePull(firstQueue)}>pull</button>
+      <button type="button" onClick={() => state.setTopic('topic-a')}>
+        topic-a
+      </button>
+      <button type="button" onClick={() => void state.loadQueues()}>
+        load
+      </button>
+      <button type="button" onClick={() => firstQueue && void state.handlePull(firstQueue)}>
+        pull
+      </button>
       <QueueBrowserResults state={state} />
     </div>
   );
 }
-
-describe('formatTimeMs', () => {
-  it('preserves the Unix epoch timestamp', () => {
-    expect(formatTimeMs(0)).not.toBe('-');
-  });
-
-  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY])(
-    'returns a placeholder for invalid timestamp %s',
-    (value) => {
-      expect(formatTimeMs(value)).toBe('-');
-    },
-  );
-});
 
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {
@@ -319,6 +312,8 @@ describe('QueueBrowser request ownership', () => {
 
     const properties = await screen.findByRole('region', { name: '消息属性' });
     expect(within(properties).getByText('queue-trace-123')).toBeInTheDocument();
-    expect(within(properties).getByText('属性过多或单值过长，服务端已截断展示')).toBeInTheDocument();
+    expect(
+      within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
+    ).toBeInTheDocument();
   });
 });

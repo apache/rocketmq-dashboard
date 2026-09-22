@@ -35,6 +35,7 @@ import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
 import MessageProperties from './MessageProperties';
+import { formatTimeMs } from '../utils/format';
 
 const { Text, Paragraph } = Typography;
 
@@ -42,12 +43,6 @@ export interface TopicOption {
   label: string;
   value: string;
 }
-
-export const formatTimeMs = (value: number | string) => {
-  const ts = typeof value === 'string' ? Date.parse(value) : value;
-  if (!Number.isFinite(ts)) return '-';
-  return new Date(ts).toLocaleString('zh-CN', { hour12: false });
-};
 
 export interface PulledEntry {
   key: string;
