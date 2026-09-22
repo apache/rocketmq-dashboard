@@ -85,6 +85,18 @@ describe('ACL page', () => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([]);
 
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+    ]);
+
     vi.mocked(aclService.listAclRules).mockResolvedValue({
       items: [
         {
@@ -129,6 +141,105 @@ describe('ACL page', () => {
     expect(screen.getByText('remote-topic')).toBeInTheDocument();
     expect(aclService.listAclRules).toHaveBeenCalledTimes(1);
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the rule-tab admin badge from the full user directory, not the users page', async () => {
+    // The Users tab holds a server page that does not contain the rule's principal;
+    // only the full directory does.
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'other-user',
+          accessKey: 'acce****1111',
+          secretKey: 'secr****2222',
+          admin: false,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 30,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 12,
+        username: 'other-user',
+        accessKey: 'acce****1111',
+        secretKey: 'secr****2222',
+        admin: false,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 13,
+        username: 'remote-user',
+        accessKey: 'acce****5555',
+        secretKey: 'secr****6666',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    const principalCell = screen.getByText('remote-user').closest('td');
+    expect(principalCell).not.toBeNull();
+    await waitFor(() =>
+      expect(within(principalCell as HTMLElement).getByText('管理员')).toBeInTheDocument(),
+    );
+  });
+
+  it('offers every directory user as a rule principal, not just the loaded users page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 12,
+          username: 'other-user',
+          accessKey: 'acce****1111',
+          secretKey: 'secr****2222',
+          admin: false,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 30,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+
+    expect(
+      await screen.findByText('remote-admin', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {
