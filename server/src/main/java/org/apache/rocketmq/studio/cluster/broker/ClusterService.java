@@ -230,13 +230,25 @@ public class ClusterService {
     }
 
     private void enrichWithLiveConfig(ClusterVO cluster, String instanceId, Set<String> attemptedAddresses) {
+        boolean instanceScoped = instanceId != null && !instanceId.isBlank();
+        BusinessException lastInstanceFailure = null;
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
                 if (broker.getAddr() != null && !broker.getAddr().isEmpty()
-                        && !attemptedAddresses.contains(broker.getAddr())) {
+                    && !attemptedAddresses.contains(broker.getAddr())) {
                     try {
-                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
-                        return;
+                        ClusterConfigVO liveConfig =
+                                brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId);
+                        if (liveConfig != null) {
+                            cluster.setConfig(liveConfig);
+                            return;
+                        }
+                    } catch (BusinessException e) {
+                        if (instanceScoped) {
+                            lastInstanceFailure = e;
+                        }
+                        log.warn("Failed to read live config from broker {}: {}",
+                                broker.getAddr(), e.getMessage());
                     } catch (Exception e) {
                         log.warn("Failed to read live config from broker {}: {}",
                                 broker.getAddr(), e.getMessage());
@@ -244,8 +256,13 @@ public class ClusterService {
                 }
             }
         }
-        if ((instanceId == null || instanceId.isBlank())
-                && cluster.getConfig() == null && cluster.getId() != null) {
+        if (instanceScoped) {
+            if (cluster.getConfig() == null && lastInstanceFailure != null) {
+                throw lastInstanceFailure;
+            }
+            return;
+        }
+        if (cluster.getConfig() == null && cluster.getId() != null) {
             clusterRepository.findById(cluster.getId()).ifPresent(stored -> cluster.setConfig(stored.getConfig()));
         }
     }
@@ -436,6 +453,9 @@ public class ClusterService {
         ClusterVO live = clusterProvider.refreshClusterDetail(clusterId, instanceId);
         if (live != null) {
             enrichWithLiveConfig(live, instanceId);
+            if (live.getConfig() == null) {
+                throw new BusinessException(503, "Cluster configuration is unavailable: " + clusterId);
+            }
             return live;
         }
         throw new BusinessException(503, "Cluster details are unavailable: " + clusterId);

@@ -326,16 +326,72 @@ class ClusterServiceTest {
                 .config(ClusterConfigVO.builder().maxMessageSize(999).build())
                 .build()));
 
-        ClusterConfigPreviewVO preview = clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+        assertThatThrownBy(() -> clusterService.previewClusterConfig(UpdateConfigDTO.builder()
                 .id("cluster-1")
                 .instanceId("instance-a")
                 .flushDiskType("SYNC_FLUSH")
-                .build());
-
-        assertThat(preview.getCurrentConfig().getMaxMessageSize()).isZero();
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(502);
+                    assertThat(error).hasMessageContaining("broker unavailable");
+                });
         verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-a");
         verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "instance-a");
         verify(clusterRepository, never()).findById("cluster-1");
+    }
+
+    @Test
+    void instanceScopedConfigPreviewShouldRejectUnknownCurrentConfig() {
+        ClusterVO liveCluster = ClusterVO.builder()
+                .id("cluster-1")
+                .brokers(sampleCluster.getBrokers())
+                .build();
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-a")).thenReturn(liveCluster);
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "instance-a"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        lenient().when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(ClusterVO.builder()
+                .id("cluster-1")
+                .config(ClusterConfigVO.builder().maxMessageSize(999).build())
+                .build()));
+
+        assertThatThrownBy(() -> clusterService.previewClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-a")
+                .flushDiskType("SYNC_FLUSH")
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(503);
+                    assertThat(error).hasMessageContaining("Cluster configuration is unavailable: cluster-1");
+                });
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-a");
+        verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "instance-a");
+        verify(clusterRepository, never()).findById("cluster-1");
+    }
+
+    @Test
+    void instanceScopedConfigUpdateShouldRejectUnknownCurrentConfigWithoutMutation() {
+        ClusterVO liveCluster = ClusterVO.builder()
+                .id("cluster-1")
+                .brokers(sampleCluster.getBrokers())
+                .build();
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-a")).thenReturn(liveCluster);
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", "instance-a"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-a")
+                .flushDiskType("SYNC_FLUSH")
+                .build()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(503);
+                    assertThat(error).hasMessageContaining("Cluster configuration is unavailable: cluster-1");
+                });
+        verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "instance-a");
+        verify(brokerConfigService, never()).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-1"), eq("instance-a"), any());
+        verify(clusterRepository, never()).updateConfig(any(), any());
+        verifyNoInteractions(auditService);
     }
 
     @Test
