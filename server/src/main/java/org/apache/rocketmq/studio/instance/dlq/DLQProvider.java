@@ -34,8 +34,8 @@ public interface DLQProvider {
     /**
      * Paged dead-letter message detail query for a group within a time window.
      */
-    PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
-                                          int page, int pageSize);
+    DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                  int page, int pageSize);
 
     /**
      * Re-deliver only the selected dead-letter messages (by msgId) back to their origin or a target topic.
