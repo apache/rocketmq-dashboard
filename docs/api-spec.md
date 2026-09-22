@@ -431,6 +431,8 @@ GET /api/dashboard
 
 ---
 
+## 3. 实例管理 Instances
+
 ### 3.1 获取实例列表
 
 ```
@@ -1538,7 +1540,7 @@ GET /api/groups/export?names={name1,name2}
 
 **Response:** `Content-Type: application/json`, `Content-Disposition: attachment`
 
-### 6.9 分页获取消费组列表
+### 6.10 分页获取消费组列表
 
 ```
 GET /api/groups/page?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
@@ -1555,7 +1557,7 @@ GET /api/groups/page?clusterId={clusterId}&search={search}&page={page}&pageSize=
 
 **Response `data`:** `PageResult<ConsumerGroup>`（同 6.1 的 `ConsumerGroup` 定义）。
 
-### 6.10 获取消费组运行时设置
+### 6.11 获取消费组运行时设置
 
 ```
 GET /api/groups/:name/settings?instanceId={instanceId}
@@ -1572,7 +1574,7 @@ GET /api/groups/:name/settings?instanceId={instanceId}
 | `consumeMessageOrderly` | `boolean` | 是否顺序消费 |
 | `consumeBroadcastEnable` | `boolean` | 是否允许广播消费 |
 
-### 6.11 更新消费组运行时设置
+### 6.12 更新消费组运行时设置
 
 ```
 POST /api/groups/settings
@@ -1589,9 +1591,9 @@ POST /api/groups/settings
 | `consumeEnable` | `boolean` | 否 | 是否允许消费 |
 | `consumeMessageOrderly` | `boolean` | 否 | 是否顺序消费 |
 
-**Response `data`:** `ConsumerGroupSettings`（同 6.10）
+**Response `data`:** `ConsumerGroupSettings`（同 6.11）
 
-### 6.12 刷新消费组
+### 6.13 刷新消费组
 
 ```
 GET /api/groups/:name/refresh?instanceId={instanceId}
@@ -1600,7 +1602,7 @@ GET /api/groups/:name/refresh?instanceId={instanceId}
 **Response `data`:** `ConsumerGroup`（同 6.1 的单条定义）。组已不存在时返回 `200` 空数据
 （前端保留现有行不变）。
 
-### 6.13 获取消费者线程栈
+### 6.14 获取消费者线程栈
 
 ```
 GET /api/groups/:name/instances/:clientId/stack
@@ -1616,7 +1618,7 @@ GET /api/groups/:name/instances/:clientId/stack
 | `threadCount` | `number` | 线程数 |
 | `threads` | `object[]` | 线程栈明细 |
 
-### 6.14 预览重置消费位点
+### 6.15 预览重置消费位点
 
 ```
 POST /api/groups/reset-offset/preview
