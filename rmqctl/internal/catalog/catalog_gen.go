@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "94c2164d0181f55aebc2f32ef1f3db2c0b92185e98ac7824e492b6f0e29014b9",
+	Digest:               "30a907ada71734e87305982bcf29a3ff7c6f3ae050a2211f06e87c11b0424e2d",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -582,7 +582,7 @@ var defaultDocument = Document{
 			Description:          "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability.",
 			RiskLevel:            "L1",
 			Permission:           "proxy:read",
-			RequiredCapabilities: []string{"PROXY_DISCOVERY"},
+			RequiredCapabilities: []string{},
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "clusterName", Flag: "cluster-name", Description: "Physical RocketMQ cluster name.", Kind: StringField, MinLength: 1},
@@ -597,7 +597,7 @@ var defaultDocument = Document{
 			Description:          "Read the Proxy configuration and reachability snapshot for one physical cluster, with an optional addr filter (read-only; configuration reload is not exposed through MCP).",
 			RiskLevel:            "L1",
 			Permission:           "proxy:read",
-			RequiredCapabilities: []string{"PROXY_DISCOVERY"},
+			RequiredCapabilities: []string{},
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "clusterName", Flag: "cluster-name", Description: "Physical RocketMQ cluster name.", Kind: StringField, Required: true, MinLength: 1},
