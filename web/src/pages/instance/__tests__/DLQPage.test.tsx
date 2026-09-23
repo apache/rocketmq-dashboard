@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, message } from 'antd';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -153,6 +153,9 @@ describe('DLQ page', () => {
   afterEach(() => {
     clickSpy.mockRestore();
     vi.clearAllMocks();
+    // Restore message spy implementations too: clearAllMocks keeps mockImplementations, which
+    // would silence the real toasts later tests assert on.
+    vi.restoreAllMocks();
   });
 
   it('renders invalid message timestamps as unavailable without throwing', () => {
@@ -257,6 +260,53 @@ describe('DLQ page', () => {
     expect(messageService.listDLQMessages).toHaveBeenCalledWith(
       expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
     );
+  });
+
+  it('warns instead of celebrating when selected DLQ messages cannot all be resent', async () => {
+    // The selection was captured before the messages were purged: the server reports matched=0,
+    // resent=0, failed=0 with outcome PARTIAL. The old logic fell through to the success toast.
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-gone',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-gone',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 0,
+      resent: 0,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 1,
+    });
+    const successSpy = vi.spyOn(message, 'success').mockImplementation((() => undefined) as never);
+    const warningSpy = vi.spyOn(message, 'warning').mockImplementation((() => undefined) as never);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+    const row = (await screen.findByText('key-gone')).closest('tr');
+    if (!row) throw new Error('DLQ message row not found');
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    await waitFor(() => expect(warningSpy).toHaveBeenCalledTimes(1));
+    expect(warningSpy.mock.calls[0]?.[0]).toContain('重发不完整');
+    expect(successSpy).not.toHaveBeenCalled();
   });
 
   it('does not let an old-instance detail resend overwrite the new instance drawer', async () => {

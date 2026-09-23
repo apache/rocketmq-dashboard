@@ -395,10 +395,20 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
+      // The server reports `matched` separately from `resent`: a selected message that can no
+      // longer be resolved (purged, broker gone) is silently dropped with failed=0. Mirror the
+      // time-range resend handler and never show a green toast unless everything selected was
+      // actually matched and resent.
+      const unmatched = msgIds.length - result.matched;
       if (result.outcome === 'FAILED' && result.failed > 0) {
         message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
-      } else if (result.resent > 0 && result.failed > 0) {
-        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+      } else if (result.failed > 0 || unmatched > 0 || result.scanIncomplete) {
+        const parts = [`成功 ${result.resent}`, `失败 ${result.failed}`];
+        if (unmatched > 0) parts.push(`无法定位 ${unmatched}`);
+        if (result.scanIncomplete) {
+          parts.push(`${result.failedQueueCount ?? 0} 个队列无法扫描`);
+        }
+        message.warning(`重发不完整：${parts.join('，')}`);
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
