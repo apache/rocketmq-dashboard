@@ -59,7 +59,7 @@ public class DLQProviderStub implements DLQProvider {
     }
 
     @Override
-    public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                  int page, int pageSize) {
         log.warn("DLQProviderStub.listMessages called but no real DLQ provider is configured. group={}", groupName);
         throw unsupported();

@@ -141,6 +141,8 @@ const DLQPage = () => {
   const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailTruncated, setDetailTruncated] = useState(false);
+  const [detailFailedQueueCount, setDetailFailedQueueCount] = useState(0);
   const detailRequestIdRef = useRef(0);
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
@@ -364,6 +366,8 @@ const DLQPage = () => {
       if (detailRequestIdRef.current !== requestId) return;
       setDetailMessages(result.items);
       setDetailTotal(result.total);
+      setDetailTruncated(result.truncated ?? false);
+      setDetailFailedQueueCount(result.failedQueueCount ?? 0);
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
@@ -903,6 +907,17 @@ const DLQPage = () => {
 
             {detailError && (
               <Alert showIcon type="warning" message={detailError} style={{ marginBottom: 16 }} />
+            )}
+
+            {detailTruncated && (
+              <Alert
+                showIcon
+                type="warning"
+                style={{ marginBottom: 16 }}
+                message={`明细已按服务端扫描上限截断：共列出 ${detailTotal} 条，组内死信可能更多${
+                  detailFailedQueueCount > 0 ? `，另有 ${detailFailedQueueCount} 个队列无法扫描` : ''
+                }。如需完整内容请缩小「导出时间范围」。`}
+              />
             )}
 
             <Table<DLQMessage>

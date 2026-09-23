@@ -128,6 +128,10 @@ export interface DLQMessagePage {
   total: number;
   page: number;
   size: number;
+  /** True when the server scan hit its hard cap, so dead letters beyond the cap are not listed. */
+  truncated?: boolean;
+  /** Queues that could not be scanned; their dead letters are missing from the page. */
+  failedQueueCount?: number;
 }
 
 // ─── Messages ───────────────────────────────────────────────────

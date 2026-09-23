@@ -259,6 +259,41 @@ describe('DLQ page', () => {
     );
   });
 
+  it('shows a truncation warning when the detail list hits the server scan cap', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-capped',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-cap',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+        },
+      ],
+      total: 5000,
+      page: 1,
+      size: 20,
+      truncated: true,
+      failedQueueCount: 2,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    // The group row advertises more dead letters than the drawer lists: the drawer must say so
+    // instead of presenting the capped window as the whole DLQ.
+    expect(
+      await screen.findByText(/明细已按服务端扫描上限截断.*2 个队列无法扫描/),
+    ).toBeInTheDocument();
+  });
+
   it('does not let an old-instance detail resend overwrite the new instance drawer', async () => {
     let resolveResend!: (result: DLQResendResult) => void;
     let resolveSecondDetail!: (page: DLQMessagePage) => void;

@@ -43,6 +43,7 @@ import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageExcelRow;
+import org.apache.rocketmq.studio.instance.dlq.DLQMessagePageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
@@ -331,7 +332,7 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     @Override
-    public PageResult<DLQMessageVO> listMessages(String instanceId, String groupName, Long startTime, Long endTime,
+    public DLQMessagePageVO listMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                                  int page, int pageSize) {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "groupName is required for DLQ message details");
@@ -346,14 +347,17 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (begin >= end) {
             throw new BusinessException(400, "DLQ detail start time must be before end time");
         }
-        List<DLQMessageVO> all = collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP)
-                .messages().stream()
+        DeadLetterScanResult scanResult =
+                collectDeadLetters(instanceId, dlqTopic, begin, end, RESEND_HARD_CAP);
+        List<DLQMessageVO> all = scanResult.messages().stream()
                 .map(this::toExportVO)
                 .toList();
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, all.size());
         int to = (int) Math.min(offset + pageSize, all.size());
-        return PageResult.of(all.subList(from, to), all.size(), page, pageSize);
+        return DLQMessagePageVO.of(
+                PageResult.of(all.subList(from, to), all.size(), page, pageSize),
+                scanResult.truncated(), scanResult.failedQueueCount());
     }
 
     @Override
