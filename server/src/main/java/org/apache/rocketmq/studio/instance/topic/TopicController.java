@@ -99,6 +99,13 @@ public class TopicController {
         return Result.ok();
     }
 
+    @GetMapping("/{name}/traffic-skew")
+    public Result<TopicTrafficSkewReportVO> auditTopicTrafficSkew(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.auditTopicTrafficSkew(instanceId, name));
+    }
+
     @GetMapping("/{name}/routes")
     public Result<List<BrokerRouteVO>> getTopicRoutes(
             @PathVariable String name,

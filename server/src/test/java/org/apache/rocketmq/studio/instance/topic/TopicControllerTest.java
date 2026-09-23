@@ -167,6 +167,28 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void auditTopicTrafficSkewShouldReturnReport() throws Exception {
+        TopicTrafficSkewReportVO report = TopicTrafficSkewReportVO.builder()
+                .topic("orders")
+                .totalQueues(4)
+                .totalMessagesAcrossQueues(4000L)
+                .giniCoefficient(0.0)
+                .skewSeverity("NORMAL")
+                .build();
+        when(metadataService.auditTopicTrafficSkew("instance-a", "orders")).thenReturn(report);
+
+        mockMvc.perform(get("/api/topics/orders/traffic-skew")
+                        .param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.topic").value("orders"))
+                .andExpect(jsonPath("$.data.totalQueues").value(4))
+                .andExpect(jsonPath("$.data.skewSeverity").value("NORMAL"));
+
+        verify(metadataService).auditTopicTrafficSkew("instance-a", "orders");
+    }
+
+    @Test
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");

@@ -106,6 +106,9 @@ class MetadataServiceTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private TopicTrafficSkewDetector topicTrafficSkewDetector;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -1077,7 +1080,21 @@ class MetadataServiceTest {
         request.setReadQueues(8);
         request.setPerm(TopicPerm.RW);
         return request;
+    }
 
+    @Test
+    void auditTopicTrafficSkewShouldDelegateToDetector() {
+        when(apacheProvider.getTopicQueueStats("instance-a", "orders")).thenReturn(List.of());
+        TopicTrafficSkewReportVO report = TopicTrafficSkewReportVO.builder()
+                .topic("orders")
+                .skewSeverity("NORMAL")
+                .build();
+        when(topicTrafficSkewDetector.detectSkew("orders", List.of())).thenReturn(report);
+
+        TopicTrafficSkewReportVO result = metadataService.auditTopicTrafficSkew("instance-a", "orders");
+
+        assertThat(result.getSkewSeverity()).isEqualTo("NORMAL");
+        verify(topicTrafficSkewDetector).detectSkew("orders", List.of());
     }
 
 }

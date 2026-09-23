@@ -82,6 +82,13 @@ public class MetadataService {
     private final OperationAuditService operationAuditService;
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final TopicTrafficSkewDetector topicTrafficSkewDetector;
+
+    public TopicTrafficSkewReportVO auditTopicTrafficSkew(String instanceId, String topic) {
+        String normalizedTopic = requireName(topic, "topic name");
+        List<TopicQueueStatsVO> stats = getTopicQueueStats(instanceId, normalizedTopic);
+        return topicTrafficSkewDetector.detectSkew(normalizedTopic, stats);
+    }
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
