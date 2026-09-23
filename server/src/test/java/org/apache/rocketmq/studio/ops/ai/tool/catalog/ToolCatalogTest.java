@@ -48,6 +48,10 @@ class ToolCatalogTest {
         }
         ToolDefinition clusterList = catalog.getDefinition("rmq.cluster.list");
         assertThat(clusterList.riskLevel()).isEqualTo(ToolRiskLevel.L1);
+        ToolDefinition userUpdate = catalog.getDefinition("rmq.user.update");
+        assertThat(userUpdate.riskLevel()).isEqualTo(ToolRiskLevel.L3);
+        assertThat(userUpdate.permission()).isEqualTo("acl:write");
+        assertThat(userUpdate.requiredCapabilities()).containsExactly("ACL_MANAGEMENT");
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
 

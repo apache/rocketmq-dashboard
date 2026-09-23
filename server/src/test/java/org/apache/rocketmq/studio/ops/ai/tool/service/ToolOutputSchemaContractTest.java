@@ -135,6 +135,7 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.user.get", List.of(user));
         samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user))));
         samples.put("rmq.user.create", List.of(planned(), executed(user)));
+        samples.put("rmq.user.update", List.of(planned(), executed(user)));
         samples.put("rmq.user.delete", List.of(planned(), executedVoid()));
 
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(

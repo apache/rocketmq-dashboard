@@ -188,6 +188,107 @@ tools:
                 type: string
     viewHint: object
     deprecated: false
+  - name: rmq.user.update
+    cli:
+      resource: user
+      verb: update
+    description: Update a RocketMQ ACL user without exposing credentials. Omitted fields keep their current values.
+    riskLevel: L3
+    permission: acl:write
+    requiredCapabilities: [ACL_MANAGEMENT]
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - id
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        id:
+          type: string
+          minLength: 1
+        username:
+          type: string
+          minLength: 1
+        admin:
+          type: boolean
+        clusters:
+          type: array
+          items:
+            type: string
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+        break_glass:
+          type: boolean
+        reason:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+          required:
+            - username
+            - admin
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            username:
+              type: string
+            admin:
+              type: boolean
+            clusters:
+              type: array
+              items:
+                type: string
+    viewHint: object
+    deprecated: false
   - name: rmq.user.delete
     cli:
       resource: user
