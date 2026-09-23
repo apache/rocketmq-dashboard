@@ -195,4 +195,81 @@ describe('NotificationDeliveriesPage', () => {
       expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
     );
   });
+
+  it('searches alert titles and errors and returns to page one when the filter changes', async () => {
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (query) => ({
+      items: [
+        {
+          id: 7,
+          alertId: 3,
+          alertTitle: 'Broker disk usage',
+          channel: 'dingtalk',
+          status: 'FAILED',
+          attemptCount: 5,
+          createdAt: '2026-08-23T10:00:00',
+          lastError: 'Webhook rejected the request',
+        },
+      ],
+      total: 25,
+      page: query?.page ?? 1,
+      size: 20,
+    }));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const secondPage = document.querySelector('.ant-pagination-item-2') as HTMLElement;
+    await user.click(secondPage);
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })),
+    );
+
+    await user.type(screen.getByPlaceholderText('搜索告警标题或失败原因'), 'WebHook{Enter}');
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'WebHook', page: 1 }),
+      ),
+    );
+
+    await user.clear(screen.getByPlaceholderText('搜索告警标题或失败原因'));
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: undefined, page: 1 }),
+      ),
+    );
+  });
+
+  it('forwards the selected local delivery time range as UTC bounds', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const inputs = screen.getAllByLabelText('投递时间范围');
+    await user.type(inputs[0], '2026-09-01 14:00:00');
+    await user.keyboard('{Enter}');
+    await user.type(inputs[1], '2026-09-01 15:00:00');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: new Date('2026-09-01T14:00:00').toISOString().replace('Z', ''),
+          to: new Date('2026-09-01T15:00:00').toISOString().replace('Z', ''),
+          page: 1,
+        }),
+      ),
+    );
+  });
 });

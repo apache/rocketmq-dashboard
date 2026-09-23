@@ -8,9 +8,11 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Drawer,
   Flex,
+  Input,
   Select,
   Table,
   Tag,
@@ -52,6 +54,9 @@ const NotificationDeliveriesPage = () => {
   const [channel, setChannel] = useState<string>();
   const [status, setStatus] = useState<NotificationDeliveryRecord['status']>();
   const [instanceId, setInstanceId] = useState<string>();
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState<string>();
+  const [timeRange, setTimeRange] = useState<{ from?: string; to?: string }>({});
   const [instanceLoadFailed, setInstanceLoadFailed] = useState(false);
   const [instanceReloadNonce, setInstanceReloadNonce] = useState(0);
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
@@ -136,7 +141,7 @@ const NotificationDeliveriesPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listAlertDeliveriesPage({ channel, status, instanceId, page, pageSize })
+    void listAlertDeliveriesPage({ channel, status, instanceId, search, ...timeRange, page, pageSize })
       .then((result) => {
         if (cancelled) return;
         setItems(result.items);
@@ -151,12 +156,17 @@ const NotificationDeliveriesPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [channel, status, instanceId, page, pageSize, refreshNonce, t]);
+  }, [channel, status, instanceId, search, timeRange, page, pageSize, refreshNonce, t]);
 
   const resetPage = (change: () => void) => {
     setLoading(true);
     change();
     setPage(1);
+  };
+
+  const applySearch = (value: string) => {
+    const normalized = value.trim() || undefined;
+    if (normalized !== search) resetPage(() => setSearch(normalized));
   };
 
   const columns: ColumnsType<NotificationDeliveryRecord> = [
@@ -284,6 +294,38 @@ const NotificationDeliveriesPage = () => {
                 label: instance.name,
               }))}
               onChange={(value) => resetPage(() => setInstanceId(value))}
+            />
+            <Input.Search
+              aria-label={t('deliveries.search')}
+              placeholder={t('deliveries.search')}
+              allowClear
+              value={searchDraft}
+              style={{ width: 280, flex: '1 1 280px' }}
+              onChange={(event) => {
+                setSearchDraft(event.target.value);
+                if (!event.target.value) applySearch('');
+              }}
+              onBlur={() => applySearch(searchDraft)}
+              onSearch={applySearch}
+            />
+            <DatePicker.RangePicker
+              aria-label={t('deliveries.timeRange')}
+              showTime
+              format="YYYY-MM-DD HH:mm:ss"
+              placeholder={[t('deliveries.startTime'), t('deliveries.endTime')]}
+              style={{ width: 380, flex: '1 1 380px' }}
+              onChange={(dates) =>
+                resetPage(() =>
+                  setTimeRange(
+                    dates?.[0] && dates[1]
+                      ? {
+                          from: dates[0].toDate().toISOString().replace('Z', ''),
+                          to: dates[1].toDate().toISOString().replace('Z', ''),
+                        }
+                      : {},
+                  ),
+                )
+              }
             />
             {instanceLoadFailed && (
               <Tooltip title={t('deliveries.instancesLoadFailed')}>
