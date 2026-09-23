@@ -12,6 +12,10 @@ dist/
 target/
 rmqctl/bin/
 
+# Python artifacts
+__pycache__/
+*.pyc
+
 # Dependencies
 node_modules/
 
