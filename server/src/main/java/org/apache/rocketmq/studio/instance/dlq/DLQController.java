@@ -82,6 +82,15 @@ public class DLQController {
                 request.getMsgIds(), request.getTargetTopic()));
     }
 
+    @GetMapping("/{groupName}/cluster-analysis")
+    public Result<DLQClusteringReportVO> clusterDLQMessages(
+            @PathVariable String groupName,
+            @RequestParam String instanceId,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime) {
+        return Result.ok(dlqService.clusterDLQMessages(instanceId, groupName, startTime, endTime));
+    }
+
     @GetMapping("/{groupName}/messages")
     public Result<PageResult<DLQMessageVO>> listDLQMessages(@PathVariable String groupName,
             @RequestParam String instanceId,
