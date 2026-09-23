@@ -2501,6 +2501,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'cert.statusValid': { zh: '有效', en: 'Valid' },
   'cert.statusExpiring': { zh: '即将过期', en: 'Expiring' },
   'cert.statusExpired': { zh: '已过期', en: 'Expired' },
+  'cert.statusNotYetValid': { zh: '尚未生效', en: 'Not yet valid' },
   'cert.confirmDelete': { zh: '确认删除', en: 'Confirm Delete' },
   'cert.deleteConfirm': {
     zh: '确定要删除证书"{name}"吗？',

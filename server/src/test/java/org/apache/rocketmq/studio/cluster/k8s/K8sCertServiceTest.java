@@ -142,6 +142,20 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void listCertsShouldNotCallFutureDatedCertificateValid() {
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        sampleCert.setNotBefore(now.plusDays(1));
+        sampleCert.setNotAfter(now.plusYears(1));
+        when(k8sCertRepository.findAll()).thenReturn(List.of(sampleCert));
+
+        K8sCertVO result = k8sCertService.listCerts().getFirst();
+
+        assertThat(result.getStatus().name()).isEqualTo("not_yet_valid");
+        assertThat(result.getDaysRemaining()).isEqualTo(365);
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.valid);
+    }
+
+    @Test
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("new-tls-cert")

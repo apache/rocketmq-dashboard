@@ -18,5 +18,5 @@
 package org.apache.rocketmq.studio.common.domain.enums;
 
 public enum CertStatus {
-    valid, expiring, expired
+    valid, expiring, expired, not_yet_valid
 }

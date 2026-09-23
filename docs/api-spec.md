@@ -662,7 +662,7 @@ GET /api/k8s-certs
 | `issuer` | `string` | 签发者 |
 | `notBefore` | `string` | 生效时间 (ISO 8601) |
 | `notAfter` | `string` | 过期时间 (ISO 8601) |
-| `status` | `string` | 状态: `valid` / `expiring` / `expired` |
+| `status` | `string` | 状态: `valid` / `expiring` / `expired` / `not_yet_valid`（尚未生效） |
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
