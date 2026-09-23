@@ -101,3 +101,37 @@ test('vitePackagingAndTamperGateTest', async (t) => {
   write(directory, output, 'tampered');
   assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
 });
+
+test('viteWriteLifecycleHashesTheFinalChunkTest', async (t) => {
+  const directory = temporary(t);
+  const source = mkdtempSync(path.join(root, 'src/.license-test-'));
+  t.after(() => rmSync(source, { recursive: true, force: true }));
+  write(source, 'index.html', '<script type="module" src="./main.js"></script>');
+  write(source, 'main.js', "import React from 'react'; console.log(React.version);");
+  const output = path.join(directory, 'dist');
+
+  await build({
+    root,
+    configFile: false,
+    logLevel: 'error',
+    plugins: [
+      distributionLicenses(),
+      {
+        name: 'late-chunk-rewrite',
+        enforce: 'post',
+        generateBundle(_options, bundle) {
+          const entry = Object.values(bundle).find((item) => item.type === 'chunk' && item.isEntry);
+          assert(entry, 'fixture must emit an entry chunk');
+          entry.code += '\n// rewritten after the license manifest was generated\n';
+        },
+      },
+    ],
+    build: { outDir: output, emptyOutDir: false, rollupOptions: { input: path.join(source, 'index.html') } },
+  });
+
+  checkDistribution(output);
+  const manifest = JSON.parse(readFileSync(path.join(output, 'legal/manifest.json')));
+  const entry = Object.keys(manifest.outputFiles).find((name) => name.endsWith('.js'));
+  assert(entry, 'manifest must include the emitted JavaScript');
+  assert.match(readFileSync(path.join(output, entry), 'utf8'), /rewritten after the license manifest/);
+});
