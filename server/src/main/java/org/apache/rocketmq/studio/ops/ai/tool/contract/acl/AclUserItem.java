@@ -30,7 +30,7 @@ public record AclUserItem(
 
     public static AclUserItem from(AclUserVO user) {
         return new AclUserItem(
-                user.getId() == null ? null : user.getId().toString(),
+                user.getId() == null ? user.getUsername() : user.getId().toString(),
                 user.getUsername(),
                 user.isAdmin(),
                 user.getClusters());
