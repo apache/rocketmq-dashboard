@@ -40,7 +40,7 @@ tools:
     cli:
       resource: instance
       verb: metrics
-    description: "Query the dedicated metrics data source explicitly bound only to the selected Instance. Shared or unbound sources are unsupported."
+    description: "Query metrics for the selected Instance. An instance-bound data source is preferred; when none is available, a single global/shared data source may be used. Multiple matching global/shared sources are not selected automatically."
     riskLevel: L1
     permission: metrics:read
     requiredCapabilities: []
