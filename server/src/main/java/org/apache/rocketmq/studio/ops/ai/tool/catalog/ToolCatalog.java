@@ -56,11 +56,12 @@ public class ToolCatalog {
     public static final String INSTANCE_ID_FIELD = "instanceId";
 
     /**
-     * Platform-level tools that are not addressed by a Studio instance: the four global tools
-     * (cluster/dashboard/audit/alert) plus the seven physical-infrastructure tools
-     * (nameserver/broker/proxy). They are exempt from the mandatory {@code instanceId} argument.
+     * Platform-level tools that are not addressed by a Studio instance: the global inventory and
+     * diagnostic tools plus the physical-infrastructure tools (nameserver/broker/proxy). They are
+     * exempt from the mandatory {@code instanceId} argument.
      */
     static final Set<String> INSTANCE_ID_EXEMPT_TOOLS = Set.of(
+            "rmq.instance.list",
             "rmq.cluster.list",
             "rmq.dashboard.summary",
             "rmq.audit.list",

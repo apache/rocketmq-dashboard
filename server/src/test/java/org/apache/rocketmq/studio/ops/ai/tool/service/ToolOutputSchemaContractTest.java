@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceCapabilitiesOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqOutput;
@@ -154,6 +155,9 @@ class ToolOutputSchemaContractTest {
 
         samples.put("rmq.instance.capabilities", List.of(
                 new InstanceCapabilitiesOutput(INSTANCE, List.of("TOPIC_MANAGEMENT"))));
+        samples.put("rmq.instance.list", List.of(new ListOutput<>(List.of(
+                new InstanceListItem(INSTANCE, "APACHE", "DIRECT", "cn-beijing",
+                        "Beijing (CN)", 12, 4, true)))));
         samples.put("rmq.instance.metrics", List.of(MetricDataVO.builder()
                 .resultType("matrix")
                 .series(List.of(MetricDataVO.MetricSeriesVO.builder()

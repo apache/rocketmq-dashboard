@@ -1,5 +1,71 @@
 version: 2.0.0
 tools:
+  - name: rmq.instance.list
+    cli:
+      resource: instance
+      verb: list
+    description: List managed Studio Instances so a planner can choose a canonical target before calling instance-scoped tools. The result includes vendor, access type, region and resource-count availability, but never credentials.
+    riskLevel: L1
+    permission: cluster:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: Optional access type filter.
+          enum:
+            - CLOUD
+            - PROXY_LOCAL
+            - PROXY_CLUSTER
+            - DIRECT
+        search:
+          type: string
+          description: Optional case-insensitive name, endpoint or remark filter.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - instanceId
+              - vendor
+              - accessType
+              - topicCount
+              - consumerGroupCount
+              - resourceCountsAvailable
+            additionalProperties: false
+            properties:
+              instanceId:
+                type: string
+                description: Canonical managed Studio Instance name used as instanceId by other tools.
+              vendor:
+                type: string
+              accessType:
+                type: string
+              regionId:
+                type:
+                  - string
+                  - 'null'
+              regionName:
+                type:
+                  - string
+                  - 'null'
+              topicCount:
+                type: integer
+              consumerGroupCount:
+                type: integer
+              resourceCountsAvailable:
+                type: boolean
+    viewHint: object
+    deprecated: false
   - name: rmq.instance.capabilities
     cli:
       resource: instance
