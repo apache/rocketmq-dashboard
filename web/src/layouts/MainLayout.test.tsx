@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { message } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,12 +47,18 @@ vi.mock('antd', async () => {
     Layout,
     Menu: ({
       items,
+      onClick,
     }: {
       items?: Array<{ key: string; label: React.ReactNode; children?: unknown[] }>;
+      onClick?: (info: { key: string }) => void;
     }) => {
       const renderItems = (entries: typeof items): React.ReactNode[] =>
         (entries ?? []).flatMap((item) => [
-          React.createElement('span', { key: `${item.key}-label` }, item.label),
+          React.createElement(
+            'span',
+            { key: `${item.key}-label`, onClick: () => onClick?.({ key: item.key }) },
+            item.label,
+          ),
           ...renderItems(item.children as typeof items),
         ]);
       return React.createElement('nav', null, renderItems(items));
@@ -68,6 +74,8 @@ vi.mock('antd', async () => {
         ),
       ),
     Avatar: () => React.createElement('span', null, 'avatar'),
+    Drawer: ({ open, children }: { open?: boolean; children?: React.ReactNode }) =>
+      open ? React.createElement('div', { role: 'dialog' }, children) : null,
     Dropdown: ({ children, menu }: { children?: React.ReactNode; menu: DropdownMenu }) =>
       React.createElement(
         'div',
@@ -197,6 +205,34 @@ describe('MainLayout authentication navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '切换到英语' }));
     expect(screen.getByRole('button', { name: 'Switch to Chinese' })).toBeInTheDocument();
+  });
+
+  it('closes mobile navigation after selecting a page', () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<div>protected home</div>} />
+                <Route path="settings" element={<div>settings page</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    const openNavigation = document.querySelector<HTMLButtonElement>('.studio-mobile-menu-button')!;
+    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(openNavigation);
+    expect(openNavigation).toHaveAttribute('aria-expanded', 'true');
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByText('设置'));
+    expect(screen.getByText('settings page')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('hides unsupported instance navigation after capabilities load', async () => {
