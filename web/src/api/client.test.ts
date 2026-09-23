@@ -173,6 +173,22 @@ describe('API client response contract', () => {
     );
   });
 
+  it('consults the persisted language for the fallback and the CORS hint', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    mock.onGet('/clusters').reply(200, { code: '500', data: null });
+    mock.onPost('/instances/delete').reply(403, 'Invalid CORS request');
+
+    await expect(client.get('/clusters')).rejects.toThrow('Request failed');
+    expect(message.error).toHaveBeenCalledWith('Request failed');
+
+    await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(
+      'The server rejected this request through CORS',
+    );
+    expect(message.error).toHaveBeenCalledWith(
+      expect.stringContaining('STUDIO_CORS_ALLOWED_ORIGINS'),
+    );
+  });
+
   it('does not treat a business-envelope 403 as a CORS rejection', async () => {
     mock
       .onPost('/instances/delete')
