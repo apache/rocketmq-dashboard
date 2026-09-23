@@ -80,4 +80,11 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
   });
+
+  it('formats delay durations with whole seconds', () => {
+    expect(formatDelay(1.9, 'en')).toBe('1s');
+    expect(formatDelay(65.9, 'en')).toBe('1m 5s');
+    expect(formatDelay(61.9, 'zh')).toBe('1分钟1秒');
+    expect(formatDelay(0.9, 'en')).toBe('0s');
+  });
 });

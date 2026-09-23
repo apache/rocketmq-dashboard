@@ -177,10 +177,11 @@ export function formatNumber(num: number): string {
  */
 export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): string {
   if (!Number.isFinite(totalSeconds)) return '-';
-  if (totalSeconds <= 0) return lang === 'zh' ? '0秒' : '0s';
+  const wholeSeconds = Math.floor(totalSeconds);
+  if (wholeSeconds <= 0) return lang === 'zh' ? '0秒' : '0s';
 
-  const days = Math.floor(totalSeconds / 86400);
-  let remaining = totalSeconds % 86400;
+  const days = Math.floor(wholeSeconds / 86400);
+  let remaining = wholeSeconds % 86400;
   const hours = Math.floor(remaining / 3600);
   remaining %= 3600;
   const minutes = Math.floor(remaining / 60);
