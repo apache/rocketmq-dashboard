@@ -144,7 +144,9 @@ func (session *MCPClientSession) sendNotification(
 }
 
 func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReconnect bool, send func() error) error {
-	session.sendMu.RLock()
+	if err := session.lockReadySession(ctx); err != nil {
+		return err
+	}
 	generation, hadSession := session.sendSnapshot()
 	err := send()
 	session.sendMu.RUnlock()
@@ -152,11 +154,38 @@ func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReco
 		if reconnectErr := session.reinitialize(ctx, generation); reconnectErr != nil {
 			return reconnectErr
 		}
-		session.sendMu.RLock()
+		if err := session.lockReadySession(ctx); err != nil {
+			return err
+		}
 		err = send()
 		session.sendMu.RUnlock()
 	}
 	return err
+}
+
+// lockReadySession returns with sendMu read-locked only after any pending
+// reconnect notification has succeeded. A failed attempt leaves it unlocked.
+func (session *MCPClientSession) lockReadySession(ctx context.Context) error {
+	for {
+		session.sendMu.RLock()
+		session.state.RLock()
+		pending := session.state.pendingInitialized
+		session.state.RUnlock()
+		if !pending {
+			return nil
+		}
+		session.sendMu.RUnlock()
+		session.sendMu.Lock()
+		generation, _ := session.sendSnapshot()
+		err := session.finishReinitialization(ctx)
+		session.sendMu.Unlock()
+		if errors.Is(err, mcptransport.ErrSessionTerminated) {
+			err = session.reinitialize(ctx, generation)
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // sendSnapshot returns the current session generation and whether a session
@@ -217,7 +246,7 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	session.state.RLock()
 	if session.state.generation != expectedGeneration {
 		session.state.RUnlock()
-		return nil
+		return session.finishReinitialization(ctx)
 	}
 	initialize := session.state.initialize
 	session.state.RUnlock()
@@ -234,6 +263,22 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	if err := session.applyInitialization(response); err != nil {
 		return err
 	}
+	session.state.Lock()
+	session.state.ready = false
+	session.state.pendingInitialized = true
+	session.state.Unlock()
+	return session.finishReinitialization(ctx)
+}
+
+// finishReinitialization completes a replacement session before normal messages
+// can enter it. The caller must hold sendMu exclusively.
+func (session *MCPClientSession) finishReinitialization(ctx context.Context) error {
+	session.state.RLock()
+	pending := session.state.pendingInitialized
+	session.state.RUnlock()
+	if !pending {
+		return nil
+	}
 	// The session is freshly established, so the initialized notification must
 	// always be replayed regardless of the pre-reconnect ready snapshot.
 	initialized := mcp.JSONRPCNotification{
@@ -247,6 +292,7 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	}
 	session.state.Lock()
 	session.state.ready = true
+	session.state.pendingInitialized = false
 	session.state.Unlock()
 	return nil
 }

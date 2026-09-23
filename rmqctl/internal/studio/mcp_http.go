@@ -59,9 +59,10 @@ type MCPClientSession struct {
 	sendMu sync.RWMutex
 	state  struct {
 		sync.RWMutex
-		initialize *mcptransport.JSONRPCRequest
-		generation uint64
-		ready      bool
+		initialize         *mcptransport.JSONRPCRequest
+		generation         uint64
+		ready              bool
+		pendingInitialized bool
 	}
 }
 
