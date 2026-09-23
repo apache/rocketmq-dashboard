@@ -645,9 +645,78 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
+        // A queue that never advances its offset is abandoned mid-scan and counts as failed;
+        // since it is the only queue, the whole scan fails instead of reporting an empty success.
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic);
 
         verify(pullConsumer, times(1)).pull(queue, "*", 10L, 32);
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @Test
+    void resendMessagesMarksAResultPartialWhenOneDlqQueueStalls() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue stalledQueue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageQueue healthyQueue = new MessageQueue(dlqTopic, "broker-b", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("msg-healthy-queue");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        deadLetter.setStoreTimestamp(150L);
+        PullResult stalledResult = new PullResult(PullStatus.FOUND, 10, 0, 10, List.of());
+        PullResult foundResult = new PullResult(PullStatus.FOUND, 1L, 0L, 1L, List.of(deadLetter));
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenReturn(Set.of(stalledQueue, healthyQueue));
+        when(pullConsumer.searchOffset(eq(stalledQueue), anyLong())).thenReturn(10L);
+        when(pullConsumer.searchOffset(healthyQueue, 100L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(healthyQueue, 200L)).thenReturn(0L);
+        when(pullConsumer.pull(eq(stalledQueue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
+        when(pullConsumer.pull(eq(healthyQueue), eq("*"), eq(0L), eq(32))).thenReturn(foundResult);
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        // The stalled queue is skipped while the healthy one is still scanned and resent, so the
+        // outcome must be PARTIAL with one failed queue, not a plain SUCCESS.
+        assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
+                .containsExactly(1, 1, 0, "PARTIAL", true, 1);
+
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("DLQ"),
+                eq("group-a"),
+                isNull(),
+                contains("scanFailedQueues=1"),
+                eq("PARTIAL"));
+    }
+
+    @Test
+    @Timeout(value = 1, unit = TimeUnit.SECONDS)
+    void resendMessagesCountsAQueueAbandonedAfterPersistentOffsetIllegal() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(100L);
+        // Every pull reports OFFSET_ILLEGAL with a corrected offset that is itself illegal again,
+        // until the scan gives up on the queue; the abandoned queue must count as failed.
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> {
+                    long requested = invocation.getArgument(2);
+                    return new PullResult(PullStatus.OFFSET_ILLEGAL, requested + 10, 0L, requested + 10, null);
+                });
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic);
+
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
