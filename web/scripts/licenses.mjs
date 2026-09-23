@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -175,6 +175,7 @@ export function collectLicenses(moduleIds, base = root) {
 
 export function distributionLicenses() {
   let base;
+  let manifest;
   return {
     name: 'distribution-licenses',
     apply: 'build',
@@ -195,12 +196,20 @@ export function distributionLicenses() {
       for (const [name, item] of Object.entries(bundle)) {
         outputFiles[name] = sha(item.type === 'chunk' ? item.code : item.source);
       }
-      const manifest = { modules: result.modules, components: result.components, outputFiles, files: {} };
+      manifest = { modules: result.modules, components: result.components, outputFiles, files: {} };
       for (const [name, data] of result.files) {
         manifest.files[name] = sha(data);
         this.emitFile({ type: 'asset', fileName: name, source: data });
       }
       this.emitFile({ type: 'asset', fileName: 'legal/manifest.json', source: `${JSON.stringify(manifest, null, 2)}\n` });
+    },
+    writeBundle({ dir }) {
+      // Vite may rewrite the entry chunk after this plugin's generateBundle hook.
+      // Record the bytes that were actually distributed, before the post-build gate runs.
+      for (const name of Object.keys(manifest.outputFiles)) {
+        manifest.outputFiles[name] = sha(read(path.join(dir, name)));
+      }
+      writeFileSync(path.join(dir, 'legal/manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     },
   };
 }

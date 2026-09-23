@@ -64,6 +64,7 @@ test('missingOrUnknownLicenseFailsTest', (t) => {
 
 test('vitePackagingAndTamperGateTest', async (t) => {
   const directory = temporary(t);
+  const licensePlugin = distributionLicenses();
   // Build only fixtures for React, CSS, SVG and small dependencies; do not build the app or run app tests.
   const result = await build({
     root,
@@ -77,7 +78,7 @@ test('vitePackagingAndTamperGateTest', async (t) => {
           if (id === '\0license-fixture') return `import React from '${root}node_modules/react/index.js'; import logo from '${root}src/assets/model-logos/openai.svg'; import '${root}src/index.css'; import toggle from '${root}node_modules/toggle-selection/index.js'; console.log(React, logo, toggle);`;
         },
       },
-      distributionLicenses(),
+      licensePlugin,
     ],
     build: { write: false, minify: false, rollupOptions: { input: 'license-fixture' } },
   });
@@ -93,6 +94,10 @@ test('vitePackagingAndTamperGateTest', async (t) => {
   assert.throws(() => checkDistribution(directory), /modified or missing/);
   write(directory, 'NOTICE', result.output.find((item) => item.fileName === 'NOTICE').source);
   const output = Object.keys(manifest.outputFiles)[0];
+  write(directory, output, Buffer.concat([readFileSync(path.join(directory, output)), Buffer.from('\n// late build rewrite')]));
+  assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
+  licensePlugin.writeBundle({ dir: directory });
+  checkDistribution(directory);
   write(directory, output, 'tampered');
   assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
 });
