@@ -15,6 +15,7 @@ export interface MessageRecord {
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  propertiesTruncated?: boolean;
   size: number;
 }
 
