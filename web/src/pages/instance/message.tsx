@@ -70,6 +70,7 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -128,13 +129,6 @@ const formatSize = (bytes: number): string => {
   if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
   return `${bytes} B`;
-};
-
-const formatTimeMs = (value: number | string): string => {
-  if (!value) return '-';
-  const d = new Date(value);
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 };
 
 const formatBody = (body: string): string => {

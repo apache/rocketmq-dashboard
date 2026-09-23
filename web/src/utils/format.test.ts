@@ -10,6 +10,7 @@ import {
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
+  formatTimeMs,
 } from './format';
 
 describe('formatBytes', () => {
@@ -79,5 +80,30 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('formatTimeMs', () => {
+  const shape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
+
+  it('preserves the Unix epoch timestamp', () => {
+    expect(formatTimeMs(0)).not.toBe('-');
+    expect(formatTimeMs(0)).toMatch(shape);
+  });
+
+  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY, null, undefined, ''])(
+    'returns a placeholder for an unusable timestamp %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+    },
+  );
+
+  it('renders epoch milliseconds in the console-wide timestamp format', () => {
+    const timestamp = Date.parse('2026-07-31T00:00:00.123Z');
+    expect(formatTimeMs(timestamp)).toBe(`${formatDateTime(new Date(timestamp))}.123`);
+  });
+
+  it('accepts the formatted strings cloud providers return', () => {
+    expect(formatTimeMs('2026-07-31T00:00:00Z')).toMatch(shape);
   });
 });
