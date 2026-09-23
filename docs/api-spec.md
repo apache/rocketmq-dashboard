@@ -140,6 +140,88 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 100 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 101 | POST | `/api/liteTopic/extendTTL` | 延长 LiteTopic TTL |
+| 102 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 103 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
+| 104 | GET | `/api/query-history/messages` | 消息查询历史（分页） |
+| 105 | GET | `/api/query-history/traces` | 轨迹查询历史（分页） |
+| 106 | GET | `/api/query-history/summary` | 查询历史汇总 |
+| 107 | GET | `/api/query-history/messages/:id/results` | 消息查询结果回放 |
+| 108 | GET | `/api/auth/status` | 登录策略与当前用户 |
+| 109 | POST | `/api/auth/password` | 修改当前用户密码 |
+| 110 | POST | `/api/ai/runs/:runId/speed` | 上报 Run 生成速度 |
+| 111 | GET | `/api/cloud-credentials` | 云凭证列表（分页，脱敏） |
+| 112 | GET | `/api/cloud-credentials/export` | 导出云凭证 CSV（脱敏） |
+| 113 | POST | `/api/cloud-credentials/create` | 创建云凭证 |
+| 114 | POST | `/api/cloud-credentials/update` | 更新云凭证 |
+| 115 | POST | `/api/cloud-credentials/delete` | 删除云凭证 |
+| 116 | GET | `/api/cloud-credentials/:id/credentials` | 查看云凭证密钥（明文） |
+| 117 | GET | `/api/alert-rules/page` | 告警规则分页列表 |
+| 118 | GET | `/api/alert-rules/runtime` | 告警规则运行时状态 |
+| 119 | GET | `/api/alert-rules/export` | 导出告警规则 YAML |
+| 120 | GET | `/api/alert-rules/transfer` | 导出告警规则传输格式 |
+| 121 | POST | `/api/alert-rules/test` | 测试告警规则 |
+| 122 | POST | `/api/alert-rules/bulk-toggle` | 批量切换规则启用状态 |
+| 123 | POST | `/api/alert-rules/bulk-delete` | 批量删除规则 |
+| 124 | GET | `/api/system-alerts/page` | 系统告警分页列表 |
+| 125 | GET | `/api/system-alerts/:id/related` | 关联告警 |
+| 126 | GET | `/api/system-alerts/:id/deliveries` | 告警通知投递记录 |
+| 127 | GET | `/api/system-alerts/deliveries/page` | 通知投递分页列表 |
+| 128 | POST | `/api/system-alerts/deliveries/:deliveryId/retry` | 重试单条投递 |
+| 129 | POST | `/api/system-alerts/deliveries/retry` | 批量重试投递 |
+| 130 | POST | `/api/alert-rules/import` | 导入告警规则 |
+| 131 | GET | `/api/clusters/registry` | 主机注册表集群列表 |
+| 132 | POST | `/api/clusters/test-connection` | 测试集群连接 |
+| 133 | POST | `/api/clusters/config/preview` | 预览集群配置变更 |
+| 134 | GET | `/api/clusters/:id/broker-config-diff` | 检查 Broker 配置漂移 |
+| 135 | GET | `/api/nameservers/registry` | NameServer 注册表列表 |
+| 136 | POST | `/api/nameservers/registry/create` | 创建注册项 |
+| 137 | POST | `/api/nameservers/registry/update` | 更新注册项 |
+| 138 | POST | `/api/nameservers/registry/delete` | 删除注册项 |
+| 139 | GET | `/api/groups/page` | 消费组分页列表 |
+| 140 | GET | `/api/groups/:name/settings` | 消费组运行时设置 |
+| 141 | POST | `/api/groups/settings` | 更新消费组运行时设置 |
+| 142 | GET | `/api/groups/:name/refresh` | 刷新消费组 |
+| 143 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
+| 144 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
+| 145 | GET | `/api/metrics/profiles` | 指标画像列表 |
+| 146 | POST | `/api/metrics/query/datasource` | 按数据源查询指标 |
+| 147 | GET | `/api/llm/config` | 获取 LLM 配置 |
+| 148 | POST | `/api/llm/config` | 保存 LLM 配置 |
+| 149 | POST | `/api/llm/config/test` | 测试 LLM 配置 |
+| 150 | GET | `/api/llm/models` | 获取可用模型列表 |
+| 151 | GET | `/api/proxies` | Proxy 列表 |
+| 152 | GET | `/api/proxies/topology` | Proxy 连通性拓扑 |
+| 153 | POST | `/api/proxies/addresses` | 新增 Proxy 地址 |
+| 154 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
+| 155 | POST | `/api/proxies/config/reload` | 重载 Proxy 配置 |
+| 156 | GET | `/api/ops/homePage` | 运维配置概览 |
+| 157 | POST | `/api/ops/updateNameSvrAddr` | 更新当前 NameServer |
+| 158 | POST | `/api/ops/addNameSvrAddr` | 新增 NameServer 地址 |
+| 159 | POST | `/api/ops/deleteNameSvrAddr` | 删除 NameServer 地址 |
+| 160 | POST | `/api/ops/updateIsVIPChannel` | 更新 VIP 通道设置 |
+| 161 | POST | `/api/ops/updateUseTLS` | 更新 TLS 设置 |
+| 162 | GET | `/api/cloud/aliyun/regions` | 阿里云区域列表 |
+| 163 | GET | `/api/cloud/aliyun/instances` | 阿里云实例选项 |
+| 164 | GET | `/api/cloud/tencent/regions` | 腾讯云区域列表 |
+| 165 | GET | `/api/cloud/tencent/instances` | 腾讯云实例选项 |
+| 166 | GET | `/api/studio-users` | 用户分页列表 |
+| 167 | POST | `/api/studio-users` | 创建用户 |
+| 168 | POST | `/api/studio-users/:userId/status` | 启用/禁用用户 |
+| 169 | POST | `/api/studio-users/:userId/password` | 重置用户密码 |
+| 170 | GET | `/api/studio-users/sessions/overview` | 会话概览 |
+| 171 | GET | `/api/studio-users/:userId/sessions` | 用户活跃会话 |
+| 172 | GET | `/api/native-alert-metrics` | 原生告警指标目录 |
+| 173 | GET | `/api/alert-collector-status` | 指标采集器状态 |
+| 174 | GET | `/api/alert-silences` | 静默窗口列表 |
+| 175 | GET | `/api/alert-silences/page` | 静默窗口分页列表 |
+| 176 | POST | `/api/alert-silences` | 创建静默窗口 |
+| 177 | DELETE | `/api/alert-silences/:id` | 删除静默窗口 |
+| 178 | GET | `/api/alert-rules/assets` | 告警规则资产清单 |
+| 179 | GET | `/api/alert-rules/assets/:name` | 获取资产 YAML |
+| 180 | GET | `/api/alert-rules/assets/:name/export` | 导出资产 YAML |
 
 ## 通用响应格式
 
@@ -220,6 +302,46 @@ POST /api/auth/logout
 ```
 
 **Response `data`:** `null`
+
+---
+
+### 1.3 获取登录策略与当前用户
+
+```
+GET /api/auth/status
+```
+
+**Response `data`:** `AuthStatus`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `loginRequired` | `boolean` | 是否要求登录（部署配置或通用设置的 `requireLogin` 决定） |
+| `authenticated` | `boolean` | 当前请求是否已认证 |
+| `user` | `object \| null` | 已认证时的用户信息（同 1.1 `LoginVO` 的 `user`），未认证为 `null` |
+
+响应带 `Cache-Control: no-store`。
+
+### 1.4 修改当前用户密码
+
+```
+POST /api/auth/password
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `currentPassword` | `string` | 是 | 当前密码 |
+| `newPassword` | `string` | 是 | 新密码 |
+
+**Response `data`:** `null`
+
+**错误：**
+
+| 状态码 | 场景 |
+|--------|------|
+| `401` | 未认证 |
+| `503` | Studio 用户管理未初始化（本地模式无用户表） |
 
 ---
 
@@ -308,6 +430,8 @@ GET /api/dashboard
 ```
 
 ---
+
+## 3. 实例管理 Instances
 
 ### 3.1 获取实例列表
 
@@ -717,6 +841,222 @@ POST /api/k8s-certs/delete
 
 **Response `data`:** `null`
 
+### 4.16 获取主机注册表集群列表
+
+```
+GET /api/clusters/registry
+```
+
+**Response `data`:** `ClusterInfo[]`（同 4.1 的单条记录）：主机注册表中登记的集群。
+
+### 4.17 测试集群连接
+
+```
+POST /api/clusters/test-connection
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namesrvAddr` | `string` | 是 | NameServer 地址 |
+
+**Response `data`:** `ClusterProbeResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `connected` | `boolean` | 是否连接成功 |
+| `namesrvAddr` | `string` | 探测的地址 |
+| `clusterName` | `string` | 集群名称 |
+| `brokerCount` | `number` | Broker 数量 |
+| `brokerNames` | `string[]` | Broker 名称列表 |
+| `elapsedMillis` | `number` | 探测耗时（毫秒） |
+| `message` | `string` | 补充信息 |
+
+### 4.18 预览集群配置变更
+
+```
+POST /api/clusters/config/preview
+```
+
+**Request Body:** 同 4.3 的更新请求。
+
+**Response `data`:** `ClusterConfigPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `ClusterInfo` | 目标集群 |
+| `currentConfig` | `object` | 当前配置 |
+| `proposedConfig` | `object` | 拟变更配置 |
+| `targetBrokers` | `object[]` | 目标 Broker：`{ name, address }` |
+| `brokerProperties` | `object` | 字段到 Broker property 的映射 |
+| `changes` | `object[]` | 变更明细：`{ field, currentValue, proposedValue, brokerProperty }` |
+| `changed` | `boolean` | 是否存在实际变更 |
+
+### 4.19 检查 Broker 配置漂移
+
+```
+GET /api/clusters/:id/broker-config-diff?instanceId={instanceId}
+```
+
+**Response `data`:** `BrokerConfigDiff`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 Broker |
+| `driftDetected` | `boolean` | 可达 Broker 间是否存在差异 |
+| `brokerCount` | `number` | Broker 总数 |
+| `reachableBrokerCount` | `number` | 成功读取的 Broker 数 |
+| `comparedFields` | `string[]` | 本次比较的字段 |
+| `brokers` | `object[]` | Broker：`{ name, address, reachable, message }` |
+| `differences` | `object[]` | 差异：`{ field, brokerProperty, values: [{ brokerName, address, configured, value }] }` |
+
+### 4.20 获取 NameServer 注册表列表
+
+```
+GET /api/nameservers/registry
+```
+
+**Response `data`:** `NameserverRegistry[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 注册项 ID |
+| `name` | `string` | 名称 |
+| `namesrvAddr` | `string` | NameServer 地址 |
+| `k8sNamespace` | `string` | K8s 命名空间 |
+| `k8sId` | `string` | K8s 标识 |
+| `status` | `string` | 状态 |
+| `description` | `string` | 描述 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 4.21 创建 NameServer 注册项
+
+```
+POST /api/nameservers/registry/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 名称 |
+| `namesrvAddr` | `string` | 是 | NameServer 地址 |
+| `k8sNamespace` | `string` | 否 | K8s 命名空间 |
+| `k8sId` | `string` | 否 | K8s 标识 |
+| `description` | `string` | 否 | 描述 |
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.22 更新 NameServer 注册项
+
+```
+POST /api/nameservers/registry/update
+```
+
+**Request Body:** 同 4.21，另加必填 `id`（`number`）。
+
+**Response `data`:** `NameserverRegistry`
+
+### 4.23 删除 NameServer 注册项
+
+```
+POST /api/nameservers/registry/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 注册项 ID |
+
+**Response `data`:** `null`
+
+### 4.24 获取 Proxy 列表
+
+```
+GET /api/proxies?clusterId={clusterId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+
+**Response `data`:** `Proxy[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `addr` | `string` | 地址 |
+| `status` | `string` | 状态: `healthy` / `warning` / `error` / `offline` |
+| `connections` | `number` | 当前连接数 |
+| `grpcPort` | `number` | gRPC 端口 |
+| `remotingPort` | `number` | Remoting 端口 |
+
+### 4.25 获取 Proxy 连通性拓扑
+
+```
+GET /api/proxies/topology
+```
+
+**Response `data`:** `ProxyTopology[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddr` | `string` | Proxy 地址 |
+| `status` | `string` | 状态 |
+| `grpcPort` | `number` | gRPC 端口 |
+| `remotingPort` | `number` | Remoting 端口 |
+| `grpcReachable` | `boolean` | gRPC 端口是否可达 |
+| `remotingReachable` | `boolean` | Remoting 端口是否可达 |
+| `latencyMs` | `number` | 探测延迟（毫秒） |
+
+### 4.26 新增 Proxy 地址
+
+```
+POST /api/proxies/addresses
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | Proxy 地址 |
+
+**Response `data`:** `ProxyHome`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddrList` | `string[]` | 更新后的 Proxy 地址列表 |
+| `currentProxyAddr` | `string` | 当前生效的 Proxy 地址 |
+
+### 4.27 删除 Proxy 地址
+
+```
+DELETE /api/proxies/addresses?addr={addr}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | 要删除的 Proxy 地址 |
+
+**Response `data`:** `ProxyHome`（同 4.26）
+
+### 4.28 重载 Proxy 配置
+
+```
+POST /api/proxies/config/reload
+```
+
+**Request Body:** 同 4.11 的重启请求（`{ clusterId, addr }`）。
+
+**Response `data`:** `object`（键为操作项，值为是否成功）
+
 ---
 
 ## 5. Topic 管理
@@ -916,6 +1256,123 @@ POST /api/topics/send
 
 ---
 
+### 5.9 LiteTopic 会话管理
+
+LiteTopic（轻量主题）由客户端按需创建、到期自动回收。以下接口用于检查集群对 LiteTopic 的支持、
+浏览按需创建的会话，并在配额内调整 TTL。
+
+#### 5.9.1 获取 LiteTopic 会话列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 按Topic 模式过滤 |
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicItem[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | LiteTopic 模式 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 会话内 Topic 数 |
+| `consumerCount` | `number` | 消费者数 |
+| `totalBacklog` | `number` | 总堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态 |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `sessionIds` | `string[]` | 会话 ID 列表 |
+
+#### 5.9.2 获取 LiteTopic 会话详情
+
+```
+GET /api/liteTopic/session/:sessionId
+```
+
+**Response `data`:** `LiteTopicSession`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic 名称 |
+| `consumerGroup` | `string` | 消费组名称 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳） |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `ttl` | `number` | TTL（毫秒） |
+| `ttlRemaining` | `number` | TTL 剩余时间（毫秒） |
+| `status` | `string` | 会话状态 |
+| `totalMessages` | `number` | 累计消息数 |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费消息数 |
+| `popProgress` | `number` | Pop 消费进度（百分比） |
+| `liteTopicCreationCount` | `number` | 已创建 LiteTopic 数 |
+| `liteTopics` | `object[]` | 会话内 LiteTopic：`{ topicName, status, ttlRemaining }` |
+
+#### 5.9.3 延长 LiteTopic TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `topicPattern` | `string` | 是 | 目标 Topic 模式 |
+| `newTTL` | `number` | 是 | 新 TTL（毫秒） |
+
+**Response `data`:** 空
+
+#### 5.9.4 获取 LiteTopic 配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicQuota`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前 Topic 数 |
+| `maxTopicCount` | `number` | Topic 数上限 |
+| `currentSessionCount` | `number` | 当前会话数 |
+| `maxSessionCount` | `number` | 会话数上限 |
+| `currentCreationRate` | `number` | 当前创建速率 |
+| `maxCreationRate` | `number` | 创建速率上限 |
+| `usageRate` | `number` | Topic 配额使用率 |
+| `sessionUsageRate` | `number` | 会话配额使用率 |
+| `defaultTTL` | `number` | 默认 TTL（毫秒） |
+| `maxTTL` | `number` | TTL 上限（毫秒） |
+| `remainingQuota` | `number` | 剩余配额 |
+| `consumerDensity` | `number` | 消费者密度 |
+
+#### 5.9.5 检查 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 集群是否支持 LiteTopic |
+
+---
+
 ## 6. 消费组管理 Consumer Group
 
 ### 6.1 获取消费组列表
@@ -1082,6 +1539,107 @@ GET /api/groups/export?names={name1,name2}
 ```
 
 **Response:** `Content-Type: application/json`, `Content-Disposition: attachment`
+
+### 6.10 分页获取消费组列表
+
+```
+GET /api/groups/page?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<ConsumerGroup>`（同 6.1 的 `ConsumerGroup` 定义）。
+
+### 6.11 获取消费组运行时设置
+
+```
+GET /api/groups/:name/settings?instanceId={instanceId}
+```
+
+**Response `data`:** `ConsumerGroupSettings`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `retryQueueNums` | `number` | 重试队列数 |
+| `retryMaxTimes` | `number` | 最大重试次数 |
+| `consumeEnable` | `boolean` | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 是否允许广播消费 |
+
+### 6.12 更新消费组运行时设置
+
+```
+POST /api/groups/settings
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `retryQueueNums` | `number` | 是 | 重试队列数 |
+| `retryMaxTimes` | `number` | 是 | 最大重试次数 |
+| `consumeEnable` | `boolean` | 否 | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 否 | 是否顺序消费 |
+
+**Response `data`:** `ConsumerGroupSettings`（同 6.11）
+
+### 6.13 刷新消费组
+
+```
+GET /api/groups/:name/refresh?instanceId={instanceId}
+```
+
+**Response `data`:** `ConsumerGroup`（同 6.1 的单条定义）。组已不存在时返回 `200` 空数据
+（前端保留现有行不变）。
+
+### 6.14 获取消费者线程栈
+
+```
+GET /api/groups/:name/instances/:clientId/stack
+```
+
+**Response `data`:** `ConsumerStackTrace`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `clientId` | `string` | 客户端 ID |
+| `capturedAt` | `string` | 抓取时间 (ISO 8601) |
+| `threadCount` | `number` | 线程数 |
+| `threads` | `object[]` | 线程栈明细 |
+
+### 6.15 预览重置消费位点
+
+```
+POST /api/groups/reset-offset/preview
+```
+
+**Request Body:** 同 6.7 的重置请求。
+
+**Response `data`:** `ResetOffsetPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 所属实例 ID |
+| `groupName` | `string` | 消费组名称 |
+| `topic` | `string` | Topic 名称 |
+| `timestamp` | `number` | 目标时间（Unix 毫秒时间戳） |
+| `complete` | `boolean` | 是否完整读取全部队列 |
+| `allowReset` | `boolean` | 是否允许重置 |
+| `queueCount` | `number` | 队列总数 |
+| `warningCount` | `number` | 有警告的队列数 |
+| `rewindQueueCount` | `number` | 会回退的队列数 |
+| `fastForwardQueueCount` | `number` | 会前跳的队列数 |
 
 ---
 
@@ -1507,6 +2065,91 @@ POST /api/messages/direct-consume
 
 ---
 
+### 8.8 查询历史
+
+消息与轨迹查询的持久化历史：最近执行的查询及其结果快照被保存下来，供回放与审计。列表接口
+`pageSize` 上限 100；时间字段 `queriedAt` 为 ISO 8601。
+
+#### 8.8.1 获取消息查询历史
+
+```
+GET /api/query-history/messages?clusterId={clusterId}&queryType={queryType}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `queryType` | `string` | 否 | 按查询类型过滤（创建查询时的类型，如 `msgId` / `uniqueKey` / `key` / `topic`） |
+| `search` | `string` | 否 | 模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1（≥1） |
+| `pageSize` | `number` | 否 | 每页条数，默认 20（1-100） |
+
+**Response `data`:** `PageResult<MessageQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `queryType` | `string` | 查询类型 |
+| `topic` | `string` | 查询的 Topic |
+| `msgId` | `string` | 查询的消息 ID（msgId 路径时） |
+| `tag` | `string` | 查询的 Tag |
+| `messageKey` | `string` | 查询的业务 Key |
+| `startTime` | `number` | 查询窗口开始（Unix 毫秒时间戳） |
+| `endTime` | `number` | 查询窗口结束（Unix 毫秒时间戳） |
+| `resultCount` | `number` | 结果条数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.2 获取轨迹查询历史
+
+```
+GET /api/query-history/traces?clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 同 8.8.1（无 `queryType`）。
+
+**Response `data`:** `PageResult<TraceQueryHistory>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 历史记录 ID |
+| `msgId` | `string` | 查询的消息 ID |
+| `topic` | `string` | 原始 Topic |
+| `traceTopic` | `string` | 轨迹 Topic |
+| `nodeCount` | `number` | 轨迹节点数 |
+| `consumerCount` | `number` | 消费组数 |
+| `clusterId` | `string` | 集群 ID |
+| `queriedBy` | `string` | 执行查询的用户 |
+| `queriedAt` | `string` | 查询时间 (ISO 8601) |
+
+#### 8.8.3 获取查询历史汇总
+
+```
+GET /api/query-history/summary?clusterId={clusterId}
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `messageQueries` | `number` | 消息查询总数 |
+| `traceQueries` | `number` | 轨迹查询总数 |
+| `latestQueryAt` | `string` | 最近一次查询时间 (ISO 8601) |
+
+#### 8.8.4 回放消息查询结果
+
+```
+GET /api/query-history/messages/:id/results
+```
+
+**Response `data`:** `MessageRecord[]`（同 8.1 的 `MessageRecord` 定义），内容取保存查询时的结果
+快照；快照已过期或不存在时返回空数组。
+
+---
+
 ## 9. 死信队列 Dead Letter Queue
 
 ### 9.1 获取 DLQ 列表
@@ -1767,6 +2410,128 @@ POST /api/alert-rules/delete
 
 **Response `data`:** `null`
 
+### 11.6 分页获取告警规则
+
+```
+GET /api/alert-rules/page?search={search}&enabled={enabled}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `enabled` | `boolean` | 否 | 按启用状态过滤 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<AlertRule>`（同 11.1 的 `AlertRule` 定义）。
+
+### 11.7 获取告警规则运行时状态
+
+```
+GET /api/alert-rules/runtime
+```
+
+**Response `data`:** `AlertRuleRuntime[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `ruleId` | `number` | 规则 ID |
+| `fingerprint` | `string` | 运行时状态指纹 |
+| `status` | `string` | 状态: `OK` / `PENDING` / `FIRING` / `RESOLVED` / `ACKED` |
+| `consecutiveHits` | `number` | 连续命中次数 |
+| `currentValue` | `number` | 当前指标值 |
+| `lastNotifiedAt` | `string` | 最近通知时间 (ISO 8601) |
+| `nextReminderAt` | `string` | 下次提醒时间 (ISO 8601) |
+
+### 11.8 导出告警规则（YAML）
+
+```
+GET /api/alert-rules/export
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `rules` | `string` | 规则的 YAML 文本 |
+
+### 11.9 导出告警规则（传输格式）
+
+```
+GET /api/alert-rules/transfer
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `version` | `number` | 传输格式版本 |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `rules` | `object[]` | 规则数组，元素即 11.2 的请求体（可用 11.13 的 import 端点回导） |
+
+### 11.10 测试告警规则
+
+```
+POST /api/alert-rules/test
+```
+
+**Request Body:** 同 11.2 的创建请求。
+
+对规则当前绑定的指标与实例执行一次采样评估，不落库、不发通知。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `samples` | `object[]` | 采样结果：`{ labels, availability, currentValue, conditionMet, unavailableReason }` |
+
+### 11.11 批量切换告警规则启用状态
+
+```
+POST /api/alert-rules/bulk-toggle
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表（非空） |
+| `enabled` | `boolean` | 是 | 启用/禁用 |
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 成功的规则 ID |
+| `failures` | `object` | 失败明细：`{ 规则ID: 原因 }` |
+| `updatedRules` | `AlertRule[]` | 变更后的规则记录 |
+
+### 11.12 批量删除告警规则
+
+```
+POST /api/alert-rules/bulk-delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `ids` | `number[]` | 是 | 规则 ID 列表（非空） |
+
+**Response `data`:** 同 11.11（`updatedRules` 为删除后的存量规则）。
+
+### 11.13 导入告警规则
+
+```
+POST /api/alert-rules/import
+```
+
+**Request Body:** 11.9 的传输格式（`{ version, domain, rules[] }`）。
+
+**Response `data`:** `AlertRule[]`（导入后的规则记录）。
+
 ---
 
 ## 12. 系统告警 System Alerts
@@ -1819,6 +2584,239 @@ POST /api/system-alerts/clear-acknowledged
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `cleared` | `number` | 清除数量 |
+
+### 12.4 分页获取系统告警
+
+```
+GET /api/system-alerts/page?level={level}&domain={domain}&instanceId={instanceId}&transition={transition}&labelKey={labelKey}&labelValue={labelValue}&from={from}&to={to}&notificationSuppressed={suppressed}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** 全部可选。
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `level` | `string` | 按级别过滤: `error` / `warning` / `info` |
+| `domain` | `string` | 按告警域过滤: `BUSINESS` / `CLUSTER` |
+| `instanceId` | `string` | 按实例过滤 |
+| `transition` | `string` | 按状态迁移过滤 |
+| `labelKey` / `labelValue` | `string` | 按标签键值过滤 |
+| `from` / `to` | `string` | 时间范围 (ISO 8601) |
+| `notificationSuppressed` | `boolean` | 是否只看被抑制通知的告警 |
+| `page` / `pageSize` | `number` | 分页，默认 1 / 20 |
+
+**Response `data`:** `PageResult<SystemAlert>`（同 12.1 的 `SystemAlert` 定义）。
+
+### 12.5 获取关联告警
+
+```
+GET /api/system-alerts/:id/related
+```
+
+**Response `data`:** `SystemAlert[]`（同 12.1 的 `SystemAlert` 定义）：另一告警域（`BUSINESS` ↔
+`CLUSTER`）中可能引发或关联本告警的记录——包括抑制来源（`suppressionCauseAlertId` 指向的记录），
+以及同实例在告警时间前后 30 分钟内处于 `FIRING` 的相关告警。告警不存在时返回 404。
+
+### 12.6 获取告警的通知投递记录
+
+```
+GET /api/system-alerts/:id/deliveries
+```
+
+**Response `data`:** `NotificationDelivery[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态: `PENDING` / `SENDING` / `DELIVERED` / `RETRY_WAIT` / `FAILED` |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+
+### 12.7 分页获取通知投递记录
+
+```
+GET /api/system-alerts/deliveries/page?channel={channel}&status={status}&instanceId={instanceId}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** `channel` / `status` / `instanceId` 可选过滤，`page` 默认 1，`pageSize` 默认 20。
+
+**Response `data`:** `PageResult<NotificationDeliveryPage>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 投递记录 ID |
+| `alertId` | `number` | 关联告警 ID |
+| `channel` | `string` | 通知渠道 |
+| `status` | `string` | 状态（同 12.6） |
+| `attemptCount` | `number` | 已尝试次数 |
+| `nextAttemptAt` | `string` | 下次尝试时间 (ISO 8601) |
+| `lastError` | `string` | 最近失败原因 |
+| `deliveredAt` | `string` | 成功投递时间 (ISO 8601) |
+| `createdAt` | `string` | 创建时间 (ISO 8601) |
+| `messageContent` | `string` | 通知内容 |
+| `alertTitle` | `string` | 告警标题 |
+| `alertDomain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `transition` | `string` | 状态迁移描述 |
+| `instanceId` | `string` | 关联实例 ID |
+
+### 12.8 重试单条失败投递
+
+```
+POST /api/system-alerts/deliveries/:deliveryId/retry
+```
+
+**Response `data`:** `null`
+
+### 12.9 批量重试失败投递
+
+```
+POST /api/system-alerts/deliveries/retry
+```
+
+**Request Body:** `number[]`（投递记录 ID 列表，须含 1-100 个 ID；缺失、为空或超过 100 个返回
+400）。
+
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `succeededIds` | `number[]` | 重试成功的投递 ID |
+| `failures` | `object` | 失败明细：`{ 投递ID: 原因 }` |
+
+### 12.10 获取原生告警指标目录
+
+```
+GET /api/native-alert-metrics?instanceId={instanceId}&domain={domain}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例标识 |
+| `domain` | `string` | 是 | 告警域: `BUSINESS` / `CLUSTER` |
+
+**Response `data`:** `NativeAlertMetricInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `key` | `string` | 语义指标键 |
+| `label` | `string` | 显示名 |
+| `thresholdUnit` | `string` | 阈值单位 |
+| `supportsConsumerGroup` | `boolean` | 是否支持按消费组细分 |
+
+### 12.11 获取指标采集器状态
+
+```
+GET /api/alert-collector-status
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `collectionInterval` | `string` | 采集间隔 |
+| `clusterCollectorCount` | `number` | 集群域采集器数量 |
+| `businessCollectorCount` | `number` | 业务域采集器数量 |
+
+### 12.12 获取静默窗口列表
+
+```
+GET /api/alert-silences
+```
+
+**Response `data`:** `AlertSilence[]`（同 12.13 的单条定义，未分页）。
+
+### 12.13 分页获取静默窗口列表
+
+```
+GET /api/alert-silences/page?page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** `page` 默认 1，`pageSize` 默认 20。
+
+**Response `data`:** `PageResult<AlertSilence>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 静默窗口 ID |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `ruleId` | `number` | 限定的规则 ID |
+| `instanceId` | `string` | 限定的实例 ID |
+| `labels` | `object` | 限定的标签集 |
+| `startsAt` | `string` | 开始时间 (ISO 8601) |
+| `endsAt` | `string` | 结束时间 (ISO 8601) |
+| `recurrence` | `string` | 重复策略: `ONCE` / `DAILY` / `WEEKLY` |
+| `timeZone` | `string` | 时区 |
+| `recurrenceDays` | `number[]` | 周重复的星期（1-7） |
+| `recurrenceUntil` | `string` | 重复截止时间 (ISO 8601) |
+| `reason` | `string` | 静默原因 |
+
+### 12.14 创建静默窗口
+
+```
+POST /api/alert-silences
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `domain` | `string` | 否 | 告警域 |
+| `ruleId` | `number` | 否 | 限定的规则 ID |
+| `instanceId` | `string` | 否 | 限定的实例 ID |
+| `labels` | `object` | 否 | 限定的标签集 |
+| `startsAt` | `string` | 是 | 开始时间 (ISO 8601 含时区偏移) |
+| `endsAt` | `string` | 是 | 结束时间 (ISO 8601 含时区偏移) |
+| `recurrence` | `string` | 否 | 重复策略: `ONCE` / `DAILY` / `WEEKLY` |
+| `timeZone` | `string` | 否 | 时区 |
+| `recurrenceDays` | `number[]` | 否 | 周重复的星期（1-7） |
+| `recurrenceUntil` | `string` | 否 | 重复截止时间 (ISO 8601) |
+| `reason` | `string` | 否 | 静默原因 |
+
+**Response `data`:** `AlertSilence`
+
+### 12.15 删除静默窗口
+
+```
+DELETE /api/alert-silences/:id
+```
+
+**Response `data`:** `null`
+
+### 12.16 获取告警规则资产清单
+
+```
+GET /api/alert-rules/assets
+```
+
+**Response `data`:** `AlertRuleAssetInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | `string` | 资产名称 |
+| `group` | `string` | 资产分组 |
+| `ruleCount` | `number` | 内含规则数 |
+| `severities` | `string[]` | 覆盖的严重级别 |
+
+### 12.17 获取告警规则资产 YAML
+
+```
+GET /api/alert-rules/assets/:name
+```
+
+**Response `data`:** `string`（资产 YAML 文本）
+
+### 12.18 导出告警规则资产
+
+```
+GET /api/alert-rules/assets/:name/export
+```
+
+**Response:** `application/x-yaml` 文件下载（`Content-Disposition: attachment`，文件名 `{name}.yaml`）。
 
 ---
 
@@ -2648,6 +3646,31 @@ POST /api/ai/tools/:name/execute
 
 ---
 
+### 15.14 上报生成速度
+
+```
+POST /api/ai/runs/:runId/speed
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `runId` | `number` | 是 | Run ID |
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `tokensPerSecond` | `number` | 是 | 客户端在流式输出期间实测的生成速度（token/s，非负） |
+
+持久化客户端实测的生成速度，回放的会话记录会在回答旁显示同样的数字。Run 不属于调用者时按
+不存在处理（404）。
+
+**Response `data`:** `null`
+
+---
+
 ## 16. 监控指标 Metrics
 
 ### 16.1 查询监控指标数据
@@ -2664,6 +3687,8 @@ POST /api/metrics/query
 | `start` | `number` | 是 | 起始时间（Unix 时间戳，秒） |
 | `end` | `number` | 是 | 结束时间（Unix 时间戳，秒） |
 | `step` | `string` | 是 | 查询分辨率，可以是持续时间或秒数（如 `"30s"`、`"5m"`、`"1h"`） |
+| `profileId` | `string` | 否 | 指标画像 ID（与 `semanticMetric` 配合使用语义键查询） |
+| `semanticMetric` | `string` | 否 | 语义指标键（由画像映射到 PromQL） |
 
 **Request 示例：**
 
@@ -2839,6 +3864,443 @@ GET /api/metrics/grafana/dashboards/export
 |-----------|------|
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
+
+---
+
+## 17. 云凭证 Cloud Credentials
+
+管理用于访问云厂商（阿里云 / 腾讯云）OpenAPI 的 AccessKey 凭证。列表与导出接口对 `accessKey`
+脱敏、`secretKey` 置空；仅 17.6 的凭据查看接口返回完整密钥，且该接口仅管理员可用。
+
+### 17.1 分页获取云凭证列表
+
+```
+GET /api/cloud-credentials?vendor={vendor}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vendor` | `string` | 否 | 按厂商过滤: `ALIYUN` / `TENCENT` |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 1 |
+| `pageSize` | `number` | 否 | 每页条数，默认 20 |
+
+**Response `data`:** `PageResult<CloudCredential>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 凭证 ID |
+| `name` | `string` | 凭证名称 |
+| `vendor` | `string` | 厂商: `ALIYUN` / `TENCENT` |
+| `accessKey` | `string` | AccessKey（脱敏显示） |
+| `secretKey` | `string` | 恒为 `null`（列表不返回） |
+| `remark` | `string` | 备注 |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 17.2 导出云凭证列表（CSV）
+
+```
+GET /api/cloud-credentials/export?vendor={vendor}&search={search}
+```
+
+**Query Parameters:** 同 17.1（无分页参数）。
+
+**Response `data`:** `string`（CSV 文本；`accessKey` 脱敏、不含 `secretKey`）
+
+### 17.3 创建云凭证
+
+```
+POST /api/cloud-credentials/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 凭证名称 |
+| `vendor` | `string` | 是 | 厂商: `ALIYUN` / `TENCENT` |
+| `accessKey` | `string` | 是 | AccessKey |
+| `secretKey` | `string` | 是 | SecretKey |
+| `remark` | `string` | 否 | 备注 |
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 17.4 更新云凭证
+
+```
+POST /api/cloud-credentials/update
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 凭证 ID |
+| `name` | `string` | 否 | 新名称 |
+| `secretKey` | `string` | 否 | 新 SecretKey（不传则保留） |
+| `remark` | `string` | 否 | 备注 |
+
+**Response `data`:** `CloudCredential`（`secretKey` 不返回）
+
+### 17.5 删除云凭证
+
+```
+POST /api/cloud-credentials/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 凭证 ID（数字） |
+
+**Response `data`:** `null`
+
+### 17.6 查看云凭证密钥
+
+```
+GET /api/cloud-credentials/:id/credentials
+```
+
+**Response `data`:** `CloudCredential`（`accessKey` / `secretKey` 为完整明文，仅用于需要直连云
+OpenAPI 的场景）。响应带 `Cache-Control: no-store`。仅管理员可用（`AuthInterceptor` 的
+credential-reveal 守卫）。
+
+### 16.6 获取指标画像列表
+
+```
+GET /api/metrics/profiles
+```
+
+**Response `data`:** `MetricProfile[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `string` | 画像 ID |
+| `name` | `string` | 画像名称 |
+| `description` | `string` | 描述 |
+| `metrics` | `object[]` | 指标映射：`{ semanticMetric, name, unit, prometheusMetric, promql, labels }` |
+
+### 16.7 按数据源查询指标数据
+
+```
+POST /api/metrics/query/datasource?key={key}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `key` | `string` | 是 | 数据源 ID |
+
+**Request Body:** 同 16.1 的查询请求，在该数据源上执行。
+
+**Response `data`:** `MetricData`（同 16.1）
+
+## 18. LLM 配置
+
+管理 AI 交互使用的 LLM 提供商连接配置。
+
+### 18.1 获取 LLM 配置
+
+```
+GET /api/llm/config
+```
+
+**Response `data`:** `LlmConfig`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `provider` | `string` | 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
+| `engine` | `string` | 执行引擎 |
+| `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
+| `apiBase` | `string` | API Base URL |
+| `model` | `string` | 模型名称 |
+| `maxTokens` | `number` | 最大输出 token 数 |
+| `temperature` | `number` | 采样温度 |
+| `enabled` | `boolean` | 是否启用 |
+| `deploymentName` | `string` | Azure 部署名 |
+| `apiVersion` | `string` | Azure API 版本 |
+| `awsRegion` | `string` | AWS 区域（Bedrock） |
+
+该接口仅管理员可用。
+
+### 18.2 保存 LLM 配置
+
+```
+POST /api/llm/config
+```
+
+**Request Body:** 18.1 的字段（`apiKey` 为新密钥，`clearApiKey` 显式清除；省略 `apiKey` 时保留现有密钥）。
+
+**Response `data`:** `LlmOperationResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码 |
+| `msg` | `string` | 提示信息 |
+| `errMsg` | `string` | 失败原因 |
+| `code` | `string` | 错误码 |
+| `hint` | `string` | 修复建议 |
+| `models` | `object[]` | 可用模型：`{ id, name }` |
+
+### 18.3 测试 LLM 配置
+
+```
+POST /api/llm/config/test
+```
+
+**Request Body:** 同 18.2（测试请求体中的配置，不落库）。
+
+**Response `data`:** `LlmOperationResult`（同 18.2）
+
+### 18.4 获取可用模型列表
+
+```
+GET /api/llm/models
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `number` | 结果状态码 |
+| `data` | `object[]` | 模型列表：`{ id, name }` |
+| `source` | `string` | 模型列表来源 |
+| `warning` | `string` | 警告信息 |
+| `warningCode` | `string` | 警告码 |
+| `hint` | `string` | 修复建议 |
+
+该接口仅管理员可用。
+
+## 19. 运维配置 Ops
+
+经典运维页使用的 NameServer / VIP 通道 / TLS 配置接口。
+
+### 19.1 获取运维配置概览
+
+```
+GET /api/ops/homePage
+```
+
+**Response `data`:** `OpsHome`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `configurationAvailable` | `boolean` | 集群是否支持读写 Ops 配置 |
+| `unavailableReason` | `string` | 不可用原因 |
+| `namesvrAddrList` | `string[]` | NameServer 地址列表 |
+| `useVIPChannel` | `boolean` | 是否启用 VIP 通道 |
+| `useTLS` | `boolean` | 是否启用 TLS |
+| `currentNamesrv` | `string` | 当前生效的 NameServer 地址 |
+
+### 19.2 更新当前 NameServer
+
+```
+POST /api/ops/updateNameSvrAddr
+```
+
+**Request Body:** `{ namesrvAddr: string }`（必填）。
+
+**Response `data`:** `null`
+
+### 19.3 新增 NameServer 地址
+
+```
+POST /api/ops/addNameSvrAddr
+```
+
+**Request Body:** `{ namesrvAddr: string }`（必填）。
+
+**Response `data`:** `null`
+
+### 19.4 删除 NameServer 地址
+
+```
+POST /api/ops/deleteNameSvrAddr
+```
+
+**Request Body:** `{ namesrvAddr: string }`（必填）。
+
+**Response `data`:** `null`
+
+### 19.5 更新 VIP 通道设置
+
+```
+POST /api/ops/updateIsVIPChannel
+```
+
+**Request Body:** `{ useVIPChannel: boolean }`（必填）。
+
+**Response `data`:** `null`
+
+### 19.6 更新 TLS 设置
+
+```
+POST /api/ops/updateUseTLS
+```
+
+**Request Body:** `{ useTLS: boolean }`（必填）。
+
+**Response `data`:** `null`
+
+## 20. 云厂商目录 Cloud Catalog
+
+供实例创建页选择云厂商区域与实例；两个厂商的接口形状一致。
+
+### 20.1 获取阿里云区域列表
+
+```
+GET /api/cloud/aliyun/regions?credentialId={credentialId}
+```
+
+**Query Parameters:** `credentialId`（`number`，必填，云凭证 ID）。
+
+**Response `data`:** `CloudRegion[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `regionId` | `string` | 区域 ID |
+| `regionName` | `string` | 区域名称 |
+
+### 20.2 获取阿里云实例选项
+
+```
+GET /api/cloud/aliyun/instances?credentialId={credentialId}&regionId={regionId}&search={search}
+```
+
+**Query Parameters:** `credentialId`（必填）、`regionId`（必填）、`search`（否）。
+
+**Response `data`:** `CloudInstanceOption[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 云实例 ID |
+| `instanceName` | `string` | 云实例名称 |
+| `status` | `string` | 实例状态 |
+| `regionId` | `string` | 区域 ID |
+| `topicCount` | `number` | Topic 数 |
+| `groupCount` | `number` | 消费组数 |
+| `remark` | `string` | 备注 |
+
+### 20.3 获取腾讯云区域列表
+
+```
+GET /api/cloud/tencent/regions?credentialId={credentialId}
+```
+
+**Response `data`:** 同 20.1。
+
+### 20.4 获取腾讯云实例选项
+
+```
+GET /api/cloud/tencent/instances?credentialId={credentialId}&regionId={regionId}&search={search}
+```
+
+**Response `data`:** 同 20.2。
+
+## 21. Studio 用户管理
+
+仅管理员可用。
+
+### 21.1 分页获取用户列表
+
+```
+GET /api/studio-users?search={search}&admin={admin}&enabled={enabled}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:** `search`（否）、`admin`（否）、`enabled`（否）、`page`（默认 1）、`pageSize`（默认 20）。
+
+**Response `data`:** `PageResult<StudioUser>`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 用户 ID |
+| `username` | `string` | 用户名 |
+| `admin` | `boolean` | 是否管理员 |
+| `enabled` | `boolean` | 是否启用 |
+| `activeSessionCount` | `number` | 活跃会话数 |
+| `lastSessionSeenAt` | `string` | 最近活跃时间 (ISO 8601) |
+| `nearestSessionExpiresAt` | `string` | 最近到期会话时间 (ISO 8601) |
+| `passwordChangedAt` | `string` | 密码修改时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
+
+### 21.2 创建用户
+
+```
+POST /api/studio-users
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `username` | `string` | 是 | 用户名 |
+| `password` | `string` | 是 | 初始密码 |
+| `admin` | `boolean` | 否 | 是否管理员，默认 false |
+
+**Response `data`:** `StudioUser`
+
+### 21.3 启用/禁用用户
+
+```
+POST /api/studio-users/:userId/status
+```
+
+**Request Body:** `{ enabled: boolean }`（必填）。
+
+**Response `data`:** `StudioUser`
+
+### 21.4 重置用户密码
+
+```
+POST /api/studio-users/:userId/password
+```
+
+**Request Body:** `{ newPassword: string }`（必填）。
+
+**Response `data`:** `null`
+
+### 21.5 获取会话概览
+
+```
+GET /api/studio-users/sessions/overview
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `activeSessionCount` | `number` | 活跃会话总数 |
+| `activeUserCount` | `number` | 活跃用户数 |
+| `expiringSoonSessionCount` | `number` | 即将到期的会话数 |
+| `staleSessionCount` | `number` | 僵尸会话数 |
+| `expiringSoonWindowMinutes` | `number` | 即将到期的判定窗口（分钟） |
+| `staleSessionThresholdMinutes` | `number` | 僵尸会话的判定阈值（分钟） |
+
+### 21.6 获取用户的活跃会话
+
+```
+GET /api/studio-users/:userId/sessions
+```
+
+**Response `data`:** `StudioUserSession[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 会话 ID |
+| `userId` | `number` | 用户 ID |
+| `lastSeenAt` | `string` | 最近活跃时间 (ISO 8601) |
+| `expiresAt` | `string` | 到期时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `remainingSeconds` | `number` | 剩余秒数 |
+| `idleSeconds` | `number` | 空闲秒数 |
+| `expiringSoon` | `boolean` | 是否即将到期 |
+| `stale` | `boolean` | 是否僵尸会话 |
 
 ---
 
