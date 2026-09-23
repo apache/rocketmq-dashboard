@@ -166,12 +166,14 @@ const ProxyPage: React.FC = () => {
   }, [applyProxyHome, message, t]);
 
   useEffect(() => {
-    const requestId = loadRequestId.current;
     // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProxyNodes();
     return () => {
-      loadRequestId.current = requestId + 1;
+      // Invalidate the requests of the previous effect run. The counter must only move
+      // forward: rewinding it to an already-issued id would let two concurrent requests
+      // both pass the staleness guard and overwrite each other's results.
+      loadRequestId.current += 1;
     };
   }, [loadProxyNodes]);
 
@@ -219,8 +221,10 @@ const ProxyPage: React.FC = () => {
       }
     } finally {
       addressMutationInFlight.current = false;
+      // The button spinner tracks this mutation's own lifecycle, so it must clear even
+      // when the response was skipped as stale; leaving it loading would wedge the button.
+      setAddressMutationLoading(false);
       if (requestId === loadRequestId.current) {
-        setAddressMutationLoading(false);
         setLoading(false);
       }
     }
@@ -247,8 +251,9 @@ const ProxyPage: React.FC = () => {
       }
     } finally {
       addressMutationInFlight.current = false;
+      // As with the add button: the per-row spinner must clear even for a stale response.
+      setRemovingProxyAddress(null);
       if (requestId === loadRequestId.current) {
-        setRemovingProxyAddress(null);
         setLoading(false);
       }
     }
