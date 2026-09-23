@@ -1,3 +1,18 @@
+-- Licensed to the Apache Software Foundation (ASF) under one or more
+-- contributor license agreements.  See the NOTICE file distributed with
+-- this work for additional information regarding copyright ownership.
+-- The ASF licenses this file to You under the Apache License, Version 2.0
+-- (the "License"); you may not use this file except in compliance with
+-- the License.  You may obtain a copy of the License at
+--
+--     http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
 -- server/src/main/resources/db/schema.sql
 -- RocketMQ Studio 数据库 Schema（MySQL 8.0）
 -- 此文件为唯一权威 DDL 来源，MyBatis-Plus Entity 与此保持同步
@@ -93,6 +108,16 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
     REFERENCES rmq_cloud_credential(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 实例名称互斥行：虚拟实例写入与同名注册、删除、连接变更共享锁顺序。
+CREATE TABLE IF NOT EXISTS rmq_instance_ownership_lock (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  name VARCHAR(128) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_ownership_instance_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）
 CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -109,8 +134,9 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_instance_topic (cluster_id, instance_id, name),
-  INDEX idx_topic_instance (instance_id)
+  UNIQUE KEY uk_topic_name (name),
+  INDEX idx_topic_instance (instance_id),
+  INDEX idx_topic_cluster (cluster_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Consumer Group 管理记录
@@ -127,8 +153,9 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_instance_group (cluster_id, instance_id, name),
-  INDEX idx_group_instance (instance_id)
+  UNIQUE KEY uk_group_name (name),
+  INDEX idx_group_instance (instance_id),
+  INDEX idx_group_cluster (cluster_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5. K8s 证书管理

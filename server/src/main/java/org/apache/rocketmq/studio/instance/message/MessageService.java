@@ -18,7 +18,11 @@ package org.apache.rocketmq.studio.instance.message;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
@@ -39,6 +43,7 @@ public class MessageService {
     private final InstanceProviderRegistry providerRegistry;
     private final QueryHistoryService queryHistoryService;
     private final OperationAuditService operationAuditService;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
@@ -134,12 +139,34 @@ public class MessageService {
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Direct consume request must not be null");
+        }
+        var instance = ownershipGuard.requireInstance(request.getInstanceId());
+        request.setInstanceId(instance.getName());
+        request.setTopic(ResourceOwnershipGuard.requireText(request.getTopic(), "topicName"));
+        request.setConsumerGroup(ResourceOwnershipGuard.requireText(request.getConsumerGroup(), "groupName"));
+        request.setClientId(ResourceOwnershipGuard.requireText(request.getClientId(), "clientId"));
+        request.setMsgId(ResourceOwnershipGuard.requireText(request.getMsgId(), "msgId"));
+        // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
+        boolean apache = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
+        List<Resource> resources = List.of(new Resource(Kind.GROUP, request.getConsumerGroup()),
+                ownershipGuard.topicResource(request.getTopic()));
+        if (apache) {
+            resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+            ownershipGuard.requireSupportedProvider(instance);
+        }
         String detail = "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
                 + ", clientId=" + request.getClientId();
         try {
-            DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
-                    .map(provider -> provider.consumeMessageDirectly(request))
-                    .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
+            DirectConsumeMessageResultVO result = apache
+                    ? ownershipGuard.withOwned(instance, resources, () ->
+                            providerRegistry.byInstanceId(request.getInstanceId())
+                                    .map(provider -> provider.consumeMessageDirectly(request))
+                                    .orElseGet(() -> messageProvider.consumeMessageDirectly(request)))
+                    : providerRegistry.byInstanceId(request.getInstanceId())
+                            .map(provider -> provider.consumeMessageDirectly(request))
+                            .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
             recordDirectConsumeAudit(request, detail + ", result=" + result.getConsumeResult(),
                     auditResult(result.getConsumeResult()), null);
             return result;

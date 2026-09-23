@@ -75,6 +75,7 @@ public class InstanceService {
     private final SettingsRepository settingsRepository;
     private final CacheManager cacheManager;
     private final RegionNames regionNames;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
     // originate from outside the bean. Calling deleteInstance() directly from within this class
@@ -225,7 +226,7 @@ public class InstanceService {
         instance.setGmtModified(LocalDateTime.now());
         InstanceVO saved;
         try {
-            saved = instanceRepository.save(instance);
+            saved = ownershipGuard.withInstanceRegistration(instance.getName(), () -> instanceRepository.save(instance));
         } catch (DataIntegrityViolationException exception) {
             if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
                 throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
@@ -586,6 +587,7 @@ public class InstanceService {
         return StringUtils.hasText(credentialRef) ? credentialRef.trim() : null;
     }
 
+    @Transactional
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -630,8 +632,18 @@ public class InstanceService {
         }
         updated.setGmtModified(LocalDateTime.now());
 
+        ownershipGuard.lockForInstanceUpdate(existing, updated);
         InstanceVO saved = instanceRepository.save(updated);
-        releaseApacheClientIfChanged(existing, saved);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    releaseApacheClientIfChanged(existing, saved);
+                }
+            });
+        } else {
+            releaseApacheClientIfChanged(existing, saved);
+        }
         recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -645,6 +657,7 @@ public class InstanceService {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
+        ownershipGuard.lockForInstanceDeletion(id);
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 

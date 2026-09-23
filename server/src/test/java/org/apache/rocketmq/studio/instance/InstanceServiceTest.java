@@ -106,8 +106,42 @@ class InstanceServiceTest {
     @Mock
     private RegionNames regionNames;
 
+    @Mock
+    private ResourceOwnershipGuard ownershipGuard;
+
     @InjectMocks
     private InstanceService instanceService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void registrationGuardFixture() {
+        org.mockito.Mockito.lenient().when(ownershipGuard.withInstanceRegistration(anyString(), any()))
+                .thenAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(1)).get());
+    }
+
+    @Test
+    void deleteOwnedInstanceStopsBeforeProviderTest() {
+        org.mockito.Mockito.doThrow(new BusinessException(409, "Instance still holds resources"))
+                .when(ownershipGuard).lockForInstanceDeletion(1L);
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        verifyNoInteractions(instanceRepository, providerRegistry, adminFactory, clientPool);
+    }
+
+    @Test
+    void updateOwnedInstanceStopsBeforeSaveTest() {
+        InstanceVO existing = InstanceVO.builder().name("instance-a")
+                .endpoint("old:9876").vendor(InstanceVendor.APACHE).build();
+        existing.setId(1L);
+        InstanceVO request = InstanceVO.builder().endpoint("new:9876").build();
+        request.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        org.mockito.Mockito.doThrow(new BusinessException(409, "Instance still holds resources"))
+                .when(ownershipGuard).lockForInstanceUpdate(eq(existing), any());
+        assertThatThrownBy(() -> instanceService.updateInstance(request))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        verify(instanceRepository, never()).save(any());
+        verifyNoInteractions(adminFactory, clientPool);
+    }
 
     @Test
     void listInstancesShouldReturnAllWhenNoFilters() {

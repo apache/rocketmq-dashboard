@@ -34,6 +34,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -72,6 +74,33 @@ class ApacheInstanceProviderTest {
         verify(adminClient).updateTopic("inst-1", topic);
         verify(adminClient).deleteTopic("inst-1", "orders");
         verifyNoMoreInteractions(adminClient);
+    }
+
+    @Test
+    void groupWritesRequireRequestAndExplicitCanonicalInstanceTest() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId("other-instance");
+        provider.createConsumerGroup(" selected ", group);
+        assertThat(group.getInstanceId()).isEqualTo("selected");
+        provider.importConsumerGroup(" selected ", group);
+        provider.updateConsumerGroup(" selected ", group);
+        verify(adminClient).createConsumerGroup(group);
+        verify(adminClient).importConsumerGroup(group);
+        verify(adminClient).updateConsumerGroup(group);
+    }
+
+    @Test
+    void groupWritesRejectMissingInstanceOrRequestBeforeAdminTest() {
+        for (String instanceId : new String[] {null, " ", "selected"}) {
+            for (java.util.function.BiFunction<String, ConsumerGroupVO, ConsumerGroupVO> mutation :
+                    java.util.List.<java.util.function.BiFunction<String, ConsumerGroupVO, ConsumerGroupVO>>of(
+                            provider::createConsumerGroup, provider::importConsumerGroup, provider::updateConsumerGroup)) {
+                assertThatThrownBy(() -> mutation.apply(instanceId, null))
+                        .isInstanceOfSatisfying(org.apache.rocketmq.studio.common.exception.BusinessException.class,
+                                failure -> assertThat(failure.getCode()).isEqualTo(400));
+            }
+        }
+        verifyNoInteractions(adminClient);
     }
 
     @Test

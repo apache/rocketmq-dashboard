@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -109,6 +111,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public TopicVO importTopic(String instanceId, TopicVO topic) {
+        return adminClient.importTopic(instanceId, topic);
+    }
+
+    @Override
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         return adminClient.updateTopic(instanceId, topic);
     }
@@ -147,12 +154,28 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
         return adminClient.createConsumerGroup(group);
     }
 
     @Override
+    public ConsumerGroupVO importConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
+        return adminClient.importConsumerGroup(group);
+    }
+
+    @Override
     public ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
         return adminClient.updateConsumerGroup(group);
+    }
+
+    private void requireGroupInstance(String instanceId, ConsumerGroupVO group) {
+        String target = ResourceOwnershipGuard.requireText(instanceId, "instanceId");
+        if (group == null) {
+            throw new BusinessException(400, "Group request is required");
+        }
+        group.setInstanceId(target);
     }
 
     @Override
