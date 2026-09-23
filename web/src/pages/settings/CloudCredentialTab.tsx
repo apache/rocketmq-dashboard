@@ -147,6 +147,7 @@ export const CloudCredentialTab = () => {
   };
 
   const handleExport = useCallback(async () => {
+    if (search.trim() !== debouncedSearch) return;
     setExporting(true);
     try {
       const csv = await exportCloudCredentials(vendorFilter, debouncedSearch);
@@ -159,7 +160,7 @@ export const CloudCredentialTab = () => {
     } finally {
       setExporting(false);
     }
-  }, [debouncedSearch, t, vendorFilter]);
+  }, [debouncedSearch, search, t, vendorFilter]);
 
   const resetModal = () => {
     setModalOpen(false);
@@ -330,6 +331,7 @@ export const CloudCredentialTab = () => {
           <Button
             icon={<DownloadOutlined />}
             loading={exporting}
+            disabled={filtersPending}
             onClick={() => void handleExport()}
           >
             {t('common.export')}

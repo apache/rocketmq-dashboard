@@ -390,6 +390,25 @@ describe('CloudCredentialTab', () => {
     expect(filename).toMatch(/^rocketmq-cloud-credentials-\d{4}-\d{2}-\d{2}\.csv$/);
   });
 
+  it('waits for the search debounce before exporting the visible filter', async () => {
+    vi.mocked(exportCloudCredentials).mockResolvedValue('"Name"\r\n');
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+    await screen.findByText('aliyun-test');
+
+    fireEvent.change(screen.getByPlaceholderText('搜索凭据名称'), { target: { value: 'prod' } });
+    const exportButton = screen.getByRole('button', { name: /导出/ });
+    expect(exportButton).toBeDisabled();
+    await user.click(exportButton);
+    expect(exportCloudCredentials).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith(undefined, 'prod', 1, 20),
+    );
+    await user.click(exportButton);
+    await waitFor(() => expect(exportCloudCredentials).toHaveBeenCalledWith(undefined, 'prod'));
+  });
+
   it('reports an export failure instead of downloading an empty file', async () => {
     vi.mocked(exportCloudCredentials).mockRejectedValue(new Error('boom'));
     const user = userEvent.setup({ pointerEventsCheck: 0 });
