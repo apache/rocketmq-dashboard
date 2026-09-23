@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	CLIVersion = "1.0.0"
+	CLIVersion = "3.0.0"
 	GitCommit  = ""
 	BuildDate  = ""
 )

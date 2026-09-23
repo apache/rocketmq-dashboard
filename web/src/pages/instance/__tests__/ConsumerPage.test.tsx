@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, Modal } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -325,10 +325,12 @@ describe('Consumer page', () => {
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
   });
 
-  afterEach(() => {
-    cleanup();
-    Modal.destroyAll();
-    message.destroy();
+  afterEach(async () => {
+    await act(async () => {
+      cleanup();
+      Modal.destroyAll();
+    });
+    // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
