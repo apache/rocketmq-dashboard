@@ -352,4 +352,27 @@ class NameServerControllerTest extends WebMvcAuthTestSupport {
 
         verify(clusterService).deleteNameServer(any(DeleteNameServerDTO.class));
     }
+
+    @Test
+    void probeRouteConsistencyShouldReturnReport() throws Exception {
+        NamesrvRouteConsistencyReportVO report = NamesrvRouteConsistencyReportVO.builder()
+                .topic("TopicOrders")
+                .totalNameServersQueried(2)
+                .successfulNameServers(2)
+                .fullyConsistent(true)
+                .build();
+        when(configDiffService.probeRouteConsistency("TopicOrders", "cluster-1", "inst-1"))
+                .thenReturn(report);
+
+        mockMvc.perform(get("/api/nameservers/route-consistency-probe")
+                        .param("topic", "TopicOrders")
+                        .param("clusterId", "cluster-1")
+                        .param("instanceId", "inst-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.topic").value("TopicOrders"))
+                .andExpect(jsonPath("$.data.fullyConsistent").value(true));
+
+        verify(configDiffService).probeRouteConsistency("TopicOrders", "cluster-1", "inst-1");
+    }
 }
