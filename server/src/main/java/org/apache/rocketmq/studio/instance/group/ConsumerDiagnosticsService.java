@@ -35,6 +35,12 @@ public class ConsumerDiagnosticsService {
         return diagnosticsProvider.getConsumerStack(normalizedInstanceId, normalizedGroupName, normalizedClientId);
     }
 
+    public SubscriptionConsistencyReportVO validateSubscriptionConsistency(String instanceId, String groupName) {
+        String normalizedInstanceId = normalizeOptional(instanceId);
+        String normalizedGroupName = normalizeRequired(groupName, "groupName");
+        return diagnosticsProvider.validateSubscriptionConsistency(normalizedInstanceId, normalizedGroupName);
+    }
+
     private String normalizeRequired(String value, String fieldName) {
         if (!StringUtils.hasText(value)) {
             throw new BusinessException(400, fieldName + " is required");

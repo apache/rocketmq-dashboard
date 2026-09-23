@@ -31,4 +31,11 @@ public class ConsumerDiagnosticsProviderStub implements ConsumerDiagnosticsProvi
                 + "instanceId={}, groupName={}, clientId={}", instanceId, groupName, clientId);
         throw new BusinessException(501, "Consumer diagnostics provider is not configured");
     }
+
+    @Override
+    public SubscriptionConsistencyReportVO validateSubscriptionConsistency(String instanceId, String groupName) {
+        log.warn("ConsumerDiagnosticsProviderStub.validateSubscriptionConsistency called without a real diagnostics provider. "
+                + "instanceId={}, groupName={}", instanceId, groupName);
+        throw new BusinessException(501, "Consumer diagnostics provider is not configured");
+    }
 }

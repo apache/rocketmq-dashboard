@@ -130,6 +130,13 @@ public class ConsumerGroupController {
         return Result.ok(consumerDiagnosticsService.getConsumerStack(instanceId, name, clientId));
     }
 
+    @GetMapping("/{name}/subscription-consistency")
+    public Result<SubscriptionConsistencyReportVO> validateSubscriptionConsistency(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(consumerDiagnosticsService.validateSubscriptionConsistency(instanceId, name));
+    }
+
     @PostMapping("/create")
     public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
         ConsumerGroupVO vo = group.toConsumerGroupVO();
