@@ -40,6 +40,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ConsumerStackOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceCapabilitiesOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
@@ -277,6 +278,11 @@ class ToolOutputSchemaContractTest {
                         List.of(unknownConnectionsItem),
                         null,
                         null)));
+        samples.put("rmq.group.consumer_stack", List.of(new ConsumerStackOutput(
+                INSTANCE, "cg-orders", "client-1", "2026-08-22T09:30", 1,
+                List.of(new ConsumerStackOutput.ThreadInfo(
+                        "ConsumeMessageThread_1", 12L, "RUNNABLE", 0L, 0L,
+                        List.of("com.example.Listener.consume(Listener.java:42)"))))));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));
         samples.put("rmq.group.reset_offset", List.of(

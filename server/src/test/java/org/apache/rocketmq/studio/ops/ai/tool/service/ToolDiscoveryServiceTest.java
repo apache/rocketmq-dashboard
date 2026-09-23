@@ -91,6 +91,7 @@ class ToolDiscoveryServiceTest {
                         "rmq.topic.route",
                         "rmq.message.send",
                         "rmq.group.list",
+                        "rmq.group.consumer_stack",
                         "rmq.group.reset_offset",
                         "rmq.alert.rule.list")
                 .contains("rmq.nameserver.config")
@@ -117,7 +118,7 @@ class ToolDiscoveryServiceTest {
                 .contains("rmq.instance.capabilities", "rmq.topic.list", "rmq.topic.update", "rmq.group.list",
                         "rmq.acl.list", "rmq.user.list")
                 .doesNotContain("rmq.cluster.list", "rmq.broker.list", "rmq.nameserver.config", "rmq.group.dlq_list",
-                        "rmq.topic.route", "rmq.message.send", "rmq.group.reset_offset");
+                        "rmq.topic.route", "rmq.message.send", "rmq.group.reset_offset", "rmq.group.consumer_stack");
     }
     /** The AI page lists platform tools without binding an Instance, so a missing target is not an error. */
     @Test

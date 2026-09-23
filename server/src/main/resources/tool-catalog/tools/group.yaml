@@ -328,6 +328,89 @@ tools:
                       type: integer
     viewHint: object
     deprecated: false
+  - name: rmq.group.consumer_stack
+    cli:
+      resource: group
+      verb: consumer-stack
+    description: Capture the live thread stack of one online consumer client for diagnosing blocked or stalled consumption. Available for RocketMQ remoting instances; proxy diagnostics are preferred when available.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - CONSUMER_GROUP_MANAGEMENT
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+        - clientId
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        clientId:
+          type: string
+          description: Online consumer client identifier returned by rmq.group.detail.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - instanceId
+        - groupName
+        - clientId
+        - capturedAt
+        - threadCount
+        - threads
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          minLength: 1
+        groupName:
+          type: string
+          minLength: 1
+        clientId:
+          type: string
+          minLength: 1
+        capturedAt:
+          type: string
+        threadCount:
+          type: integer
+          minimum: 0
+        threads:
+          type: array
+          items:
+            type: object
+            required:
+              - threadName
+              - threadId
+              - state
+              - blockedTime
+              - waitedTime
+              - stackTrace
+            additionalProperties: false
+            properties:
+              threadName:
+                type: string
+              threadId:
+                type: integer
+              state:
+                type: string
+              blockedTime:
+                type: integer
+              waitedTime:
+                type: integer
+              stackTrace:
+                type: array
+                items:
+                  type: string
+    viewHint: object
+    deprecated: false
   - name: rmq.group.update
     cli:
       resource: group
