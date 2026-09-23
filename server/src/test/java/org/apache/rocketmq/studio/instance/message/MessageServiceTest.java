@@ -443,7 +443,7 @@ class MessageServiceTest {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
-                mock(OperationAuditService.class));
+                mock(OperationAuditService.class), ownershipGuard());
         BusinessException unsupported = new BusinessException(501,
                 "Selected instance does not support this message operation");
         when(registry.byInstanceId("cloud-instance")).thenThrow(unsupported);
@@ -467,7 +467,7 @@ class MessageServiceTest {
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
-                mock(OperationAuditService.class));
+                mock(OperationAuditService.class), ownershipGuard());
         MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
         QueueOffsetVO queue = QueueOffsetVO.builder().brokerName("broker-a").queueId(0).build();
         when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
