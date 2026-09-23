@@ -485,6 +485,44 @@ describe('Cluster page', () => {
     expect(within(dialog).queryByText('defaultTopicQueueNums=16')).not.toBeInTheDocument();
   });
 
+  it('discards broker config previews after a partial update changes the cluster', async () => {
+    const latePreview = deferred<ClusterConfigPreviewResult>();
+    clusterServiceMocks.updateClusterConfig.mockResolvedValue({
+      cluster: buildCluster(),
+      status: 'PARTIAL',
+      successfulBrokers: ['10.101.2.11:10911'],
+      failedBrokers: [{ address: '10.101.2.12:10911', message: 'timeout' }],
+    });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    fireEvent.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    expect(await within(dialog).findByText('defaultTopicQueueNums=8')).toBeInTheDocument();
+
+    clusterServiceMocks.previewClusterConfig.mockReturnValueOnce(latePreview.promise);
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+    expect(await screen.findByText(/部分 Broker 配置已更新/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('defaultTopicQueueNums=8')).not.toBeInTheDocument();
+
+    await act(async () => {
+      latePreview.resolve({
+        cluster: buildCluster(),
+        currentConfig: buildCluster().config!,
+        proposedConfig: { ...buildCluster().config!, writeQueueNums: 24 },
+        targetBrokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911' }],
+        brokerProperties: { defaultTopicQueueNums: '24' },
+        changes: [],
+        changed: true,
+      });
+      await latePreview.promise;
+    });
+    expect(within(dialog).queryByText('defaultTopicQueueNums=24')).not.toBeInTheDocument();
+  });
+
   it('keeps cluster tabs usable when address fields are missing', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const submitSearch = async (placeholder: string, value: string) => {

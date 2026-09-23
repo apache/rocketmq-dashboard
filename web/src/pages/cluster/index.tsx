@@ -749,6 +749,11 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
+    // A write can change only some Brokers. Any preview from before the write,
+    // including one still in flight, no longer describes the cluster afterward.
+    configPreviewRequest.invalidate();
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
