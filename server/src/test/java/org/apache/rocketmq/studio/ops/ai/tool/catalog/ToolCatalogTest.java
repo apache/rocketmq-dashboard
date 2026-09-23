@@ -48,6 +48,9 @@ class ToolCatalogTest {
         }
         ToolDefinition clusterList = catalog.getDefinition("rmq.cluster.list");
         assertThat(clusterList.riskLevel()).isEqualTo(ToolRiskLevel.L1);
+        assertThat(catalog.getDefinition("rmq.instance.list").inputSchema())
+                .doesNotContainKey("required");
+        assertThat(ToolCatalog.isInstanceIdExempt("rmq.instance.list")).isTrue();
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
 
