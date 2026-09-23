@@ -27,8 +27,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,47 +53,47 @@ class NotificationOutboxMapperIntegrationTest {
 
     @Test
     void deliveryPageFiltersSearchAndCreationTimeWithConsistentCountTest() {
-        List<Long> alertIds = List.of(ALERT_ID_BASE + 201, ALERT_ID_BASE + 202, ALERT_ID_BASE + 203);
+        List<Long> alertIds = new ArrayList<>();
+        String instanceId = "delivery-filter-test-" + UUID.randomUUID();
         LocalDateTime start = LocalDateTime.of(2026, 9, 1, 14, 0);
         LocalDateTime end = start.plusHours(1);
-        cleanup(alertIds);
         try {
-            insertAlert(alertIds.get(0), "Broker DISK % warning");
-            insertAlert(alertIds.get(1), "Broker unavailable");
-            insertAlert(alertIds.get(2), "Another broker unavailable");
+            alertIds.add(insertAlert("Broker DISK % warning", instanceId));
+            alertIds.add(insertAlert("Broker unavailable", instanceId));
+            alertIds.add(insertAlert("Another broker unavailable", instanceId));
             Long titleMatch = insertDeliveryAt(alertIds.get(0), "email", null, start);
             Long errorMatch = insertDeliveryAt(alertIds.get(1), "email", "Webhook timeout_ABC", end);
             insertDeliveryAt(alertIds.get(2), "email", "Webhook after the incident", end.plusSeconds(1));
 
-            assertThat(alertMapper.selectById(alertIds.get(0)).getInstanceId()).isEqualTo("local");
-            assertThat(mapper.countPage(null, null, null, null, null, null)).isGreaterThanOrEqualTo(3);
-            assertThat(mapper.countPage("email", null, "local", null, null, null)).isEqualTo(3);
-            assertThat(mapper.countPage("email", null, "local", "broker", null, null)).isEqualTo(3);
-            assertThat(mapper.countPage("email", null, "local", null, start, end)).isEqualTo(2);
-            assertThat(mapper.countPage("email", null, "local", "broker", start, end)).isEqualTo(2);
-            assertThat(mapper.findPage("email", null, "local", "broker", start, end, 1, 0))
+            assertThat(mapper.countPage("email", null, instanceId, null, null, null)).isEqualTo(3);
+            assertThat(mapper.countPage("email", null, instanceId, "broker", null, null)).isEqualTo(3);
+            assertThat(mapper.countPage("email", null, instanceId, null, start, end)).isEqualTo(2);
+            assertThat(mapper.countPage("email", null, instanceId, "broker", start, end)).isEqualTo(2);
+            assertThat(mapper.findPage("email", null, instanceId, "broker", start, end, 1, 0))
                     .extracting(NotificationDeliveryPageVO::getId).containsExactly(errorMatch);
-            assertThat(mapper.findPage("email", null, "local", "broker", start, end, 1, 1))
+            assertThat(mapper.findPage("email", null, instanceId, "broker", start, end, 1, 1))
                     .extracting(NotificationDeliveryPageVO::getId).containsExactly(titleMatch);
 
-            assertThat(mapper.countPage(null, null, null, "webhook", start, end)).isEqualTo(1);
-            assertThat(mapper.findPage(null, null, null, "WEBHOOK", start, end, 10, 0))
+            assertThat(mapper.countPage(null, null, instanceId, "webhook", start, end)).isEqualTo(1);
+            assertThat(mapper.findPage(null, null, instanceId, "WEBHOOK", start, end, 10, 0))
                     .extracting(NotificationDeliveryPageVO::getId).containsExactly(errorMatch);
-            assertThat(mapper.countPage(null, null, null, "%", null, null)).isEqualTo(1);
-            assertThat(mapper.countPage(null, null, null, "_ABC", null, null)).isEqualTo(1);
-            assertThat(mapper.countPage(null, null, null, "webhook", end.plusSeconds(1), null)).isEqualTo(1);
+            assertThat(mapper.countPage(null, null, instanceId, "%", null, null)).isEqualTo(1);
+            assertThat(mapper.countPage(null, null, instanceId, "_ABC", null, null)).isEqualTo(1);
+            assertThat(mapper.countPage(null, null, instanceId, "webhook", end.plusSeconds(1), null)).isEqualTo(1);
         } finally {
             cleanup(alertIds);
-            alertMapper.delete(new QueryWrapper<RmqSystemAlert>().in("id", alertIds));
+            if (!alertIds.isEmpty()) {
+                alertMapper.delete(new QueryWrapper<RmqSystemAlert>().in("id", alertIds));
+            }
         }
     }
 
-    private void insertAlert(Long id, String title) {
+    private Long insertAlert(String title, String instanceId) {
         RmqSystemAlert alert = new RmqSystemAlert();
-        alert.setId(id);
         alert.setTitle(title);
-        alert.setInstanceId("local");
+        alert.setInstanceId(instanceId);
         alertMapper.insert(alert);
+        return alert.getId();
     }
 
     private Long insertDeliveryAt(Long alertId, String channel, String error, LocalDateTime createdAt) {
@@ -169,6 +171,8 @@ class NotificationOutboxMapperIntegrationTest {
     }
 
     private void cleanup(List<Long> alertIds) {
-        mapper.delete(new QueryWrapper<RmqAlertNotificationOutbox>().in("alert_id", alertIds));
+        if (!alertIds.isEmpty()) {
+            mapper.delete(new QueryWrapper<RmqAlertNotificationOutbox>().in("alert_id", alertIds));
+        }
     }
 }

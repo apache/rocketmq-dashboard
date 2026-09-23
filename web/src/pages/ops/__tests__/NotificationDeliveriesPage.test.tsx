@@ -246,30 +246,35 @@ describe('NotificationDeliveriesPage', () => {
   });
 
   it('forwards the selected local delivery time range as UTC bounds', async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    render(
-      <App>
-        <LangProvider>
-          <NotificationDeliveriesPage />
-        </LangProvider>
-      </App>,
-    );
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <App>
+          <LangProvider>
+            <NotificationDeliveriesPage />
+          </LangProvider>
+        </App>,
+      );
 
-    await screen.findByText('Broker disk usage');
-    const inputs = screen.getAllByLabelText('投递时间范围');
-    await user.type(inputs[0], '2026-09-01 14:00:00');
-    await user.keyboard('{Enter}');
-    await user.type(inputs[1], '2026-09-01 15:00:00');
-    await user.keyboard('{Enter}');
+      await screen.findByText('Broker disk usage');
+      const inputs = screen.getAllByLabelText('投递时间范围');
+      await user.type(inputs[0], '2026-09-01 14:00:00');
+      await user.keyboard('{Enter}');
+      await user.type(inputs[1], '2026-09-01 15:00:00');
+      await user.keyboard('{Enter}');
 
-    await waitFor(() =>
-      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          from: new Date('2026-09-01T14:00:00').toISOString().replace('Z', ''),
-          to: new Date('2026-09-01T15:00:00').toISOString().replace('Z', ''),
-          page: 1,
-        }),
-      ),
-    );
+      await waitFor(() =>
+        expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            from: '2026-09-01T06:00:00.000',
+            to: '2026-09-01T07:00:00.000',
+            page: 1,
+          }),
+        ),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
