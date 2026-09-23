@@ -106,6 +106,9 @@ class MetadataServiceTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private TopicLifecycleGovernanceEngine topicLifecycleGovernanceEngine;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -1077,7 +1080,22 @@ class MetadataServiceTest {
         request.setReadQueues(8);
         request.setPerm(TopicPerm.RW);
         return request;
+    }
 
+    @Test
+    void auditTopicLifecycleShouldDelegateToEngine() {
+        TopicVO sample = topic("orders");
+        when(apacheProvider.listTopics("instance-a", null, null)).thenReturn(List.of(sample));
+        TopicLifecycleAuditReportVO report = TopicLifecycleAuditReportVO.builder()
+                .instanceId("instance-a")
+                .totalTopicsAudited(1)
+                .build();
+        when(topicLifecycleGovernanceEngine.auditLifecycle(eq("instance-a"), any())).thenReturn(report);
+
+        TopicLifecycleAuditReportVO result = metadataService.auditTopicLifecycle("instance-a");
+
+        assertThat(result.getTotalTopicsAudited()).isEqualTo(1);
+        verify(topicLifecycleGovernanceEngine).auditLifecycle(eq("instance-a"), any());
     }
 
 }

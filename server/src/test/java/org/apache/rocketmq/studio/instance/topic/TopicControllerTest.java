@@ -167,6 +167,27 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void auditTopicLifecycleShouldReturnReport() throws Exception {
+        TopicLifecycleAuditReportVO report = TopicLifecycleAuditReportVO.builder()
+                .instanceId("instance-a")
+                .totalTopicsAudited(2)
+                .activeTopicCount(1)
+                .zombieTopicCount(1)
+                .build();
+        when(metadataService.auditTopicLifecycle("instance-a")).thenReturn(report);
+
+        mockMvc.perform(get("/api/topics/lifecycle-audit")
+                        .param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.instanceId").value("instance-a"))
+                .andExpect(jsonPath("$.data.totalTopicsAudited").value(2))
+                .andExpect(jsonPath("$.data.zombieTopicCount").value(1));
+
+        verify(metadataService).auditTopicLifecycle("instance-a");
+    }
+
+    @Test
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");

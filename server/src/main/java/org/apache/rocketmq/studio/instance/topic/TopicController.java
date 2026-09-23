@@ -99,6 +99,12 @@ public class TopicController {
         return Result.ok();
     }
 
+    @GetMapping("/lifecycle-audit")
+    public Result<TopicLifecycleAuditReportVO> auditTopicLifecycle(
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.auditTopicLifecycle(instanceId));
+    }
+
     @GetMapping("/{name}/routes")
     public Result<List<BrokerRouteVO>> getTopicRoutes(
             @PathVariable String name,

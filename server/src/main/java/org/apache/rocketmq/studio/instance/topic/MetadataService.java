@@ -82,6 +82,12 @@ public class MetadataService {
     private final OperationAuditService operationAuditService;
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final TopicLifecycleGovernanceEngine topicLifecycleGovernanceEngine;
+
+    public TopicLifecycleAuditReportVO auditTopicLifecycle(String instanceId) {
+        List<TopicVO> topics = listTopics(instanceId, null, null, null);
+        return topicLifecycleGovernanceEngine.auditLifecycle(instanceId, topics);
+    }
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
