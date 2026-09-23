@@ -119,9 +119,16 @@ const AiPage = () => {
       void startRun({
         createBody: { mode: selectedMode },
         request: buildMessageRequest(text, llm.selectedModel, engine, selectedMode, enhance),
-      }).then((target) => {
-        if (target === null) setInputValue(text);
-      });
+      }).then(
+        (target) => {
+          if (target === null) setInputValue(text);
+        },
+        () => {
+          // A send the hook refused (a run still in flight — e.g. accepted in the stop window
+          // between the stop POST and the terminal frames) gives the cleared draft back.
+          setInputValue(text);
+        },
+      );
     },
     [engine, enhance, llm.llmReady, llm.selectedModel, selectedMode, setInputValue, startRun, t],
   );

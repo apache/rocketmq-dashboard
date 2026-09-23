@@ -391,11 +391,17 @@ describe('AiPage', () => {
 
     await act(async () => {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      // The refused send now rejects so the page can restore the draft; the rejection is handled
+      // by handleSend, not left unhandled.
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
 
     expect(openRunStream).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'stop');
+    // The refused second send gave the draft back instead of silently dropping it.
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('检查集群状态'),
+    );
   });
 
   it('rendersTheNeutralNoticeWhenRmqctlIsUnavailableTest', async () => {
