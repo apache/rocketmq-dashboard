@@ -376,14 +376,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     /**
-     * OpenAPI accepts Concurrently/Orderly; tolerate FIFO/ordered spellings from the UI.
+     * OpenAPI accepts Concurrently/Orderly; tolerate FIFO/ordered spellings from the UI,
+     * including the partition / message order values used by the create-group form.
      */
     static String normalizeDeliveryOrderType(String raw) {
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DELIVERY_ORDER_TYPE;
         }
         String value = raw.trim();
-        if ("FIFO".equalsIgnoreCase(value) || "ORDERLY".equalsIgnoreCase(value)) {
+        if ("FIFO".equalsIgnoreCase(value) || "ORDERLY".equalsIgnoreCase(value)
+                || value.toUpperCase(Locale.ROOT).contains("ORDER")) {
             return ORDERLY_DELIVERY_ORDER_TYPE;
         }
         return DEFAULT_DELIVERY_ORDER_TYPE;

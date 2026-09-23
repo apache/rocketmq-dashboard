@@ -805,7 +805,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         return TraceNodeVO.builder()
                 .title("produce")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 13)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, 13)) ? "finish" : "error")
                 .costTime(parseLong(field(f, 10)))
                 .description("producer=" + field(f, 3) + ", storeHost=" + field(f, 8))
                 .build();
@@ -820,7 +820,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         return TraceNodeVO.builder()
                 .title("consume")
                 .timestamp(parseLong(field(f, 7)))
-                .status(parseBoolean(field(f, 4)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, 4)) ? "finish" : "error")
                 .costTime(parseLong(field(f, 3)))
                 .description("group=" + field(f, 8) + ", contextCode=" + field(f, 6))
                 .build();
@@ -854,7 +854,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         return TraceNodeVO.builder()
                 .title("recall")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 6)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, 6)) ? "finish" : "error")
                 .costTime(0L)
                 .description("group=" + field(f, 3) + ", topic=" + field(f, 4))
                 .build();
