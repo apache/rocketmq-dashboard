@@ -98,6 +98,9 @@ class RocketMQMessageProviderTest {
     @Mock
     private DefaultMQPullConsumer pullConsumer;
 
+    @Mock
+    private org.apache.rocketmq.studio.instance.ResourceOwnershipGuard ownershipGuard;
+
     private RocketMQMessageProvider provider;
 
     @BeforeEach
@@ -123,7 +126,7 @@ class RocketMQMessageProviderTest {
                             invocation.getArgument(1);
                     return action.apply(pullConsumer);
                 });
-        provider = new RocketMQMessageProvider(runtimeAdminClientResolver);
+        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, ownershipGuard);
     }
 
     @Test
@@ -155,22 +158,92 @@ class RocketMQMessageProviderTest {
         brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
         brokerResult.setRemark("consumed");
         brokerResult.setSpentTimeMills(12);
-        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", "msg-1"))
+        MessageExt message = prepareDirectConsumption();
+        String offsetId = message.getMsgId();
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", offsetId))
                 .thenReturn(brokerResult);
+
+        var result = provider.consumeMessageDirectly(directRequest());
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).isEqualTo("consumed");
+        assertThat(result.getSpentTimeMillis()).isEqualTo(12);
+        verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", offsetId);
+    }
+
+    @Test
+    void directConsumptionRejectsInvalidActualMessageWithoutRemoteWriteTest() throws Exception {
+        MessageExt message = prepareDirectConsumption();
+        for (java.net.SocketAddress address : java.util.Arrays.asList(null,
+                InetSocketAddress.createUnresolved("unknown.invalid", 10911),
+                new InetSocketAddress("10.0.0.9", 10911))) {
+            message.setStoreHost(address);
+            assertDirectConflict();
+        }
+        message.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
+        message.setTopic("other-topic");
+        assertDirectConflict();
+        message.setTopic("orders");
+        message.setMsgId("not-an-offset-id");
+        assertDirectConflict();
+        verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void directConsumptionRejectsForeignOwnershipBeforeResolvingClientTest() throws Exception {
+        var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
+        when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
+        when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
+        when(ownershipGuard.check(any(), any(), eq(true)))
+                .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
+        assertDirectConflict();
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+        verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
+    }
+
+    private void assertDirectConflict() {
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directRequest()))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(409));
+    }
+
+    private MessageExt prepareDirectConsumption() throws Exception {
+        var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
+        when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
+        when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
+        when(ownershipGuard.check(any(), any(), eq(true))).thenReturn(
+                new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Ownership(
+                        1L, "orders", "cluster-a", "cluster-a", "NORMAL"));
+        when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
+                call.<java.util.function.Supplier<Object>>getArgument(2).get());
+        ClusterInfo topology = new ClusterInfo();
+        BrokerData broker = new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(0L, "172.30.10.100:10911")));
+        topology.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", broker)));
+        topology.setClusterAddrTable(new HashMap<>(Map.of("cluster-a", Set.of("broker-a"))));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(topology);
+        TopicRouteData route = new TopicRouteData();
+        route.setBrokerDatas(List.of(broker));
+        QueueData queue = new QueueData();
+        queue.setBrokerName("broker-a");
+        route.setQueueDatas(List.of(queue));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(route);
+        String offsetId = "AC1E0A6400002A9F0000000000000001";
+        MessageExt message = new MessageExt();
+        message.setTopic("orders");
+        message.setMsgId(offsetId);
+        message.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
+        when(adminExt.viewMessage("orders", "msg-1")).thenReturn(message);
+        return message;
+    }
+
+    private DirectConsumeMessageDTO directRequest() {
         DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
         request.setInstanceId("instance-a");
         request.setTopic("orders");
         request.setMsgId("msg-1");
         request.setConsumerGroup("billing");
         request.setClientId("client-a");
-
-        org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO result =
-                provider.consumeMessageDirectly(request);
-
-        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
-        assertThat(result.getRemark()).isEqualTo("consumed");
-        assertThat(result.getSpentTimeMillis()).isEqualTo(12);
-        verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", "msg-1");
+        return request;
     }
 
     @Test

@@ -32,6 +32,8 @@ import org.apache.rocketmq.remoting.protocol.body.GetLiteGroupInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.GetParentTopicInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
@@ -100,6 +102,8 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     // ─── Capability ───────────────────────────────────────────────────
 
@@ -331,22 +335,28 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     // ─── TTL update ───────────────────────────────────────────────────
 
     @Override
-    public void extendTTL(String topicPattern, long ttlMillis) {
-        requireAdmin();
-        if (!StringUtils.hasText(topicPattern)) {
-            throw new BusinessException(400, "topicPattern is required");
+    public void extendTTL(String instanceId, String rawTopicPattern, long ttlMillis) {
+        var instance = ownershipGuard.requireInstance(instanceId);
+        String topicPattern = ResourceOwnershipGuard.requireText(rawTopicPattern, "topicPattern");
+        var resource = ownershipGuard.topicResource(topicPattern);
+        ownershipGuard.check(instance, resource, true);
+        ownershipGuard.requireSupportedProvider(instance);
+        if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
+            throw new BusinessException(409, "TTL can only be updated for a registered Lite parent topic");
         }
         if (ttlMillis <= 0) {
             throw new BusinessException(400, "newTTL must be positive");
         }
         long minutes = Math.min(Math.max(Math.round(ttlMillis / 60000.0), 1), MAX_LITE_TTL_MINUTES);
-        execute(admin -> {
+        ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
+            var owner = ownershipGuard.check(instance, resource, true);
+            var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
             // Read every master's config before writing any of them: a master that cannot be
             // examined must fail the request up front instead of being silently skipped, which
             // would leave the cluster with mixed lite.topic.expiration attributes while the
             // console reports a fully successful extension.
             Map<String, TopicConfig> pending = new LinkedHashMap<>();
-            for (String master : masterAddresses(admin)) {
+            for (String master : target.masters().stream().sorted().toList()) {
                 TopicConfig config = liteParentTopicConfig(admin, master, topicPattern);
                 if (config != null) {
                     pending.put(master, config);
@@ -370,7 +380,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             log.info("Extended LiteTopic TTL to {}ms ({} min) for parent topic {} on {} broker(s)",
                     ttlMillis, minutes, topicPattern, pending.size());
             return null;
-        });
+        }));
     }
 
     /**

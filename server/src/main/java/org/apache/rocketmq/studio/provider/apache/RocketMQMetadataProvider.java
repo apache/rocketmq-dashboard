@@ -21,11 +21,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
@@ -145,9 +143,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqTopic::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqTopic::getInstanceId, "")
+                                        .or().isNull(RmqTopic::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -169,9 +172,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqTopic::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqTopic::getInstanceId, "")
+                                        .or().isNull(RmqTopic::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
@@ -234,9 +242,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqGroup::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqGroup::getInstanceId, "")
+                                        .or().isNull(RmqGroup::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName);
@@ -255,9 +268,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqGroup::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqGroup::getInstanceId, "")
+                                        .or().isNull(RmqGroup::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
@@ -635,7 +653,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
+            // Reads do not create retry topics; a missing route is treated as an empty business state.
             ConsumeStats stats = admin.examineConsumeStats(name);
             if (stats == null || stats.getOffsetTable() == null) {
                 return Collections.emptyList();
@@ -688,7 +706,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String instanceId, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
+            // Reads do not create retry topics; a missing route is treated as an empty business state.
             ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
             if (conn == null || conn.getSubscriptionTable() == null) {
                 return Collections.emptyList();
@@ -744,6 +762,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private boolean isGroupNotOnline(Exception e) {
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+            return true;
+        }
         if (e instanceof org.apache.rocketmq.client.exception.MQBrokerException brokerException) {
             return brokerException.getResponseCode()
                     == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
@@ -765,50 +786,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     // ── Helper methods ──────────────────────────────────────────────────
-
-    /**
-     * examineConsumeStats / examineConsumerConnectionInfo locate brokers through the
-     * {@code %RETRY%<group>} topic route, but 5.x POP consumer groups only get their
-     * retry topic created once a retry actually happens, so brand-new groups fail with
-     * CODE 17. Create the standard retry topic on every master broker when missing
-     * (same shape the broker itself creates lazily); the call is idempotent.
-     */
-    private void ensureRetryTopicExists(MQAdminExt admin, String groupName) {
-        String retryTopic = MixAll.getRetryTopic(groupName);
-        try {
-            TopicRouteData route = admin.examineTopicRouteInfo(retryTopic);
-            if (route != null && route.getBrokerDatas() != null && !route.getBrokerDatas().isEmpty()) {
-                return;
-            }
-        } catch (Exception e) {
-            log.info("Retry topic {} not routable yet, creating it: {}", retryTopic, e.getMessage());
-        }
-        try {
-            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-                return;
-            }
-            TopicConfig retryConfig = new TopicConfig();
-            retryConfig.setTopicName(retryTopic);
-            retryConfig.setReadQueueNums(1);
-            retryConfig.setWriteQueueNums(1);
-            retryConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
-            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-                String brokerAddr = brokerData.selectBrokerAddr();
-                if (brokerAddr == null || brokerAddr.isBlank()) {
-                    continue;
-                }
-                try {
-                    admin.createAndUpdateTopicConfig(brokerAddr, retryConfig);
-                } catch (Exception e) {
-                    log.warn("Failed to create retry topic {} on broker {}: {}",
-                            retryTopic, brokerAddr, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to ensure retry topic {} exists: {}", retryTopic, e.getMessage());
-        }
-    }
 
     /**
      * Resolves the lag for a single queue without clamping the broker's {@code -1} "unknown"

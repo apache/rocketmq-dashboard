@@ -80,6 +80,11 @@ public interface InstanceProvider {
 
     TopicVO createTopic(String instanceId, TopicVO topic);
 
+    /** Imports an existing topic; defaults to creation, providers may override to compare configurations. */
+    default TopicVO importTopic(String instanceId, TopicVO topic) {
+        return createTopic(instanceId, topic);
+    }
+
     TopicVO updateTopic(String instanceId, TopicVO topic);
 
     void deleteTopic(String instanceId, String topicName);
@@ -122,6 +127,11 @@ public interface InstanceProvider {
     }
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
+
+    /** Imports an existing consumer group; defaults to creation, providers may override to compare configurations. */
+    default ConsumerGroupVO importConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        return createConsumerGroup(instanceId, group);
+    }
 
     default ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
         return createConsumerGroup(instanceId, group);
