@@ -140,6 +140,11 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
+| 100 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
+| 101 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
+| 102 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
+| 103 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
 
 ## 通用响应格式
 
@@ -638,11 +643,152 @@ POST /api/proxies/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `addr` | `string` | 是 | Proxy 地址 |
+| `clusterId` | `string` | 是 | Proxy 所属集群 ID |
+| `addr` | `string` | 是 | Proxy 地址，如 `127.0.0.1:8081` |
+
+**Response `data`:** `null`
+
+接口先校验集群存在、且该地址在集群登记的 Proxy 列表中，再把动作交给集群 Provider。当前 Provider 尚未实现 Proxy 重启，校验通过后固定抛出 `501`，因此成功分支的 `data` 恒为 `null`，调用方不应依赖任何 `success` 字段。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` 或 `addr` 缺失、为空白 |
+| `404` | 集群不存在，或该地址不在集群登记的 Proxy 列表中 |
+| `501` | 当前集群 Provider 未实现 Proxy 重启 |
+
+### 4.12 获取 Proxy 列表
+
+```
+GET /api/proxies?clusterId={clusterId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 集群 ID |
+
+**Response `data`:** `ProxyVO[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `addr` | `string` | Proxy 地址（`host:grpcPort`） |
+| `status` | `string` | 集群登记状态：`healthy` / `warning` / `error` / `offline` |
+| `connections` | `number` | 连接数 |
+| `grpcPort` | `number` | gRPC 接入端口 |
+| `remotingPort` | `number` | Remoting 接入端口 |
+
+返回的是集群登记信息中的 Proxy 列表（`ClusterVO.proxies`），**不做实时探活**；集群未登记任何 Proxy 时返回空数组。需要实时可达性请使用 §4.13。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` 缺失或为空白 |
+| `404` | 集群既无法从 Provider 刷新，也不在本地登记中 |
+
+### 4.13 Proxy 拓扑与实时探活
+
+```
+GET /api/proxies/topology
+```
+
+无请求参数。
+
+**Response `data`:** `ProxyTopologyVO[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddr` | `string` | 已登记的 Proxy 地址（`host:grpcPort`） |
+| `status` | `string` | `UP` / `PARTIAL` / `DOWN` |
+| `grpcPort` | `number` | 从地址解析出的 gRPC 端口 |
+| `remotingPort` | `number` | 推导出的 Remoting 端口，无法推导时为 `null` |
+| `grpcReachable` | `boolean` | gRPC 端口的 TCP 连接是否成功 |
+| `remotingReachable` | `boolean` | Remoting 端口的 TCP 连接是否成功；`remotingPort` 为 `null` 时恒为 `false` |
+| `latencyMs` | `number` | gRPC 探测的往返耗时（毫秒），不可达时为 `-1` |
+
+探测对象是 **Studio 自身登记的 Proxy 地址列表**（由 §4.14 / §4.15 维护，默认只含 `127.0.0.1:8081`），与 `clusterId` 无关，也不读取集群登记信息。行为约定：
+
+- `status`：gRPC 可达为 `UP`；gRPC 不可达但 Remoting 可达为 `PARTIAL`；两者都不可达为 `DOWN`。
+- Remoting 端口按 RocketMQ 5.0 默认布局推导（`8081 → 8080`、`8080 → 8081`）。其它端口无法假定配对关系，返回 `null`，此时只探测 gRPC 侧。
+- 单个端口探测超时 2 秒，整个接口预算 10 秒。探测并发执行，超出预算仍未完成的按不可达上报，因此少数节点宕机既不会拖垮接口，也不会让它返回 5xx。
+- 不匹配 `host:port` / `[ipv6]:port` 的登记地址会被跳过，只记录服务端日志，不出现在结果中。
+
+### 4.14 添加 Proxy 地址
+
+```
+POST /api/proxies/addresses
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | Proxy 地址，`host:port` 或 `[ipv6]:port` |
+
+**Response `data`:** `ProxyHomeVO`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddrList` | `string[]` | 变更后的完整地址列表（按添加顺序） |
+| `currentProxyAddr` | `string` | 当前生效地址 |
+
+地址必须匹配 `host:port` 或 `[ipv6]:port`，端口取值 1-65535，IPv6 字面量还要通过格式校验，否则返回 `400`。重复添加同一地址是幂等的：列表不变，也不重复记审计。当前地址为空时，新地址会成为 `currentProxyAddr`。成功时记录一条 `ADD_PROXY_ADDRESS` 审计。
+
+> 地址列表保存在 Studio 进程内存中，不落库：进程重启后回到默认的 `127.0.0.1:8081`。
+
+### 4.15 删除 Proxy 地址
+
+```
+DELETE /api/proxies/addresses?addr={addr}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | 要删除的 Proxy 地址 |
+
+**Response `data`:** `ProxyHomeVO`（结构同 §4.14）
+
+删除的正是 `currentProxyAddr` 时，当前地址自动切换到剩余列表的第一项；列表被清空时为空字符串。成功记录 `REMOVE_PROXY_ADDRESS` 审计；地址不在列表中时记录一条失败审计并返回 `404`。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | 地址格式非法或端口越界 |
+| `404` | 地址不在已登记列表中 |
+
+### 4.16 热更新 Proxy 配置
+
+```
+POST /api/proxies/config/reload
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | Proxy 所属集群 ID |
+| `addr` | `string` | 是 | Proxy 地址，`host:port` |
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.12 获取 K8s 证书列表
+校验地址格式、并确认该地址属于 `clusterId` 登记的 Proxy 列表后，Studio 向 `http://{addr}/admin/reloadConfig` 发起 POST，触发 Proxy 侧配置热更新。成功返回 `{"success": true}`；失败一律以异常返回，不会出现 `success: false`。成功与失败都会记录 `RELOAD_PROXY_CONFIG` 审计。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` / `addr` 缺失，或地址格式非法 |
+| `404` | 集群不存在，或该地址不在集群登记的 Proxy 列表中 |
+| `502` | Proxy 返回非 2xx，或连接不上 Proxy |
+| `500` | 其它未预期的调用失败 |
+
+### 4.17 获取 K8s 证书列表
 
 K8s 证书接口仅管理 Studio 本地配置记录，不会连接 Kubernetes API，也不会创建、修改或删除集群中的 Secret 或证书资源。
 
@@ -666,7 +812,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.13 添加 K8s 证书
+### 4.18 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -684,7 +830,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 更新 K8s 证书
+### 4.19 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -703,7 +849,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 删除 K8s 证书
+### 4.20 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete
