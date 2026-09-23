@@ -688,7 +688,7 @@ class TencentInstanceProviderTest {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setTopic("orders");
         subscription.setSubString("*");
-        subscription.setExpressionType("TAG");
+        subscription.setExpressionType("SQL92");
         subscription.setConsumerLag(42L);
         subscription.setConsistency(0L);
         DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
@@ -704,7 +704,10 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions).hasSize(1);
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
-        assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+        // type keeps the raw broker expression type, while filterMode is normalized through
+        // SubscriptionFilterModes so all instance types render the same value domain.
+        assertThat(subscriptions.get(0).getType()).isEqualTo("SQL92");
+        assertThat(subscriptions.get(0).getFilterMode()).isEqualTo("SQL");
     }
 
     @Test

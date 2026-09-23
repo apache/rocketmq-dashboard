@@ -1118,12 +1118,16 @@ const ConsumerPageContent = ({
       key: 'filterMode',
       width: 120,
       render: (mode: string) => {
-        const colorMap: Record<string, string> = {
-          全量: 'default',
-          'Tag 过滤': 'blue',
-          'SQL92 过滤': 'purple',
+        // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+        // (SubscriptionFilterModes.fromExpressionType); map those codes to labels instead of
+        // echoing them into the table.
+        const meta: Record<string, { color: string; labelKey: string }> = {
+          TAG: { color: 'blue', labelKey: 'consumer.filterTag' },
+          SQL: { color: 'purple', labelKey: 'consumer.filterSql92' },
+          CLASS_FILTER: { color: 'gold', labelKey: 'consumer.filterClassFilter' },
         };
-        return <Tag color={colorMap[mode] || 'default'}>{mode}</Tag>;
+        const entry = meta[mode];
+        return <Tag color={entry?.color ?? 'default'}>{entry ? t(entry.labelKey) : mode}</Tag>;
       },
     },
     {
