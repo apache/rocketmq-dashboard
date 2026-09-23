@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.RmqctlWorkspace;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.ThinkingSource;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.TimelineEvent;
@@ -39,6 +40,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,6 +112,9 @@ class AiConversationPersistenceIntegrationTest {
 
     @Autowired
     private AiConversationService conversationService;
+
+    @Autowired
+    private RmqctlWorkspace workspace;
 
     @Autowired
     private AiConversationProperties properties;
@@ -353,6 +360,36 @@ class AiConversationPersistenceIntegrationTest {
         assertThat(countEvents(seeded.conversationId)).isZero();
         assertThat(countRuns(seeded.conversationId)).isZero();
         assertThat(conversationMapper.selectById(seeded.conversationId)).isNull();
+    }
+
+    @Test
+    void theRetentionSweepShouldRemoveTheConversationWorkspaceTest() throws IOException {
+        Seeded seeded = seed();
+        Path workspaceDir = workspace.workspaceDir(seeded.conversationId);
+        Files.createDirectories(workspaceDir.resolve("home"));
+        Files.writeString(workspaceDir.resolve("rmqctl.yaml"), "yaml");
+
+        properties.setRetentionDays(1);
+        conversationService.purgeExpired();
+
+        // The workspace holds nothing reproducible except the agent's resume state; leaving it
+        // behind turns every purge into a permanent leak on the volume that holds it.
+        assertThat(Files.exists(workspaceDir)).isFalse();
+    }
+
+    @Test
+    void theRetentionSweepShouldStopALiveRunBeforeDeletingTheConversationTest() {
+        Seeded seeded = seed();
+        markRunning(seeded.secondRunId);
+
+        properties.setRetentionDays(1);
+        conversationService.purgeExpired();
+
+        // The sweep mirrors delete(): a run the registry still owns is stopped first, and the
+        // rows disappear either way — a RUNNING marker must not leave a parentless run behind.
+        assertThat(conversationMapper.selectById(seeded.conversationId)).isNull();
+        assertThat(countRuns(seeded.conversationId)).isZero();
+        assertThat(countEvents(seeded.conversationId)).isZero();
     }
 
     @Test
