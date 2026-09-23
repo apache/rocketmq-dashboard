@@ -141,6 +141,11 @@ const DLQPage = () => {
   const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // The time window the drawer was OPENED with. The group-level picker above stays live for
+  // group-level export, but the open drawer's rows, banner and export/resend must agree with each
+  // other: letting the picker mutate them mid-session showed one window in the banner, another in
+  // the table and a third in the downloaded file.
+  const [detailRange, setDetailRange] = useState<[Dayjs, Dayjs]>(exportRange);
   const detailRequestIdRef = useRef(0);
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
@@ -343,10 +348,16 @@ const DLQPage = () => {
     setDetailPage(1);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
-    void loadDetailMessages(group, 1, detailPageSize);
+    setDetailRange([exportRange[0], exportRange[1]]);
+    void loadDetailMessages(group, 1, detailPageSize, exportRange);
   };
 
-  const loadDetailMessages = async (group: DLQGroup, page: number, pageSize: number) => {
+  const loadDetailMessages = async (
+    group: DLQGroup,
+    page: number,
+    pageSize: number,
+    range: [Dayjs, Dayjs] = detailRange,
+  ) => {
     if (!selectedInstanceId) return;
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
@@ -356,8 +367,8 @@ const DLQPage = () => {
       const result = await listDLQMessages({
         instanceId: selectedInstanceId,
         groupName: group.groupName,
-        startTime: exportRange[0].valueOf(),
-        endTime: exportRange[1].valueOf(),
+        startTime: range[0].valueOf(),
+        endTime: range[1].valueOf(),
         page,
         pageSize,
       });
@@ -422,8 +433,8 @@ const DLQPage = () => {
       const { blob, meta } = await exportDLQExcel({
         instanceId: selectedInstanceId,
         groupName: detailGroup.groupName,
-        startTime: exportRange[0].valueOf(),
-        endTime: exportRange[1].valueOf(),
+        startTime: detailRange[0].valueOf(),
+        endTime: detailRange[1].valueOf(),
         msgIds: detailSelectedMsgIds.length > 0 ? detailSelectedMsgIds : undefined,
       });
       downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
@@ -898,7 +909,7 @@ const DLQPage = () => {
             </Flex>
 
             <InfoBanner
-              description={`明细按「导出时间范围」查询（${exportRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${exportRange[1].format('YYYY-MM-DD HH:mm:ss')}）。勾选后可单条或批量重发、导出 Excel。`}
+              description={`明细按打开抽屉时的「导出时间范围」查询（${detailRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${detailRange[1].format('YYYY-MM-DD HH:mm:ss')}）。勾选后可单条或批量重发、导出 Excel；关闭抽屉后重新打开即应用新的时间范围。`}
             />
 
             {detailError && (
