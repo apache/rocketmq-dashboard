@@ -260,6 +260,9 @@ public class AiRunService {
         AgentStreamSession session = runExecutor.newSession(run.getId(),
                 runExecutor.streamTimeoutMillis(run.getEngine()));
         AgentEventProjector projector = new AgentEventProjector(run.getId());
+        // The replayed terminal frame must carry the duration exactly like the live one did — the
+        // client contract pins durationMs as a required run_finished field.
+        projector.setReplayedDurationMs(run.getDurationMs());
         List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
                 Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
         boolean terminalReplayed = false;

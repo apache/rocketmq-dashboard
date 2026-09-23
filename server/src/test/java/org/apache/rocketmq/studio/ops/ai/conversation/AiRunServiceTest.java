@@ -416,6 +416,29 @@ class AiRunServiceTest {
     }
 
     @Test
+    void attachShouldReplayTheRunRowDurationOnTheTerminalFrameTest() {
+        // The web contract pins durationMs as a required run_finished field (aiEvents.contract.test.ts),
+        // so a replayed terminal must carry the run row's duration exactly like the live path does —
+        // NON_NULL serialization would otherwise drop the field and break the pinned contract.
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        finished.setDurationMs(8123L);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(conversationService.requireOwned(CONVERSATION_ID, OWNER)).thenReturn(conversation);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenReturn(List.of(
+                event(1, "text", "{\"type\":\"text\",\"text\":\"group A is 4000 behind\"}"),
+                event(2, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        String text = emitters.get(0).eventText();
+        assertThat(text).contains("\"type\":\"run_finished\"");
+        // The JSON key must be present with the persisted value; a replayed block must be
+        // indistinguishable from the live frame the run originally streamed.
+        assertThat(text).contains("\"durationMs\":8123");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
     void attachShouldHonourTheCursorAndSynthesiseATerminalFrameForAReapedRunTest() {
         // A run reaped at startup or by the orphan sweep has no run_status row at all — there was no sink
         // to write one — so the row is the only record of how it ended and the client must not wait
