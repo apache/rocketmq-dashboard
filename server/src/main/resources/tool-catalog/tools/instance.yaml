@@ -40,7 +40,7 @@ tools:
     cli:
       resource: instance
       verb: metrics
-    description: "Query the dedicated metrics data source explicitly bound only to the selected Instance. Shared or unbound sources are unsupported."
+    description: "Query the dedicated metrics data source explicitly bound only to the selected Instance using raw PromQL or a profile/semantic metric selection. Shared or unbound sources are unsupported."
     riskLevel: L1
     permission: metrics:read
     requiredCapabilities: []
@@ -48,9 +48,24 @@ tools:
       type: object
       required:
         - instanceId
-        - metric
         - start
         - end
+        - step
+      oneOf:
+        - required:
+            - metric
+          not:
+            anyOf:
+              - required:
+                  - profileId
+              - required:
+                  - semanticMetric
+        - required:
+            - profileId
+            - semanticMetric
+          not:
+            required:
+              - metric
       additionalProperties: false
       properties:
         instanceId:
@@ -62,8 +77,10 @@ tools:
           minLength: 1
         profileId:
           type: string
+          minLength: 1
         semanticMetric:
           type: string
+          minLength: 1
         start:
           type: integer
           description: Unix timestamp in seconds (PromQL query_range start).

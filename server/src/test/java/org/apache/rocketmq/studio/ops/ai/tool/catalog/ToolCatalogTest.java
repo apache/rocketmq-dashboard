@@ -32,6 +32,7 @@ import java.util.Map;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ToolCatalogTest {
@@ -105,6 +106,51 @@ class ToolCatalogTest {
                                 error -> assertThat(error.getCode()).isEqualTo(400));
             }
         }
+    }
+
+    @Test
+    void exposesAllSupportedInstanceMetricsQueryFormsInItsInputContract() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolDefinition definition = catalog.getDefinition("rmq.instance.metrics");
+        ToolSchemaValidator validator = new ToolSchemaValidator(
+                catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(),
+                JsonMapper.builder().build());
+
+        assertThatCode(() -> validator.validateInput(definition, Map.of(
+                "instanceId", "instance-a",
+                "metric", "up",
+                "start", 1784112606,
+                "end", 1784114406,
+                "step", "30s"))).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateInput(definition, Map.of(
+                "instanceId", "instance-a",
+                "profileId", "rocketmq5-native",
+                "semanticMetric", "consumer_lag_messages",
+                "start", 1784112606,
+                "end", 1784114406,
+                "step", "30s"))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validateInput(definition, Map.of(
+                "instanceId", "instance-a",
+                "metric", "up",
+                "start", 1784112606,
+                "end", 1784114406)))
+                .hasMessageContaining("step");
+        assertThatThrownBy(() -> validator.validateInput(definition, Map.of(
+                "instanceId", "instance-a",
+                "profileId", "rocketmq5-native",
+                "start", 1784112606,
+                "end", 1784114406,
+                "step", "30s")))
+                .hasMessageContaining("semanticMetric");
+        assertThatThrownBy(() -> validator.validateInput(definition, Map.of(
+                "instanceId", "instance-a",
+                "metric", "up",
+                "profileId", "rocketmq5-native",
+                "semanticMetric", "consumer_lag_messages",
+                "start", 1784112606,
+                "end", 1784114406,
+                "step", "30s")));
     }
 
     @Test
