@@ -599,6 +599,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .messageModel(messageModel)
                             .consumeTps(consumeTps)
                             .diffTotal(diffTotal)
+                            // Unknown lag is a sentinel, not a backlog of -1: keep the
+                            // metricsAvailable flag consistent with the exception path below.
+                            .metricsAvailable(diffTotal != ConsumerLagResolver.UNKNOWN)
                             .build());
                 } catch (Exception ignored) {
                     // stats unavailable for this group, still list it below without numbers
