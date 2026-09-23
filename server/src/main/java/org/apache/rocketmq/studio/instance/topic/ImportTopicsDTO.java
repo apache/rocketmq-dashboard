@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
@@ -30,7 +29,6 @@ public class ImportTopicsDTO {
     @NotBlank(message = "instanceId is required")
     private String instanceId;
 
-    @Valid
     @NotEmpty(message = "topics is required")
     @Size(max = 100, message = "At most 100 topics are allowed per import")
     private List<CreateTopicDTO> topics;
