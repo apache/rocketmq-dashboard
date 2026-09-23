@@ -140,6 +140,11 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/liteTopic/list` | LiteTopic 列表 |
+| 100 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话明细 |
+| 101 | POST | `/api/liteTopic/extendTTL` | 延长 LiteTopic TTL |
+| 102 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 103 | GET | `/api/liteTopic/capability` | LiteTopic 能力探测 |
 
 ## 通用响应格式
 
@@ -2839,6 +2844,181 @@ GET /api/metrics/grafana/dashboards/export
 |-----------|------|
 | `404` | 没有可导出的有效内置看板 |
 | `500` | 看板 JSON 读取或 zip 打包失败 |
+
+---
+
+## 17. 轻量主题 LiteTopic
+
+LiteTopic 是 RocketMQ 5.0 的 Broker 侧特性：父 Topic 以 `TopicMessageType.LITE` 声明后，每个轻量主题存放在自己的 LMQ 中，名称形如 `%LMQ%$parentTopic$liteTopic`。Studio 通过 RocketMQ 的 lite admin RPC（`GET_BROKER_LITE_INFO` / `GET_PARENT_TOPIC_INFO` / `GET_LITE_CLIENT_INFO` / `GET_LITE_GROUP_INFO`）直接查询 Broker，SPI 契约见 `provider/LiteTopicProvider.java`。
+
+> **作用范围**：本节五个接口都**不接受 `instanceId`**，一律作用于服务端配置的 `studio.rocketmq.namesrvAddr` 指向的集群。该地址未配置时，除 §17.5 外的接口返回 `501 LiteTopic is not supported by this provider`，§17.5 返回 `{"supported": false}`。
+>
+> **TTL 单位**：接口层一律使用**毫秒**，Broker 侧的 `lite.topic.expiration` 属性使用**分钟**，由 Provider 换算。换算按 `Math.round(ttlMillis / 60000.0)` 取整并夹在 `[1, 43200]` 分钟内，因此不足 1 分钟的取值会进位到 1 分钟，超过 30 天的取值会被截断到 30 天（与 §17.4 的 `maxTTL` 一致）。`extendTTL` 的响应是 `Result<Void>`，不回传实际生效值。
+>
+> **能力探测优先**：控制台（`web/src/pages/studio/LiteTopic.tsx`）先调用 §17.5；`supported` 为 `false`、或探测请求本身失败时，整页降级为"不支持"提示而不再发起其余请求。
+>
+> **扫描上限**：为把一次页面加载的开销限定住，单次 `list` 最多解析 `200` 个父 Topic，每个父 Topic 最多解析 `500` 个会话，单次会话明细最多做 `200` 次按轻量主题的位点查询。命中上限时结果被截断，服务端只记录日志、不在响应里标注。
+
+### 17.1 获取 LiteTopic 列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 对父 Topic 名称做**子串**过滤（既不是正则也不是前缀匹配） |
+| `namespace` | `string` | 否 | 命名空间过滤；省略或空白表示不限命名空间 |
+
+**Response `data`:** `LiteTopicItem[]`，按父 Topic 聚合，一个父 Topic 一条。
+
+#### LiteTopicItem
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | 父 Topic 名称 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 该父 Topic 下的轻量主题数量 |
+| `consumerCount` | `number` | 消费者数量 |
+| `totalBacklog` | `number` | 累计堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态: `ACTIVE` / `EXPIRING_SOON` / `EXPIRED` / `UNKNOWN` |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳），无记录时为 `null` |
+| `sessionIds` | `string[]` | 会话 ID 列表，供 §17.2 查询明细 |
+
+`ttlStatus` 由服务端按"距最后活跃的时长"计算（`LiteTopicSummary.getTTLStatus`）：没有 `lastActiveTime` 为 `UNKNOWN`；已超过 `averageTTL` 为 `EXPIRED`；超过 `averageTTL` 的 80% 为 `EXPIRING_SOON`；其余为 `ACTIVE`。`averageTTL` 为 `null` 时不会是 `EXPIRED` / `EXPIRING_SOON`。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `501` | 未配置 `studio.rocketmq.namesrvAddr` |
+| `503` | 集群中没有可用的 Broker Master |
+
+### 17.2 获取会话明细
+
+```
+GET /api/liteTopic/session/{sessionId}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sessionId` | 路径参数 | 是 | §17.1 返回的**不透明**会话 ID（内部编码了父 Topic / 消费组 / clientId），需 URL 编码 |
+
+**Response `data`:** `LiteTopicSession`
+
+#### LiteTopicSession
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic 名称 |
+| `consumerGroup` | `string` | 消费组名称 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳），未知时为 `null` |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳），未知时为 `null` |
+| `ttl` | `number` | 父 Topic 的 TTL（毫秒）；父 Topic 没有过期属性时为 `null`，表示 Broker 不会过期该会话的轻量主题 |
+| `ttlRemaining` | `number` | 剩余 TTL（毫秒），最小截到 `0`；`ttl` 或 `lastActiveTime` 为 `null` 时同样为 `null` |
+| `status` | `string` | 会话状态: `ACTIVE` / `EXPIRED`；`ttl` 或 `lastActiveTime` 为 `null` 时恒为 `ACTIVE` |
+| `totalMessages` | `number` | 消息总数，等于 `consumedMessages + pendingMessages` |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费（堆积）消息数 |
+| `popProgress` | `number` | Pop 消费进度百分比；为 `null` 时控制台不渲染该进度条 |
+| `liteTopicCreationCount` | `number` | 该客户端已创建的轻量主题数量，Broker 未返回时为 `null` |
+| `liteTopics` | `SessionLiteTopic[]` | 该会话持有的轻量主题，按名称排序；无数据时为空数组 |
+
+#### SessionLiteTopic
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicName` | `string` | 轻量主题名称 |
+| `status` | `string` | 继承所属会话的 `status`：轻量主题共用父 Topic 的那一份 TTL 策略 |
+| `ttlRemaining` | `number` | 继承所属会话的 `ttlRemaining` |
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `sessionId` 为空，或不是 §17.1 发出的格式 |
+| `404` | 集群中定位不到该会话（`LiteTopic session not found: {sessionId}`） |
+| `501` / `503` | 同 §17.1 |
+
+### 17.3 延长 TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `topicPattern` | `string` | 是 | 父 Topic 名称 |
+| `newTTL` | `number` | 是 | 新的 TTL（毫秒），必须为正数 |
+
+**Response `data`:** 无（`Result<Void>`）
+
+写入的是父 Topic 的 `lite.topic.expiration` 属性，也就是该父 Topic 下**所有**轻量主题共用的那一份 TTL 策略。服务端先读取每一个持有该父 Topic 的 Master 的配置、确认全部可读之后再统一写入：某个 Master 读不到就整单失败，避免集群里留下一半更新过的 TTL 属性而调用方看到完全成功。更新走 Broker 的 `+key=value` 变更协议，只改 TTL，不重发被校验为不可变的 `message.type`。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `topicPattern` 为空、`newTTL` 缺失或非正数 |
+| `404` | 没有任何 Master 持有该父 Topic，或该 Topic 不是 LITE 类型（`Lite parent topic not found: {topicPattern}`） |
+| `501` / `503` | 同 §17.1 |
+
+### 17.4 获取配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 命名空间过滤；省略或空白表示不限命名空间 |
+
+**Response `data`:** `LiteTopicQuota`，跨 Broker Master 聚合。读不到 `GET_BROKER_LITE_INFO` 的 Master 会被整个跳过，以免"当前值"和"上限"来自两组不同的 Master。
+
+#### LiteTopicQuota
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前轻量主题总数（各 Master `currentLmqNum` 之和） |
+| `maxTopicCount` | `number` | 轻量主题上限（各 Master `maxLmqNum` 之和） |
+| `currentSessionCount` | `number` | 当前会话总数（各 Master `liteSubscriptionCount` 之和） |
+| `maxSessionCount` | `number` | 会话上限（各 Master `maxLiteSubscriptionCount` 配置之和） |
+| `currentCreationRate` | `number` | 当前创建速率；Broker 侧没有这项配额，恒为 `0` |
+| `maxCreationRate` | `number` | 创建速率上限；同上，恒为 `0` |
+| `usageRate` | `number` | 主题配额使用率，是 **0–1 的比值**而不是百分数；`maxTopicCount <= 0` 时为 `0` |
+| `sessionUsageRate` | `number` | 会话配额使用率，同样是 **0–1 的比值**；`maxSessionCount <= 0` 时为 `0` |
+| `defaultTTL` | `number` | 默认 TTL（毫秒）。不存在命名空间级默认值（生效 TTL 来自各父 Topic 自己的属性），因此恒为 `null` |
+| `maxTTL` | `number` | 最大 TTL（毫秒），即 30 天 |
+| `remainingQuota` | `number` | 剩余主题配额，最小为 `0`；`maxTopicCount <= 0` 时为 `0` |
+| `consumerDensity` | `number` | 消费者密度 = `currentSessionCount / currentTopicCount`；`currentTopicCount <= 0` 时为 `null` |
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `501` / `503` | 同 §17.1 |
+
+### 17.5 探测 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+无请求参数。
+
+**Response `data`:** `LiteTopicCapability`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 当前集群是否暴露 LiteTopic admin 接口 |
+
+探测方式是向第一个 Broker Master 发起 `GET_BROKER_LITE_INFO`。未配置 `namesrvAddr`、没有可用 Master、或运行的是不支持 LiteTopic 的 RocketMQ 版本（Broker 以 unsupported 错误码应答）时都返回 `false`——**本接口自身不返回 5xx**，探测异常一律折叠成 `supported=false`。控制台据此整页降级，所以它是本节唯一应当最先调用的接口。
 
 ---
 
