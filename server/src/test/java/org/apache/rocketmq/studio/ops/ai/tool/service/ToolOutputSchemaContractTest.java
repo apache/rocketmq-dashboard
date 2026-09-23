@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
+import org.apache.rocketmq.studio.instance.acl.AclUserVO;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclRuleItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclUserItem;
@@ -72,6 +73,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Golden output-contract sweep: one representative sample per catalog tool, validated through
@@ -105,6 +107,20 @@ class ToolOutputSchemaContractTest {
                 .map(ToolDefinition::name)
                 .toList());
         assertThat(covered).isEqualTo(declared);
+    }
+
+    @Test
+    void validatesTencentAclUserProjectionAgainstCatalogTest() {
+        AclUserItem tencentRole = AclUserItem.from(AclUserVO.builder()
+                .username("role-reader")
+                .admin(false)
+                .clusters(List.of("rocketmq-instance"))
+                .build());
+
+        assertThat(tencentRole.id()).isEqualTo("role-reader");
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.user.list"), new ListOutput<>(List.of(tencentRole))))
+                .doesNotThrowAnyException();
     }
 
     private static Map<String, List<Object>> samples() {
