@@ -31,6 +31,8 @@ import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclRuleItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclUserItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.AlertRuleListItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.NotificationDeliveryItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.alert.SystemAlertItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
@@ -140,6 +142,14 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(
                 new AlertRuleListItem(1L, "consumer-lag", "consumer.lag.total", ">",
                         1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert")))));
+        samples.put("rmq.alert.system.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
+                new SystemAlertItem(41L, "warning", "Consumer lag", "lag exceeded", "2026-08-22T08:00",
+                        true, "operator", "2026-08-22T09:00", "CLUSTER", 7L, "fingerprint", "FIRING",
+                        INSTANCE, 123.0, true, 40L, "already suppressed", Map.of("cluster", "cluster-a"))))));
+        samples.put("rmq.alert.delivery.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
+                new NotificationDeliveryItem(51L, 41L, "email", "FAILED", 3, null,
+                        "SMTP unavailable", null, "2026-08-22T08:00", "Consumer lag", "CLUSTER", "FIRING",
+                        INSTANCE)))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",

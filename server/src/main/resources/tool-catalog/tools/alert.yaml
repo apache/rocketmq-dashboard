@@ -63,3 +63,255 @@ tools:
                 type: string
     viewHint: table
     deprecated: false
+
+  - name: rmq.alert.system.list
+    cli:
+      resource: alert-system
+      verb: list
+    description: List persisted system alert events across the Studio deployment for operational diagnosis, with optional filters for level, domain, Instance, transition, labels, time range, and notification suppression.
+    riskLevel: L1
+    permission: alert:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        level:
+          type: string
+          minLength: 1
+          enum: [error, warning, info]
+        domain:
+          type: string
+          enum: [BUSINESS, CLUSTER]
+        instanceId:
+          type: string
+          minLength: 1
+        transition:
+          type: string
+          enum: [FIRING, RESOLVED, REMINDER]
+        labelKey:
+          type: string
+          minLength: 1
+        labelValue:
+          type: string
+          minLength: 1
+        from:
+          type: string
+        to:
+          type: string
+        notificationSuppressed:
+          type: boolean
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - acknowledged
+              - notificationSuppressed
+            additionalProperties: false
+            properties:
+              id:
+                type:
+                  - integer
+                  - 'null'
+              level:
+                type:
+                  - string
+                  - 'null'
+              title:
+                type:
+                  - string
+                  - 'null'
+              description:
+                type:
+                  - string
+                  - 'null'
+              time:
+                type:
+                  - string
+                  - 'null'
+              acknowledged:
+                type: boolean
+              acknowledgedBy:
+                type:
+                  - string
+                  - 'null'
+              acknowledgedAt:
+                type:
+                  - string
+                  - 'null'
+              domain:
+                type:
+                  - string
+                  - 'null'
+              ruleId:
+                type:
+                  - integer
+                  - 'null'
+              fingerprint:
+                type:
+                  - string
+                  - 'null'
+              transition:
+                type:
+                  - string
+                  - 'null'
+              instanceId:
+                type:
+                  - string
+                  - 'null'
+              currentValue:
+                type:
+                  - number
+                  - 'null'
+              notificationSuppressed:
+                type: boolean
+              suppressionCauseAlertId:
+                type:
+                  - integer
+                  - 'null'
+              suppressionReason:
+                type:
+                  - string
+                  - 'null'
+              labels:
+                type:
+                  - object
+                  - 'null'
+                additionalProperties:
+                  type: string
+    viewHint: table
+    deprecated: false
+
+  - name: rmq.alert.delivery.list
+    cli:
+      resource: alert-delivery
+      verb: list
+    description: List notification delivery attempts across the Studio deployment for alert diagnostics, including failure details without exposing full message content.
+    riskLevel: L1
+    permission: alert:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        channel:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [PENDING, SENDING, DELIVERED, RETRY_WAIT, FAILED]
+        instanceId:
+          type: string
+          minLength: 1
+        page:
+          type: object
+          additionalProperties: false
+          properties:
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - alertId
+              - channel
+              - status
+              - attemptCount
+            additionalProperties: false
+            properties:
+              id:
+                type:
+                  - integer
+                  - 'null'
+              alertId:
+                type:
+                  - integer
+                  - 'null'
+              channel:
+                type:
+                  - string
+                  - 'null'
+              status:
+                type:
+                  - string
+                  - 'null'
+              attemptCount:
+                type: integer
+              nextAttemptAt:
+                type:
+                  - string
+                  - 'null'
+              lastError:
+                type:
+                  - string
+                  - 'null'
+              deliveredAt:
+                type:
+                  - string
+                  - 'null'
+              createdAt:
+                type:
+                  - string
+                  - 'null'
+              alertTitle:
+                type:
+                  - string
+                  - 'null'
+              alertDomain:
+                type:
+                  - string
+                  - 'null'
+              transition:
+                type:
+                  - string
+                  - 'null'
+              instanceId:
+                type:
+                  - string
+                  - 'null'
+    viewHint: table
+    deprecated: false
