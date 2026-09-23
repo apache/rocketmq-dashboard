@@ -76,15 +76,18 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        AuthenticatedUserContext.setUser(
-                authenticatedUser.getUserId(),
-                authenticatedUser.getUsername(),
-                authenticatedUser.isAdmin());
         if (requiresAdmin(request, requestPath(request))
                 && !authenticatedUser.isAdmin()) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
         }
+        // The principal is published only once the request is admitted. When preHandle returns false
+        // Spring never invokes this interceptor's own afterCompletion, so a context set before a
+        // rejection would stay on the pooled thread until that thread's next /api/** request.
+        AuthenticatedUserContext.setUser(
+                authenticatedUser.getUserId(),
+                authenticatedUser.getUsername(),
+                authenticatedUser.isAdmin());
         return true;
     }
 
