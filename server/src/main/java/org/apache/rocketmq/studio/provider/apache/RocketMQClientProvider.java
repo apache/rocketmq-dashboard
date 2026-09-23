@@ -40,6 +40,7 @@ import org.apache.rocketmq.studio.common.domain.enums.Protocol;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
@@ -112,7 +113,25 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
-        return scanProducerGroups(adminExt, query, limit).groups();
+        ProducerGroupScanResult scan = scanProducerGroups(adminExt, query, limit);
+        if (!StringUtils.hasText(topic)) {
+            return scan.groups();
+        }
+        // The whole-broker producer table is keyed by group only, so a topic-scoped selector has to
+        // verify each candidate against the topic the way the follow-up connection query will;
+        // otherwise picking a suggestion yields an empty "no connection" list.
+        List<String> scopedGroups = new ArrayList<>();
+        for (String group : scan.groups()) {
+            try {
+                if (!findProducerConnectionsForGroup(adminExt, topic, group).isEmpty()) {
+                    scopedGroups.add(group);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to verify producer group {} against topic={}, skipping: {}",
+                        group, topic, rootMessage(e));
+            }
+        }
+        return scopedGroups;
     }
 
     private ProducerGroupScanResult scanProducerGroups(MQAdminExt adminExt, String query, int limit) {
