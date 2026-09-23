@@ -714,6 +714,31 @@ class MetadataServiceTest {
     }
 
     @Test
+    void consumerGroupDetailShouldRejectAGroupOutsideTheSelectedInstanceTest() {
+        when(apacheProvider.listConsumerGroups("instance-b", "buyers")).thenReturn(List.of());
+
+        assertThatThrownBy(() -> metadataService.getConsumerGroup("instance-b", "buyers"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Consumer group not found: buyers")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verifyNoInteractions(adminClient);
+    }
+
+    @Test
+    void consumerGroupDetailShouldKeepReadingAnOwnedGroupTest() {
+        ConsumerGroupVO persisted = new ConsumerGroupVO();
+        persisted.setName("buyers");
+        when(apacheProvider.listConsumerGroups("instance-a", "buyers")).thenReturn(List.of(persisted));
+        ConsumerGroupVO live = new ConsumerGroupVO();
+        live.setName("buyers");
+        when(adminClient.getConsumerGroup("instance-a", "buyers")).thenReturn(live);
+
+        assertThat(metadataService.getConsumerGroup("instance-a", "buyers")).isSameAs(live);
+        verify(adminClient).getConsumerGroup("instance-a", "buyers");
+    }
+
+    @Test
     void sendMessageShouldReturnResult() {
         SendMessageDTO request = SendMessageDTO.builder()
                 .instanceId("instance-a")
