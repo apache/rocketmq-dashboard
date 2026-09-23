@@ -949,7 +949,11 @@ const TopicPageContent = ({
       title: '消费模式',
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
+      // The API feeds enum names (CLUSTERING/BROADCASTING from the Apache provider,
+      // Broadcasting-style values from cloud providers), not the mock's Chinese labels.
+      render: (m: string) => (
+        <Tag color={/broadcast/i.test(m ?? '') ? 'orange' : 'blue'}>{m}</Tag>
+      ),
     },
     {
       title: '消费 TPS',
