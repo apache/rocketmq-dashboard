@@ -705,6 +705,29 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("consistent");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldMapInconsistentAndUnknownConsistencyTest() throws Exception {
+        SubscriptionData inconsistent = new SubscriptionData();
+        inconsistent.setTopic("orders");
+        inconsistent.setSubString("*");
+        inconsistent.setExpressionType("TAG");
+        inconsistent.setConsistency(1L);
+        SubscriptionData unknown = new SubscriptionData();
+        unknown.setTopic("payments");
+        unknown.setSubString("tag-a");
+        unknown.setExpressionType("TAG");
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{inconsistent, unknown});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(subscriptions).hasSize(2);
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("inconsistent");
+        assertThat(subscriptions.get(1).getConsistency()).isNull();
     }
 
     @Test
@@ -1131,6 +1154,21 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
+    }
+
+    @Test
+    void getMessageTraceMarksFailedProduceAsErrorNotFailed() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"Status\":3,\"Duration\":2}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-3", "orders");
+
+        assertThat(trace.getNodes()).hasSize(1);
+        assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("error");
     }
 
     @Test
