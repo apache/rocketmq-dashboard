@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { message } from 'antd';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logout } from '../api/auth';
 import { LangProvider } from '../i18n/LangContext';
 import translations from '../i18n/translations';
@@ -100,7 +100,17 @@ vi.mock('antd', async () => {
 });
 
 describe('MainLayout authentication navigation', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
     localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
     useAuthStore.getState().login('admin', 7, true);
@@ -231,6 +241,42 @@ describe('MainLayout authentication navigation', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByText('设置'));
     expect(screen.getByText('settings page')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('closes mobile navigation when the viewport becomes desktop sized', () => {
+    let onDesktopChange: ((event: MediaQueryListEvent) => void) | undefined;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: false,
+        addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => {
+          if (query === '(min-width: 768px)') onDesktopChange = listener;
+        },
+        removeEventListener: vi.fn(),
+      })),
+    );
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<div>protected home</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    const openNavigation = document.querySelector<HTMLButtonElement>('.studio-mobile-menu-button')!;
+    fireEvent.click(openNavigation);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    act(() => onDesktopChange?.({ matches: true } as MediaQueryListEvent));
+
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(openNavigation).toHaveAttribute('aria-expanded', 'false');
   });

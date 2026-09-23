@@ -129,6 +129,15 @@ const MainLayout = () => {
     return () => window.removeEventListener('keydown', openSearchWithShortcut);
   }, []);
 
+  useEffect(() => {
+    const desktopViewport = window.matchMedia('(min-width: 768px)');
+    const closeMobileNavigation = (event: MediaQueryListEvent) => {
+      if (event.matches) setMobileNavOpen(false);
+    };
+    desktopViewport.addEventListener('change', closeMobileNavigation);
+    return () => desktopViewport.removeEventListener('change', closeMobileNavigation);
+  }, []);
+
   const instanceScopedMatch = useMemo(
     () => location.pathname.match(/^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/),
     [location.pathname],
