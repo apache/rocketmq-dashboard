@@ -48,6 +48,12 @@ class ToolCatalogTest {
         }
         ToolDefinition clusterList = catalog.getDefinition("rmq.cluster.list");
         assertThat(clusterList.riskLevel()).isEqualTo(ToolRiskLevel.L1);
+        assertThat(catalog.getDefinition("rmq.alert.system.list").permission())
+                .isEqualTo("alert:read");
+        assertThat(catalog.getDefinition("rmq.alert.delivery.list").permission())
+                .isEqualTo("alert:read");
+        assertThat(ToolCatalog.isInstanceIdExempt("rmq.alert.system.list")).isTrue();
+        assertThat(ToolCatalog.isInstanceIdExempt("rmq.alert.delivery.list")).isTrue();
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
 
