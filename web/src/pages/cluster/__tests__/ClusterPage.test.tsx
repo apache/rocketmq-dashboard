@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type {
   BrokerConfigDiffResult,
   ClusterConfigPreviewResult,
+  ClusterConfigUpdateResult,
   ClusterInfo,
   ClusterProbeResult,
   NameServerConfigDiffResult,
@@ -521,6 +522,42 @@ describe('Cluster page', () => {
       await latePreview.promise;
     });
     expect(within(dialog).queryByText('defaultTopicQueueNums=24')).not.toBeInTheDocument();
+  });
+
+  it('blocks a new broker config preview while an update is pending', async () => {
+    const update = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReturnValueOnce(update.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    fireEvent.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const previewButton = within(dialog).getByRole('button', { name: /预\s*览/ });
+    fireEvent.click(previewButton);
+    expect(await within(dialog).findByText('defaultTopicQueueNums=8')).toBeInTheDocument();
+    expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    expect(previewButton).toBeDisabled();
+    expect(within(dialog).queryByText('defaultTopicQueueNums=8')).not.toBeInTheDocument();
+    fireEvent.click(previewButton);
+    expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      update.resolve({
+        cluster: buildCluster(),
+        status: 'PARTIAL',
+        successfulBrokers: ['10.101.2.11:10911'],
+        failedBrokers: [{ address: '10.101.2.12:10911', message: 'timeout' }],
+      });
+      await update.promise;
+    });
+    expect(await screen.findByText(/部分 Broker 配置已更新/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('defaultTopicQueueNums=8')).not.toBeInTheDocument();
+    await waitFor(() => expect(previewButton).toBeEnabled());
+    fireEvent.click(previewButton);
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {
