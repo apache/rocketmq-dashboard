@@ -225,6 +225,49 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldKeepExistingWebhooksWhenTheRedactedMarkerIsEchoedTest() {
+        // A reader session GETs redacted webhook values ("******") and the console echoes every
+        // field it received back on save; the sentinel must be recognised on the write path the
+        // same way a blank secret already is, or the first reader save corrupts the notifier.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                .smsWebhook("https://sms.example.test/notify")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook(SettingsService.REDACTED_NOTIFICATION_WEBHOOK)
+                .smsWebhook(SettingsService.REDACTED_NOTIFICATION_WEBHOOK)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=secret");
+        assertThat(update.getSmsWebhook()).isEqualTo("https://sms.example.test/notify");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReplaceAWebhookThatWasActuallyRetypedTest() {
+        // An operator who genuinely sets the webhook to six asterisks would be locked out of that
+        // value by the sentinel handling; a different marker comparison must not reject it either.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=old")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=new")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=new");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequestedTest() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")

@@ -58,7 +58,7 @@ public class SettingsService {
 
     public static final String DATA_SOURCE_CACHE = "data-sources";
 
-    private static final String REDACTED_NOTIFICATION_WEBHOOK = "******";
+    static final String REDACTED_NOTIFICATION_WEBHOOK = "******";
     private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
             new byte[] {
                 (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
@@ -140,6 +140,17 @@ public class SettingsService {
             settings.setDingtalkSigningSecret("");
         } else if (!StringUtils.hasText(settings.getDingtalkSigningSecret()) && currentSettings != null) {
             settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
+        }
+        // getGeneralSettings redacts webhook values to "******" for reader sessions and the console
+        // echoes every field it received back on save, so a marker arriving here means "unchanged",
+        // not a webhook URL that is literally six asterisks.
+        if (currentSettings != null) {
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getDingtalkWebhook())) {
+                settings.setDingtalkWebhook(currentSettings.getDingtalkWebhook());
+            }
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getSmsWebhook())) {
+                settings.setSmsWebhook(currentSettings.getSmsWebhook());
+            }
         }
         if (currentSettings != null) {
             if (!StringUtils.hasText(settings.getLlmEngine())) {
