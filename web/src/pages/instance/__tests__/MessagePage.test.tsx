@@ -700,4 +700,30 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('renders an unknown message size as unavailable instead of 0 B', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-UNKNOWN-SIZE'), size: -1 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-UNKNOWN-SIZE/ });
+    // -1 is the server's unknown sentinel: the size column must not claim a fabricated
+    // "0 B", and the sentinel itself must not leak into the table either.
+    expect(within(row).queryByText('0 B')).not.toBeInTheDocument();
+    expect(within(row).queryByText('-1 B')).not.toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const sizeItems = within(dialog)
+      .getAllByText('大小')
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(sizeItems).toHaveLength(1);
+    const content = sizeItems[0]?.querySelector('.ant-descriptions-item-content');
+    expect(content?.textContent?.trim()).toBe('-');
+  });
 });
