@@ -64,6 +64,15 @@ public class ClusterService {
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
     private final NameserverRegistryService registryService;
+    private final BrokerDiskWatermarkForecaster brokerDiskWatermarkForecaster;
+
+    public BrokerDiskForecasterReportVO forecastBrokerDiskWatermark(String clusterId, String instanceId) {
+        String normalizedClusterId = clusterId != null ? clusterId.trim() : "";
+        ClusterVO cluster = instanceId == null ? getCluster(normalizedClusterId)
+                : getCluster(normalizedClusterId, instanceId);
+        List<BrokerVO> brokers = cluster != null && cluster.getBrokers() != null ? cluster.getBrokers() : List.of();
+        return brokerDiskWatermarkForecaster.forecast(normalizedClusterId, brokers);
+    }
 
     // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
     private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(

@@ -75,6 +75,9 @@ class ClusterServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private BrokerDiskWatermarkForecaster brokerDiskWatermarkForecaster;
+
     @InjectMocks
     private ClusterService clusterService;
 
@@ -855,6 +858,21 @@ class ClusterServiceTest {
                 .hasMessageContaining("Selected NameServer unavailable");
         verify(clusterProvider, never()).refreshClusterDetail(any());
         verifyNoInteractions(brokerConfigService, clusterRepository);
+    }
+
+    @Test
+    void forecastBrokerDiskWatermarkShouldDelegateToForecaster() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        BrokerDiskForecasterReportVO mockReport = BrokerDiskForecasterReportVO.builder()
+                .clusterId("cluster-1")
+                .totalBrokers(1)
+                .build();
+        when(brokerDiskWatermarkForecaster.forecast(eq("cluster-1"), any())).thenReturn(mockReport);
+
+        BrokerDiskForecasterReportVO result = clusterService.forecastBrokerDiskWatermark("cluster-1", null);
+
+        assertThat(result).isSameAs(mockReport);
+        verify(brokerDiskWatermarkForecaster).forecast(eq("cluster-1"), any());
     }
 
 }

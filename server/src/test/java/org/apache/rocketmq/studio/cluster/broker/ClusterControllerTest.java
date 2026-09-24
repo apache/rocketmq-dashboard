@@ -328,6 +328,26 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void forecastBrokerDiskWatermarkShouldReturnReport() throws Exception {
+        BrokerDiskForecasterReportVO report = BrokerDiskForecasterReportVO.builder()
+                .clusterId("cluster-1")
+                .totalBrokers(1)
+                .criticalWatermarkBrokerCount(0)
+                .anyBrokerBlocked(false)
+                .build();
+        when(clusterService.forecastBrokerDiskWatermark("cluster-1", "instance-1")).thenReturn(report);
+
+        mockMvc.perform(get("/api/clusters/cluster-1/disk-watermark-forecast")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.clusterId").value("cluster-1"))
+                .andExpect(jsonPath("$.data.anyBrokerBlocked").value(false));
+
+        verify(clusterService).forecastBrokerDiskWatermark("cluster-1", "instance-1");
+    }
+
+    @Test
     void updateConfigShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/clusters/config/update")
                         .contentType(MediaType.APPLICATION_JSON)

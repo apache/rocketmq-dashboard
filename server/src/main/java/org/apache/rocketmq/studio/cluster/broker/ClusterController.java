@@ -85,6 +85,13 @@ public class ClusterController {
         return Result.ok(brokerConfigDiffService.compare(id, instanceId));
     }
 
+    @GetMapping("/{id}/disk-watermark-forecast")
+    public Result<BrokerDiskForecasterReportVO> forecastBrokerDiskWatermark(
+            @PathVariable String id,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.forecastBrokerDiskWatermark(id, instanceId));
+    }
+
     @PostMapping("/{clusterId}/brokers/{name}/restart")
     public Result<Map<String, Object>> restartBroker(@PathVariable String clusterId,
                                                      @PathVariable String name) {
