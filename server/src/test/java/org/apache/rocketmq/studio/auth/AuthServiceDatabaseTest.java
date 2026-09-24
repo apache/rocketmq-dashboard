@@ -444,6 +444,22 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void unknownAccountsGetTheUniformInvalidCredentialsResponse() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("no-such-user");
+        request.setPassword("totally-wrong");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+    }
+
+    @Test
     void disabledAccountsWithCorrectPasswordsGetTheUniformInvalidCredentialsResponse() {
         when(userMapper.selectCount(isNull())).thenReturn(1L);
         when(userMapper.selectOne(any(Wrapper.class)))

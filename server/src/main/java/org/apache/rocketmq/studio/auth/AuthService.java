@@ -374,8 +374,13 @@ public class AuthService {
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
         ensureBootstrapUsers();
-        RmqStudioUser user = findUserByUsername(request.getUsername())
-                .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
+        RmqStudioUser user = findUserByUsername(request.getUsername()).orElse(null);
+        if (user == null) {
+            // Unknown accounts must cost the same as a wrong password so login timing
+            // cannot be used to enumerate usernames.
+            passwordHasher.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            throw new BusinessException(401, "Invalid username or password");
+        }
         if (!Boolean.TRUE.equals(user.getEnabled())) {
             // Answer exactly like a wrong password on an enabled account: burn one dummy
             // derivation so the response timing matches, and never touch this account's
