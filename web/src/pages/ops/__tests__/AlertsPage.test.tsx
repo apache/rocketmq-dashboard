@@ -357,6 +357,20 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('renders the pagination total with the rule count', async () => {
+    vi.mocked(listAlertRulesPage).mockClear();
+    vi.mocked(listAlertRulesPage).mockResolvedValue({
+      items: [cloneRule(alertRules[0])],
+      total: 21,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    expect(await screen.findByText('共 21 条规则')).toBeInTheDocument();
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
