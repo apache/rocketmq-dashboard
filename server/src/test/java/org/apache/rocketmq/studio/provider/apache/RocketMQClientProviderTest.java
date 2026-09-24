@@ -257,6 +257,46 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerGroupSelectorScopesSuggestionsToTheRequestedTopicTest() throws Exception {
+        // The selector takes a topic parameter and the very next call examines
+        // (group, topic) connections; a suggestion that never produced to the topic yields an
+        // empty connection list, so each candidate must be verified against the topic.
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        ProducerConnection orderOnTopic = new ProducerConnection();
+        orderOnTopic.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-order", "10.0.0.1:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA")).thenReturn(orderOnTopic);
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenThrow(new MQClientException(2003, "Not found the producer group connection"));
+
+        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", null, 20);
+
+        assertThat(groups).containsExactly("pg-order");
+    }
+
+    @Test
+    void producerGroupSelectorKeepsAllMatchesWhenNoTopicIsRequestedTest() throws Exception {
+        // Without a topic the selector must keep its cheap whole-broker scan: no per-group
+        // connection probing, every producer group is a valid suggestion.
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+
+        List<String> groups = provider.findProducerGroups("instance-a", null, "pg", 20);
+
+        assertThat(groups).containsExactly("pg-order", "pg-payment");
+        verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
     void producerGroupSelectorReturnsSortedUniqueBoundedMatches() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
                 "127.0.0.1:10911", "127.0.0.2:10911"));
@@ -270,7 +310,7 @@ class RocketMQClientProviderTest {
                         "pg-shipment", List.of(producerInfo("producer-shipment", "10.0.0.4:1000")),
                         " ", List.of(producerInfo("ignored", "10.0.0.5:1000")))));
 
-        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 2);
+        List<String> groups = provider.findProducerGroups("instance-a", null, "pg", 2);
 
         assertThat(groups).containsExactly("pg-order", "pg-payment");
         verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
@@ -299,7 +339,7 @@ class RocketMQClientProviderTest {
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
 
-        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 20);
+        List<String> groups = provider.findProducerGroups("instance-a", null, "pg", 20);
 
         assertThat(groups).containsExactly("pg-payment");
     }
