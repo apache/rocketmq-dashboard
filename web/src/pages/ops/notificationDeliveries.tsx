@@ -312,8 +312,15 @@ const NotificationDeliveriesPage = () => {
               showTotal: (count) => `${t('common.total')} ${count}`,
               onChange: (nextPage, nextPageSize) => {
                 setLoading(true);
-                setPage(nextPage);
-                setPageSize(nextPageSize);
+                // A larger page size can pull the current page past the new last page; since
+                // this list has no empty-page clamp, going straight to the oversized page
+                // would strand an empty table until a filter changes.
+                if (nextPageSize !== pageSize) {
+                  setPage(1);
+                  setPageSize(nextPageSize);
+                } else {
+                  setPage(nextPage);
+                }
               },
             }}
           />
