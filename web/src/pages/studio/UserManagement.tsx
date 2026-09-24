@@ -336,7 +336,10 @@ const UserManagementPage = () => {
       t('userMgmt.revokeFailed'),
     );
 
-  const openCreateUserModal = () => setCreateOpen(true);
+  const openCreateUserModal = () => {
+    createForm.resetFields();
+    setCreateOpen(true);
+  };
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -752,7 +755,10 @@ const UserManagementPage = () => {
         title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
           <Form.Item

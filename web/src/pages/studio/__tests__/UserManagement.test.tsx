@@ -187,6 +187,24 @@ describe('UserManagementPage', () => {
     expect(screen.getByText('未来 5 分钟过期')).toBeInTheDocument();
   });
 
+  it('clears the create-user form after the dialog is dismissed', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '新建用户' }));
+    await user.type(await screen.findByLabelText('用户名'), 'temp-operator');
+    await user.type(screen.getByLabelText('初始密码'), 'initial-pass-123');
+    await user.click(screen.getByLabelText('管理员权限'));
+    expect(screen.getByLabelText('管理员权限')).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(await screen.findByRole('button', { name: '新建用户' }));
+
+    expect(await screen.findByLabelText('用户名')).toHaveValue('');
+    expect(screen.getByLabelText('初始密码')).toHaveValue('');
+    expect(screen.getByLabelText('管理员权限')).not.toBeChecked();
+  });
+
   it('debounces username search and sends role and status filters', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
