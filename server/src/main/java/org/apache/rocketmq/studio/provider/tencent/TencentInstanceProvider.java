@@ -55,6 +55,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -1033,7 +1034,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .expression(subscription.getSubString())
                 .type(subscription.getExpressionType())
                 .filterMode(subscription.getExpressionType())
-                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .consistency(SubscriptionConsistency.fromCode(subscription.getConsistency()))
                 .build();
     }
 
