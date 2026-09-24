@@ -1,0 +1,18 @@
+
+github:
+  features:
+    # Enable issue management
+    issues: true
+    # Enable wiki
+    wiki: true
+  enabled_merge_buttons:
+    squash:  true
+    merge:   false
+    rebase:  false
+
+notifications:
+  commits:      commits@rocketmq.apache.org
+  issues:       commits@rocketmq.apache.org
+  pullrequests: commits@rocketmq.apache.org
+  jobs:         commits@rocketmq.apache.org
+  discussions:  dev@rocketmq.apache.org

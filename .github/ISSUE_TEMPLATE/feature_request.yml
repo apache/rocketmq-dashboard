@@ -1,0 +1,82 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: Feature Request
+title: "[Feature] "
+description: Propose a new capability for RocketMQ Studio.
+labels: [ "enhancement" ]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before Creating the Feature Request
+      options:
+        - label: >
+            I have searched the [open issues](https://github.com/apache/rocketmq-dashboard/issues)
+            and believe this is not a duplicate.
+          required: true
+        - label: >
+            I understand that a non-trivial feature is agreed in this issue first: the design
+            is discussed here before a pull request is sent, as described in CONTRIBUTING.md.
+          required: true
+
+  - type: textarea
+    attributes:
+      label: Is Your Feature Request Related to a Problem?
+      placeholder: >
+        A clear and concise description of the problem, and who hits it (operator, developer,
+        end user of a shared Studio deployment).
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the Solution You'd Like
+      description: Sketch the design, not just the outcome.
+      placeholder: >
+        Which module the change belongs to (backend domain / adapter, frontend page, MCP tool,
+        rmqctl command), what the API or UI looks like, and how it behaves on error paths.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe Alternatives You've Considered
+      placeholder: >
+        Other designs you considered, why you rejected them, and any workaround in use today.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      placeholder: >
+        Mockups, related issues or pull requests, references to how other consoles solve this.
+    validations:
+      required: false
+
+  - type: checkboxes
+    attributes:
+      label: Are You Willing to Implement It?
+      description: >
+        Not required. If you plan to implement it, the pull request must target `master`,
+        keep the hexagonal architecture constraints green and add tests.
+      options:
+        - label: Yes, I am willing to submit a pull request once the design is agreed.
+
+  - type: markdown
+    attributes:
+      value: Thanks for completing our form!
