@@ -42,6 +42,23 @@ export interface FormatUtcDateTimeOptions {
 }
 
 /**
+ * Parse an alert-API timestamp the same way {@link formatUtcDateTime} renders it: a value
+ * without an offset suffix is a UTC `LocalDateTime` and must not fall back to
+ * browser-local parsing, and an explicit offset or `Z` is honored as written. Returns
+ * NaN for anything unparseable, so callers can filter with `Number.isFinite`.
+ */
+export function parseAlertTimestamp(date: string | Date | null | undefined): number {
+  if (date === null || date === undefined) return Number.NaN;
+  if (date instanceof Date) return date.getTime();
+  if (typeof date !== 'string') return Number.NaN;
+  if (!date.trim()) return Number.NaN;
+  const utcDate = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+    ? new Date(date)
+    : new Date(`${date}Z`);
+  return utcDate.getTime();
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
@@ -52,10 +69,7 @@ export function formatUtcDateTime(
   options: FormatUtcDateTimeOptions = {},
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+  const utcDate = new Date(parseAlertTimestamp(date));
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {

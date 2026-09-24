@@ -65,7 +65,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseAlertTimestamp } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -415,8 +415,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  // lastTriggered is a UTC LocalDateTime without an offset suffix (same convention the
+  // Last-Triggered column renders with formatUtcDateTime), so it must be parsed as UTC;
+  // browser-local parsing would shift the 24h window by the viewer's offset.
   const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
+    (r) => r.lastTriggered && parseAlertTimestamp(r.lastTriggered) > dayAgo,
   ).length;
 
   const openCreateModal = () => {

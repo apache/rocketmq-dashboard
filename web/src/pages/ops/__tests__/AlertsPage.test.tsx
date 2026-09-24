@@ -263,6 +263,44 @@ describe('AlertsPage', () => {
     expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
+  it('counts the 24h-triggered stat against the UTC timestamp, not the browser zone', async () => {
+    // "now" is 2026-08-24T12:00:00Z. The rule fired 23h ago in UTC (inside the window)
+    // but 31h ago for a UTC+8 browser, so browser-local parsing would drop it from the
+    // stat while the Last-Triggered column still shows the firing "23h ago". Date.now is
+    // stubbed directly (rather than through fake timers) because antd's rendering uses
+    // real timers, and the process TZ is pinned to Asia/Shanghai to make the shift
+    // deterministic: without the UTC parse convention this stat renders 0.
+    const RealDateNow = Date.now;
+    const now = Date.parse('2026-08-24T12:00:00Z');
+    Date.now = () => now;
+    // The vitest runner always executes under Node, but the app tsconfig has no Node
+    // types, so reach the environment through an untyped indirection instead of
+    // `process.env`.
+    const nodeEnv = globalThis as {
+      process?: { env: Record<string, string | undefined> };
+    };
+    const previousTZ = nodeEnv.process?.env.TZ;
+    if (nodeEnv.process) nodeEnv.process.env.TZ = 'Asia/Shanghai';
+    try {
+      const lastTriggered = '2026-08-23T13:00:00';
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered }]),
+      );
+
+      renderPage();
+
+      expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+      const statLabel = screen.getByText('本页 24h 触发');
+      expect(within(statLabel.parentElement as HTMLElement).getByText('1')).toBeInTheDocument();
+    } finally {
+      Date.now = RealDateNow;
+      if (nodeEnv.process) {
+        if (previousTZ === undefined) delete nodeEnv.process.env.TZ;
+        else nodeEnv.process.env.TZ = previousTZ;
+      }
+    }
+  });
+
   it('allows the unavailable operator only for availability metrics', () => {
     expect(supportsUnavailableOperator('nameserver.availability')).toBe(true);
     expect(supportsUnavailableOperator('broker.availability')).toBe(true);
