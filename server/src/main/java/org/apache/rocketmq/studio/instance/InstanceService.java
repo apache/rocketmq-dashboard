@@ -176,13 +176,16 @@ public class InstanceService {
 
     /**
      * Resource counts live on the vendor side (cloud APIs) or in the local tables (Apache),
-     * so resolve them uniformly through the vendor provider.
+     * so resolve them uniformly through the vendor provider. The canonical instance name is
+     * passed, not the numeric id as a string: provider-side identifier resolution matches the
+     * unique name first, so a name that happens to equal another instance's numeric id would
+     * otherwise shadow it and attribute the counts to the wrong instance.
      */
     private InstanceResourceCountRunner.ResourceCounts loadCounts(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         InstanceProvider provider = providerRegistry.forVendor(vendor);
-        int topicCount = provider.countTopics(String.valueOf(instance.getId()));
-        int consumerGroupCount = provider.countGroups(String.valueOf(instance.getId()));
+        int topicCount = provider.countTopics(instance.getName());
+        int consumerGroupCount = provider.countGroups(instance.getName());
         return new InstanceResourceCountRunner.ResourceCounts(topicCount, consumerGroupCount);
     }
 
@@ -664,8 +667,11 @@ public class InstanceService {
         InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
         if (vendor == InstanceVendor.APACHE) {
             InstanceProvider provider = providerRegistry.forVendor(InstanceVendor.APACHE);
-            int topicCount = provider.countTopics(String.valueOf(id));
-            int consumerGroupCount = provider.countGroups(String.valueOf(id));
+            // Pass the canonical name: identifier resolution is name-first, so the numeric id
+            // string could resolve to a different instance whose name happens to equal this id,
+            // reading the wrong instance's counts in the delete guard.
+            int topicCount = provider.countTopics(existing.getName());
+            int consumerGroupCount = provider.countGroups(existing.getName());
             if (topicCount > 0 || consumerGroupCount > 0) {
                 throw new BusinessException(409, String.format(
                         "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
