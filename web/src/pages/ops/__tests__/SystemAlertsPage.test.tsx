@@ -15,6 +15,7 @@ import { formatUtcDateTime } from '../../../utils/format';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
+  clearAcknowledgedAlerts,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
@@ -267,6 +268,37 @@ describe('SystemAlertsPage', () => {
         pageSize: 20,
       }),
     );
+  });
+
+  it('keeps stale alerts masked and non-actionable while a filtered page is pending', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /^确认$/ })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: '清除已确认' })).toBeEnabled());
+    const initialRequestCount = vi.mocked(listSystemAlertsPage).mock.calls.length;
+    vi.mocked(listSystemAlertsPage).mockImplementationOnce(() => new Promise(() => {}));
+
+    await user.click(screen.getByRole('button', { name: /严重/ }));
+
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenCalledTimes(initialRequestCount + 1),
+    );
+    await waitFor(() => expect(container.querySelector('.ant-spin-spinning')).not.toBeNull());
+    expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Consumer lag')).toBeInTheDocument();
+    screen
+      .getAllByRole('button', { name: /^确认$/ })
+      .forEach((button) => expect(button).toBeDisabled());
+    screen
+      .getAllByRole('button', { name: '投递记录' })
+      .forEach((button) => expect(button).toBeDisabled());
+    screen
+      .getAllByRole('button', { name: '关联事件' })
+      .forEach((button) => expect(button).toBeDisabled());
+    expect(screen.getByRole('button', { name: '清除已确认' })).toBeDisabled();
+    expect(clearAcknowledgedAlerts).not.toHaveBeenCalled();
   });
 
   it('forwards instance, resource label, and time filters to the event feed', async () => {

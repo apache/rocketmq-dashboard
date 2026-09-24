@@ -188,6 +188,10 @@ const AclPageContent = ({
   useEffect(() => {
     let mounted = true;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Mask stale rule and user rows for new queries.
+    setRulesLoading(true);
+    setUsersLoading(true);
+
     void listAclRules({
       instanceId: selectedInstanceId,
       principal: rulePrincipalFilter || undefined,
@@ -286,6 +290,7 @@ const AclPageContent = ({
   };
 
   const openEditRuleModal = (rule: AclRule) => {
+    if (rulesLoading) return;
     setEditingRule(rule);
     ruleForm.setFieldsValue({
       principal: rule.principal,
@@ -340,6 +345,7 @@ const AclPageContent = ({
   };
 
   const handleDeleteRule = async (id: AclEntityId) => {
+    if (rulesLoading) return;
     try {
       await deleteAclRule(id, selectedInstanceId);
       setRuleRefreshKey((prev) => prev + 1);
@@ -351,6 +357,7 @@ const AclPageContent = ({
 
   /* ─── User helpers ─── */
   const toggleRevealKey = async (userId: AclEntityId) => {
+    if (usersLoading) return;
     const userKey = String(userId);
     const revealing = !revealedKeys.has(userId);
     const revealGeneration = (revealRequestGenerationRef.current[userKey] ?? 0) + 1;
@@ -394,6 +401,7 @@ const AclPageContent = ({
   };
 
   const openEditUserModal = (user: NormalizedAclUser) => {
+    if (usersLoading) return;
     setEditingUser(user);
     userForm.setFieldsValue({
       username: user.username,
@@ -440,6 +448,7 @@ const AclPageContent = ({
   };
 
   const handleDeleteUser = async (id: AclEntityId) => {
+    if (usersLoading) return;
     try {
       await deleteAclUser(id, selectedInstanceId);
       // Reload the authoritative server page so the pagination total follows the delete
@@ -452,6 +461,7 @@ const AclPageContent = ({
   };
 
   const handleToggleAdmin = async (user: AclUser, checked: boolean) => {
+    if (usersLoading) return;
     if (tencentRoleMode) return;
     if (adminUpdateInFlightRef.current.has(user.id)) return;
     adminUpdateInFlightRef.current.add(user.id);
@@ -682,6 +692,7 @@ const AclPageContent = ({
           <Button
             size="small"
             icon={<EditOutlined />}
+            disabled={rulesLoading}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => openEditRuleModal(record)}
           >
@@ -690,6 +701,7 @@ const AclPageContent = ({
           <Button
             size="small"
             icon={<DeleteOutlined />}
+            disabled={rulesLoading}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() =>
               Modal.confirm({
@@ -745,7 +757,7 @@ const AclPageContent = ({
         return (
           <Space size={8}>
             <Typography.Text
-              copyable={fullAccessKey ? { text: fullAccessKey } : false}
+              copyable={!usersLoading && fullAccessKey ? { text: fullAccessKey } : false}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
               {displayedAccessKey}
@@ -765,7 +777,7 @@ const AclPageContent = ({
         return (
           <Space size={8}>
             <Typography.Text
-              copyable={revealed && secret ? { text: secret } : false}
+              copyable={!usersLoading && revealed && secret ? { text: secret } : false}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             >
               {revealed ? (secret ?? '加载中…') : '••••••••••••'}
@@ -774,6 +786,7 @@ const AclPageContent = ({
               type="text"
               size="small"
               icon={revealed ? <EyeSlash size={14} /> : <Eye size={14} />}
+              disabled={usersLoading}
               onClick={() => void toggleRevealKey(record.id)}
             />
           </Space>
@@ -791,7 +804,7 @@ const AclPageContent = ({
           checked={val}
           size="small"
           loading={adminUpdatingIds.has(record.id)}
-          disabled={tencentRoleMode || adminUpdatingIds.has(record.id)}
+          disabled={usersLoading || tencentRoleMode || adminUpdatingIds.has(record.id)}
           onChange={(checked) => handleToggleAdmin(record, checked)}
         />
       ),
@@ -831,6 +844,7 @@ const AclPageContent = ({
           <Button
             size="small"
             icon={<EditOutlined />}
+            disabled={usersLoading}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => openEditUserModal(record)}
           >
@@ -839,6 +853,7 @@ const AclPageContent = ({
           <Button
             size="small"
             icon={<DeleteOutlined />}
+            disabled={usersLoading}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() =>
               Modal.confirm({

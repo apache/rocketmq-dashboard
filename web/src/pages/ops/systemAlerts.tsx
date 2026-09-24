@@ -199,6 +199,9 @@ const SystemAlertsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep stale events masked for the new query.
+    setLoading(true);
+
     void listSystemAlertsPage({
       ...currentQuery(),
       page,
@@ -241,6 +244,7 @@ const SystemAlertsPage = () => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
   const handleAck = async (id: number) => {
+    if (loading) return;
     setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
@@ -258,6 +262,7 @@ const SystemAlertsPage = () => {
   };
 
   const handleClearAcked = async () => {
+    if (loading) return;
     setClearing(true);
     try {
       await clearAcknowledgedAlerts();
@@ -310,6 +315,7 @@ const SystemAlertsPage = () => {
   };
 
   const loadDeliveries = async (alertId: number, force = false) => {
+    if (loading) return;
     if ((!force && deliveries[alertId]) || loadingDeliveries.has(alertId)) return;
     setLoadingDeliveries((current) => new Set(current).add(alertId));
     try {
@@ -327,6 +333,7 @@ const SystemAlertsPage = () => {
   };
 
   const loadRelatedAlerts = async (alertId: number) => {
+    if (loading) return;
     if (relatedAlerts[alertId] || loadingRelatedIds.has(alertId)) return;
     setLoadingRelatedIds((current) => new Set(current).add(alertId));
     try {
@@ -344,6 +351,7 @@ const SystemAlertsPage = () => {
   };
 
   const handleRetryDelivery = async (alertId: number, deliveryId: number) => {
+    if (loading) return;
     setRetryingDeliveryIds((current) => new Set(current).add(deliveryId));
     try {
       await retryAlertDelivery(deliveryId);
@@ -482,7 +490,7 @@ const SystemAlertsPage = () => {
             <Button
               icon={<Trash size={14} />}
               onClick={handleClearAcked}
-              disabled={!alerts.some((a) => a.acknowledged)}
+              disabled={loading || !alerts.some((a) => a.acknowledged)}
               loading={clearing}
             >
               {t('sysAlerts.clearAcked')}
@@ -610,10 +618,13 @@ const SystemAlertsPage = () => {
         )}
       </Flex>
 
-      <Flex vertical gap={12}>
-        {loading && <Card loading />}
-        {!loading &&
-          alerts.map((alert) => {
+      <Spin spinning={loading}>
+        <Flex
+          vertical
+          gap={12}
+          style={{ minHeight: loading && alerts.length === 0 ? 120 : undefined }}
+        >
+          {alerts.map((alert) => {
             const normalizedLevel = normalizeAlertLevel(alert.level);
             const cfg = alertLevelConfig[normalizedLevel] ?? {
               color: '#8c8c8c',
@@ -765,6 +776,7 @@ const SystemAlertsPage = () => {
                                 type="link"
                                 onClick={() => void handleRetryDelivery(alert.id, delivery.id)}
                                 loading={retryingDeliveryIds.has(delivery.id)}
+                                disabled={loading}
                               >
                                 {t('deliveries.retry')}
                               </Button>
@@ -793,16 +805,27 @@ const SystemAlertsPage = () => {
                   <Text type="secondary" style={{ fontSize: 14 }}>
                     {formatUtcDateTime(alert.time)}
                   </Text>
-                  <Button size="small" type="link" onClick={() => void loadDeliveries(alert.id)}>
+                  <Button
+                    size="small"
+                    type="link"
+                    disabled={loading}
+                    onClick={() => void loadDeliveries(alert.id)}
+                  >
                     {t('sysAlerts.deliveryRecords')}
                   </Button>
-                  <Button size="small" type="link" onClick={() => void loadRelatedAlerts(alert.id)}>
+                  <Button
+                    size="small"
+                    type="link"
+                    disabled={loading}
+                    onClick={() => void loadRelatedAlerts(alert.id)}
+                  >
                     {t('sysAlerts.relatedEvents')}
                   </Button>
                   {alert.suppressionCauseAlertId && (
                     <Button
                       size="small"
                       type="link"
+                      disabled={loading}
                       onClick={() => void loadRelatedAlerts(alert.id)}
                     >
                       {t('sysAlerts.viewRootCause')}
@@ -815,6 +838,7 @@ const SystemAlertsPage = () => {
                       icon={<CheckCircle size={14} />}
                       onClick={() => handleAck(alert.id)}
                       loading={acknowledgingIds.has(alert.id)}
+                      disabled={loading}
                     >
                       {t('sysAlerts.acknowledge')}
                     </Button>
@@ -823,14 +847,15 @@ const SystemAlertsPage = () => {
               </div>
             );
           })}
-        {!loading && alerts.length === 0 && (
-          <Card>
-            <Flex justify="center" style={{ padding: 40 }}>
-              <Text type="secondary">{t('sysAlerts.noAlerts')}</Text>
-            </Flex>
-          </Card>
-        )}
-      </Flex>
+          {!loading && alerts.length === 0 && (
+            <Card>
+              <Flex justify="center" style={{ padding: 40 }}>
+                <Text type="secondary">{t('sysAlerts.noAlerts')}</Text>
+              </Flex>
+            </Card>
+          )}
+        </Flex>
+      </Spin>
       {total > pageSize && (
         <Pagination
           current={page}

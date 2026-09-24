@@ -357,6 +357,36 @@ describe('AlertsPage', () => {
     expect(screen.getByText('21')).toBeInTheDocument();
   });
 
+  it('shows the table loading state while a filtered page is pending', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    const initialRequestCount = vi.mocked(listAlertRulesPage).mock.calls.length;
+    vi.mocked(listAlertRulesPage).mockImplementationOnce(() => new Promise(() => {}));
+
+    fireEvent.change(screen.getByPlaceholderText('搜索规则名称或指标'), {
+      target: { value: 'disk' },
+    });
+
+    await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(initialRequestCount + 1));
+    await waitFor(() => expect(container.querySelector('.ant-spin-spinning')).not.toBeNull());
+    expect(screen.getByRole('button', { name: '批量启用' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '批量禁用' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '批量删除' })).toBeDisabled();
+    expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toBeDisabled();
+    expect(
+      within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }),
+    ).toBeDisabled();
+    expect(
+      within(getRuleRow('Broker disk usage')).getByRole('button', { name: '删除' }),
+    ).toBeDisabled();
+    expect(bulkToggleAlertRules).not.toHaveBeenCalled();
+    expect(bulkDeleteAlertRules).not.toHaveBeenCalled();
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
