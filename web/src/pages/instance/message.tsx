@@ -728,7 +728,7 @@ const MessagePageContent = ({
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob([record.body], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
     message.success(t('messagePage.downloadSuccess'));
   };
@@ -943,7 +943,7 @@ const MessagePageContent = ({
             {t('topic.messageBody')}
           </Typography.Title>
           <Paragraph
-            copyable
+            copyable={{ text: selectedMsg.body }}
             style={{
               background: '#f5f5f5',
               padding: '12px 16px',
