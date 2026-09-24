@@ -19,7 +19,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import { LangProvider } from '../../../i18n/LangContext';
+import { LangProvider, useLang } from '../../../i18n/LangContext';
 import ProducerPage from '../Producer';
 import {
   type ProducerConnection,
@@ -61,6 +61,15 @@ const renderWithProviders = (ui: React.ReactElement) => {
     <App>
       <LangProvider>{ui}</LangProvider>
     </App>,
+  );
+};
+
+const LanguageSwitch = () => {
+  const { setLang } = useLang();
+  return (
+    <button type="button" onClick={() => setLang('en')}>
+      switch-language
+    </button>
   );
 };
 
@@ -637,5 +646,45 @@ describe('ProducerPage', () => {
     await user.type(groupInput, 'order');
 
     expect(fetchProducerGroups).not.toHaveBeenCalled();
+  });
+
+  it('keeps the picked topic and producer group when the display language changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <LanguageSwitch />
+          <ProducerPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+
+    // The topic-list effect re-runs on a language change (it feeds a localized error
+    // message) and it used to clear both inputs on every run, so picking a language
+    // silently discarded the operator's query scope.
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    expect(
+      screen.getByText('order-events', { selector: '.ant-select-selection-item' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')[2]).toHaveValue('order-producer');
+
+    // The preserved scope is still the one the query runs with.
+    await user.click(screen.getByRole('button', { name: /Search/ }));
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenCalledWith(
+        'instance-1',
+        'order-events',
+        'order-producer',
+      );
+    });
   });
 });
