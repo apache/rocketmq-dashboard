@@ -27,13 +27,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -397,6 +401,98 @@ class CollectorSchedulerTest {
         } finally {
             scheduler.stopCollectionExecutor();
         }
+    }
+
+    @Test
+    void awaitJobDoesNotThrowNpeWhenExecutionExceptionCauseIsNullTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(), List.of(),
+                mock(MetricSnapshotRepository.class), mock(NativeAlertProcessor.class), lease);
+
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        Future<InstanceVO> future = new Future<>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                return false;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+
+            @Override
+            public boolean isDone() {
+                return true;
+            }
+
+            @Override
+            public InstanceVO get() throws InterruptedException, ExecutionException {
+                throw new ExecutionException(null);
+            }
+
+            @Override
+            public InstanceVO get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException {
+                throw new ExecutionException(null);
+            }
+        };
+
+        Class<?> jobClass = Class.forName("org.apache.rocketmq.studio.cluster.metrics.CollectorScheduler$CollectionJob");
+        Constructor<?> jobCtor = jobClass.getDeclaredConstructor(InstanceVO.class, Future.class, Instant.class);
+        jobCtor.setAccessible(true);
+        Object job = jobCtor.newInstance(instance, future, Instant.now());
+        Method awaitJob = CollectorScheduler.class.getDeclaredMethod("awaitJob", jobClass);
+        awaitJob.setAccessible(true);
+        awaitJob.invoke(scheduler, job);
+    }
+
+    @Test
+    void awaitJobLogsCauseMessageWhenExecutionExceptionHasCauseTest() throws Exception {
+        AlertingProperties properties = new AlertingProperties();
+        InstanceRepository instances = mock(InstanceRepository.class);
+        AlertCollectionLease lease = mock(AlertCollectionLease.class);
+        when(lease.tryAcquire()).thenReturn(true);
+        CollectorScheduler scheduler = new CollectorScheduler(properties, instances, List.of(), List.of(),
+                mock(MetricSnapshotRepository.class), mock(NativeAlertProcessor.class), lease);
+
+        InstanceVO instance = InstanceVO.builder().name("local").endpoint("localhost:9876").build();
+        Future<InstanceVO> future = new Future<>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                return false;
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+
+            @Override
+            public boolean isDone() {
+                return true;
+            }
+
+            @Override
+            public InstanceVO get() throws InterruptedException, ExecutionException {
+                throw new ExecutionException("wrapped", new IllegalStateException("collector boom"));
+            }
+
+            @Override
+            public InstanceVO get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException {
+                throw new ExecutionException("wrapped", new IllegalStateException("collector boom"));
+            }
+        };
+
+        Class<?> jobClass = Class.forName("org.apache.rocketmq.studio.cluster.metrics.CollectorScheduler$CollectionJob");
+        Constructor<?> jobCtor = jobClass.getDeclaredConstructor(InstanceVO.class, Future.class, Instant.class);
+        jobCtor.setAccessible(true);
+        Object job = jobCtor.newInstance(instance, future, Instant.now());
+        Method awaitJob = CollectorScheduler.class.getDeclaredMethod("awaitJob", jobClass);
+        awaitJob.setAccessible(true);
+        awaitJob.invoke(scheduler, job);
     }
 
     private static MetricSample sampleFor(InstanceVO instance) {

@@ -218,8 +218,9 @@ public class CollectorScheduler {
         } catch (CancellationException ignored) {
             // Already logged when the job was cancelled.
         } catch (ExecutionException error) {
-            log.warn("Native metric collection job failed for instance {}: {}", job.instance().getName(),
-                    error.getCause().getMessage());
+            Throwable cause = error.getCause();
+            String message = cause != null ? cause.getMessage() : error.getMessage();
+            log.warn("Native metric collection job failed for instance {}: {}", job.instance().getName(), message);
         }
     }
 
