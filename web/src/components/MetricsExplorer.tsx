@@ -356,6 +356,18 @@ interface PendingAuthReplay {
   profile: MetricProfile | undefined;
   range: RangeOption;
   customPromql?: string;
+  /**
+   * Selection the deferred restore replaced while it waits for credentials. A cancelled prompt
+   * puts it back, so only a confirmed source applies the restored entry.
+   */
+  checkpoint: RestoreCheckpoint;
+}
+
+interface RestoreCheckpoint {
+  profileId: string;
+  rangeId: RangeOption['value'];
+  customPromql: string;
+  storedProfileId: string | null;
 }
 
 const getQueryErrorMessage = (error: unknown, fallback: string): string => {
@@ -830,7 +842,21 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleAuthCancel = () => {
+    const replay = pendingAuthReplayRef.current;
     pendingAuthReplayRef.current = null;
+    if (replay) {
+      // Only the credentials were declined, so put back everything the deferred restore had
+      // already replaced: otherwise the explorer shows the restored profile's cards with the
+      // previous source's data and nothing ever queries them.
+      setProfileId(replay.checkpoint.profileId);
+      setRangeId(replay.checkpoint.rangeId);
+      setCustomPromql(replay.checkpoint.customPromql);
+      if (replay.checkpoint.storedProfileId === null) {
+        localStorage.removeItem(PROFILE_STORAGE_KEY);
+      } else {
+        localStorage.setItem(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
+      }
+    }
     setPendingDataSource(null);
     authForm.resetFields();
   };
@@ -1052,12 +1078,19 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     dataSource: DataSource,
     profile: MetricProfile | undefined,
     range: RangeOption,
-    customPromqlToRun?: string,
+    customPromqlToRun: string | undefined,
+    checkpoint: RestoreCheckpoint,
   ) => {
     // The data source switch itself is deferred to handleAuthSubmit: the current source stays
     // active while credentials are being asked for, so cancelling the dialog leaves the
-    // explorer exactly where it was instead of stranded on an unauthenticated source.
-    pendingAuthReplayRef.current = { profile, range, customPromql: customPromqlToRun };
+    // explorer exactly where it was instead of stranded on an unauthenticated source. The
+    // profile, window and custom expression the entry already replaced come back with it.
+    pendingAuthReplayRef.current = {
+      profile,
+      range,
+      customPromql: customPromqlToRun,
+      checkpoint,
+    };
     setPendingDataSource(dataSource);
     void message.info(copy.protectedHistory);
   };
@@ -1069,13 +1102,27 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
       : undefined;
     const nextDataSourceKey = nextDataSource?.key ?? '';
+    // The current selection, read before the entry replaces it below, so that declining the
+    // credentials prompt can put it back (see handleAuthCancel).
+    const checkpoint: RestoreCheckpoint = {
+      profileId,
+      rangeId,
+      customPromql,
+      storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
+    };
     setRangeId(nextRange.value);
     setHistoryOpen(false);
 
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
       setCustomPromql(entry.promql);
       if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
-        restoreProtectedDataSource(nextDataSource, selectedProfile, nextRange, entry.promql);
+        restoreProtectedDataSource(
+          nextDataSource,
+          selectedProfile,
+          nextRange,
+          entry.promql,
+          checkpoint,
+        );
         return;
       }
       activateDataSource(nextDataSourceKey, undefined, selectedProfile, nextRange, entry.promql);
@@ -1091,7 +1138,13 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
-      restoreProtectedDataSource(nextDataSource, nextProfile, nextRange, appliedCustomPromql);
+      restoreProtectedDataSource(
+        nextDataSource,
+        nextProfile,
+        nextRange,
+        appliedCustomPromql,
+        checkpoint,
+      );
       return;
     }
     activateDataSource(nextDataSourceKey, undefined, nextProfile, nextRange, appliedCustomPromql);

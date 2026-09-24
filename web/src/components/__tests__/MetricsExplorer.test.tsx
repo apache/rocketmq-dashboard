@@ -994,6 +994,102 @@ describe('MetricsExplorer', () => {
     expect(within(selectContainer).queryByText('Protected Prometheus')).not.toBeInTheDocument();
   });
 
+  it('leaves the picked profile and range alone when a protected history restore is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    // The explorer starts on the 5.x profile over the default 1h window; the history entry
+    // restores the 4.x profile over 6h.
+    const profileSelect = await screen.findByRole('combobox', { name: '指标模板' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog)
+      .getByText('Consumer Lag Messages')
+      .closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    // The credentials prompt is all that stands between the operator and the restore, so
+    // cancelling it must not apply half of the entry: the profile, the window and the
+    // persisted profile are still the ones the operator had picked.
+    const profileContainer = profileSelect.closest('.ant-select') as HTMLElement;
+    expect(within(profileContainer).getByText('RocketMQ 5.x Native')).toBeInTheDocument();
+    expect(within(profileContainer).queryByText('RocketMQ 4.x Exporter')).not.toBeInTheDocument();
+    expect(localStorage.getItem('rocketmq-studio.metric-profile')).toBeNull();
+    expect(
+      screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected')?.textContent,
+    ).toBe('1h');
+  });
+
+  it('keeps the custom expression draft when a protected custom restore is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'history-custom-protected',
+          profileId: '__custom__',
+          profileName: 'Custom query',
+          metricId: 'custom',
+          metricName: 'Custom query',
+          promql: 'sum(rocketmq_topic_number)',
+          dataSourceKey: 'ds-basic',
+          dataSourceName: 'Protected Prometheus',
+        }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    // An unsaved expression the operator is still working on: the entry below overwrites the
+    // same box, so cancelling its credentials prompt has to give the draft back.
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number) + 1');
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog).getByText('Custom query').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    expect(screen.getByLabelText('自定义查询')).toHaveValue('sum(rocketmq_topic_number) + 1');
+  });
+
   it('filters query history from other instances and shows the current instance context', async () => {
     const user = userEvent.setup();
     localStorage.setItem(
