@@ -692,7 +692,6 @@ const ClusterPage = () => {
     setSelectedCluster(cluster);
     setConfigPreview(null);
     setConfigPreviewLoading(false);
-    setConfigSubmitting(false);
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,

@@ -560,6 +560,39 @@ describe('Cluster page', () => {
     await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
   });
 
+  it('keeps broker config preview disabled after reopening during a pending update', async () => {
+    const update = deferred<ClusterConfigUpdateResult>();
+    clusterServiceMocks.updateClusterConfig.mockReturnValueOnce(update.promise);
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    const openConfigDialog = async () => {
+      fireEvent.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+      return screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    };
+    let dialog = await openConfigDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+    dialog = await openConfigDialog();
+    const previewButton = within(dialog).getByRole('button', { name: /预\s*览/ });
+    expect(previewButton).toBeDisabled();
+    fireEvent.click(previewButton);
+    expect(clusterServiceMocks.previewClusterConfig).not.toHaveBeenCalled();
+
+    await act(async () => {
+      update.resolve({
+        cluster: buildCluster(),
+        status: 'PARTIAL',
+        successfulBrokers: ['10.101.2.11:10911'],
+        failedBrokers: [{ address: '10.101.2.12:10911', message: 'timeout' }],
+      });
+      await update.promise;
+    });
+    await waitFor(() => expect(previewButton).toBeEnabled());
+  });
+
   it('keeps cluster tabs usable when address fields are missing', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const submitSearch = async (placeholder: string, value: string) => {
