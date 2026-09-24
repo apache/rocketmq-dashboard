@@ -916,8 +916,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         extra={
           <Flex gap={16}>
             <Flex align="center" gap={4}>
-              <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.totalRules')}</span>
-              <span style={{ fontSize: 18, fontWeight: 600, color: '#3b82f6' }}>{totalRules}</span>
+              <span style={{ fontSize: 14, color: '#999' }}>
+                {t('alerts.totalRules', { count: totalRules })}
+              </span>
             </Flex>
             <Flex align="center" gap={4}>
               <span style={{ fontSize: 14, color: '#999' }}>{t('alerts.enabledOnPage')}</span>
