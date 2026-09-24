@@ -71,6 +71,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
@@ -536,7 +537,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .queueId(0)
                     .brokerOffset(0L)
                     .consumerOffset(0L)
-                    .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                    .diffTotal(resolveConsumerLag(subscription))
                     .build());
         }
         return rows;
@@ -979,8 +980,18 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .group(subscription.getConsumerGroup())
                 .consumeType(toConsumeType(subscription.getConsumeType(), messageModel))
                 .messageModel(messageModel)
-                .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                .diffTotal(resolveConsumerLag(subscription))
+                .metricsAvailable(subscription.getConsumerLag() != null)
                 .build();
+    }
+
+    /**
+     * Tencent documents {@code SubscriptionData.ConsumerLag} as nullable when no valid value can be
+     * obtained. Map that state to {@link ConsumerLagResolver#UNKNOWN} so the console and the cloud
+     * metrics collector can distinguish an unavailable measurement from a genuine zero backlog.
+     */
+    private static long resolveConsumerLag(SubscriptionData subscription) {
+        return subscription.getConsumerLag() == null ? ConsumerLagResolver.UNKNOWN : subscription.getConsumerLag();
     }
 
     private static ConsumerGroupVO toConsumerGroup(ConsumeGroupItem item, String instanceId) {
