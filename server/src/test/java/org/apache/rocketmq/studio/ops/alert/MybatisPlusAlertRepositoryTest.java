@@ -229,6 +229,32 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void pageAlertsShouldTolerateACorruptLabelsRowInsteadOfFailingTheQuery() {
+        RmqSystemAlert healthy = new RmqSystemAlert();
+        healthy.setId(1L);
+        healthy.setLevel("warning");
+        healthy.setLabelsJson("{\"cluster\":\"demo\"}");
+        RmqSystemAlert corrupt = new RmqSystemAlert();
+        corrupt.setId(2L);
+        corrupt.setLevel("warning");
+        corrupt.setLabelsJson("{not-json");
+        Page<RmqSystemAlert> page = new Page<>(1, 20);
+        page.setRecords(List.of(healthy, corrupt));
+        page.setTotal(2);
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        PageResult<SystemAlertVO> result = repository.findAlertsPage(new SystemAlertQuery(
+                null, null, null, null, null, null, null, null, 1, 20, null));
+
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getItems()).hasSize(2);
+        assertThat(result.getItems().get(0).getLabels()).containsEntry("cluster", "demo");
+        // The corrupt row degrades to empty labels so one bad row cannot 500 the
+        // system-alert list or abort the alerting pipeline that pages candidates.
+        assertThat(result.getItems().get(1).getLabels()).isEmpty();
+    }
+
+    @Test
     void insertRuleShouldCanonicalizeChannelsBeforePersistenceTest() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .id(1L)

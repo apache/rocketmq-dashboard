@@ -473,7 +473,10 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         try {
             return OBJECT_MAPPER.readValue(labelsJson, new TypeReference<>() { });
         } catch (Exception error) {
-            throw new IllegalStateException("Unable to read alert labels", error);
+            // An unreadable labels column must not cost the caller the whole query:
+            // one corrupt row would otherwise 500 every system-alert page read and
+            // abort each business-rule evaluation that inspects cluster incidents.
+            return Map.of();
         }
     }
 }
