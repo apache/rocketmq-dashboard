@@ -65,6 +65,8 @@ import {
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
   mergeMetricsQueryHistory,
+  metricSeriesFullLabel,
+  metricSeriesIdentity,
   metricSeriesLabel,
   saveMetricsQueryHistory,
   summarizeMetricData,
@@ -125,18 +127,25 @@ const MetricChart = ({
     .flatMap((series, index) => {
       const { samples } = toMetricSeriesSamples(series);
       const baseLabel = metricSeriesLabel(series, metric.name);
+      const baseTooltip = metricSeriesFullLabel(series, metric.name);
+      // The display label drops every label past the third one, so it cannot
+      // identify a series: two series differing only in a later label share it.
+      const identity = metricSeriesIdentity(series, index);
       const isMixed =
         samples.some((sample) => sample.kind === 'scalar') &&
         samples.some((sample) => sample.kind === 'histogram');
       // Keep raw floats and histogram-derived trends on separate lines.
-      return (['scalar', 'histogram'] as const).map((kind, kindIndex) => ({
-        color: SERIES_COLORS[(isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length],
-        label: isMixed
-          ? `${baseLabel} (${kind === 'histogram' ? histogramLabel : 'scalar'})`
-          : baseLabel,
-        samples: samples.filter((sample) => sample.kind === kind),
-        fromHistogram: kind === 'histogram',
-      }));
+      return (['scalar', 'histogram'] as const).map((kind, kindIndex) => {
+        const kindSuffix = kind === 'histogram' ? histogramLabel : 'scalar';
+        return {
+          color: SERIES_COLORS[(isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length],
+          key: `${identity}-${kind}`,
+          label: isMixed ? `${baseLabel} (${kindSuffix})` : baseLabel,
+          tooltip: isMixed ? `${baseTooltip} (${kindSuffix})` : baseTooltip,
+          samples: samples.filter((sample) => sample.kind === kind),
+          fromHistogram: kind === 'histogram',
+        };
+      });
     })
     .filter((series) => series.samples.length > 0);
 
@@ -217,7 +226,7 @@ const MetricChart = ({
         })}
         {chartSeries.map((series) => (
           <polyline
-            key={`${series.label}-${series.fromHistogram}`}
+            key={series.key}
             fill="none"
             stroke={series.color}
             strokeWidth="2.5"
@@ -253,7 +262,7 @@ const MetricChart = ({
           const latest = series.samples[series.samples.length - 1];
           return (
             <Flex
-              key={`${series.label}-${series.fromHistogram}`}
+              key={series.key}
               align="center"
               gap={6}
               style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '100%' }}
@@ -261,7 +270,11 @@ const MetricChart = ({
               <span
                 style={{ width: 14, height: 3, background: series.color, display: 'inline-block' }}
               />
-              <Text type="secondary" ellipsis={{ tooltip: series.label }} style={{ maxWidth: 160 }}>
+              <Text
+                type="secondary"
+                ellipsis={{ tooltip: series.tooltip }}
+                style={{ maxWidth: 160 }}
+              >
                 {series.label}
               </Text>
               {series.fromHistogram ? (
