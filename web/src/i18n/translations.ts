@@ -1191,6 +1191,15 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重试当前页失败记录',
     en: 'Retry failed records on this page',
   },
+  'deliveries.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
+  'deliveries.exportSuccess': {
+    zh: '已导出 {count} 条投递记录',
+    en: 'Exported {count} delivery records',
+  },
+  'deliveries.exportFailed': {
+    zh: '导出投递记录失败，请稍后重试',
+    en: 'Failed to export delivery records. Please try again later.',
+  },
 
   // ─── General Settings ───
   'settings.generalLoadFailed': {

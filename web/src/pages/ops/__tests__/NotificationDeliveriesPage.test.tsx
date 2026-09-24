@@ -11,6 +11,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
 import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import { downloadCsv } from '../../../utils/download';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -21,6 +22,13 @@ vi.mock('../../../services/opsService', () => ({
   retryAlertDeliveries: vi.fn(),
   retryAlertDelivery: vi.fn(),
 }));
+vi.mock('../../../utils/download', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../utils/download')>();
+  return {
+    ...actual,
+    downloadCsv: vi.fn(),
+  };
+});
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -195,4 +203,83 @@ describe('NotificationDeliveriesPage', () => {
       expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
     );
   });
+
+  it('exports the filtered deliveries across pages as CSV', async () => {
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (query) => {
+      if (query?.page === 1 && query.pageSize === 100) {
+        return {
+          items: Array.from({ length: 100 }, (_, index) => ({
+            id: index + 1,
+            alertId: 1,
+            alertTitle: `Alert ${index + 1}`,
+            channel: 'email',
+            status: 'FAILED',
+            attemptCount: 1,
+            createdAt: '2026-08-23T10:00:00',
+            lastError: 'boom',
+          })),
+          total: 120,
+          page: 1,
+          size: 100,
+        };
+      }
+      if (query?.page === 2 && query.pageSize === 100) {
+        return {
+          items: Array.from({ length: 20 }, (_, index) => ({
+            id: 101 + index,
+            alertId: 1,
+            alertTitle: `Alert ${101 + index}`,
+            channel: 'email',
+            status: 'FAILED',
+            attemptCount: 1,
+            createdAt: '2026-08-23T10:00:00',
+            lastError: 'boom',
+          })),
+          total: 120,
+          page: 2,
+          size: 100,
+        };
+      }
+      return {
+        items: [
+          {
+            id: 7,
+            alertId: 3,
+            alertTitle: 'Broker disk usage',
+            channel: 'dingtalk',
+            status: 'FAILED',
+            attemptCount: 5,
+            createdAt: '2026-08-23T10:00:00',
+            lastError: 'Webhook rejected the request',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      };
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    const [filename, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(filename).toMatch(/^rocketmq-notification-deliveries-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain('Delivery ID');
+    expect(csv).toContain('Alert 1');
+    expect(csv).toContain('Alert 120');
+    expect(csv).not.toContain('messageContent');
+    expect(listAlertDeliveriesPage).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 100 }),
+    );
+  });
+
 });

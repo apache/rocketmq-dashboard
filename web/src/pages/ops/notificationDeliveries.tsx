@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { ArrowClockwise, Eye } from '@phosphor-icons/react';
+import { ArrowClockwise, DownloadSimple, Eye } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -30,6 +30,7 @@ import {
   retryAlertDeliveries,
   retryAlertDelivery,
 } from '../../services/opsService';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
@@ -40,6 +41,27 @@ const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   RETRY_WAIT: 'warning',
   FAILED: 'error',
 };
+
+const DELIVERY_EXPORT_PAGE_SIZE = 100;
+const DELIVERY_EXPORT_MAX_PAGES = 100;
+
+// Incident reviews need the delivery metadata, not the full notification body —
+// the detail drawer is the place for message content.
+const DELIVERY_EXPORT_COLUMNS: CsvColumn<NotificationDeliveryRecord>[] = [
+  { header: 'Delivery ID', value: (record) => record.id },
+  { header: 'Alert ID', value: (record) => record.alertId },
+  { header: 'Alert title', value: (record) => record.alertTitle },
+  { header: 'Alert domain', value: (record) => record.alertDomain },
+  { header: 'Transition', value: (record) => record.transition },
+  { header: 'Instance', value: (record) => record.instanceId },
+  { header: 'Channel', value: (record) => record.channel },
+  { header: 'Status', value: (record) => record.status },
+  { header: 'Attempt count', value: (record) => record.attemptCount },
+  { header: 'Created at (UTC)', value: (record) => record.createdAt },
+  { header: 'Delivered at (UTC)', value: (record) => record.deliveredAt },
+  { header: 'Next attempt at (UTC)', value: (record) => record.nextAttemptAt },
+  { header: 'Last error', value: (record) => record.lastError },
+];
 
 const NotificationDeliveriesPage = () => {
   const { t } = useLang();
@@ -59,6 +81,7 @@ const NotificationDeliveriesPage = () => {
   const [retryingVisible, setRetryingVisible] = useState(false);
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
+  const [exporting, setExporting] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const refresh = () => {
@@ -113,6 +136,45 @@ const NotificationDeliveriesPage = () => {
     } finally {
       retryingVisibleInFlight.current = false;
       setRetryingVisible(false);
+    }
+  };
+
+  const exportDeliveries = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const filters = { channel, status, instanceId };
+      const first = await listAlertDeliveriesPage({
+        ...filters,
+        page: 1,
+        pageSize: DELIVERY_EXPORT_PAGE_SIZE,
+      });
+      const rows = [...first.items];
+      let expectedTotal = first.total;
+      let currentPage = 2;
+      while (rows.length < expectedTotal) {
+        if (currentPage > DELIVERY_EXPORT_MAX_PAGES) {
+          throw new Error('Delivery export exceeded the pagination limit');
+        }
+        const result = await listAlertDeliveriesPage({
+          ...filters,
+          page: currentPage,
+          pageSize: DELIVERY_EXPORT_PAGE_SIZE,
+        });
+        if (result.items.length === 0) break;
+        rows.push(...result.items);
+        expectedTotal = Math.min(expectedTotal, result.total);
+        currentPage += 1;
+      }
+      downloadCsv(
+        `rocketmq-notification-deliveries-${new Date().toISOString().slice(0, 10)}.csv`,
+        buildCsv(DELIVERY_EXPORT_COLUMNS, rows),
+      );
+      message.success(t('deliveries.exportSuccess', { count: rows.length }));
+    } catch {
+      message.error(t('deliveries.exportFailed'));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -254,6 +316,13 @@ const NotificationDeliveriesPage = () => {
               onClick={() => void retryVisibleFailures()}
             >
               {t('deliveries.retryCurrentPage')}
+            </Button>
+            <Button
+              icon={<DownloadSimple size={18} />}
+              loading={exporting}
+              onClick={() => void exportDeliveries()}
+            >
+              {t('deliveries.exportCsv')}
             </Button>
             <Select
               allowClear
