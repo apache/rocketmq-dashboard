@@ -235,6 +235,21 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
   });
 
+  it('does not fabricate a connections column for NameServers', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByText('NameServer 管理'));
+
+    // The NameServer API carries no connection count, so the table must not show a
+    // fabricated "0" that reads like a measurement.
+    expect(screen.queryByText('连接数')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    const [, nameServerCsv] = vi.mocked(downloadCsv).mock.calls.at(-1)!;
+    expect(nameServerCsv).not.toContain('"Connections"');
+  });
+
   it('should switch to Proxy tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
