@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.support;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
@@ -36,6 +39,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.List;
@@ -106,6 +110,75 @@ class PlatformClusterResolverTest {
                 .hasMessage("Cluster not found: rmq-missing")
                 .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
                         .isEqualTo(404));
+    }
+
+    @Test
+    void requireShouldRejectClusterNameAcrossDistinctPhysicalClustersTest() throws Exception {
+        InstanceVO first = apacheInstance("instance-a", "ns-a:9876");
+        InstanceVO second = apacheInstance("instance-b", "ns-b:9876");
+        when(instanceRepository.findAll()).thenReturn(List.of(second, first));
+        admins.put("instance-a", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-a")),
+                Map.of("broker-a", brokerData(
+                        "DefaultCluster", "broker-a", 0L, "10.0.0.1:10911")))));
+        admins.put("instance-b", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-b")),
+                Map.of("broker-b", brokerData(
+                        "DefaultCluster", "broker-b", 0L, "10.0.0.2:10911")))));
+
+        assertThatThrownBy(() -> resolver.require("DefaultCluster"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cluster name is ambiguous across physical clusters: DefaultCluster "
+                        + "(instances: instance-a, instance-b)")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                        .isEqualTo(409));
+    }
+
+    @Test
+    void requireShouldCollapseSamePhysicalClusterAcrossInstancesTest() throws Exception {
+        InstanceVO first = apacheInstance("instance-a", "ns-b:9876, ns-a:9876");
+        InstanceVO second = apacheInstance("instance-b", "ns-a:9876;ns-b:9876");
+        when(instanceRepository.findAll()).thenReturn(List.of(second, first));
+        ClusterInfo shared = clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-a")),
+                Map.of("broker-a", brokerData(
+                        "DefaultCluster", "broker-a", 0L, "10.0.0.1:10911")));
+        admins.put("instance-a", adminWith(shared));
+        admins.put("instance-b", adminWith(shared));
+
+        assertThat(resolver.require("DefaultCluster").instanceId()).isEqualTo("instance-a");
+        assertThat(resolver.resolveInstanceId("DefaultCluster")).isEqualTo("instance-a");
+    }
+
+    @Test
+    void scanShouldWarnWhenClusterNameMapsToDistinctPhysicalClustersTest() throws Exception {
+        InstanceVO first = apacheInstance("instance-a", "ns-a:9876");
+        InstanceVO second = apacheInstance("instance-b", "ns-b:9876");
+        when(instanceRepository.findAll()).thenReturn(List.of(second, first));
+        admins.put("instance-a", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-a")),
+                Map.of("broker-a", brokerData(
+                        "DefaultCluster", "broker-a", 0L, "10.0.0.1:10911")))));
+        admins.put("instance-b", adminWith(clusterInfo(
+                Map.of("DefaultCluster", Set.of("broker-b")),
+                Map.of("broker-b", brokerData(
+                        "DefaultCluster", "broker-b", 0L, "10.0.0.2:10911")))));
+        Logger logger = (Logger) LoggerFactory.getLogger(PlatformClusterResolver.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            resolver.scan();
+
+            assertThat(appender.list)
+                    .extracting(ILoggingEvent::getFormattedMessage)
+                    .contains("Cluster name DefaultCluster is ambiguous across physical clusters "
+                            + "exposed by instances: instance-a, instance-b");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test
