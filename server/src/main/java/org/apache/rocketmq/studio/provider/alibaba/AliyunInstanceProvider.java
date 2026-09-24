@@ -376,14 +376,22 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     /**
-     * OpenAPI accepts Concurrently/Orderly; tolerate FIFO/ordered spellings from the UI.
+     * OpenAPI accepts Concurrently/Orderly; tolerate the order-type spellings the rest of the
+     * console produces. The consumer group form offers {@code PARTITON_ORDER} (partition ordered)
+     * and {@code MESSAGES_ORDER} (globally ordered), the CSV importer also accepts the
+     * {@code PARTITION_ORDER} spelling, and older callers used {@code FIFO}/{@code ORDERLY}.
+     *
+     * <p>The classification deliberately matches {@code TencentInstanceProvider#isOrderly}, which
+     * keys off the same two substrings: both adapters read the same
+     * {@link ConsumerGroupVO#getDeliveryOrderType()} value and must not disagree about whether the
+     * group is ordered.
      */
     static String normalizeDeliveryOrderType(String raw) {
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DELIVERY_ORDER_TYPE;
         }
-        String value = raw.trim();
-        if ("FIFO".equalsIgnoreCase(value) || "ORDERLY".equalsIgnoreCase(value)) {
+        String value = raw.trim().toUpperCase(Locale.ROOT);
+        if (value.contains("FIFO") || value.contains("ORDER")) {
             return ORDERLY_DELIVERY_ORDER_TYPE;
         }
         return DEFAULT_DELIVERY_ORDER_TYPE;
