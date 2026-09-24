@@ -33,6 +33,7 @@ import {
   listNativeAlertMetrics,
   importAlertRulesTransfer,
   toggleAlertRule,
+  updateAlertRule,
 } from '../../../services/opsService';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -279,6 +280,101 @@ describe('AlertsPage', () => {
         thresholdUnit: null,
       }),
     ).toBe('> 85%');
+  });
+
+  it('renders a legacy native ratio threshold without the binary-float tail', () => {
+    // `0.55 * 100` is 55.00000000000001 and `0.29 * 100` is 28.999999999999996: a threshold column
+    // reading either of those is not a threshold an operator ever set.
+    expect(
+      formatThresholdCondition({
+        ...cloneRule(alertRules[0]),
+        metric: 'broker.disk.usage_ratio',
+        threshold: 0.55,
+        thresholdUnit: null,
+      }),
+    ).toBe('> 55%');
+    expect(
+      formatThresholdCondition({
+        ...cloneRule(alertRules[0]),
+        metric: 'broker.jvm.heap.usage_ratio',
+        threshold: 0.29,
+        thresholdUnit: null,
+      }),
+    ).toBe('> 29%');
+  });
+
+  it('shows a unitless ratio rule threshold as a round percentage in the table', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          ...cloneRule(alertRules[0]),
+          metric: 'broker.disk.usage_ratio',
+          threshold: 0.55,
+          thresholdUnit: null,
+        },
+      ]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('> 55%')).toBeInTheDocument();
+  });
+
+  it('saves a legacy ratio rule with the rounded percent the form showed', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          id: 99,
+          name: 'Legacy ratio rule',
+          instanceId: 'local',
+          metric: 'broker.disk.usage_ratio',
+          operator: '>',
+          threshold: 0.55,
+          thresholdUnit: null,
+          duration: '1m',
+          channels: ['dingtalk'],
+          enabled: true,
+          lastTriggered: null,
+          description: '',
+        },
+      ]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'broker.disk.usage_ratio',
+        label: 'Disk usage ratio',
+        thresholdUnit: 'ratio',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    vi.mocked(updateAlertRule).mockResolvedValue({
+      ...cloneRule(alertRules[0]),
+      id: 99,
+      name: 'Legacy ratio rule',
+    });
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await screen.findByText('Legacy ratio rule');
+    await expectRuleRowInteractive('Legacy ratio rule');
+    await user.click(within(getRuleRow('Legacy ratio rule')).getByRole('button', { name: '编辑' }));
+    // The form converts the stored ratio to a percent once the instance's metrics have loaded; the
+    // save must carry that same number, or the edit stores the tail the display just stopped showing.
+    await screen.findByRole('combobox', { name: '监控指标' });
+
+    // The modal's OK button carries the dialog's own action label, which the row button shares; the
+    // footer's primary button is the unambiguous handle.
+    const okButton = document.querySelector<HTMLElement>(
+      '.ant-modal-footer .ant-btn-primary',
+    );
+    if (!okButton) throw new Error('the rule form footer did not render');
+    await user.click(okButton);
+
+    await waitFor(() => expect(vi.mocked(updateAlertRule)).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(updateAlertRule).mock.calls[0][0]).toMatchObject({
+      threshold: 55,
+      thresholdUnit: '%',
+    });
   });
 
   it('bulk enables selected alert rules and clears the selection after success', async () => {

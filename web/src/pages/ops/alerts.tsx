@@ -122,6 +122,14 @@ const legacyMetricTranslationKeys: Record<string, string> = {
 export const supportsUnavailableOperator = (metric?: string): boolean =>
   metric != null && availabilityMetrics.has(metric);
 
+/**
+ * The percent form of a stored ratio. Binary floating point makes `0.55 * 100` 55.00000000000001 —
+ * and a threshold column reading `> 55.00000000000001%` is not a threshold anyone set. Six decimals
+ * is three orders of magnitude below the noise floor of a double, so any value an operator can type
+ * survives the conversion unchanged.
+ */
+const ratioToPercent = (ratio: number): number => Number((ratio * 100).toFixed(6));
+
 export const formatThresholdCondition = (
   rule: AlertRule,
   unavailableLabel = 'Unavailable',
@@ -130,7 +138,7 @@ export const formatThresholdCondition = (
     return unavailableLabel;
   }
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
-    return `${rule.operator} ${rule.threshold * 100}%`;
+    return `${rule.operator} ${ratioToPercent(rule.threshold)}%`;
   }
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
@@ -482,7 +490,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         nativeRatioMetrics.has(form.getFieldValue('metric')) &&
         !form.getFieldValue('thresholdUnit')
       ) {
-        form.setFieldValue('threshold', Number(form.getFieldValue('threshold')) * 100);
+        // The form edits percentages; keep the conversion rounded so a save cannot store the tail.
+        form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
       }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
     } catch {
