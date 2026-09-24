@@ -70,8 +70,15 @@ export const GeneralSettingsTab = () => {
   const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
+  const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();
+
+  // The load effect below fills both forms from the server snapshot and must therefore run only
+  // once per mount, while the translation function changes identity with the display language.
+  useEffect(() => {
+    translationRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +95,7 @@ export const GeneralSettingsTab = () => {
         });
       })
       .catch(() => {
-        if (!cancelled) message.error(t('settings.loadFailed'));
+        if (!cancelled) message.error(translationRef.current('settings.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -97,7 +104,7 @@ export const GeneralSettingsTab = () => {
     return () => {
       cancelled = true;
     };
-  }, [message, notifyForm, securityForm, t]);
+  }, [message, notifyForm, securityForm]);
 
   // Other tabs (AI assistant settings) write the same settings record while this tab stays
   // mounted, so every save must be built from a fresh read instead of the mount-time snapshot.
