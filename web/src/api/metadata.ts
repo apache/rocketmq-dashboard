@@ -114,10 +114,12 @@ export interface ConsumerGroup {
 
 export interface ConsumerInstance {
   clientId: string;
-  protocol: string;
+  /** Not sent today: the broker connection carries no protocol. */
+  protocol?: string;
   address: string;
   subscribedTopics: string[];
-  lastHeartbeat: string;
+  /** Not sent today: the broker connection carries no heartbeat timestamp. */
+  lastHeartbeat?: string;
   topicLag: Record<string, number>;
 }
 
