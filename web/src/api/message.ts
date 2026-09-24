@@ -209,8 +209,18 @@ export async function getMessageTraceByKey(
   if (instanceId !== undefined) params.instanceId = instanceId;
   if (topic !== undefined) params.topic = topic;
   if (traceTopic !== undefined && traceTopic.trim()) params.traceTopic = traceTopic.trim();
-  const res = await client.get<{ data: TraceRecord }>('/messages/trace-by-key', { params });
-  return res.data.data;
+  const res = await client.get<{ data: TraceRecord | null }>('/messages/trace-by-key', { params });
+  const trace = res.data.data;
+  if (!trace) {
+    return null;
+  }
+  return {
+    ...trace,
+    nodes: (trace.nodes ?? []).map((node) => ({
+      ...node,
+      status: mapTraceNodeStatus(node.status),
+    })),
+  };
 }
 
 // ─── DLQ ────────────────────────────────────────────────────────
