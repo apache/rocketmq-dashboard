@@ -393,7 +393,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         if (!cancelled) setLoading(false);
       });
     void listAlertRuleRuntime(domain)
-      .then(setRuntime)
+      .then((runtime) => {
+        if (!cancelled) setRuntime(runtime);
+      })
       .catch(() => undefined);
 
     return () => {
