@@ -19,6 +19,7 @@ export interface MessageRecord {
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  /** Body size in bytes; -1 when the vendor API does not report one (unknown, not zero). */
   size: number;
 }
 

@@ -117,6 +117,8 @@ const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startO
 /* ─── Helpers ─── */
 
 const formatSize = (bytes: number): string => {
+  // -1 is the server's unknown sentinel (the vendor API reports no size); it is not a measurement.
+  if (bytes < 0) return '-';
   if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
   return `${bytes} B`;

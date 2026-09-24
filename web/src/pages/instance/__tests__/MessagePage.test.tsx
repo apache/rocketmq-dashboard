@@ -603,4 +603,27 @@ describe('Message page query history', () => {
     expect(locationItems[1]).toHaveTextContent('-');
     expect(locationItems[2]).toHaveTextContent('-');
   });
+
+  it('renders an unknown message size as unavailable instead of 0 B', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-UNKNOWN-SIZE'), size: -1 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-UNKNOWN-SIZE/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    // -1 is the server's unknown sentinel; it must not render as a fabricated "0 B".
+    const sizeItems = within(dialog)
+      .getAllByText('大小')
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(sizeItems).toHaveLength(1);
+    const content = sizeItems[0]?.querySelector('.ant-descriptions-item-content');
+    expect(content?.textContent?.trim()).toBe('-');
+  });
 });

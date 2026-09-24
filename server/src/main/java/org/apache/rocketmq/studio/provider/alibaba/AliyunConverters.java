@@ -244,7 +244,8 @@ final class AliyunConverters {
                 .storeHost(data.getStoreHost())
                 .storeTime(parseTimeMillis(data.getStoreTime()))
                 .properties(data.getUserProperties())
-                .size(data.getBodySize() == null ? 0 : data.getBodySize());
+                // BodySize is optional in the ListMessages response; report the unknown sentinel instead of a fabricated zero.
+                .size(data.getBodySize() == null ? MessageRecordVO.UNKNOWN_SIZE : data.getBodySize());
         if (body != null) {
             builder.body(body.value()).bodyEncoding(body.encoding());
         }
