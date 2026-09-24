@@ -62,6 +62,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
+  listAclUsers,
   pageAclUsers,
   updateAclRule,
   updateAclUser,
@@ -132,6 +133,10 @@ const AclPageContent = ({
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
   const [users, setUsers] = useState<NormalizedAclUser[]>([]);
+  // The Users tab is server-paginated, but the rule tab needs the whole user directory:
+  // the admin badge and the principal dropdown must not be limited to the currently
+  // loaded users page (or narrowed by the user-tab keyword filter).
+  const [userDirectory, setUserDirectory] = useState<NormalizedAclUser[]>([]);
   const [rulesLoading, setRulesLoading] = useState(hasSelectedInstance);
   const [usersLoading, setUsersLoading] = useState(hasSelectedInstance);
   const [userPage, setUserPage] = useState(1);
@@ -235,6 +240,14 @@ const AclPageContent = ({
         if (mounted) setUsersLoading(false);
       });
 
+    void listAclUsers({ instanceId: selectedInstanceId })
+      .then((allUsers) => {
+        if (mounted) setUserDirectory(allUsers.map(normalizeUser));
+      })
+      .catch(() => {
+        if (mounted) setUserDirectory([]);
+      });
+
     return () => {
       mounted = false;
     };
@@ -257,7 +270,7 @@ const AclPageContent = ({
 
   /* ─── Rule helpers ─── */
   const isAdmin = (principal: string) =>
-    users.find((u) => u.username === principal)?.admin ?? false;
+    userDirectory.find((u) => u.username === principal)?.admin ?? false;
 
   const actionTagColor: Record<string, string> = {
     PUB: 'blue',
@@ -1466,7 +1479,7 @@ const AclPageContent = ({
               disabled={tencentRoleMode && !!editingRule}
               showSearch
               optionFilterProp="label"
-              options={users.map((u) => ({
+              options={userDirectory.map((u) => ({
                 value: u.username,
                 label: u.username,
               }))}
