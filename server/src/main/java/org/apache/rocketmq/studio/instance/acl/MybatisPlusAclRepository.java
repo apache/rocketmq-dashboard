@@ -215,6 +215,8 @@ public class MybatisPlusAclRepository implements AclRepository {
     public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
         validatePermissionEntries(config.getTopicPerms(), "topicPerms");
         validatePermissionEntries(config.getGroupPerms(), "groupPerms");
+        config.setDefaultTopicPerm(normalizeDefaultPermission(config.getDefaultTopicPerm(), "defaultTopicPerm"));
+        config.setDefaultGroupPerm(normalizeDefaultPermission(config.getDefaultGroupPerm(), "defaultGroupPerm"));
         List<RmqAclUser> existingAccounts = userMapper.selectList(
                 new QueryWrapper<RmqAclUser>().eq("access_key", config.getAccessKey()));
         if (existingAccounts.size() > 1) {
@@ -425,6 +427,22 @@ public class MybatisPlusAclRepository implements AclRepository {
                         field + "[" + index + "] must use non-blank resource=permission format");
             }
         }
+    }
+
+    /**
+     * The default permissions apply to every topic/group of the account, so a blank value would
+     * persist a {@code DEFAULT_TOPIC}/{@code DEFAULT_GROUP} rule with an empty action list. Reject
+     * it like the per-resource entries; an absent default (null) is how a caller expresses "no
+     * default permission". Surrounding whitespace is trimmed, as it is for those entries.
+     */
+    private static String normalizeDefaultPermission(String value, String field) {
+        if (value == null) {
+            return null;
+        }
+        if (value.isBlank()) {
+            throw new BusinessException(400, field + " must be a non-blank permission");
+        }
+        return value.trim();
     }
 
     // ── Mapping ────────────────────────────────────────────────────

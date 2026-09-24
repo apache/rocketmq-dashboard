@@ -79,6 +79,59 @@ class MybatisPlusAclRepositoryTest {
 
         verifyNoInteractions(userMapper, ruleMapper);
     }
+    @Test
+    void upsertShouldRejectBlankDefaultTopicPermissionBeforeMutatingAccount() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .defaultTopicPerm("   ")
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("defaultTopicPerm must be a non-blank permission")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(userMapper, ruleMapper);
+    }
+
+    @Test
+    void upsertShouldRejectBlankDefaultGroupPermissionBeforeMutatingAccount() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .defaultGroupPerm("")
+                .build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("defaultGroupPerm must be a non-blank permission")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(userMapper, ruleMapper);
+    }
+
+    @Test
+    void upsertShouldTrimDefaultPermissionsBeforePersisting() {
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+        when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+        when(ruleMapper.insert(any(RmqAclRule.class))).thenReturn(1);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .secretKey("secret-x")
+                .defaultTopicPerm("  DENY  ")
+                .defaultGroupPerm(" PUB ")
+                .build();
+
+        repository.createAndUpdatePlainAccessConfig(config);
+
+        ArgumentCaptor<RmqAclRule> captor = ArgumentCaptor.forClass(RmqAclRule.class);
+        verify(ruleMapper, times(2)).insert(captor.capture());
+        assertThat(captor.getAllValues()).extracting(RmqAclRule::getActions)
+                .containsExactly("DENY", "PUB");
+    }
 
     @Test
     void findRulePageShouldApplyFiltersAndPreserveFilteredTotal() {
