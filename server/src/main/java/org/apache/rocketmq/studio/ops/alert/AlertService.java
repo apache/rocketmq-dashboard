@@ -47,6 +47,7 @@ import java.time.ZoneOffset;
 @RequiredArgsConstructor
 public class AlertService {
 
+    private static final int RELATED_CANDIDATE_PAGE_SIZE = 100;
     private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
     // Native Studio metric names that have a rocketmq-exporter equivalent, mapped to the semantic
@@ -557,12 +558,26 @@ public class AlertService {
         }
         LocalDateTime from = source.getTime().minusMinutes(30);
         LocalDateTime to = source.getTime().plusMinutes(30);
-        List<SystemAlertVO> windowMatches = alertRepository.findAlertsPage(new SystemAlertQuery(null, relatedDomain, source.getInstanceId(),
-                        "FIRING", null, null, from, to, 1, 100))
-                .getItems().stream()
-                .filter(candidate -> !Objects.equals(candidate.getId(), source.getId()))
-                .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
-                .toList();
+        List<SystemAlertVO> windowMatches = new ArrayList<>();
+        int page = 1;
+        while (true) {
+            PageResult<SystemAlertVO> result = alertRepository.findAlertsPage(new SystemAlertQuery(null, relatedDomain,
+                    source.getInstanceId(), null, null, null, from, to, page, RELATED_CANDIDATE_PAGE_SIZE));
+            List<SystemAlertVO> candidates = result.getItems();
+            candidates.stream()
+                    .filter(candidate -> !Objects.equals(candidate.getId(), source.getId()))
+                    .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
+                    // An incident whose latest in-window event is a REMINDER is still FIRING —
+                    // REMINDER is emitted only while the state stays FIRING — so the window
+                    // candidates are filtered in memory instead of by the transition column.
+                    .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition())
+                            || "REMINDER".equalsIgnoreCase(candidate.getTransition()))
+                    .forEach(windowMatches::add);
+            if (candidates.isEmpty() || (long) page * RELATED_CANDIDATE_PAGE_SIZE >= result.getTotal()) {
+                break;
+            }
+            page++;
+        }
         LinkedHashMap<Long, SystemAlertVO> related = new LinkedHashMap<>();
         explicitCauses.forEach(candidate -> related.put(candidate.getId(), candidate));
         windowMatches.forEach(candidate -> related.putIfAbsent(candidate.getId(), candidate));
