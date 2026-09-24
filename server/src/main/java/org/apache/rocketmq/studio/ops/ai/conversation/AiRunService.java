@@ -204,8 +204,20 @@ public class AiRunService {
         // Prepared at admission, not on the worker: an unusable workspace configuration is an operator
         // error the caller should hear about now, and a degraded conversation must say so in its first
         // persisted event rather than in a log line nobody reads.
-        RmqctlWorkspace.Preparation preparation =
-                workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+        RmqctlWorkspace.Preparation preparation;
+        try {
+            preparation = workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+        } catch (RuntimeException exception) {
+            // The row is already inserted and would otherwise stay QUEUED with no owner: every later
+            // message would be refused 409 until the orphan sweep reaps it. Finalize it here — through
+            // the exactly-once terminal path, like the stop of an owner-less run — and rethrow so the
+            // caller still hears the reason.
+            log.error("could not prepare the agent workspace for run {}; failing the run", run.getId(),
+                    exception);
+            runExecutor.terminate(detachedContext(run), RunStatus.FAILED, StopReason.PROVIDER_ERROR,
+                    AiRunExecutor.ERROR_CODE_INTERNAL, exception.toString());
+            throw exception;
+        }
 
         long timeoutMillis = runExecutor.streamTimeoutMillis(engine);
         AgentRunHandle handle = runExecutor.newHandle(run.getId());
