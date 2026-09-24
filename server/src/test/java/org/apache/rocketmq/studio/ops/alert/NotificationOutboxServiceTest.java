@@ -531,6 +531,60 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void retriesFailedDeliveriesMatchingTheFiltersInIdOrderTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox first = new RmqAlertNotificationOutbox();
+        first.setId(8L);
+        first.setAlertId(9L);
+        first.setChannel("email");
+        first.setStatus(NotificationOutboxStatus.FAILED.name());
+        RmqAlertNotificationOutbox second = new RmqAlertNotificationOutbox();
+        second.setId(11L);
+        second.setAlertId(9L);
+        second.setChannel("email");
+        second.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.findFailedIdsFiltered(eq("email"), eq("instance-a"), eq(100)))
+                .thenReturn(List.of(8L, 11L));
+        when(mapper.selectById(8L)).thenReturn(first);
+        when(mapper.selectById(11L)).thenReturn(second);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFailedMatching("EMAIL", " instance-a ", null);
+
+        assertThat(result.getSucceededIds()).containsExactly(8L, 11L);
+        assertThat(result.getFailures()).isEmpty();
+    }
+
+    @Test
+    void rejectsFilteredRetryWhenTheLimitIsOutOfBoundsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFailedMatching(null, null, 0))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("limit must be between 1 and 100");
+        verify(mapper, never()).findFailedIdsFiltered(any(), any(), any(Integer.class));
+    }
+
+    @Test
+    void shortCircuitsFilteredRetryWhenNothingMatchesTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        when(mapper.findFailedIdsFiltered(org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(), eq(100))).thenReturn(List.of());
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFailedMatching(null, null, null);
+
+        assertThat(result.getSucceededIds()).isEmpty();
+        assertThat(result.getFailures()).isEmpty();
+        verify(mapper, never()).update(any(), any());
+    }
+
+    @Test
     void renewsClaimWhileEmailDeliveryIsStillInFlightTest() throws Exception {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);

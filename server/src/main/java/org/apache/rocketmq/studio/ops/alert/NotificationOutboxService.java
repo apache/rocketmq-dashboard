@@ -262,6 +262,24 @@ public class NotificationOutboxService {
         return new NotificationDeliveryBulkRetryResult(succeeded, failures);
     }
 
+    /**
+     * Retries up to {@code limit} FAILED deliveries that match the optional channel/instance
+     * filters, in deterministic delivery-id order. After a webhook outage the matching failures
+     * usually span many pages, so paging through the UI one screen at a time is the wrong tool.
+     */
+    public NotificationDeliveryBulkRetryResult retryFailedMatching(String channel, String instanceId, Integer limit) {
+        int safeLimit = limit == null ? 100 : limit;
+        if (safeLimit < 1 || safeLimit > 100) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "limit must be between 1 and 100");
+        }
+        List<Long> ids = mapper.findFailedIdsFiltered(normalizeFilter(channel), normalizeTrim(instanceId), safeLimit);
+        if (ids.isEmpty()) {
+            return new NotificationDeliveryBulkRetryResult(List.of(), new java.util.LinkedHashMap<>());
+        }
+        return retryFailedDeliveries(ids);
+    }
+
     private static String normalizeFilter(String value) {
         String normalized = normalizeTrim(value);
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
