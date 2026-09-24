@@ -578,6 +578,45 @@ describe('Message page query history', () => {
     ).toBeInTheDocument();
   });
 
+  it('loads the trace payload when the Verify tab is opened directly from Content', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-VERIFY')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-VERIFY');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-VERIFY')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+
+    // Switch straight to Verify without visiting Trace: the consumer-status table must load.
+    await user.click(screen.getByRole('tab', { name: '验证' }));
+    expect(await screen.findByText('cg-billing')).toBeInTheDocument();
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
