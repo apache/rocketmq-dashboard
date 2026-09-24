@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { Instance } from '../../api/instance';
@@ -214,6 +214,39 @@ describe('TopicConfigComparisonDrawer', () => {
 
     await waitFor(() => expect(topicServiceMocks.listAllTopics).toHaveBeenCalledTimes(2));
     expect(screen.queryByText('配置一致')).not.toBeInTheDocument();
+  });
+
+  it('discards a comparison that resolves after the instance pair changed', async () => {
+    const archiveInstance: Instance = { ...instances[1], id: 3, name: 'archive' };
+    const pending = new Map<string, (value: Topic[]) => void>();
+    topicServiceMocks.listAllTopics.mockImplementation(
+      ({ instanceId }: { instanceId: string }) =>
+        new Promise<Topic[]>((resolve) => {
+          pending.set(instanceId, resolve);
+        }),
+    );
+    const user = userEvent.setup();
+    renderDrawer({ instances: [...instances, archiveInstance] });
+    // Hold the node: while it is loading, the spinner contributes to its accessible name.
+    const compareButton = screen.getByRole('button', { name: '开始对比' });
+
+    await user.click(compareButton);
+    await waitFor(() => expect(pending.size).toBe(2));
+    expect(compareButton).toHaveClass('ant-btn-loading');
+
+    // Change the source instance while the production/staging comparison is still in flight.
+    await user.click(screen.getByRole('combobox', { name: '源实例' }));
+    await user.click(await screen.findByTitle('archive'));
+
+    await act(async () => {
+      pending.get('production')?.(productionTopics);
+      pending.get('staging')?.(stagingTopics);
+    });
+
+    expect(screen.queryByText('配置一致')).not.toBeInTheDocument();
+    expect(screen.queryByText('source-only-topic')).not.toBeInTheDocument();
+    // Changing the pair must also end the in-flight indicator, so the control cannot stay spinning.
+    await waitFor(() => expect(compareButton).not.toHaveClass('ant-btn-loading'));
   });
 
   it('calls onClose from the drawer close control', async () => {
