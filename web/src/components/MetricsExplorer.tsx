@@ -549,6 +549,26 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   useEffect(() => {
     rangeIdRef.current = rangeId;
   }, [rangeId]);
+  // `copy` and `queryErrorFallback` are display text that is rebuilt whenever the
+  // language changes, so the query callbacks below read the labels they need through a
+  // ref instead of capturing them. Depending on the language made a switch look like a
+  // change of query context: the profiles effect re-ran, refetched the profile list and
+  // every panel, and discarded in-flight custom queries whose replacement is only
+  // started by the instance-transition path, leaving the custom panel on its spinner
+  // for good. Mirroring the labels (strings, so the effect stays quiet between language
+  // switches) keeps both callbacks language-independent.
+  const queryLabelsRef = useRef({
+    defaultDataSource: copy.defaultDataSource,
+    customTitle: copy.customTitle,
+    queryErrorFallback,
+  });
+  useEffect(() => {
+    queryLabelsRef.current = {
+      defaultDataSource: copy.defaultDataSource,
+      customTitle: copy.customTitle,
+      queryErrorFallback,
+    };
+  }, [copy.defaultDataSource, copy.customTitle, queryErrorFallback]);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -606,13 +626,13 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         dataSourceKey: currentDataSourceKey,
         dataSourceName:
           dataSourceNamesRef.current.get(currentDataSourceKey) ??
-          (currentDataSourceKey || copy.defaultDataSource),
+          (currentDataSourceKey || queryLabelsRef.current.defaultDataSource),
         start: query.start,
         end: query.end,
         queriedAt,
       };
     },
-    [copy.defaultDataSource, instanceId],
+    [instanceId],
   );
 
   const loadAll = useCallback(
@@ -672,7 +692,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 ...previous,
                 [metric.semanticMetric]: {
                   loading: false,
-                  error: getQueryErrorMessage(error, queryErrorFallback),
+                  error: getQueryErrorMessage(error, queryLabelsRef.current.queryErrorFallback),
                 },
               }));
             }
@@ -680,7 +700,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }),
       );
     },
-    [instanceId, queryErrorFallback, runQuery],
+    [instanceId, runQuery],
   );
 
   useEffect(() => {
@@ -735,7 +755,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === customRequestIdRef.current) {
           const metric: MetricMapping = {
             semanticMetric: CUSTOM_HISTORY_METRIC_ID,
-            name: copy.customTitle,
+            name: queryLabelsRef.current.customTitle,
             unit: '',
             prometheusMetric: '',
             promql: trimmed,
@@ -744,7 +764,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           const summary = summarizeMetricData(execution.data);
           const query: PanelQueryMeta = {
             profileId: CUSTOM_HISTORY_PROFILE_ID,
-            profileName: copy.customTitle,
+            profileName: queryLabelsRef.current.customTitle,
             metric,
             range,
             dataSourceKey: execution.dataSourceKey,
@@ -756,7 +776,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           };
           const historyEntry = createMetricsQueryHistoryEntry({
             profileId: CUSTOM_HISTORY_PROFILE_ID,
-            profileName: copy.customTitle,
+            profileName: queryLabelsRef.current.customTitle,
             metric,
             rangeId: range.value,
             rangeLabel: range.label,
@@ -780,12 +800,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === customRequestIdRef.current) {
           setCustomPanel({
             loading: false,
-            error: getQueryErrorMessage(error, queryErrorFallback),
+            error: getQueryErrorMessage(error, queryLabelsRef.current.queryErrorFallback),
           });
         }
       }
     },
-    [copy.customTitle, instanceId, queryErrorFallback, runQuery],
+    [instanceId, runQuery],
   );
 
   const handleRangeChange = (nextRangeId: RangeOption['value']) => {
