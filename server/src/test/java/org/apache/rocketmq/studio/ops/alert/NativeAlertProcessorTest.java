@@ -453,6 +453,48 @@ class NativeAlertProcessorTest {
     }
 
     @Test
+    void reconcilesRemainingRulesWhenAnotherRuleHasNoMetricTest() {
+        AlertService service = mock(AlertService.class);
+        // A stored rule without a metric (legacy rows, and rules created through the API or the
+        // JSON import, where `metric` carries no validation) is not part of any collection scope,
+        // so it must be filtered out instead of aborting the reconcile pass for the whole scope.
+        AlertRuleVO metricLess = AlertRuleVO.builder().id(9L).domain(AlertDomain.BUSINESS).name("No metric")
+                .operator(">").threshold(10D).enabled(true).instanceId("local").consecutiveSamples(1).build();
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(metricLess, rule));
+        MetricSample oldSample = sample("orders");
+        AlertStateKey oldKey = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), oldSample.instanceId(), oldSample.labels()));
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                oldSample.collectedAt().minusSeconds(60), oldSample.collectedAt().minusSeconds(60),
+                oldSample.collectedAt().minusSeconds(60), null);
+        ActiveAlertState active = new ActiveAlertState(oldKey, firing, oldSample.instanceId(), oldSample.labels());
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule)))).thenReturn(List.of(active));
+        when(states.save(eq(oldKey), any(AlertRuleState.class))).thenReturn(true);
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                new NativeAlertEvaluationService(new AlertRuleEvaluator(), new AlertStateMachine(), states,
+                        mock(MetricSnapshotRepository.class), alerts, outbox, suppression()),
+                new AlertStateMachine(), states, alerts, outbox, suppression(), mockTxManager());
+        assertThatCode(() -> processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.BUSINESS,
+                "local", java.util.Set.of("consumer.lag.total")), List.of())).doesNotThrowAnyException();
+
+        org.mockito.ArgumentCaptor<AlertRuleState> state = org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+        org.mockito.ArgumentCaptor<SystemAlertVO> event = org.mockito.ArgumentCaptor.forClass(SystemAlertVO.class);
+        verify(states).save(eq(oldKey), state.capture());
+        assertThat(state.getValue().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        // the recovery half of the same claim: without the fix the pass aborts before reaching any
+        // of this, so no RESOLVED event is recorded and no recovery notification is queued
+        verify(alerts).saveAlert(event.capture());
+        assertThat(event.getValue().getTransition()).isEqualTo(AlertStateTransition.RESOLVED.name());
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule), eq(oldSample.labels()));
+    }
+
+    @Test
     void resolvesActiveStateForBlankInstanceIdRuleMissingFromCollectionScopeTest() {
         AlertService service = mock(AlertService.class);
         // A blank instance_id is stored verbatim and means "every instance"; the repository side
