@@ -408,6 +408,70 @@ describe('ConversationListModal', () => {
     );
   });
 
+  it('dropsTheSelectionWhenThePageChangesTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock.mockImplementation(async (params) =>
+      params?.page === 2
+        ? page([conversation(21, '会话二十一')], 45, 2)
+        : page([conversation(1, '会话一')], 45, 1),
+    );
+    renderModal();
+    await screen.findByText('会话一');
+
+    // Index 0 is the header's select-all; the rows follow in order.
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByTestId('ai-conversation-selected-delete')).toHaveTextContent('删除 (1)');
+
+    fireEvent.click(screen.getByTitle('2'));
+    await screen.findByText('会话二十一');
+
+    // The ticked row is on page 1 and antd renders the checkbox column for the rows it is given, so
+    // a selection that survived the page change is a row the operator cannot see — and the batch
+    // delete would destroy it.
+    expect(screen.queryByTestId('ai-conversation-selected-delete')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[1]).not.toBeChecked();
+  });
+
+  it('dropsTheSelectionWhenTheSearchChangesTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock.mockImplementation(async (params) =>
+      params?.search === '会话二十一'
+        ? page([conversation(21, '会话二十一')], 1, 1)
+        : page([conversation(1, '会话一')], 1, 1),
+    );
+    renderModal();
+    await screen.findByText('会话一');
+
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByTestId('ai-conversation-selected-delete')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('搜索会话标题'), '会话二十一{enter}');
+    await screen.findByText('会话二十一');
+
+    expect(screen.queryByTestId('ai-conversation-selected-delete')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[1]).not.toBeChecked();
+  });
+
+  it('dropsTheSelectionWhenTheScopeChangesTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock.mockImplementation(async (params) =>
+      params?.archived
+        ? page([conversation(21, '已归档的会话')], 1, 1)
+        : page([conversation(1, '会话一')], 1, 1),
+    );
+    renderModal();
+    await screen.findByText('会话一');
+
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByTestId('ai-conversation-selected-delete')).toBeInTheDocument();
+
+    await user.click(screen.getByText('已归档'));
+    await screen.findByText('已归档的会话');
+
+    expect(screen.queryByTestId('ai-conversation-selected-delete')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')[1]).not.toBeChecked();
+  });
+
   it('deletesEveryConversationOnThePageTest', async () => {
     const user = userEvent.setup();
     listMock

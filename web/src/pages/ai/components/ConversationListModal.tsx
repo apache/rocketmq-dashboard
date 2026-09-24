@@ -177,6 +177,15 @@ const ConversationListPanel = ({
   const rowCount = items.length;
 
   /**
+   * Drops every ticked row. The selection belongs to the page and the scope it was made on — antd
+   * renders the checkbox column for the rows it is given — so a key that survived a page, search or
+   * scope change is a row the operator cannot see any more, and the batch delete would act on it.
+   * Same defect and same fix as the topic and consumer group lists (see "clear hidden resource
+   * selections").
+   */
+  const clearSelection = useCallback(() => setSelectedRowKeys([]), []);
+
+  /**
    * Flips the row's archived flag (PATCH) and reloads the scope: an archived conversation leaves
    * the active list and the other way round, so the row disappearing IS the feedback — the toast
    * only names what happened. Archiving the conversation currently on screen is allowed: the
@@ -408,12 +417,18 @@ const ConversationListPanel = ({
             placeholder={t('ai.list.search')}
             // `setSearch` jumps back to page 1 inside the hook: page 7 of a different search does not
             // exist, and asking for it would render an empty table with a stale pagination bar.
-            onSearch={(value) => list.setSearch(value.trim())}
+            onSearch={(value) => {
+              clearSelection();
+              list.setSearch(value.trim());
+            }}
             style={{ flex: '1 1 240px' }}
           />
           <Segmented
             value={list.archived ? 'archived' : 'active'}
-            onChange={(value) => list.setArchived(value === 'archived')}
+            onChange={(value) => {
+              clearSelection();
+              list.setArchived(value === 'archived');
+            }}
             options={[
               { value: 'active', label: t('ai.list.scopeActive') },
               { value: 'archived', label: t('ai.list.scopeArchived') },
@@ -488,7 +503,10 @@ const ConversationListPanel = ({
           pageSize: list.pageSize,
           total: list.total,
           showSizeChanger: false,
-          onChange: list.setPage,
+          onChange: (nextPage) => {
+            clearSelection();
+            list.setPage(nextPage);
+          },
         }}
       />
     </Flex>
