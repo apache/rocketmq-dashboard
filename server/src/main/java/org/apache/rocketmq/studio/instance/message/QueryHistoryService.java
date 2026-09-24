@@ -151,8 +151,11 @@ public class QueryHistoryService {
             return objectMapper.readValue(snapshot,
                     objectMapper.getTypeFactory().constructCollectionType(List.class, MessageRecordVO.class));
         } catch (JsonProcessingException e) {
+            // A snapshot that cannot be parsed is a persistence-level failure: the stored result
+            // rows are lost. Reporting an empty list would present that loss as a query that
+            // legitimately matched nothing.
             log.warn("Failed to deserialize result snapshot for id={}: {}", id, e.getMessage());
-            return List.of();
+            throw new BusinessException(502, "Stored query result snapshot is unreadable");
         }
     }
 
