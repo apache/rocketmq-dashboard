@@ -181,5 +181,14 @@ func stringify(value any) string {
 	if f, ok := value.(float64); ok {
 		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
+	// Nested objects and arrays decoded from the tool output are JSON to begin with;
+	// render them as JSON instead of Go's default map/slice syntax ("map[k:v]"),
+	// which is noisy and not what the server sent.
+	switch value.(type) {
+	case map[string]any, []any:
+		if encoded, err := json.Marshal(value); err == nil {
+			return string(encoded)
+		}
+	}
 	return fmt.Sprint(value)
 }
