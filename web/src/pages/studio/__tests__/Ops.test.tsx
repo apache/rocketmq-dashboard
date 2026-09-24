@@ -121,6 +121,24 @@ describe('OpsPage', () => {
     await waitFor(() => expect(vipSwitch).toBeEnabled());
   });
 
+  it('offers a retry instead of claiming the cluster does not support Ops config', async () => {
+    vi.mocked(queryOpsHomePage).mockRejectedValueOnce(new Error('network down'));
+
+    renderWithProviders(<OpsPage />);
+
+    // A failed load is not the same fact as "this cluster has no Ops configuration", and the page
+    // only knows the first. Claiming the second hides every write control behind a reason that is
+    // false, with nothing the user can do about it.
+    const retry = await screen.findByRole('button', { name: /重\s*试|Retry/ });
+    expect(screen.queryByText(/当前集群不支持读取或更新 Ops 配置/)).not.toBeInTheDocument();
+
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(queryOpsHomePage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试|Retry/ })).not.toBeInTheDocument();
+  });
+
   it('hides write controls for read-only users', async () => {
     useAuthStore.setState({ user: 'reader', userId: 101, admin: false });
 

@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceCapabilitiesOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryOutput;
@@ -239,7 +240,15 @@ class ToolOutputSchemaContractTest {
         GroupListItem groupItem = new GroupListItem(
                 "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 16, 2, 100L, List.of("orders"));
-        samples.put("rmq.group.list", List.of(new ListOutput<>(List.of(groupItem))));
+        // onlineInstances carries a -1 sentinel when the connection inventory is unavailable.
+        // ToolValidationFilter validates every tool result, so a schema that rejects -1 would
+        // fail the whole call at runtime instead of reporting the unknown state.
+        GroupListItem unknownConnectionsItem = new GroupListItem(
+                "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                16, -1, 100L, List.of("orders"));
+        samples.put("rmq.group.list", List.of(
+                new ListOutput<>(List.of(groupItem)),
+                new ListOutput<>(List.of(unknownConnectionsItem))));
         samples.put("rmq.group.detail", List.of(new GroupDetailOutput(
                 INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 2, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
@@ -256,7 +265,18 @@ class ToolOutputSchemaContractTest {
                         new GroupDetailOutput.Client(
                                 "client-1", "gRPC", "127.0.0.1:50000", "JAVA", "5.0.7",
                                 true, List.of("orders"), "2026-08-22T09:30:00",
-                                Map.of("orders", 10L)))))));
+                                Map.of("orders", 10L))))),
+                new GroupDetailOutput(
+                        INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                        -1, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
+                        List.of(new GroupDetailOutput.Subscription(
+                                "orders", "*", "TAG", "STANDARD", "CONSISTENT")),
+                        List.of(),
+                        new GroupDetailOutput.Health(
+                                "UNKNOWN", List.of("Consumer connection information is unavailable.")),
+                        List.of(unknownConnectionsItem),
+                        null,
+                        null)));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));
         samples.put("rmq.group.reset_offset", List.of(
@@ -266,8 +286,18 @@ class ToolOutputSchemaContractTest {
         MessageItem message = new MessageItem(
                 "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
                 "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
-        samples.put("rmq.message.query", List.of(new ListOutput<>(List.of(message))));
-        samples.put("rmq.message.query_by_topic", List.of(new ListOutput<>(List.of(message))));
+        MessageQueryOutput.Item withoutBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", null, null, null, 5);
+        MessageQueryOutput.Item withBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
+        samples.put("rmq.message.query", List.of(
+                new MessageQueryOutput(List.of(withoutBody), false, 0),
+                new MessageQueryOutput(List.of(withBody), false, 0)));
+        samples.put("rmq.message.query_by_topic", List.of(
+                new MessageQueryOutput(List.of(withoutBody), true, 199),
+                new MessageQueryOutput(List.of(withBody), true, 199)));
         samples.put("rmq.message.query_by_offset", List.of(new ListOutput<>(List.of(message))));
         samples.put("rmq.message.query_dlq", List.of(
                 MessageQueryDlqOutput.ofGroups(INSTANCE, 1, 20, 1L, List.of(

@@ -74,6 +74,8 @@ const NotificationDeliveriesPage = () => {
   const [channel, setChannel] = useState<string>();
   const [status, setStatus] = useState<NotificationDeliveryRecord['status']>();
   const [instanceId, setInstanceId] = useState<string>();
+  const [instanceLoadFailed, setInstanceLoadFailed] = useState(false);
+  const [instanceReloadNonce, setInstanceReloadNonce] = useState(0);
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [retryingVisible, setRetryingVisible] = useState(false);
@@ -177,10 +179,22 @@ const NotificationDeliveriesPage = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
     void listInstances()
-      .then(setInstances)
-      .catch(() => undefined);
-  }, []);
+      .then((loaded) => {
+        if (cancelled) return;
+        setInstances(loaded);
+        setInstanceLoadFailed(false);
+      })
+      .catch(() => {
+        // Swallowing this leaves an empty filter, which reads as "this deployment has no instances"
+        // — a claim a failed request cannot make, and one the user has no way to retry.
+        if (!cancelled) setInstanceLoadFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [instanceReloadNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,6 +346,7 @@ const NotificationDeliveriesPage = () => {
               optionFilterProp="label"
               placeholder={t('deliveries.allInstances')}
               value={instanceId}
+              status={instanceLoadFailed ? 'error' : undefined}
               style={{ width: 280, flex: '1 1 280px' }}
               options={instances.map((instance) => ({
                 value: instance.name,
@@ -339,6 +354,17 @@ const NotificationDeliveriesPage = () => {
               }))}
               onChange={(value) => resetPage(() => setInstanceId(value))}
             />
+            {instanceLoadFailed && (
+              <Tooltip title={t('deliveries.instancesLoadFailed')}>
+                <Button
+                  size="small"
+                  icon={<ArrowClockwise size={16} />}
+                  onClick={() => setInstanceReloadNonce((nonce) => nonce + 1)}
+                >
+                  {t('common.retry')}
+                </Button>
+              </Tooltip>
+            )}
           </Flex>
           <Table
             rowKey="id"

@@ -173,7 +173,10 @@ func stringify(value any) string {
 		return ""
 	}
 	if text, ok := value.(string); ok {
-		return text
+		// Table rows are tab-joined and newline-terminated, so a cell containing a
+		// raw tab would be read as a column delimiter and an embedded newline or CR
+		// would split or overwrite the row. Render the escapes instead.
+		return strings.NewReplacer("\t", "\\t", "\n", "\\n", "\r", "\\r").Replace(text)
 	}
 	if f, ok := value.(float64); ok {
 		return strconv.FormatFloat(f, 'f', -1, 64)

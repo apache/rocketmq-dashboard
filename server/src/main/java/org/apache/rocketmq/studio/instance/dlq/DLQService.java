@@ -160,5 +160,13 @@ public class DLQService {
         if (endTime < startTime) {
             throw new BusinessException(400, "endTime must not be earlier than startTime");
         }
+        // A zero-length window cannot describe a range. The DLQ message list and resend paths
+        // reject it in the provider ("... start time must be before end time"), but the two
+        // export paths do not check it at all: the scan they run returns at most the single
+        // message sitting on that instant, so the caller received a 200 with a meaningless
+        // export instead of the 400 the other two actions return.
+        if (endTime.equals(startTime)) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
     }
 }

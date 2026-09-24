@@ -49,8 +49,7 @@ public class ProducerController {
             @RequestParam(required = false) String producerGroup) {
         requireParameter(instanceId, "instanceId");
         requireParameter(topic, "topic");
-        return new ProducerConnectionResultVO(
-                producerConnectionService.listConnections(instanceId, topic, producerGroup));
+        return producerConnectionService.listConnections(instanceId, topic, producerGroup);
     }
 
     private void requireParameter(String value, String name) {

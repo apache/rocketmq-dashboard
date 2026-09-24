@@ -47,6 +47,7 @@ export const AlertRuleAssetList: React.FC = () => {
   const [viewing, setViewing] = useState<AlertRuleAssetInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState(false);
   const mountedRef = useRef(true);
   const listRequestId = useRef(0);
   const viewRequestId = useRef(0);
@@ -111,6 +112,7 @@ export const AlertRuleAssetList: React.FC = () => {
     const requestId = ++viewRequestId.current;
     setViewing(info);
     setViewContent('');
+    setViewError(false);
     setViewLoading(true);
     try {
       const yaml = await getAlertRuleAsset(info.name);
@@ -119,6 +121,7 @@ export const AlertRuleAssetList: React.FC = () => {
       }
     } catch {
       if (mountedRef.current && requestId === viewRequestId.current) {
+        setViewError(true);
         message.error(t('alertAssets.loadFailed'));
       }
     } finally {
@@ -132,6 +135,7 @@ export const AlertRuleAssetList: React.FC = () => {
     viewRequestId.current += 1;
     setViewing(null);
     setViewContent('');
+    setViewError(false);
     setViewLoading(false);
   };
 
@@ -266,6 +270,21 @@ export const AlertRuleAssetList: React.FC = () => {
       >
         {viewLoading ? (
           <Text type="secondary">{t('common.loading')}</Text>
+        ) : viewError ? (
+          <Alert
+            showIcon
+            type="error"
+            message={t('alertAssets.loadFailed')}
+            action={
+              <Button
+                size="small"
+                icon={<ArrowClockwise size={14} />}
+                onClick={() => viewing && void handleView(viewing)}
+              >
+                {t('common.retry')}
+              </Button>
+            }
+          />
         ) : (
           <pre
             style={{

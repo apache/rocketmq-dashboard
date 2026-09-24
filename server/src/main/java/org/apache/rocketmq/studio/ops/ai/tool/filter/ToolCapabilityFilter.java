@@ -26,6 +26,26 @@ import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
+/**
+ * Refuses a tool unless the Instance bound to the execution context supports every capability the
+ * tool declares.
+ *
+ * <p>Platform-level tools ({@code ToolCatalog.isInstanceIdExempt}) take no {@code instanceId}
+ * argument, but the gate is deliberately <em>not</em> skipped for them: their Instance is the one the
+ * transport already authenticated (the signed MCP {@code x-rmq-instance-id} header, or the target the
+ * console operator selected) and {@code ToolExecutionService} binds it into the context. An exempt
+ * tool therefore still runs only against an Instance that supports it, and an exempt tool with no
+ * binding at all fails loudly with {@code CAPABILITY_INSTANCE_REQUIRED} instead of running unscoped.
+ *
+ * <p>Exempt handlers never read {@code context.instanceId()} -- only this gate and
+ * {@link ToolAuditFilter} do -- so binding one cannot widen the data a platform-level tool returns.
+ * Tools that declare no {@code requiredCapabilities} at all (today {@code rmq.audit.list},
+ * {@code rmq.alert.rule.list}, {@code rmq.proxy.list} and {@code rmq.proxy.config}) stay ungated:
+ * their data is deployment-wide, so there is no capability to check and no Instance to bind.
+ * The Proxy pair aggregates every manageable Instance through the heartbeat-syncer group, so
+ * gating them on the bound Instance's type would refuse legitimate discovery whenever that
+ * Instance is not Proxy-attached even though Proxies exist elsewhere in the deployment.
+ */
 @Component
 @RequiredArgsConstructor
 public class ToolCapabilityFilter implements ToolExecutionFilter {

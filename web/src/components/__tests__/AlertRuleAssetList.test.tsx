@@ -168,6 +168,28 @@ describe('AlertRuleAssetList', () => {
     expect(within(dialog).queryByText(/STALE_BROKER_ALERT/)).not.toBeInTheDocument();
   });
 
+  it('renders a failed preview as an error with a retry instead of an empty pane', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    vi.mocked(alertRuleAssetService.getAlertRuleAsset)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce('groups:\n  - name: rocketmq-broker.rules\n');
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const viewButtons = await screen.findAllByRole('button', { name: /查看|View/ });
+    fireEvent.click(viewButtons[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    const retryButton = await within(dialog).findByRole('button', { name: /Retry|重试/ });
+    expect(alertRuleAssetService.getAlertRuleAsset).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(retryButton);
+
+    expect(await within(dialog).findByText(/rocketmq-broker.rules/)).toBeInTheDocument();
+    expect(alertRuleAssetService.getAlertRuleAsset).toHaveBeenCalledTimes(2);
+    expect(within(dialog).queryByRole('button', { name: /Retry|重试/ })).not.toBeInTheDocument();
+  });
+
   it('tracks simultaneous asset exports independently', async () => {
     vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
     vi.mocked(alertRuleAssetService.exportAlertRuleAsset).mockImplementation(

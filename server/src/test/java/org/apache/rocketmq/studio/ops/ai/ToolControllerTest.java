@@ -123,7 +123,7 @@ class ToolControllerTest {
         Map<String, Object> output = Map.of(
                 "instanceId", "instance-id",
                 "capabilities", List.of("REMOTING"));
-        when(toolExecutor.execute("rmq.instance.capabilities", input))
+        when(toolExecutor.executeWithTarget("rmq.instance.capabilities", input, "instance-id"))
                 .thenReturn(output);
 
         mockMvc.perform(post("/api/ai/tools/rmq.instance.capabilities/execute")
@@ -136,14 +136,14 @@ class ToolControllerTest {
                 .andExpect(jsonPath("$.data.instanceId").value("instance-id"))
                 .andExpect(jsonPath("$.data.capabilities[0]").value("REMOTING"));
 
-        verify(toolExecutor).execute("rmq.instance.capabilities", input);
+        verify(toolExecutor).executeWithTarget("rmq.instance.capabilities", input, "instance-id");
     }
 
     /** Platform tools are addressed by a physical clusterName, so the target stays out of their payload. */
     @Test
     void executeToolKeepsPlatformToolArgumentsUntouchedTest() throws Exception {
         Map<String, Object> input = Map.of("clusterName", "DefaultCluster");
-        when(toolExecutor.execute("rmq.broker.list", input))
+        when(toolExecutor.executeWithTarget("rmq.broker.list", input, ""))
                 .thenReturn(Map.of("items", Collections.emptyList()));
 
         mockMvc.perform(post("/api/ai/tools/rmq.broker.list/execute")
@@ -155,7 +155,27 @@ class ToolControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isArray());
 
-        verify(toolExecutor).execute("rmq.broker.list", input);
+        verify(toolExecutor).executeWithTarget("rmq.broker.list", input, "");
+    }
+
+    /**
+     * A platform tool's schema rejects an {@code instanceId} argument, so the Instance selected in
+     * the playground must reach the executor as the call target for the capability lookup to work.
+     */
+    @Test
+    void executeToolPassesTheSelectedInstanceAsThePlatformToolTargetTest() throws Exception {
+        Map<String, Object> input = Map.of();
+        when(toolExecutor.executeWithTarget("rmq.dashboard.summary", input, "instance-id"))
+                .thenReturn(Map.of("clusters", Collections.emptyList()));
+
+        mockMvc.perform(post("/api/ai/tools/rmq.dashboard.summary/execute")
+                        .queryParam("instanceId", "instance-id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.clusters").isArray());
+
+        verify(toolExecutor).executeWithTarget("rmq.dashboard.summary", input, "instance-id");
     }
 
     @Test

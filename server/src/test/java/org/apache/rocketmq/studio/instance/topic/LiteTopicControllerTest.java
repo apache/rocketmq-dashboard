@@ -120,8 +120,26 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void ttlRequiresExplicitInstanceTest() throws Exception {
+        mockMvc.perform(post("/api/liteTopic/extendTTL").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topicPattern\":\"chat\",\"newTTL\":60000}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(400));
+        verifyNoInteractions(liteTopicService);
+    }
+
+    @Test
+    void ttlReportsOwnershipConflictTest() throws Exception {
+        doThrow(new BusinessException(409, "Ownership conflict")).when(liteTopicService)
+                .extendTTL("instance-a", "chat", 60_000L);
+        mockMvc.perform(post("/api/liteTopic/extendTTL").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"instance-a\",\"topicPattern\":\"chat\",\"newTTL\":60000}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(409));
+    }
+
+    @Test
     void extendTTLShouldDelegateToService() throws Exception {
         LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setInstanceId("instance-a");
         request.setTopicPattern("chat/{sessionId}");
         request.setNewTTL(7_200_000L);
 
@@ -131,17 +149,18 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(liteTopicService).extendTTL(eq("chat/{sessionId}"), eq(7_200_000L));
+        verify(liteTopicService).extendTTL(eq("instance-a"), eq("chat/{sessionId}"), eq(7_200_000L));
     }
 
     @Test
     void extendTTLShouldReturnUnsupportedWhenProviderIsUnavailable() throws Exception {
         LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setInstanceId("instance-a");
         request.setTopicPattern("chat/{sessionId}");
         request.setNewTTL(7_200_000L);
         doThrow(new BusinessException(501, "LiteTopic provider integration is not available"))
                 .when(liteTopicService)
-                .extendTTL(eq("chat/{sessionId}"), eq(7_200_000L));
+                .extendTTL(eq("instance-a"), eq("chat/{sessionId}"), eq(7_200_000L));
 
         mockMvc.perform(post("/api/liteTopic/extendTTL")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -154,6 +173,7 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
     @Test
     void extendTTLShouldRejectMissingTopicPattern() throws Exception {
         LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setInstanceId("instance-a");
         request.setNewTTL(7_200_000L);
 
         mockMvc.perform(post("/api/liteTopic/extendTTL")
@@ -169,6 +189,7 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
     @Test
     void extendTTLShouldRejectNonPositiveTTL() throws Exception {
         LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setInstanceId("instance-a");
         request.setTopicPattern("chat/{sessionId}");
         request.setNewTTL(0L);
 

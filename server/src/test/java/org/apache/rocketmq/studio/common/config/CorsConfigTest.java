@@ -84,6 +84,23 @@ class CorsConfigTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void corsMappingShouldAllowPatchTest() {
+        // Browsers attach an Origin header to every non-GET request, so the CORS processor vets
+        // even same-origin PATCHes; without PATCH in allowedMethods the conversation rename and
+        // archive endpoints answer 403 "Invalid CORS request" in every real browser.
+        ExposingCorsRegistry registry = new ExposingCorsRegistry();
+        new CorsConfig(FRONTEND_ORIGIN).addCorsMappings(registry);
+
+        CorsConfiguration configuration = registry.getCorsConfigurations().get("/**");
+        assertNotNull(configuration);
+        List<String> methods = configuration.getAllowedMethods();
+        assertNotNull(methods, "CORS mapping must declare allowed methods");
+        assertTrue(methods.containsAll(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")),
+                () -> "CORS mapping must allow every method the REST surface uses, but declared: "
+                        + methods);
+    }
+
+    @Test
     void excelExportShouldExposeScanHeadersToCrossOriginClients() throws Exception {
         when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
                 .thenReturn(DLQExcelExportResultVO.builder()

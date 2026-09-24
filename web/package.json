@@ -1,14 +1,16 @@
 {
   "name": "rocketmq-studio-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "3.0.0",
   "type": "module",
   "engines": {
     "node": ">=20.19.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run license:check",
+    "license:check": "node scripts/licenses.mjs check",
+    "license:test": "node --test scripts/licenses.test.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -40,6 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@lobehub/icons-static-svg": "^1.95.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

@@ -80,21 +80,39 @@ public class ToolExecutionService {
     }
 
     public Object execute(String name, Map<String, Object> input) {
-        return executeInternal(name, input, null);
+        return executeInternal(name, input, null, null);
     }
 
-    /** Called only with authentication established by the MCP transport. */
+    /**
+     * Called only with authentication established by the MCP transport. The signed
+     * {@code x-rmq-instance-id} header is the caller's Instance binding, which is what platform-level
+     * tools are resolved against; see {@link #resolveTargetInstance}.
+     */
     public Object execute(String name, Map<String, Object> input, McpAuthentication authentication) {
         if (authentication == null) {
             throw ToolError.MCP_AUTHENTICATION_REQUIRED.exception();
         }
-        return executeInternal(name, input, authentication);
+        return executeInternal(name, input, authentication, authentication.instanceId());
     }
 
-    private Object executeInternal(String name, Map<String, Object> input, McpAuthentication authentication) {
+    /**
+     * Console entry point. A browser session authenticates the operator but carries no MCP instance
+     * header, so the Instance selected in the Tool Playground is passed as the target instead. It is
+     * deliberately <em>not</em> merged into {@code input} for platform-level tools: their schemas set
+     * {@code additionalProperties: false} and would reject the extra argument.
+     */
+    public Object executeWithTarget(String name, Map<String, Object> input, String targetInstanceId) {
+        return executeInternal(name, input, null, targetInstanceId);
+    }
+
+    private Object executeInternal(
+            String name,
+            Map<String, Object> input,
+            McpAuthentication authentication,
+            String targetInstanceId) {
         try {
             ToolDefinition definition = catalog.getDefinition(name);
-            String instanceId = resolveTargetInstance(definition, input, authentication);
+            String instanceId = resolveTargetInstance(definition, input, authentication, targetInstanceId);
             String caller = authentication == null
                     ? AuthenticatedUserContext.currentUsernameOrSystem() : authentication.principal();
             ToolExecutionContext context = ToolExecutionContext.of(instanceId, definition, input, caller);
@@ -112,24 +130,33 @@ public class ToolExecutionService {
 
     /**
      * Reads the Studio instance target from the tool arguments. Platform-level tools are addressed
-     * by a physical {@code clusterName} instead, so they skip both the mandatory {@code instanceId}
-     * check and the authenticated-target cross-check.
+     * by a physical {@code clusterName} instead and their input schemas reject an {@code instanceId}
+     * argument, so they skip both the mandatory-argument check and the authenticated-target
+     * cross-check; their Instance comes from the transport binding (the signed MCP header, or the
+     * target the console operator selected) so that the capability gate still has something to
+     * resolve against.
      */
     private String resolveTargetInstance(
-            ToolDefinition definition, Map<String, Object> input, McpAuthentication authentication) {
+            ToolDefinition definition,
+            Map<String, Object> input,
+            McpAuthentication authentication,
+            String targetInstanceId) {
+        boolean exempt = ToolCatalog.isInstanceIdExempt(definition.name());
         Object value = input == null ? null : input.get(ToolCatalog.INSTANCE_ID_FIELD);
         if (!(value instanceof String instanceId) || instanceId.isBlank()) {
-            if (ToolCatalog.isInstanceIdExempt(definition.name())) {
-                return null;
+            if (exempt) {
+                return targetInstanceId == null || targetInstanceId.isBlank() ? null : targetInstanceId;
             }
             throw ToolError.TOOL_INSTANCE_REQUIRED.exception(definition.name());
         }
-        if (ToolCatalog.isInstanceIdExempt(definition.name())) {
+        if (exempt) {
             return instanceId;
         }
         if (authentication != null) {
             if (!instanceId.equals(authentication.instanceId())) {
-                throw ToolError.TOOL_TARGET_MISMATCH.exception();
+                // Echo the bound instance back: an agent that guessed a wrong id (a cluster id, a
+                // stale value) self-corrects on the next call instead of probing candidate ids.
+                throw ToolError.TOOL_TARGET_MISMATCH.exception(authentication.instanceId());
             }
         } else {
             instanceResolver.findByName(instanceId)

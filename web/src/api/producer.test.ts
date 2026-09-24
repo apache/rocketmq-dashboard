@@ -149,6 +149,23 @@ describe('Producer API', () => {
     expect(result.summary.totalConnections).toBe(1);
   });
 
+  it('preserves partial producer scan metadata', async () => {
+    mock.onGet('/producer/connection').reply(200, {
+      connectionSet: [],
+      complete: false,
+      failedBrokers: ['broker-a:10911'],
+      failedProducerGroups: ['pg-orders'],
+    });
+
+    const result = await queryProducerConnection('instance-1', 'order-events');
+
+    expect(result.complete).toBe(false);
+    expect(result.failedBrokers).toEqual(['broker-a:10911']);
+    expect(result.failedProducerGroups).toEqual(['pg-orders']);
+    expect(result.summary.readiness).toBe('WARNING');
+    expect(result.summary.warnings).toEqual(['NO_CONNECTIONS', 'INCOMPLETE_SCAN']);
+  });
+
   it('handles empty producer connections', async () => {
     mock.onGet('/producer/connection').reply(200, { connectionSet: [] });
 

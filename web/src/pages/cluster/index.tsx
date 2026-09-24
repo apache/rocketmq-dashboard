@@ -38,6 +38,8 @@ import {
   Alert,
   Spin,
   message,
+  Row,
+  Col,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -50,6 +52,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
 import type {
@@ -169,22 +172,26 @@ const ClusterPage = () => {
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
     open: boolean;
     loading: boolean;
+    failed: boolean;
     cluster: ClusterInfo | null;
     result: NameServerConfigDiffResult | null;
   }>({
     open: false,
     loading: false,
+    failed: false,
     cluster: null,
     result: null,
   });
   const [brokerConfigDiffState, setBrokerConfigDiffState] = useState<{
     open: boolean;
     loading: boolean;
+    failed: boolean;
     cluster: ClusterInfo | null;
     result: BrokerConfigDiffResult | null;
   }>({
     open: false,
     loading: false,
+    failed: false,
     cluster: null,
     result: null,
   });
@@ -370,27 +377,43 @@ const ClusterPage = () => {
     [registryClusters],
   );
 
+  // Registry rows are a global view, so the diff request must be scoped by the
+  // instance that owns the matched cluster, not the instance selected in the
+  // topbar — a mismatched instanceId makes the backend reject the lookup.
+  const resolveOwningInstanceId = (cluster: ClusterInfo): string | undefined => {
+    const endpoints = new Set(
+      [cluster.endpoint, ...(cluster.nameServers ?? []).map((nameServer) => nameServer.addr)]
+        .map(safeText)
+        .filter((endpoint) => endpoint.length > 0),
+    );
+    return apacheInstancesRef.current.find(
+      (instance) => instance.endpoint && endpoints.has(instance.endpoint),
+    )?.name;
+  };
+
   const openNameServerConfigDiff = useCallback(
     async (cluster: ClusterInfo) => {
       const requestId = nsConfigDiffRequest.begin();
       setNsConfigDiffState({
         open: true,
         loading: true,
+        failed: false,
         cluster,
         result: null,
       });
       try {
-        const result = await getNameServerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getNameServerConfigDiff(cluster.id, resolveOwningInstanceId(cluster));
         if (!nsConfigDiffRequest.isCurrent(requestId)) return;
         setNsConfigDiffState({
           open: true,
           loading: false,
+          failed: false,
           cluster,
           result,
         });
       } catch {
         if (!nsConfigDiffRequest.isCurrent(requestId)) return;
-        setNsConfigDiffState((current) => ({ ...current, loading: false }));
+        setNsConfigDiffState((current) => ({ ...current, loading: false, failed: true }));
         message.error(t('cluster.nsConfigDiffFailed'));
       }
     },
@@ -403,21 +426,23 @@ const ClusterPage = () => {
       setBrokerConfigDiffState({
         open: true,
         loading: true,
+        failed: false,
         cluster,
         result: null,
       });
       try {
-        const result = await getBrokerConfigDiff(cluster.id, selectedInstanceIdRef.current);
+        const result = await getBrokerConfigDiff(cluster.id, resolveOwningInstanceId(cluster));
         if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
         setBrokerConfigDiffState({
           open: true,
           loading: false,
+          failed: false,
           cluster,
           result,
         });
       } catch {
         if (!brokerConfigDiffRequest.isCurrent(requestId)) return;
-        setBrokerConfigDiffState((current) => ({ ...current, loading: false }));
+        setBrokerConfigDiffState((current) => ({ ...current, loading: false, failed: true }));
         message.error(t('cluster.brokerConfigDiffFailed'));
       }
     },
@@ -425,7 +450,13 @@ const ClusterPage = () => {
   );
   const closeNameServerConfigDiff = useCallback(() => {
     nsConfigDiffRequest.invalidate();
-    setNsConfigDiffState({ open: false, loading: false, cluster: null, result: null });
+    setNsConfigDiffState({
+      open: false,
+      loading: false,
+      failed: false,
+      cluster: null,
+      result: null,
+    });
   }, [nsConfigDiffRequest]);
 
   // ─── Connection test ──────────────────────────────────────────────────────
@@ -487,6 +518,7 @@ const ClusterPage = () => {
   );
   const tRef = useRef(t);
   const selectedInstanceIdRef = useRef<string | undefined>(undefined);
+  const apacheInstancesRef = useRef<Array<{ name: string; endpoint: string }>>([]);
   const instanceLoadRetryRef = useRef(0);
 
   useEffect(() => {
@@ -495,6 +527,10 @@ const ClusterPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        apacheInstancesRef.current = apacheInstances.map((instance) => ({
+          name: instance.name,
+          endpoint: safeText(instance.endpoint),
+        }));
         const initialInstanceId = apacheInstances.some(
           (instance) => instance.name === requestedInstanceId,
         )
@@ -508,6 +544,7 @@ const ClusterPage = () => {
       .catch(() => {
         if (cancelled) return;
         selectedInstanceIdRef.current = undefined;
+        apacheInstancesRef.current = [];
         setClusters([]);
         setSelectedProxy(null);
         setLoading(false);
@@ -855,7 +892,7 @@ const ClusterPage = () => {
   // ─── Tab 2: Broker 管理 (flat table) ────────────────────────────────────────
 
   function renderNameServerConfigDiffModal() {
-    const { cluster, loading: diffLoading, open, result } = nsConfigDiffState;
+    const { cluster, loading: diffLoading, failed, open, result } = nsConfigDiffState;
     const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
     const nodeColumns: ColumnsType<NameServerConfigDiffNode> = [
       {
@@ -956,6 +993,20 @@ const ClusterPage = () => {
                 locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
               />
             </>
+          ) : failed ? (
+            <Alert
+              showIcon
+              type="error"
+              message={t('cluster.nsConfigDiffFailed')}
+              action={
+                <Button
+                  size="small"
+                  onClick={() => cluster && void openNameServerConfigDiff(cluster)}
+                >
+                  {t('common.retry')}
+                </Button>
+              }
+            />
           ) : (
             <Alert showIcon type="info" message={t('cluster.nsConfigDiffLoading')} />
           )}
@@ -965,7 +1016,7 @@ const ClusterPage = () => {
   }
 
   function renderBrokerConfigDiffModal() {
-    const { cluster, loading: diffLoading, open, result } = brokerConfigDiffState;
+    const { cluster, loading: diffLoading, failed, open, result } = brokerConfigDiffState;
     const titleName = cluster?.nsClusterName ?? cluster?.name ?? result?.cluster ?? '-';
     const brokerColumns: ColumnsType<BrokerConfigDiffBroker> = [
       {
@@ -1049,6 +1100,7 @@ const ClusterPage = () => {
           setBrokerConfigDiffState({
             open: false,
             loading: false,
+            failed: false,
             cluster: null,
             result: null,
           });
@@ -1060,6 +1112,7 @@ const ClusterPage = () => {
               setBrokerConfigDiffState({
                 open: false,
                 loading: false,
+                failed: false,
                 cluster: null,
                 result: null,
               });
@@ -1116,6 +1169,17 @@ const ClusterPage = () => {
                 locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
               />
             </>
+          ) : failed ? (
+            <Alert
+              showIcon
+              type="error"
+              message={t('cluster.brokerConfigDiffFailed')}
+              action={
+                <Button size="small" onClick={() => cluster && void openBrokerConfigDiff(cluster)}>
+                  {t('common.retry')}
+                </Button>
+              }
+            />
           ) : (
             <Alert showIcon type="info" message={t('cluster.brokerConfigDiffLoading')} />
           )}
@@ -1155,7 +1219,8 @@ const ClusterPage = () => {
         title: t('cluster.brokerClusterName'),
         dataIndex: 'nsClusterName',
         key: 'nsClusterName',
-        width: 160,
+        // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
+        minWidth: 160,
         sorter: (a, b) => a.nsClusterName.localeCompare(b.nsClusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 14 }}>
@@ -1243,47 +1308,11 @@ const ClusterPage = () => {
         render: (v: number) => v.toLocaleString(),
       },
       {
-        title: t('cluster.putMessagesToday'),
-        dataIndex: 'putMessagesToday',
-        key: 'putMessagesToday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.putMessagesToday ?? -1) - (b.putMessagesToday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.putMessagesYesterday'),
-        dataIndex: 'putMessagesYesterday',
-        key: 'putMessagesYesterday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.putMessagesYesterday ?? -1) - (b.putMessagesYesterday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.getMessagesToday'),
-        dataIndex: 'getMessagesToday',
-        key: 'getMessagesToday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.getMessagesToday ?? -1) - (b.getMessagesToday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
-        title: t('cluster.getMessagesYesterday'),
-        dataIndex: 'getMessagesYesterday',
-        key: 'getMessagesYesterday',
-        width: 90,
-        align: 'right',
-        sorter: (a, b) => (a.getMessagesYesterday ?? -1) - (b.getMessagesYesterday ?? -1),
-        render: (v?: number) => (v ?? 0).toLocaleString(),
-      },
-      {
         title: t('common.actions'),
         key: 'action',
         width: 260,
         render: (_: unknown, record: BrokerWithCluster) => (
-          <Flex gap={6}>
+          <Flex gap={6} justify="flex-end">
             <Button
               size="small"
               icon={<EyeOutlined />}
@@ -1362,15 +1391,20 @@ const ClusterPage = () => {
             confirmLoading={configSubmitting}
             width={720}
           >
-            <Space style={{ marginBottom: 16 }}>
+            <Flex justify="flex-end" style={{ marginBottom: 12 }}>
               <Button
+                size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
               </Button>
-            </Space>
+            </Flex>
+            {/* Two-column grid: the eight fields pair up into four rows, halving the modal
+                height. Related controls sit side by side (flush + retention, size + permission,
+                the queue pair, the two auto-create switches) so the form reads as groups
+                instead of a corridor of labels. */}
             <Form
               form={configForm}
               layout="vertical"
@@ -1380,45 +1414,83 @@ const ClusterPage = () => {
                 setConfigPreviewLoading(false);
               }}
             >
-              <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
-                <Radio.Group>
-                  <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
-                  <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
-                </Radio.Group>
-              </Form.Item>
-              <Form.Item
-                label={t('cluster.autoCreateTopic')}
-                name="autoCreateTopicEnable"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t('cluster.autoCreateSubGroup')}
-                name="autoCreateSubscriptionGroup"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
-                <InputNumber min={1} max={128} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
-                <InputNumber min={1} max={720} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.writeQueues')} name="writeQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-              <Text type="secondary" style={{ display: 'block', marginTop: -16, marginBottom: 16 }}>
-                RocketMQ Broker uses one default Topic queue count; read and write values must
-                match.
-              </Text>
-              <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
-                <InputNumber min={0} max={7} style={{ width: '100%' }} />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
+                    <Radio.Group>
+                      <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
+                      <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
+                    </Radio.Group>
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
+                    <InputNumber min={1} max={720} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
+                    <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  {/* Named options instead of a raw 0-7 number: the permission is a bitfield
+                      and only 6/4/2/0 carry meaning for an operator. An unusual persisted
+                      value (e.g. 7) still renders — the Select falls back to showing it raw. */}
+                  <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
+                    <Select
+                      options={[
+                        { value: 6, label: t('cluster.permRW') },
+                        { value: 4, label: t('cluster.permR') },
+                        { value: 2, label: t('cluster.permW') },
+                        { value: 0, label: t('cluster.permNone') },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.writeQueues')}
+                    name="writeQueueNums"
+                    tooltip={t('cluster.queueMatchHint')}
+                  >
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.readQueues')}
+                    name="readQueueNums"
+                    tooltip={t('cluster.queueMatchHint')}
+                  >
+                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.autoCreateTopic')}
+                    name="autoCreateTopicEnable"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={t('cluster.autoCreateSubGroup')}
+                    name="autoCreateSubscriptionGroup"
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                </Col>
+              </Row>
             </Form>
             {renderConfigPreview()}
           </Modal>
@@ -1514,7 +1586,7 @@ const ClusterPage = () => {
         render: (_: unknown, record: NameserverRegistryEntry) => {
           const matchedCluster = resolveNameserverRegistryCluster(record);
           return (
-            <Flex gap={6}>
+            <Flex gap={6} justify="flex-end">
               <Button
                 size="small"
                 icon={<EyeOutlined />}
@@ -1672,7 +1744,7 @@ const ClusterPage = () => {
         key: 'action',
         width: 160,
         render: (_: unknown, record: ProxyRow) => (
-          <Flex gap={6}>
+          <Flex gap={6} justify="flex-end">
             <Button
               size="small"
               icon={<EyeOutlined />}
@@ -1835,6 +1907,11 @@ const ClusterPage = () => {
         cancelText={t('common.cancel')}
         destroyOnHidden
       >
+        <InfoBanner
+          title={t('cluster.nsAddrGuidanceTitle')}
+          description={t('cluster.nsAddrGuidance')}
+          data-testid="nameserver-address-guidance"
+        />
         <Form form={nsCreateForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="name"
@@ -1930,6 +2007,11 @@ const ClusterPage = () => {
         destroyOnHidden
       >
         <Text type="secondary">{t('cluster.testConnectionDesc')}</Text>
+        <InfoBanner
+          title={t('cluster.nsAddrGuidanceTitle')}
+          description={t('cluster.nsAddrGuidance')}
+          data-testid="nameserver-address-guidance"
+        />
         <Form form={connectForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="namesrvAddr"

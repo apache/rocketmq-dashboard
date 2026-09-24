@@ -1,3 +1,18 @@
+-- Licensed to the Apache Software Foundation (ASF) under one or more
+-- contributor license agreements.  See the NOTICE file distributed with
+-- this work for additional information regarding copyright ownership.
+-- The ASF licenses this file to You under the Apache License, Version 2.0
+-- (the "License"); you may not use this file except in compliance with
+-- the License.  You may obtain a copy of the License at
+--
+--     http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing, software
+-- distributed under the License is distributed on an "AS IS" BASIS,
+-- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-- See the License for the specific language governing permissions and
+-- limitations under the License.
+
 -- server/src/main/resources/db/schema.sql
 -- RocketMQ Studio 数据库 Schema（MySQL 8.0）
 -- 此文件为唯一权威 DDL 来源，MyBatis-Plus Entity 与此保持同步
@@ -93,6 +108,16 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
     REFERENCES rmq_cloud_credential(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 实例名称互斥行：虚拟实例写入与同名注册、删除、连接变更共享锁顺序。
+CREATE TABLE IF NOT EXISTS rmq_instance_ownership_lock (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  name VARCHAR(128) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_ownership_instance_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）
 CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -109,8 +134,9 @@ CREATE TABLE IF NOT EXISTS rmq_instance_topic (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_instance_topic (cluster_id, instance_id, name),
-  INDEX idx_topic_instance (instance_id)
+  UNIQUE KEY uk_topic_name (name),
+  INDEX idx_topic_instance (instance_id),
+  INDEX idx_topic_cluster (cluster_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Consumer Group 管理记录
@@ -127,8 +153,9 @@ CREATE TABLE IF NOT EXISTS rmq_instance_group (
   status VARCHAR(32) DEFAULT 'ACTIVE',
   created_by VARCHAR(64),
   PRIMARY KEY (`id`),
-  UNIQUE KEY uk_cluster_instance_group (cluster_id, instance_id, name),
-  INDEX idx_group_instance (instance_id)
+  UNIQUE KEY uk_group_name (name),
+  INDEX idx_group_instance (instance_id),
+  INDEX idx_group_cluster (cluster_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5. K8s 证书管理
@@ -418,6 +445,77 @@ CREATE TABLE IF NOT EXISTS rmq_system_alert (
   INDEX idx_acknowledged (acknowledged),
   INDEX idx_system_alert_domain_time (domain, time),
   INDEX idx_system_alert_feed (domain, instance_id, transition, time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 23. AI 会话：托管 Agent 的对话容器。owner 只是归属过滤，不是权限体系（开源部署无复杂 ACL）。
+CREATE TABLE IF NOT EXISTS rmq_ai_conversation (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  title VARCHAR(512) NOT NULL COMMENT '会话标题，由首条用户消息截断生成',
+  owner VARCHAR(128) NOT NULL COMMENT '归属操作者，取 AuthenticatedUserContext.currentUsernameOrSystem()',
+  engine VARCHAR(16) NOT NULL COMMENT '创建时选定的执行引擎 http/claude-code/qoder',
+  model VARCHAR(128) NOT NULL COMMENT '创建时选定的模型',
+  `mode` VARCHAR(16) NOT NULL DEFAULT 'chat' COMMENT 'chat/diagnose/manage/query',
+  instance_id VARCHAR(128) NULL COMMENT '绑定的 Studio Instance 标识，即 rmqctl --instance-id',
+  runtime_session_id VARCHAR(128) NULL COMMENT '上游 Agent 自身会话 id，供下一轮 --resume 使用',
+  last_seq INT NOT NULL DEFAULT 0 COMMENT '事件序号高水位缓存，仅供重连快路径；权威值是 MAX(rmq_ai_event.seq)',
+  archived TINYINT(1) NOT NULL DEFAULT 0 COMMENT '归档标记',
+  PRIMARY KEY (`id`),
+  INDEX idx_ai_conversation_owner (owner, archived, gmt_modified, id),
+  INDEX idx_ai_conversation_cleanup (gmt_create, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 24. AI 运行：一次 Agent 循环（输入 → 思考/工具 → 结果）。engine/model 在准入时固化快照，
+--     用户之后改设置也不会让历史失真。
+CREATE TABLE IF NOT EXISTS rmq_ai_run (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  conversation_id bigint(20) unsigned NOT NULL COMMENT '所属会话，引用 rmq_ai_conversation.id',
+  turn INT NOT NULL COMMENT '会话内轮次，从 1 递增',
+  status VARCHAR(16) NOT NULL COMMENT 'QUEUED/RUNNING/COMPLETED/STOPPED/FAILED',
+  engine VARCHAR(16) NOT NULL COMMENT '本次运行固化的执行引擎',
+  model VARCHAR(128) NOT NULL COMMENT '本次运行固化的模型',
+  runtime_session_id VARCHAR(128) NULL COMMENT '上游返回的 session id，取自 result 帧',
+  resumed_from VARCHAR(128) NULL COMMENT '本次 --resume 使用的上游 session id',
+  started_at DATETIME NULL COMMENT '实际开始执行时间',
+  finished_at DATETIME NULL COMMENT '终态写入时间',
+  duration_ms BIGINT NULL COMMENT '本次运行耗时毫秒',
+  input_tokens INT NULL COMMENT '上游 usage 的输入 token 数',
+  output_tokens INT NULL COMMENT '上游 usage 的输出 token 数',
+  tokens_per_second DOUBLE NULL COMMENT '客户端上报的回复生成速度（token/s），按流式输出估算',
+  start_seq INT NOT NULL DEFAULT 0 COMMENT '本 run 首个事件的 seq',
+  end_seq INT NOT NULL DEFAULT 0 COMMENT '本 run 末个事件的 seq',
+  stop_reason VARCHAR(32) NULL COMMENT 'USER_STOP/SHUTDOWN/TIMEOUT/OUTPUT_LIMIT/PROVIDER_ERROR/SERVER_RESTART/OVERLOADED/ORPHANED',
+  error_code VARCHAR(64) NULL COMMENT '失败错误码',
+  error_message VARCHAR(1024) NULL COMMENT '失败信息，已截断',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_ai_run_conversation_turn (conversation_id, turn),
+  INDEX idx_ai_run_conversation (conversation_id, id),
+  INDEX idx_ai_run_active (status, gmt_modified),
+  INDEX idx_ai_run_cleanup (gmt_create, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 25. AI 事件：会话时间线。payload 存 TimelineEvent 的 JSON。
+--     用 MEDIUMTEXT 而非 MySQL json 类型：json 存二进制 blob，任何走不到索引的 ORDER BY
+--     都会把整个值物化进 sort_buffer_size；且 dev profile 下本文件要被 H2 解析，MEDIUMTEXT
+--     已有 rmq_instance_message.result_snapshot 作为活证据。conversation_id 与 turn 都是
+--     故意的冗余列，让整会话时间线一次过滤取全，不必先列 run 再逐 run 聚合。
+CREATE TABLE IF NOT EXISTS rmq_ai_event (
+  `id`           bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `gmt_create`   datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `gmt_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  conversation_id bigint(20) unsigned NOT NULL COMMENT '冗余列：所属会话，免 join',
+  run_id bigint(20) unsigned NOT NULL COMMENT '主属运行，引用 rmq_ai_run.id',
+  turn INT NOT NULL COMMENT '冗余列：所属 run 的轮次，免 join',
+  seq INT NOT NULL COMMENT '会话内严格单调递增序号，同时是重连游标',
+  type VARCHAR(32) NOT NULL COMMENT 'user/thinking/text/tool_use/tool_result/notice/error/run_status',
+  payload MEDIUMTEXT NOT NULL COMMENT 'TimelineEvent JSON，工具输出已按 32 KiB 截断',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY uk_ai_event_conversation_seq (conversation_id, seq),
+  INDEX idx_ai_event_run (run_id, seq),
+  INDEX idx_ai_event_cleanup (gmt_create, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Idempotent upgrades for databases created before the corresponding CREATE statements

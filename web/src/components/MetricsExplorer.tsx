@@ -130,9 +130,7 @@ const MetricChart = ({
         samples.some((sample) => sample.kind === 'histogram');
       // Keep raw floats and histogram-derived trends on separate lines.
       return (['scalar', 'histogram'] as const).map((kind, kindIndex) => ({
-        color: SERIES_COLORS[
-          (isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length
-        ],
+        color: SERIES_COLORS[(isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length],
         label: isMixed
           ? `${baseLabel} (${kind === 'histogram' ? histogramLabel : 'scalar'})`
           : baseLabel,
@@ -666,6 +664,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       .then((nextProfiles) => {
         if (cancelled) return;
         setProfiles(nextProfiles);
+        // A re-run after an earlier failure must clear the error banner, or the recovered
+        // panels below would stay hidden behind it until the component is remounted.
+        setProfileError(false);
         const storedProfileId = localStorage.getItem(PROFILE_STORAGE_KEY);
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
@@ -977,7 +978,11 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         width: 130,
         render: (value: MetricSeriesDetailRow['sampleType']) => (
           <Tag color={value === 'histogram' ? 'purple' : 'blue'} style={{ marginInlineEnd: 0 }}>
-            {value === 'histogram' ? copy.histogram : value === 'mixed' ? `scalar + ${copy.histogram}` : 'scalar'}
+            {value === 'histogram'
+              ? copy.histogram
+              : value === 'mixed'
+                ? `scalar + ${copy.histogram}`
+                : 'scalar'}
           </Tag>
         ),
       },
@@ -1036,10 +1041,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     range: RangeOption,
     customPromqlToRun?: string,
   ) => {
-    dataSourceCredentialsRef.current = null;
-    dataSourceKeyRef.current = dataSource.key;
+    // The data source switch itself is deferred to handleAuthSubmit: the current source stays
+    // active while credentials are being asked for, so cancelling the dialog leaves the
+    // explorer exactly where it was instead of stranded on an unauthenticated source.
     pendingAuthReplayRef.current = { profile, range, customPromql: customPromqlToRun };
-    setDataSourceKey(dataSource.key);
     setPendingDataSource(dataSource);
     void message.info(copy.protectedHistory);
   };

@@ -31,6 +31,9 @@ import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -100,6 +103,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo));
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
@@ -145,17 +149,30 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private List<MessageRecordVO> queryByMsgId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         MessageExt messageExt = null;
+        Exception primaryFailure = null;
         if (StringUtils.hasText(topic)) {
+            if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
+                return Collections.emptyList();
+            }
             try {
-                if (BrokerTopologyGuards.isWithinKnownBrokerTopology(adminExt, msgId)) {
-                    messageExt = adminExt.viewMessage(topic, msgId);
-                }
+                messageExt = adminExt.viewMessage(topic, msgId);
             } catch (Exception e) {
+                if (isMessageLookupAbsent(e)) {
+                    return Collections.emptyList();
+                }
+                primaryFailure = e;
                 log.warn("viewMessage(topic={}, msgId={}) failed: {}", topic, msgId, e.getMessage());
             }
         }
         if (messageExt == null) {
-            messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
+            OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+            messageExt = lookup.message();
+            if (messageExt == null && lookup.failure() != null) {
+                throw messageLookupFailure(lookup.failure());
+            }
+        }
+        if (messageExt == null && primaryFailure != null) {
+            throw messageLookupFailure(primaryFailure);
         }
         if (messageExt == null) {
             return Collections.emptyList();
@@ -168,20 +185,50 @@ public class RocketMQMessageProvider implements MessageProvider {
      * msgId, then querying that broker directly.
      */
     private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+        OffsetMessageLookup lookup = lookupMessageByOffsetId(adminExt, topic, msgId);
+        if (lookup.failure() != null) {
+            log.warn("viewMessage by decoded offset id failed for msgId={}: {}",
+                    msgId, lookup.failure().getMessage());
+        }
+        return lookup.message();
+    }
+
+    private OffsetMessageLookup lookupMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
+        MessageId messageId;
         try {
-            MessageId messageId = MessageDecoder.decodeMessageId(msgId);
+            messageId = MessageDecoder.decodeMessageId(msgId);
+        } catch (Exception exception) {
+            return OffsetMessageLookup.empty();
+        }
+        try {
             String brokerAddr = BrokerTopologyGuards.validatedBrokerAddr(adminExt, msgId, messageId);
             if (!StringUtils.hasText(brokerAddr)) {
-                return null;
+                return OffsetMessageLookup.empty();
             }
-            return adminExt.getDefaultMQAdminExtImpl()
+            MessageExt message = adminExt.getDefaultMQAdminExtImpl()
                     .getMqClientInstance()
                     .getMQClientAPIImpl()
                     .viewMessage(brokerAddr, topic, messageId.getOffset(), VIEW_MESSAGE_TIMEOUT_MILLIS);
-        } catch (Exception e) {
-            log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
-            return null;
+            return new OffsetMessageLookup(message, null);
+        } catch (Exception exception) {
+            if (isMessageLookupAbsent(exception)) {
+                return OffsetMessageLookup.empty();
+            }
+            return new OffsetMessageLookup(null, exception);
         }
+    }
+
+    private static boolean isMessageLookupAbsent(Throwable throwable) {
+        return MqResponseCodes.hasResponseCode(throwable, ResponseCode.TOPIC_NOT_EXIST,
+                ResponseCode.NO_MESSAGE, ResponseCode.QUERY_NOT_FOUND);
+    }
+
+    private static BusinessException messageLookupFailure(Throwable throwable) {
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            message = throwable.getClass().getSimpleName();
+        }
+        return new BusinessException(502, "Failed to query message by id: " + message);
     }
 
     private MessageQueryResult queryByKey(DefaultMQAdminExt adminExt, String topic, String key,
@@ -495,15 +542,63 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     @Override
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
-        return runtimeAdminClientResolver.execute(request.getInstanceId(), admin -> {
-            org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result =
-                    ((DefaultMQAdminExt) admin).consumeMessageDirectly(request.getConsumerGroup(), request.getClientId(),
-                            request.getTopic(), request.getMsgId());
-            return DirectConsumeMessageResultVO.builder()
-                    .consumeResult(result.getConsumeResult() == null ? "UNKNOWN" : result.getConsumeResult().name())
-                    .remark(result.getRemark()).spentTimeMillis(result.getSpentTimeMills())
-                    .order(result.isOrder()).autoCommit(result.isAutoCommit()).build();
-        });
+        if (request == null) {
+            throw new BusinessException(400, "Direct consume request is required");
+        }
+        var instance = ownershipGuard.requireInstance(request.getInstanceId());
+        String topic = ResourceOwnershipGuard.requireText(request.getTopic(), "topicName");
+        String group = ResourceOwnershipGuard.requireText(request.getConsumerGroup(), "groupName");
+        String client = ResourceOwnershipGuard.requireText(request.getClientId(), "clientId");
+        String messageId = ResourceOwnershipGuard.requireText(request.getMsgId(), "msgId");
+        Resource topicResource = ownershipGuard.topicResource(topic);
+        Resource groupResource = new Resource(Kind.GROUP, group);
+        ownershipGuard.check(instance, topicResource, true);
+        ownershipGuard.check(instance, groupResource, true);
+        return ownershipGuard.withOwned(instance, List.of(topicResource, groupResource), () ->
+                runtimeAdminClientResolver.execute(instance.getName(), admin -> {
+                    var topicOwner = ownershipGuard.check(instance, topicResource, true);
+                    var groupOwner = ownershipGuard.check(instance, groupResource, true);
+                    if (!topicOwner.clusterId().equals(groupOwner.clusterId())) {
+                        throw new BusinessException(409, "Group and topic are not in the same target cluster");
+                    }
+                    var target = ApacheWriteTargetResolver.resolve(admin, instance, topicOwner.clusterId());
+                    ApacheWriteTargetResolver.requireTopicRoute(admin, target, topic);
+                    // offsetId can bypass topic routing and connect directly to a broker; verify the address first, then the message's actual ownership.
+                    requireDirectMessageTarget(target, messageId, false);
+                    MessageExt message = ((DefaultMQAdminExt) admin).viewMessage(topic, messageId);
+                    if (message == null || !topic.equals(message.getTopic())) {
+                        throw new BusinessException(409, "Message's actual topic does not match the authorized resource");
+                    }
+                    requireDirectMessageTarget(target, message.getMsgId(), true);
+                    if (!(message.getStoreHost() instanceof java.net.InetSocketAddress host)
+                            || host.getAddress() == null
+                            || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
+                        throw new BusinessException(409, "Message's store broker is not in the target master set");
+                    }
+                    var result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
+                            topic, message.getMsgId());
+                    return DirectConsumeMessageResultVO.builder()
+                            .consumeResult(result.getConsumeResult() == null ? "UNKNOWN" : result.getConsumeResult().name())
+                            .remark(result.getRemark()).spentTimeMillis(result.getSpentTimeMills())
+                            .order(result.isOrder()).autoCommit(result.isAutoCommit()).build();
+                }));
+    }
+
+    private void requireDirectMessageTarget(ApacheWriteTargetResolver.Target target, String messageId,
+                                            boolean offsetRequired) {
+        MessageId decoded;
+        try {
+            decoded = MessageDecoder.decodeMessageId(messageId);
+        } catch (Exception invalid) {
+            if (!offsetRequired) {
+                return;
+            }
+            throw new BusinessException(409, "Unable to determine the physical location of the message");
+        }
+        String address = BrokerTopologyGuards.decodedBrokerAddr(decoded);
+        if (address == null || !target.masters().contains(address)) {
+            throw new BusinessException(409, "Message ID does not belong to a target cluster master");
+        }
     }
 
     @Override
@@ -861,6 +956,12 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private boolean isUtf8ContinuationByte(byte value) {
         return (value & 0xC0) == 0x80;
+    }
+
+    private record OffsetMessageLookup(MessageExt message, Throwable failure) {
+        private static OffsetMessageLookup empty() {
+            return new OffsetMessageLookup(null, null);
+        }
     }
 
     private record DisplayBody(String value, String encoding, boolean truncated) {

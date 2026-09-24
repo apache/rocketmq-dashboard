@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -121,6 +123,24 @@ class NativeAlertRuleTestServiceTest {
 
         assertThat(result.samples()).singleElement()
                 .satisfies(sample -> assertThat(sample.currentValue()).isEqualTo(20));
+    }
+
+    @Test
+    void rejectsARuleWithoutMetricInsteadOfFailingWithANullPointerExceptionTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        when(collector.collect(instance)).thenReturn(List.of(sample("orders", 20)));
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).instanceId("local")
+                .operator(">").threshold(10).build();
+
+        assertThatThrownBy(() -> new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
+                new AlertRuleEvaluator()).test(rule))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("metric is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
     }
 
     private static MetricSample sample(String group, double value) {

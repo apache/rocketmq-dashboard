@@ -75,6 +75,7 @@ public class InstanceService {
     private final SettingsRepository settingsRepository;
     private final CacheManager cacheManager;
     private final RegionNames regionNames;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
     // originate from outside the bean. Calling deleteInstance() directly from within this class
@@ -219,12 +220,13 @@ public class InstanceService {
             case ALIYUN, TENCENT -> createCloudInstance(instance, vendor);
         }
 
+        instance.setRemark(requireTextWithin(instance.getRemark(), MAX_INSTANCE_REMARK_LENGTH, "remark"));
         requireUniqueInstanceName(instance.getName(), null);
         instance.setGmtCreate(LocalDateTime.now());
         instance.setGmtModified(LocalDateTime.now());
         InstanceVO saved;
         try {
-            saved = instanceRepository.save(instance);
+            saved = ownershipGuard.withInstanceRegistration(instance.getName(), () -> instanceRepository.save(instance));
         } catch (DataIntegrityViolationException exception) {
             if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
                 throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
@@ -467,7 +469,8 @@ public class InstanceService {
         instance.setVendor(InstanceVendor.APACHE);
         instance.setName(requireInstanceName(instance.getName()));
         instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
-        instance.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
+        instance.setAdminCredentialRef(requireTextWithin(normalizeCredentialRef(instance.getAdminCredentialRef()),
+                MAX_INSTANCE_CREDENTIAL_REF_LENGTH, "adminCredentialRef"));
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
         }
@@ -542,7 +545,7 @@ public class InstanceService {
         if (!StringUtils.hasText(endpoint)) {
             throw new BusinessException(400, "InstanceVO endpoint is required");
         }
-        String normalized = endpoint.trim();
+        String normalized = requireTextWithin(endpoint.trim(), MAX_INSTANCE_ENDPOINT_LENGTH, "endpoint");
         for (String address : normalized.split("[;,]", -1)) {
             if (address.isBlank()) {
                 throw new BusinessException(400, "InstanceVO endpoint must not contain empty addresses");
@@ -562,10 +565,29 @@ public class InstanceService {
         return trimmed;
     }
 
+    /** Free-text fields of rmq_instance, capped at the width of their column. */
+    static final int MAX_INSTANCE_ENDPOINT_LENGTH = 512;
+    static final int MAX_INSTANCE_REMARK_LENGTH = 255;
+    static final int MAX_INSTANCE_CREDENTIAL_REF_LENGTH = 128;
+
+    /**
+     * Bounds a free-text field to the width of its rmq_instance column. Letting a longer value
+     * through does not store it: MySQL rejects the write, so the caller gets a 500 from the
+     * persistence layer instead of the validation error the name field already returns.
+     */
+    private static String requireTextWithin(String value, int maxLength, String field) {
+        if (value != null && value.length() > maxLength) {
+            throw new BusinessException(400, "InstanceVO " + field + " must not exceed "
+                    + maxLength + " characters");
+        }
+        return value;
+    }
+
     private String normalizeCredentialRef(String credentialRef) {
         return StringUtils.hasText(credentialRef) ? credentialRef.trim() : null;
     }
 
+    @Transactional
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -601,15 +623,27 @@ public class InstanceService {
             }
         }
         if (instance.getRemark() != null) {
-            updated.setRemark(instance.getRemark());
+            updated.setRemark(requireTextWithin(instance.getRemark(), MAX_INSTANCE_REMARK_LENGTH, "remark"));
         }
         if (!cloudInstance && instance.getAdminCredentialRef() != null) {
-            updated.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
+            updated.setAdminCredentialRef(requireTextWithin(
+                    normalizeCredentialRef(instance.getAdminCredentialRef()),
+                    MAX_INSTANCE_CREDENTIAL_REF_LENGTH, "adminCredentialRef"));
         }
         updated.setGmtModified(LocalDateTime.now());
 
+        ownershipGuard.lockForInstanceUpdate(existing, updated);
         InstanceVO saved = instanceRepository.save(updated);
-        releaseApacheClientIfChanged(existing, saved);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    releaseApacheClientIfChanged(existing, saved);
+                }
+            });
+        } else {
+            releaseApacheClientIfChanged(existing, saved);
+        }
         recordAudit("UPDATE_INSTANCE", "INSTANCE", String.valueOf(saved.getId()), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -623,6 +657,7 @@ public class InstanceService {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
+        ownershipGuard.lockForInstanceDeletion(id);
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 

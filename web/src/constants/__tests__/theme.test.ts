@@ -84,6 +84,13 @@ describe('theme constants', () => {
         expect(val.color, `PROTOCOL_MAP[${key}].color should exist`).toBeDefined();
       }
     });
+
+    it('is keyed by the values the Protocol enum returns on the wire', () => {
+      // The server serializes org.apache.rocketmq.studio.common.domain.enums.Protocol
+      // by its enum name, which is `gRPC` / `Remoting` — not the uppercase shells this
+      // map used to be keyed by.
+      expect(Object.keys(PROTOCOL_MAP).sort()).toEqual(['Remoting', 'gRPC']);
+    });
   });
 
   describe('THEME_COLORS', () => {

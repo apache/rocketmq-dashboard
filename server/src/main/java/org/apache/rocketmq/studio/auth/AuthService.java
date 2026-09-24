@@ -68,7 +68,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AuthService {
 
-    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
+    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 1440;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
@@ -76,6 +76,7 @@ public class AuthService {
     private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
+    private static final int MAX_USERNAME_LENGTH = 128;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
     private static final String STALE_CUTOFF_PARAM = "staleCutoff";
@@ -348,7 +349,11 @@ public class AuthService {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
         if (requireCurrentPassword && !passwordHasher.matches(currentPassword, user.getPasswordHash())) {
-            throw new BusinessException(401, "Current password is incorrect");
+            // The request is already authenticated; this is a payload problem, not a session one.
+            // 401 is what the Studio client reads as "the session is gone" and answers by clearing
+            // the session and redirecting to the login page, and the same field already answers 400
+            // when it is blank (ChangePasswordDTO validation).
+            throw new BusinessException(400, "Current password is incorrect");
         }
         validatePassword(newPassword);
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
@@ -561,11 +566,17 @@ public class AuthService {
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new BusinessException(400, "Password is required");
         }
+        if (request.getUsername().trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
+        }
     }
 
     private void validateUsername(String username) {
-        if (username == null || username.isBlank() || username.trim().length() > 128) {
-            throw new BusinessException(400, "Username must contain 1 to 128 characters");
+        if (username == null || username.isBlank()
+                || username.trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
         }
     }
 

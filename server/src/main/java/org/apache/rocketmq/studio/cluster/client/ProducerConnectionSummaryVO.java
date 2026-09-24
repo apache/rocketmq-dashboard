@@ -36,6 +36,7 @@ public class ProducerConnectionSummaryVO {
     public static final String DUPLICATE_CLIENT_ID = "DUPLICATE_CLIENT_ID";
     public static final String MIXED_CLIENT_VERSION = "MIXED_CLIENT_VERSION";
     public static final String INCOMPLETE_CLIENT_METADATA = "INCOMPLETE_CLIENT_METADATA";
+    public static final String INCOMPLETE_SCAN = "INCOMPLETE_SCAN";
 
     private int totalConnections;
     private int uniqueClientCount;
@@ -49,6 +50,11 @@ public class ProducerConnectionSummaryVO {
     private String readiness = READY;
 
     public static ProducerConnectionSummaryVO from(List<ProducerConnectionVO> connections) {
+        return from(connections, true);
+    }
+
+    public static ProducerConnectionSummaryVO from(
+            List<ProducerConnectionVO> connections, boolean complete) {
         List<ProducerConnectionVO> safeConnections = connections == null
                 ? List.of()
                 : connections.stream().filter(Objects::nonNull).toList();
@@ -61,8 +67,8 @@ public class ProducerConnectionSummaryVO {
         summary.uniqueLanguageCount = summary.languages.size();
         summary.uniqueVersionCount = summary.versions.size();
         summary.duplicateClientIds = duplicateClientIds(safeConnections);
-        summary.warnings = warnings(summary, safeConnections);
-        summary.readiness = readiness(summary);
+        summary.warnings = warnings(summary, safeConnections, complete);
+        summary.readiness = readiness(summary, complete);
         return summary;
     }
 
@@ -105,11 +111,13 @@ public class ProducerConnectionSummaryVO {
     }
 
     private static List<String> warnings(
-            ProducerConnectionSummaryVO summary, List<ProducerConnectionVO> connections) {
-        if (summary.totalConnections == 0) {
-            return List.of(NO_CONNECTIONS);
-        }
+            ProducerConnectionSummaryVO summary,
+            List<ProducerConnectionVO> connections,
+            boolean complete) {
         List<String> warnings = new java.util.ArrayList<>();
+        if (summary.totalConnections == 0) {
+            warnings.add(NO_CONNECTIONS);
+        }
         if (!summary.duplicateClientIds.isEmpty()) {
             warnings.add(DUPLICATE_CLIENT_ID);
         }
@@ -119,10 +127,16 @@ public class ProducerConnectionSummaryVO {
         if (connections.stream().anyMatch(ProducerConnectionSummaryVO::hasIncompleteMetadata)) {
             warnings.add(INCOMPLETE_CLIENT_METADATA);
         }
+        if (!complete) {
+            warnings.add(INCOMPLETE_SCAN);
+        }
         return List.copyOf(warnings);
     }
 
-    private static String readiness(ProducerConnectionSummaryVO summary) {
+    private static String readiness(ProducerConnectionSummaryVO summary, boolean complete) {
+        if (!complete) {
+            return WARNING;
+        }
         if (summary.totalConnections == 0) {
             return UNAVAILABLE;
         }

@@ -175,7 +175,7 @@ describe('MessagePage async request ownership', () => {
   it('does not restore query results after the user resets an in-flight query', async () => {
     const query = createDeferred<MessageRecord[]>();
     serviceMocks.queryMessages.mockReturnValue(query.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -198,7 +198,7 @@ describe('MessagePage async request ownership', () => {
       size: 50,
       resultMayBeTruncated: true,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -226,7 +226,7 @@ describe('MessagePage async request ownership', () => {
         resultMayBeTruncated: true,
       })
       .mockReturnValueOnce(lateQuery.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -264,7 +264,7 @@ describe('MessagePage async request ownership', () => {
         { value: 2, label: 'Instance B' },
       ],
     }));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const view = renderPage();
     await selectTopic(user);
 
@@ -288,7 +288,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.queryMessages.mockRejectedValue(
       new Error('Message query provider is not configured'),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -302,7 +302,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.getMessageTrace.mockRejectedValue(
       new Error('Message query provider is not configured'),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -319,7 +319,7 @@ describe('MessagePage async request ownership', () => {
   it('loads a message trace lazily and reuses it for the same message', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     serviceMocks.getMessageTrace.mockResolvedValue(createTrace('cached-trace'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -346,7 +346,7 @@ describe('MessagePage async request ownership', () => {
 
   it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -373,7 +373,7 @@ describe('MessagePage async request ownership', () => {
   it('queries trace by key with a custom trace topic from the trace tab', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     serviceMocks.getMessageTraceByKey.mockResolvedValue(createTrace('key-trace'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -405,7 +405,7 @@ describe('MessagePage async request ownership', () => {
     const pendingTrace = createDeferred<TraceRecord>();
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     serviceMocks.getMessageTrace.mockReturnValue(pendingTrace.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -472,7 +472,7 @@ describe('MessagePage async request ownership', () => {
         },
       ],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -492,7 +492,7 @@ describe('MessagePage async request ownership', () => {
 
   it('remembers a custom trace topic per instance across page remounts', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('remembered-message')]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const firstRender = renderPage();
     await selectTopic(user);
 
@@ -534,7 +534,7 @@ describe('MessagePage async request ownership', () => {
         { value: 2, label: 'Instance B' },
       ],
     }));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const view = renderPage();
     await selectTopic(user);
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
@@ -576,7 +576,7 @@ describe('MessagePage async request ownership', () => {
       size: 20,
     });
     serviceMocks.queryMessages.mockResolvedValue([createMessage('history-message')]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     await user.click(screen.getByRole('button', { name: /服务端历史/ }));
@@ -602,7 +602,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.queryMessages
       .mockReturnValueOnce(firstQuery.promise)
       .mockReturnValueOnce(secondQuery.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -637,7 +637,7 @@ describe('MessagePage async request ownership', () => {
       serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
       serviceMocks.getMessageTrace.mockReturnValue(trace.promise);
       const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
-      const user = userEvent.setup();
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
       renderPage();
       await selectTopic(user);
 
@@ -675,7 +675,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.getMessageTrace.mockImplementation((msgId: string) =>
       msgId === 'message-a' ? firstTrace.promise : secondTrace.promise,
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 
@@ -715,7 +715,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.getMessageTrace.mockImplementation((msgId: string) =>
       msgId === 'message-a' ? firstTrace.promise : secondTrace.promise,
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
     await selectTopic(user);
 

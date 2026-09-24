@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -111,6 +112,38 @@ class TencentAclServiceTest {
                 .containsExactly("reader-role");
         assertThat(service.getUserCredentials(INSTANCE_ID, "  reader-role  ").getUsername())
                 .isEqualTo("reader-role");
+    }
+
+    @Test
+    void listUsersShouldRejectIncompleteRolePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listUsers(INSTANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void listRulesShouldRejectIncompleteRolePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listRules(INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void updateUserShouldRejectIncompleteRolePageInsteadOfReportingNotFoundTest() throws Exception {
+        DescribeRoleListResponse response = incompleteRolePage();
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.updateUser(INSTANCE_ID, AclUserVO.builder()
+                .username("role-b")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -273,6 +306,47 @@ class TencentAclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Tencent Cloud roles only support ALLOW ACL rules")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void deleteRuleRevokesPermissionsWithoutDeletingTheRoleTest() throws Exception {
+        service.deleteRule(INSTANCE_ID, "  reader-role  ");
+
+        ArgumentCaptor<ModifyRoleRequest> requestCaptor = ArgumentCaptor.forClass(ModifyRoleRequest.class);
+        verify(client).ModifyRole(requestCaptor.capture());
+        ModifyRoleRequest request = requestCaptor.getValue();
+        assertThat(request.getRole()).isEqualTo("reader-role");
+        assertThat(request.getPermRead()).isFalse();
+        assertThat(request.getPermWrite()).isFalse();
+        verify(client, never()).DeleteRole(any());
+    }
+
+    @Test
+    void listRulesHidesPermissionlessRolesThatStillExistAsUsersTest() throws Exception {
+        RoleItem active = role("active-role");
+        RoleItem revoked = new RoleItem();
+        revoked.setRoleName("revoked-role");
+        revoked.setPermRead(false);
+        revoked.setPermWrite(false);
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setData(new RoleItem[]{active, revoked});
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        assertThat(service.listRules(INSTANCE_ID, null))
+                .extracting(AclRuleVO::getPrincipal)
+                .containsExactly("active-role");
+        assertThat(service.listUsers(INSTANCE_ID))
+                .extracting(AclUserVO::getUsername)
+                .containsExactly("active-role", "revoked-role");
+    }
+
+    private static DescribeRoleListResponse incompleteRolePage() {
+        RoleItem role = new RoleItem();
+        role.setRoleName("role-a");
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setTotalCount(2L);
+        response.setData(new RoleItem[]{role});
+        return response;
     }
 
     private static RoleItem[] rolePage(Long offset, Long limit, int total) {

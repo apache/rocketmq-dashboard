@@ -18,7 +18,6 @@
 import axios from 'axios';
 import { message } from 'antd';
 import { clearAuthSession } from '../stores/authStorage';
-import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -80,7 +79,6 @@ function isPublicAuthRequest(url?: string): boolean {
 }
 
 export function handleSessionUnauthorized(): void {
-  clearAiChatHistories();
   clearAuthSession();
   window.location.href = '/login';
 }

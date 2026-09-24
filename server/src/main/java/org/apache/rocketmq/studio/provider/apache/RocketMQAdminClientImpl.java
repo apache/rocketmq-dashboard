@@ -39,6 +39,10 @@ import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsCommand;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupSettingsVO;
@@ -82,7 +86,6 @@ import java.util.Set;
 public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
-    private static final String LEGACY_METADATA_SCOPE = "";
     private static final long RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS = 3_000L;
     private static final String RISK_INFO = "INFO";
     private static final String RISK_WARNING = "WARNING";
@@ -95,6 +98,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final AuditService auditService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqClientPool clientPool;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
@@ -217,7 +221,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (proxyConsumerResolver == null) {
             return;
         }
-        ConsumerConnection viaProxy = proxyConsumerResolver.resolveConsumerConnection(instanceId, group);
+        ProxyConsumerResolver.ConsumerConnectionResolution resolution =
+                proxyConsumerResolver.resolveConsumerConnectionStatus(instanceId, group);
+        if (!resolution.available()) {
+            vo.setOnlineInstances(-1);
+            return;
+        }
+        ConsumerConnection viaProxy = resolution.connection();
         if (viaProxy == null) {
             return;
         }
@@ -255,21 +265,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
-        topic.setInstanceId(instanceId);
+        return createTopic(instanceId, topic, false);
+    }
+
+    @Override
+    public TopicVO importTopic(String instanceId, TopicVO topic) {
+        return createTopic(instanceId, topic, true);
+    }
+
+    private TopicVO createTopic(String instanceId, TopicVO topic, boolean importing) {
+        String target = ownershipGuard.requireInstance(instanceId).getName();
+        if (topic == null) {
+            throw new BusinessException(400, "Topic request is required");
+        }
+        topic.setInstanceId(target);
+        topic.setName(ResourceOwnershipGuard.requireText(topic.getName(), "topicName"));
         String topicName = topic.getName();
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
-        return executeForInstance(instanceId, admin -> {
+        return executeResourceWrite(target, Kind.TOPIC, topicName, true, topic.getType(), (admin, clusterName) -> {
             try {
-                String clusterName = getClusterName(admin);
-                // Match on the instance-scoped identity: the same topic name can exist in several
-                // clusters or Studio instances, and a broader lookup would corrupt metadata.
-                RmqTopic existing = topicMapper.selectOne(
-                        new LambdaQueryWrapper<RmqTopic>()
-                                .eq(RmqTopic::getClusterId, clusterName)
-                                .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
-                                .eq(RmqTopic::getName, topicName));
+                RmqTopic existing = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getName, topicName));
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
                         : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
@@ -285,26 +303,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
                 applyTopicType(topicConfig, topic.getType());
 
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateTopicConfig(addr, topicConfig);
+                boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
+                if (!physicalExists) {
+                    for (String addr : brokerAddrs) {
+                        admin.createAndUpdateTopicConfig(addr, topicConfig);
+                    }
                 }
 
-                // Persist to DB. Re-creating a topic that already has a record (for example when
-                // rebuilding a broker route from the console) must update it instead of failing on
-                // the instance-scoped unique key.
+                // The global reservation was already committed independently before the RPC; here we only update the unique record.
                 RmqTopic entity = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
-                        .eq(RmqTopic::getClusterId, clusterName)
-                        .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
                         .eq(RmqTopic::getName, topicName));
                 boolean isNew = entity == null;
                 if (isNew) {
                     entity = new RmqTopic();
                     entity.setName(topicName);
                     entity.setClusterId(clusterName);
-                    entity.setInstanceId(metadataScope(instanceId));
+                    entity.setInstanceId(target);
                     entity.setGmtCreate(LocalDateTime.now());
                 }
-                entity.setInstanceId(metadataScope(instanceId));
                 if (topic.getType() != null) {
                     entity.setTopicType(topic.getType().name());
                 } else if (isNew) {
@@ -343,19 +359,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
-        topic.setInstanceId(instanceId);
+        String target = ownershipGuard.requireInstance(instanceId).getName();
+        topic.setInstanceId(target);
+        topic.setName(ResourceOwnershipGuard.requireText(topic.getName(), "topicName"));
         String topicName = topic.getName();
 
-        return executeForInstance(instanceId, admin -> {
+        return executeResourceWrite(target, Kind.TOPIC, topicName, false, topic.getType(), (admin, clusterName) -> {
             try {
-                // Match on the instance-scoped identity so same-name resources under different
-                // Studio instances do not overwrite each other.
-                String clusterName = getClusterName(admin);
-                RmqTopic existing = topicMapper.selectOne(
-                        new LambdaQueryWrapper<RmqTopic>()
-                                .eq(RmqTopic::getClusterId, clusterName)
-                                .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
-                                .eq(RmqTopic::getName, topicName));
+                RmqTopic existing = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
+                        .eq(RmqTopic::getName, topicName));
+                if (existing == null) {
+                    throw new BusinessException(404, "Topic not found: " + topicName);
+                }
                 // Preserve the existing queue counts when the update request does not change them,
                 // matching the perm semantics below; defaulting to 8 would silently resize the
                 // topic on partial updates (e.g. perm or remark only).
@@ -443,34 +458,25 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteTopic(String instanceId, String name) {
-        String namesrvAddr = namesrvAddr(instanceId);
-        executeForInstance(instanceId, admin -> {
+    public void deleteTopic(String instanceId, String rawName) {
+        String name = ResourceOwnershipGuard.requireText(rawName, "topicName");
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        Resource resource = ownershipGuard.topicResource(name);
+        if (resource.kind() != Kind.TOPIC) {
+            ownershipGuard.withOwned(instance, List.of(resource), () -> executeForInstance(instance.getName(), admin -> {
+                var owner = ownershipGuard.check(instance, resource, true);
+                var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
+                deletePhysicalTopic(admin, instance.getName(), name, target.cluster(), target.masters());
+                return null;
+            }));
+            return;
+        }
+        executeResourceWrite(instance.getName(), Kind.TOPIC, name, false, null, (admin, clusterName) -> {
             try {
-                String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
 
-                // Delete from brokers
-                if (!brokerAddrs.isEmpty()) {
-                    admin.deleteTopicInBroker(brokerAddrs, name);
-                }
-
-                // Delete from nameserver
-                Set<String> nsAddrs = new HashSet<>();
-                for (String addr : namesrvAddr.split("[;,]")) {
-                    String trimmed = addr.trim();
-                    if (!trimmed.isEmpty()) {
-                        nsAddrs.add(trimmed);
-                    }
-                }
-                Set<String> clusters = Set.of(clusterName);
-                for (String physicalCluster : clusters) admin.deleteTopicInNameServer(nsAddrs, physicalCluster, name);
-
-                // Topic names may be shared by several clusters managed by this Studio instance.
-                topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
-                        .in(RmqTopic::getClusterId, clusters)
-                        .eq(RmqTopic::getInstanceId, metadataScope(instanceId))
-                        .eq(RmqTopic::getName, name));
+                deletePhysicalTopic(admin, instance.getName(), name, clusterName, brokerAddrs);
+                topicMapper.delete(new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, name));
 
                 recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
                 return null;
@@ -486,18 +492,33 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Send message request is required");
+        }
+        ResourceOwnershipGuard.requireText(request.getInstanceId(), "instanceId");
+        validateMessageSize(request);
+        InstanceVO instance = ownershipGuard.requireInstance(request.getInstanceId());
+        request.setInstanceId(instance.getName());
+        request.setTopic(ResourceOwnershipGuard.requireText(request.getTopic(), "topicName"));
+        Resource resource = ownershipGuard.topicResource(request.getTopic());
+        ownershipGuard.check(instance, resource, true);
+        return ownershipGuard.withOwned(instance, List.of(resource), () -> {
+            executeForInstance(instance.getName(), admin -> {
+                var owner = ownershipGuard.check(instance, resource, true);
+                var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
+                ApacheWriteTargetResolver.requireTopicRoute(admin, target, request.getTopic());
+                return null;
+            });
+            return sendOwnedMessage(request);
+        });
+    }
+
+    private SendMessageVO sendOwnedMessage(SendMessageDTO request) {
         String topic = request.getTopic();
         String tag = request.getTag() != null ? request.getTag() : "";
         String key = request.getKey() != null ? request.getKey() : "";
         String body = request.getBody() != null ? request.getBody() : "";
         byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
-        if (bodyBytes.length > MAX_MESSAGE_SIZE) {
-            String message = "Message body size " + bodyBytes.length
-                    + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes";
-            recordAudit("SEND_MESSAGE", topic, message, "FAILED");
-            throw new BusinessException(400, message);
-        }
-
         MqClientPool.ClientAction<DefaultMQProducer, SendMessageVO> sendAction = producer -> {
             Message msg = new Message(topic, bodyBytes);
             if (StringUtils.hasText(tag)) {
@@ -548,15 +569,23 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .build();
         };
         try {
-            return StringUtils.hasText(request.getInstanceId())
-                    ? runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction)
-                    : clientPool.withProducer(namesrvAddr(), null, null, sendAction);
+            return runtimeAdminClientResolver.executeProducer(request.getInstanceId(), sendAction);
         } catch (BusinessException e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw e;
         } catch (Exception e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to send message: " + e.getMessage());
+        }
+    }
+
+    private void validateMessageSize(SendMessageDTO request) {
+        int size = request.getBody() == null ? 0 : request.getBody().getBytes(StandardCharsets.UTF_8).length;
+        if (size > MAX_MESSAGE_SIZE) {
+            String message = "Message body size " + size
+                    + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes";
+            recordAudit("SEND_MESSAGE", request.getTopic(), message, "FAILED");
+            throw new BusinessException(400, message);
         }
     }
 
@@ -569,20 +598,32 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = group != null ? group.getInstanceId() : null;
-        return executeForInstance(instanceId,
-                admin -> createConsumerGroup(admin, group));
+        return createConsumerGroup(group, false);
+    }
+
+    @Override
+    public ConsumerGroupVO importConsumerGroup(ConsumerGroupVO group) {
+        return createConsumerGroup(group, true);
+    }
+
+    private ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group, boolean importing) {
+        String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
+        group.setInstanceId(instanceId);
+        group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
+        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), true, null,
+                (admin, cluster) -> createConsumerGroup(admin, group, cluster, importing));
     }
 
     @Override
     public ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group) {
-        String instanceId = group != null ? group.getInstanceId() : null;
-        return executeForInstance(instanceId, admin -> {
+        String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
+        group.setInstanceId(instanceId);
+        group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
+        return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), false, null, (admin, clusterName) -> {
             String groupName = group.getName();
             int totalBrokers = 0;
             int updatedBrokers = 0;
             try {
-                String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(502, "No broker available to update consumer group");
@@ -626,7 +667,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
     public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
         return executeForInstance(instanceId, admin -> {
             try {
-                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
+                InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+                var owner = ownershipGuard.check(instance, new Resource(Kind.GROUP, name), true);
+                Set<String> brokerAddrs = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId()).masters();
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(502, "No broker available to get consumer group settings");
                 }
@@ -647,24 +690,30 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
+    public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String rawName,
                                                                  ConsumerGroupSettingsCommand command) {
-        return executeForInstance(instanceId, admin -> {
+        String name = ResourceOwnershipGuard.requireText(rawName, "groupName");
+        return executeResourceWrite(instanceId, Kind.GROUP, name, false, null, (admin, clusterName) -> {
             int totalBrokers = 0;
             int updatedBrokers = 0;
             try {
-                String clusterName = getClusterName(admin);
                 Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(502, "No broker available to update consumer group settings");
                 }
                 totalBrokers = brokerAddrs.size();
-                SubscriptionGroupConfig applied = null;
+                Map<String, SubscriptionGroupConfig> configsByBroker = new LinkedHashMap<>();
                 for (String brokerAddr : brokerAddrs) {
                     SubscriptionGroupConfig config = admin.examineSubscriptionGroupConfig(brokerAddr, name);
                     if (config == null) {
                         throw new BusinessException(404, "Consumer group not found: " + name);
                     }
+                    configsByBroker.put(brokerAddr, config);
+                }
+                SubscriptionGroupConfig applied = null;
+                for (Map.Entry<String, SubscriptionGroupConfig> entry : configsByBroker.entrySet()) {
+                    String brokerAddr = entry.getKey();
+                    SubscriptionGroupConfig config = entry.getValue();
                     config.setRetryQueueNums(command.retryQueueNums());
                     config.setRetryMaxTimes(command.retryMaxTimes());
                     if (command.consumeEnable() != null) {
@@ -683,8 +732,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     }
                 }
                 RmqGroup group = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
-                        .eq(RmqGroup::getClusterId, clusterName)
-                        .eq(RmqGroup::getInstanceId, metadataScope(instanceId))
                         .eq(RmqGroup::getName, name));
                 if (group != null) {
                     group.setMaxRetry(command.retryMaxTimes());
@@ -720,11 +767,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return value == null ? "preserved" : value.toString();
     }
 
-    private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {
+    private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group, String groupClusterName,
+                                                boolean importing) {
         String groupName = group.getName();
 
         try {
-            String groupClusterName = getClusterName(admin);
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, groupClusterName);
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to create consumer group");
@@ -737,8 +784,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
             config.setRetryQueueNums(1);
             config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
 
-            for (String addr : brokerAddrs) {
-                admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+            boolean physicalExists = importing && verifyGroupImport(admin, brokerAddrs, config);
+            if (!physicalExists) {
+                for (String addr : brokerAddrs) {
+                    admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+                }
             }
 
             persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());
@@ -755,21 +805,17 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private void persistConsumerGroup(ConsumerGroupVO group, String clusterName, int retryMaxTimes) {
-        // Only metadata persistence is shared by create and update; broker writes have
-        // separate semantics. Scope the upsert to the selected Studio instance.
+        // Ownership is determined by the global reservation guard; a three-column filter must not mask cross-instance conflicts.
         RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
-                .eq(RmqGroup::getClusterId, clusterName)
-                .eq(RmqGroup::getInstanceId, metadataScope(group.getInstanceId()))
                 .eq(RmqGroup::getName, group.getName()));
         boolean isNewGroup = entity == null;
         if (isNewGroup) {
             entity = new RmqGroup();
             entity.setName(group.getName());
             entity.setClusterId(clusterName);
-            entity.setInstanceId(metadataScope(group.getInstanceId()));
+            entity.setInstanceId(group.getInstanceId());
             entity.setGmtCreate(LocalDateTime.now());
         }
-        entity.setInstanceId(metadataScope(group.getInstanceId()));
         entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
         entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
         entity.setMaxRetry(retryMaxTimes);
@@ -784,27 +830,28 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteConsumerGroup(String instanceId, String name) {
-        executeForInstance(instanceId, admin -> {
-            doDeleteConsumerGroup(instanceId, admin, name);
+    public void deleteConsumerGroup(String instanceId, String rawName) {
+        String target = ownershipGuard.requireInstance(instanceId).getName();
+        String name = ResourceOwnershipGuard.requireText(rawName, "groupName");
+        executeResourceWrite(target, Kind.GROUP, name, false, null, (admin, clusterName) -> {
+            doDeleteConsumerGroup(target, admin, name, clusterName);
             return null;
         });
     }
 
-    private void doDeleteConsumerGroup(String instanceId, MQAdminExt admin, String name) {
+    private void doDeleteConsumerGroup(String instanceId, MQAdminExt admin, String name, String clusterName) {
         try {
-            String clusterName = getClusterName(admin);
             Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
 
+            resolveNameservers(instanceId);
             for (String addr : brokerAddrs) {
                 admin.deleteSubscriptionGroup(addr, name, true);
             }
 
-            // Consumer group names may be shared by several clusters managed by this Studio instance.
-            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
-                    .eq(RmqGroup::getClusterId, clusterName)
-                    .eq(RmqGroup::getInstanceId, metadataScope(instanceId))
-                    .eq(RmqGroup::getName, name));
+            // Delete derived resources while holding group ownership; on failure keep the reservation so the original instance can retry.
+            deletePhysicalTopic(admin, instanceId, "%DLQ%" + name, clusterName, brokerAddrs);
+            deletePhysicalTopic(admin, instanceId, "%RETRY%" + name, clusterName, brokerAddrs);
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
         } catch (BusinessException e) {
@@ -860,10 +907,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         "No consume offset data found for topic " + topic);
             }
 
-            long currentTotalLag = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getCurrentLag).sum();
-            long projectedTotalLag = queues.stream()
-                    .mapToLong(ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
-                    .sum();
+            long currentTotalLag = aggregateResetPreviewLag(queues, false);
+            long projectedTotalLag = aggregateResetPreviewLag(queues, true);
             long totalOffsetDelta = queues.stream().mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum();
             int rewindQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
             int fastForwardQueueCount = (int) queues.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
@@ -999,6 +1044,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (rewindQueueCount > 0) {
             warnings.add(rewindQueueCount + " queue(s) will move backward and may replay consumed messages");
         }
+        if (queues.stream().anyMatch(queue -> queue.getCurrentLag() == ConsumerLagResolver.UNKNOWN
+                || queue.getProjectedLag() == ConsumerLagResolver.UNKNOWN)) {
+            warnings.add("At least one queue has unavailable lag; affected backlog totals are unavailable");
+        }
         if (queues.stream().anyMatch(queue -> queue.getMinOffset() >= 0
                 && queue.getTargetOffset() == queue.getMinOffset())) {
             warnings.add("At least one queue will reset to the minimum retained offset");
@@ -1010,8 +1059,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return warnings;
     }
 
+    private long aggregateResetPreviewLag(List<ResetConsumerOffsetQueuePreviewVO> queues, boolean projected) {
+        long total = 0L;
+        for (ResetConsumerOffsetQueuePreviewVO queue : queues) {
+            long lag = projected ? queue.getProjectedLag() : queue.getCurrentLag();
+            if (lag == ConsumerLagResolver.UNKNOWN) {
+                return ConsumerLagResolver.UNKNOWN;
+            }
+            total += lag;
+        }
+        return total;
+    }
+
     private long resolveLag(long brokerOffset, long consumerOffset) {
-        return Math.max(0L, brokerOffset - consumerOffset);
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, null);
     }
 
     private long clampOffset(long offset, long minOffset, long maxOffset) {
@@ -1044,27 +1105,35 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
-        if (!StringUtils.hasText(topic)) {
+    public void resetOffset(String instanceId, String rawName, long timestamp, String rawTopic) {
+        if (!StringUtils.hasText(rawTopic)) {
             throw new BusinessException(400, "topic is required for offset reset");
         }
+        String name = ResourceOwnershipGuard.requireText(rawName, "groupName");
+        String topic = rawTopic.trim();
         try {
             // resetOffsetNew applies the searched offset even when it is ahead of the
             // current offset (the preview offers "skip unconsumed messages") and falls
             // back to direct offset writes when the group is offline; the non-forcing
             // resetOffsetByTimestamp silently capped forward targets to the current
             // offset and failed with CONSUMER_NOT_ONLINE for offline groups.
-            if (StringUtils.hasText(instanceId)) {
-                runtimeAdminClientResolver.execute(instanceId, admin -> {
-                    admin.resetOffsetNew(name, topic, timestamp);
-                    return null;
-                });
-            } else {
-                adminFactory.execute(namesrvAddr(), null, admin -> {
-                    admin.resetOffsetNew(name, topic, timestamp);
-                    return null;
-                });
-            }
+            InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+            Resource group = new Resource(Kind.GROUP, ResourceOwnershipGuard.requireText(name, "groupName"));
+            Resource topicResource = ownershipGuard.topicResource(topic);
+            ownershipGuard.check(instance, group, true);
+            ownershipGuard.check(instance, topicResource, true);
+            ownershipGuard.withOwned(instance, List.of(group, topicResource), () ->
+                    executeForInstance(instance.getName(), admin -> {
+                        var groupOwner = ownershipGuard.check(instance, group, true);
+                        var topicOwner = ownershipGuard.check(instance, topicResource, true);
+                        if (!groupOwner.clusterId().equals(topicOwner.clusterId())) {
+                            throw new BusinessException(409, "Group and topic are not in the same target cluster");
+                        }
+                        var target = ApacheWriteTargetResolver.resolve(admin, instance, groupOwner.clusterId());
+                        ApacheWriteTargetResolver.requireTopicRoute(admin, target, topic);
+                        admin.resetOffsetNew(name, topic, timestamp);
+                        return null;
+                    }));
             recordAudit("RESET_OFFSET", name,
                     "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
         } catch (BusinessException e) {
@@ -1127,87 +1196,110 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private String namesrvAddr(String instanceId) {
-        return StringUtils.hasText(instanceId)
-                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
-                : namesrvAddr();
+        return runtimeAdminClientResolver.resolveEndpoint(ResourceOwnershipGuard.requireText(instanceId, "instanceId"));
     }
 
     private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, action);
-        }
-        return adminFactory.execute(namesrvAddr(), null, action);
+        return runtimeAdminClientResolver.execute(ResourceOwnershipGuard.requireText(instanceId, "instanceId"), action);
     }
 
-    private String metadataScope(String instanceId) {
-        if (StringUtils.hasText(instanceId) && runtimeAdminClientResolver.configuredClusterName(instanceId) != null) {
-            return LEGACY_METADATA_SCOPE;
+    private <T> T executeResourceWrite(String instanceId, Kind kind, String name, boolean create, TopicType type,
+                                       java.util.function.BiFunction<MQAdminExt, String, T> action) {
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        Resource resource = new Resource(kind, ResourceOwnershipGuard.requireText(name, "resourceName"));
+        if (create && kind == Kind.TOPIC && ownershipGuard.topicResource(name).kind() != Kind.TOPIC) {
+            throw new BusinessException(400, "Derived resources cannot be registered as a regular topic");
         }
-        return StringUtils.hasText(instanceId) ? instanceId.trim() : LEGACY_METADATA_SCOPE;
+        var owner = ownershipGuard.check(instance, resource, !create);
+        ownershipGuard.requireSupportedProvider(instance);
+        return executeForInstance(instance.getName(), admin -> {
+            var target = ApacheWriteTargetResolver.resolve(admin, instance, owner == null ? null : owner.clusterId());
+            return ownershipGuard.write(instance, resource, target.cluster(), create,
+                    type == null ? null : type.name(), () -> action.apply(admin, target.cluster()));
+        });
+    }
+
+    /** Import reads all target masters within the ownership row lock; existing config is only registered, never overwritten. */
+    private boolean verifyTopicImport(MQAdminExt admin, Set<String> masters, TopicConfig requested) throws Exception {
+        boolean found = false;
+        for (String master : masters) {
+            TopicConfig current;
+            try {
+                current = admin.examineTopicConfig(master, requested.getTopicName());
+            } catch (Exception failure) {
+                if (MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                    continue;
+                }
+                throw failure;
+            }
+            if (current == null) {
+                continue;
+            }
+            found = true;
+            if (!requested.getTopicName().equals(current.getTopicName())
+                    || requested.getReadQueueNums() != current.getReadQueueNums()
+                    || requested.getWriteQueueNums() != current.getWriteQueueNums()
+                    || requested.getPerm() != current.getPerm()
+                    // The write protocol's +message.type is not the bare key used when reading config; do not read the request's type default directly.
+                    || !requested.getAttributes().getOrDefault("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
+                            requested.getTopicMessageType().name()).equals(current.getTopicMessageType().name())) {
+                throw new BusinessException(409, "Import config conflicts with the existing physical topic; refusing to overwrite: " + requested.getTopicName());
+            }
+        }
+        return found;
+    }
+
+    private boolean verifyGroupImport(MQAdminExt admin, Set<String> masters, SubscriptionGroupConfig requested)
+            throws Exception {
+        boolean found = false;
+        for (String master : masters) {
+            SubscriptionGroupConfig current;
+            try {
+                current = admin.examineSubscriptionGroupConfig(master, requested.getGroupName());
+            } catch (Exception failure) {
+                if (MqResponseCodes.hasResponseCode(failure, ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST)) {
+                    continue;
+                }
+                throw failure;
+            }
+            if (current == null) {
+                continue;
+            }
+            found = true;
+            if (!requested.getGroupName().equals(current.getGroupName())
+                    || requested.getRetryMaxTimes() != current.getRetryMaxTimes()) {
+                throw new BusinessException(409, "Import config conflicts with the existing physical group; refusing to overwrite: " + requested.getGroupName());
+            }
+        }
+        return found;
     }
 
     private Set<String> getMasterBrokerAddrsForCluster(MQAdminExt admin, String clusterName) throws Exception {
-        if (!StringUtils.hasText(clusterName)) {
-            return getAllMasterBrokerAddrs(admin);
-        }
-        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-        if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null
-                || clusterInfo.getBrokerAddrTable() == null) {
-            return getAllMasterBrokerAddrs(admin);
-        }
-        Set<String> brokerNames = clusterInfo.getClusterAddrTable().get(clusterName);
-        if (brokerNames == null || brokerNames.isEmpty()) {
-            return getAllMasterBrokerAddrs(admin);
-        }
-        Set<String> addrs = new HashSet<>();
-        for (String brokerName : brokerNames) {
-            BrokerData brokerData = clusterInfo.getBrokerAddrTable().get(brokerName);
-            if (brokerData == null || brokerData.getBrokerAddrs() == null) {
-                continue;
-            }
-            String masterAddr = brokerData.getBrokerAddrs().get(0L);
-            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
-            }
-            if (masterAddr != null) {
-                addrs.add(masterAddr);
-            }
-        }
-        return addrs.isEmpty() ? getAllMasterBrokerAddrs(admin) : addrs;
+        return ApacheWriteTargetResolver.target(admin.examineBrokerClusterInfo(), clusterName).masters();
     }
 
-    private Set<String> getAllMasterBrokerAddrs(MQAdminExt admin) throws Exception {
-        Set<String> addrs = new HashSet<>();
-        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-            return addrs;
-        }
-
-        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData == null || brokerData.getBrokerAddrs() == null) {
-                continue;
-            }
-            String masterAddr = brokerData.getBrokerAddrs().get(0L);
-            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
-            }
-            if (masterAddr != null) {
-                addrs.add(masterAddr);
-            }
-        }
-        return addrs;
+    private void deletePhysicalTopic(MQAdminExt admin, String instanceId, String name, String cluster,
+                                      Set<String> brokers) throws Exception {
+        Set<String> nameservers = resolveNameservers(instanceId);
+        admin.deleteTopicInBroker(brokers, name);
+        admin.deleteTopicInNameServer(nameservers, cluster, name);
     }
 
-    private String getClusterName(MQAdminExt admin) {
-        try {
-            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-            if (clusterInfo != null && clusterInfo.getClusterAddrTable() != null
-                    && !clusterInfo.getClusterAddrTable().isEmpty()) {
-                return clusterInfo.getClusterAddrTable().keySet().iterator().next();
-            }
-        } catch (Exception ignored) {
+    private Set<String> resolveNameservers(String instanceId) {
+        Set<String> nameservers = new HashSet<>();
+        String endpoint = namesrvAddr(instanceId);
+        if (!StringUtils.hasText(endpoint)) {
+            throw new BusinessException(409, "Target instance has no available NameServer");
         }
-        return "DefaultCluster";
+        for (String address : endpoint.split("[;,]")) {
+            if (StringUtils.hasText(address)) {
+                nameservers.add(address.trim());
+            }
+        }
+        if (nameservers.isEmpty()) {
+            throw new BusinessException(409, "Target instance has no available NameServer");
+        }
+        return nameservers;
     }
 
     private int toRocketMQPerm(TopicPerm perm) {

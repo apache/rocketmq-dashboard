@@ -10,11 +10,13 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.CliBinaryProbe;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -196,5 +198,39 @@ class CliAgentProviderTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    void probeLooksTheBinaryUpOnThePathTest() {
+        AtomicReference<List<String>> probed = new AtomicReference<>();
+        CliBinaryProbe probe = new CliBinaryProbe(
+                new CliProcessEnvironment(List.of())::applyIsolated,
+                builder -> {
+                    probed.set(List.copyOf(builder.command()));
+                    return builder.start();
+                });
+
+        assertThat(probe.isAvailable("rmqctl")).isFalse();
+        assertThat(probed.get()).containsExactly("sh", "-c", "command -v rmqctl");
+    }
+
+    @Test
+    void probeFindsABinaryThatIsReallyInstalledTest() {
+        CliBinaryProbe probe = new CliBinaryProbe(new CliProcessEnvironment(List.of()));
+
+        assertThat(probe.isAvailable("sh")).isTrue();
+        assertThat(probe.isAvailable("definitely-not-on-path-9f3a")).isFalse();
+    }
+
+    @Test
+    void probeAppliesAnEmptyProviderEnvironmentTest() {
+        List<Map<String, String>> applied = new ArrayList<>();
+        CliBinaryProbe probe = new CliBinaryProbe(
+                (builder, providerEnvironment) -> applied.add(Map.copyOf(providerEnvironment)),
+                ProcessBuilder::start);
+
+        // A probe only asks whether a binary exists, so nothing request-scoped may travel with it.
+        assertThat(probe.isAvailable("sh")).isTrue();
+        assertThat(applied).containsExactly(Map.of());
     }
 }
