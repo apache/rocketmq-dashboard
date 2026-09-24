@@ -38,14 +38,15 @@ public interface RmqAlertNotificationOutboxMapper extends BaseMapper<RmqAlertNot
             @Param("staleBefore") LocalDateTime staleBefore, @Param("limit") int limit);
 
     @Update("UPDATE rmq_alert_notification_outbox SET status = 'SENDING', sending_started_at = #{claimedAt}, "
-            + "claim_token = #{claimToken} "
+            + "claim_token = #{claimToken}, gmt_modified = #{claimedAt} "
             + "WHERE id = #{id} AND ((status IN ('PENDING', 'RETRY_WAIT') AND next_attempt_at <= #{now}) "
             + "OR (status = 'SENDING' AND (sending_started_at IS NULL OR sending_started_at <= #{staleBefore})))")
     int claimForDispatch(@Param("id") Long id, @Param("now") LocalDateTime now,
             @Param("staleBefore") LocalDateTime staleBefore, @Param("claimedAt") LocalDateTime claimedAt,
             @Param("claimToken") String claimToken);
 
-    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt} "
+    @Update("UPDATE rmq_alert_notification_outbox SET sending_started_at = #{renewedAt}, "
+            + "gmt_modified = #{renewedAt} "
             + "WHERE id = #{id} AND status = 'SENDING' AND claim_token = #{claimToken}")
     int renewClaim(@Param("id") Long id, @Param("claimToken") String claimToken,
             @Param("renewedAt") LocalDateTime renewedAt);

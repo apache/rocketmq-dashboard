@@ -189,7 +189,9 @@ public class NotificationOutboxService {
             row.setStatus(NotificationOutboxStatus.PENDING.name());
             row.setAttemptCount(0);
             row.setMessageContent(AlertNotificationTemplate.render(rule.getNotificationTemplate(), alert, rule));
-            row.setNextAttemptAt(silenceEndsAt == null ? utcNow() : silenceEndsAt);
+            LocalDateTime enqueuedAt = utcNow();
+            row.setNextAttemptAt(silenceEndsAt == null ? enqueuedAt : silenceEndsAt);
+            stampBookkeepingColumns(row, enqueuedAt);
             mapper.insert(row);
         }
     }
@@ -236,7 +238,8 @@ public class NotificationOutboxService {
         int updated = mapper.update(null, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("attempt_count", 0)
                 .set("next_attempt_at", now).set("sending_started_at", null).set("claim_token", null)
-                .set("last_error", null).eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
+                .set("last_error", null).set("gmt_modified", now)
+                .eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
         if (updated != 1) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
@@ -368,7 +371,8 @@ public class NotificationOutboxService {
             if (!updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
                     .set("status", NotificationOutboxStatus.DELIVERED.name()).set("delivered_at", deliveredAt)
                     .set("sending_started_at", null)
-                    .set("last_error", null).set("claim_token", null))) {
+                    .set("last_error", null).set("claim_token", null)
+                    .set("gmt_modified", deliveredAt))) {
                 return;
             }
             recordDeliverySafely(row, "DELIVER_ALERT_NOTIFICATION", "SUCCESS", null);
@@ -394,7 +398,8 @@ public class NotificationOutboxService {
     private void deferUntilSilenceEnds(RmqAlertNotificationOutbox row, LocalDateTime silenceEndsAt, String claimToken) {
         updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("next_attempt_at", silenceEndsAt)
-                .set("sending_started_at", null).set("claim_token", null));
+                .set("sending_started_at", null).set("claim_token", null)
+                .set("gmt_modified", utcNow()));
     }
 
     private void sendWebhook(GeneralSettingsVO settings, SystemAlertVO alert, String channel, String content) {
@@ -513,7 +518,8 @@ public class NotificationOutboxService {
                         : NotificationOutboxStatus.RETRY_WAIT).name())
                 .set("next_attempt_at", now.plusSeconds(Math.min(300, 5L << Math.min(attempts - 1, 5))))
                 .set("sending_started_at", null)
-                .set("last_error", abbreviate(error)).set("claim_token", null))) {
+                .set("last_error", abbreviate(error)).set("claim_token", null)
+                .set("gmt_modified", now))) {
             return;
         }
         // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
@@ -647,6 +653,23 @@ public class NotificationOutboxService {
 
     private static LocalDateTime utcNow() {
         return LocalDateTime.now(ZoneOffset.UTC);
+    }
+
+    /**
+     * Stamps the two bookkeeping columns of a new row with {@code now}, in UTC.
+     *
+     * <p>Every other timestamp this table carries is UTC — {@code next_attempt_at}, {@code
+     * sending_started_at}, {@code delivered_at} all come from {@link #utcNow()}, and {@code
+     * cleanupTerminalDeliveries} compares {@code gmt_modified} against a UTC cutoff — and the deliveries
+     * page renders {@code createdAt} as UTC too ({@code formatUtcDateTime}). Leaving {@code gmt_create}
+     * and {@code gmt_modified} to their MySQL defaults is what made one row carry two time bases: the
+     * defaults are evaluated in the database session's zone, so on a database whose zone is not UTC the
+     * "Created At" of a delivery is offset from the rest of the row and a FAILED row is swept away up to
+     * one zone offset away from its configured retention.
+     */
+    private static void stampBookkeepingColumns(RmqAlertNotificationOutbox row, LocalDateTime now) {
+        row.setGmtCreate(now);
+        row.setGmtModified(now);
     }
 
     private static RestTemplate newClient() {

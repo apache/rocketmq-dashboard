@@ -248,6 +248,27 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void databaseLoginStampsTheSessionCreationTimeInUtc() {
+        // rmq_studio_session.gmt_create is declared with a MySQL CURRENT_TIMESTAMP default, evaluated in the
+        // database session's zone, while last_seen_at and expires_at are written from the UTC clock and the
+        // user-management session list renders all three as UTC.
+        RmqStudioUser user = user(1L, "operator", true, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request);
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(captor.getValue().getLastSeenAt());
+    }
+
+    @Test
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
@@ -389,6 +410,36 @@ class AuthServiceDatabaseTest {
         request.setPassword("password-1");
 
         assertThat(authService.login(request).getUser().getUsername()).isEqualTo("operator");
+    }
+
+    @Test
+    void createUserStampsTheBookkeepingColumnsInUtcTest() {
+        // rmq_studio_user.gmt_create/gmt_modified are declared with MySQL CURRENT_TIMESTAMP defaults,
+        // evaluated in the database session's zone, while password_changed_at is written from the UTC clock
+        // and the user table and its CSV export render gmtCreate/gmtModified as UTC (issue #4234).
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        authService.createUser("operator", "password-1", false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(captor.getValue().getGmtCreate());
+        assertThat(captor.getValue().getPasswordChangedAt()).isEqualTo(captor.getValue().getGmtCreate());
+    }
+
+    @Test
+    void disablingAUserStampsItsModificationTimeInUtcTest() {
+        RmqStudioUser operator = user(2L, "operator", false, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(operator);
+
+        authService.setUserEnabled(2L, false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(LocalDateTime.parse("2026-08-13T00:00:00"));
     }
 
     @Test

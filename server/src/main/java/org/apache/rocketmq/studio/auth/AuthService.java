@@ -307,7 +307,9 @@ public class AuthService {
         user.setPasswordHash(passwordHasher.hash(password));
         user.setAdmin(admin);
         user.setEnabled(true);
-        user.setPasswordChangedAt(now());
+        LocalDateTime createdAt = now();
+        user.setPasswordChangedAt(createdAt);
+        stampBookkeepingColumns(user, createdAt);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -336,7 +338,9 @@ public class AuthService {
                 throw new BusinessException(409, "The last enabled administrator cannot be disabled");
             }
         }
-        userMapper.updateById(userWithEnabled(user, enabled));
+        RmqStudioUser enabledUpdate = userWithEnabled(user, enabled);
+        enabledUpdate.setGmtModified(now());
+        userMapper.updateById(enabledUpdate);
         if (!enabled) {
             revokeUserSessions(user.getId());
         }
@@ -356,10 +360,12 @@ public class AuthService {
             throw new BusinessException(400, "Current password is incorrect");
         }
         validatePassword(newPassword);
+        LocalDateTime passwordChangedAt = now();
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", passwordChangedAt)
+                .set("gmt_modified", passwordChangedAt));
         revokeUserSessions(user.getId());
     }
 
@@ -395,6 +401,10 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        // Every timestamp of this row comes from the UTC clock above, and the user-management session list
+        // renders gmt_create next to last_seen_at and expires_at as UTC. Leaving the column to its MySQL
+        // CURRENT_TIMESTAMP default evaluates it in the database session's zone instead.
+        session.setGmtCreate(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -464,7 +474,9 @@ public class AuthService {
             user.setPasswordHash(passwordHasher.hash(configuredUser.getPassword()));
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
-            user.setPasswordChangedAt(now());
+            LocalDateTime seededAt = now();
+            user.setPasswordChangedAt(seededAt);
+            stampBookkeepingColumns(user, seededAt);
             try {
                 userMapper.insert(user);
             } catch (DuplicateKeyException exception) {
@@ -485,6 +497,20 @@ public class AuthService {
             throw new BusinessException(404, "User not found");
         }
         return user;
+    }
+
+    /**
+     * Stamps the bookkeeping columns of a new {@code rmq_studio_user} row with {@code now}, in UTC.
+     *
+     * <p>{@code password_changed_at}, {@code last_seen_at} and {@code expires_at} all come from this
+     * service's UTC clock and the console renders {@code gmtCreate}/{@code gmtModified} as UTC alongside
+     * them, so leaving these two to their MySQL {@code CURRENT_TIMESTAMP} defaults puts the database
+     * session's zone into one row of an otherwise UTC table. Issue #4234 tracks the rendered symptom, and
+     * the review of #4235 held the client-side half until this write path was settled.
+     */
+    private static void stampBookkeepingColumns(RmqStudioUser user, LocalDateTime now) {
+        user.setGmtCreate(now);
+        user.setGmtModified(now);
     }
 
     private RmqStudioUser userWithEnabled(RmqStudioUser user, boolean enabled) {

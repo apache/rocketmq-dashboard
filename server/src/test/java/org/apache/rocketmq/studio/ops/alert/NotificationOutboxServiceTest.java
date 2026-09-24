@@ -228,6 +228,88 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void enqueueShouldStampBothBookkeepingColumnsInUtcTest() {
+        // Every other timestamp of this table is UTC, and the deliveries page renders createdAt as UTC.
+        // Leaving gmt_create/gmt_modified to their MySQL defaults puts the database session's clock into
+        // the same row, which offsets the shown creation time by the database zone.
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.CLUSTER)
+                .channels(List.of("dingtalk")).build();
+        SystemAlertVO alert = SystemAlertVO.builder().id(9L).title("Disk warning").instanceId("local")
+                .labels(java.util.Map.of()).time(LocalDateTime.now(ZoneOffset.UTC)).build();
+        AlertSilenceService silences = mock(AlertSilenceService.class);
+        when(silences.activeUntil(rule, "local", java.util.Map.of(), alert.getTime())).thenReturn(null);
+
+        new NotificationOutboxService(mapper, mock(SettingsRepository.class), silences,
+                mock(AlertRepository.class), mock(OperationAuditService.class)).enqueue(alert, rule);
+
+        org.mockito.ArgumentCaptor<RmqAlertNotificationOutbox> row =
+                org.mockito.ArgumentCaptor.forClass(RmqAlertNotificationOutbox.class);
+        verify(mapper).insert(row.capture());
+        LocalDateTime utcNow = LocalDateTime.now(ZoneOffset.UTC);
+        assertThat(Duration.between(row.getValue().getGmtCreate(), utcNow).abs())
+                .as("gmt_create is stamped from the UTC clock")
+                .isLessThan(Duration.ofSeconds(5));
+        assertThat(Duration.between(row.getValue().getGmtModified(), utcNow).abs())
+                .as("gmt_modified is stamped from the UTC clock")
+                .isLessThan(Duration.ofSeconds(5));
+        // A PENDING row has no delivered_at, so this row's creation time is what the page shows.
+        assertThat(row.getValue().getGmtCreate()).isEqualTo(row.getValue().getNextAttemptAt());
+    }
+
+    @Test
+    void mutationsShouldStampGmtModifiedInsteadOfLeavingItToTheColumnDefaultTest() {
+        // gmt_modified is declared `ON UPDATE CURRENT_TIMESTAMP`, so any write path that omits it silently
+        // gets the database session's clock, and the retention sweep compares that column against a UTC
+        // cutoff. Pinning the set clause is what keeps the one row on one clock.
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("dingtalk");
+        row.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.selectById(8L)).thenReturn(row);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
+                mock(AlertRepository.class), mock(OperationAuditService.class)).retryFailedDelivery(8L);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper> updates =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(mapper).update(org.mockito.ArgumentMatchers.isNull(), updates.capture());
+        assertThat(updates.getValue().getSqlSet()).contains("gmt_modified=");
+    }
+
+    /**
+     * A state write has to stamp {@code gmt_modified} itself. The column is declared
+     * {@code ON UPDATE CURRENT_TIMESTAMP}, so any write that omits it silently takes the database session's
+     * clock instead of the UTC clock the rest of the row is written with, and the retention sweep compares
+     * this column against a UTC cutoff.
+     */
+    private static void assertTheStateWriteStampsGmtModified(RmqAlertNotificationOutboxMapper mapper) {
+        org.mockito.ArgumentCaptor<UpdateWrapper> updates =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(mapper).update(any(), updates.capture());
+        assertThat(updates.getValue().getSqlSet()).contains("gmt_modified=");
+    }
+
+    @Test
+    void claimedAndRenewedRowsShouldStampGmtModifiedInTheStatementItselfTest() {
+        // claimForDispatch and renewClaim are raw statements: with no Java set clause there is nothing to
+        // capture, so the only place the invariant can be asserted is the SQL the mapper carries.
+        for (String methodName : List.of("claimForDispatch", "renewClaim")) {
+            String sql = Arrays.stream(RmqAlertNotificationOutboxMapper.class.getDeclaredMethods())
+                    .filter(method -> method.getName().equals(methodName))
+                    .map(method -> method.getAnnotation(org.apache.ibatis.annotations.Update.class))
+                    .filter(java.util.Objects::nonNull)
+                    .map(annotation -> String.join(" ", annotation.value()))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(sql).as("the SQL of %s", methodName).contains("gmt_modified =");
+        }
+    }
+
+    @Test
     void defersDeliveryUntilTheActiveSilenceEndsTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         AlertSilenceService silences = mock(AlertSilenceService.class);
@@ -249,7 +331,7 @@ class NotificationOutboxServiceTest {
 
         new NotificationOutboxService(mapper, mock(SettingsRepository.class), silences, alerts, audit).dispatch();
 
-        verify(mapper).update(any(), any());
+        assertTheStateWriteStampsGmtModified(mapper);
         verify(audit, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -288,7 +370,7 @@ class NotificationOutboxServiceTest {
         new NotificationOutboxService(mapper, settings, silences, alerts, audit, client).dispatch();
 
         server.verify();
-        verify(mapper).update(any(), any());
+        assertTheStateWriteStampsGmtModified(mapper);
         verify(audit).record("DELIVER_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
                 "alertId=9, channel=dingtalk", "SUCCESS", null);
     }
@@ -323,6 +405,7 @@ class NotificationOutboxServiceTest {
         new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts, audit, client).dispatch();
 
         server.verify();
+        assertTheStateWriteStampsGmtModified(mapper);
         verify(audit).record("RETRY_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
                 "alertId=9, channel=dingtalk", "RETRYING",
                 "DingTalk rejected webhook: keywords not in content");
@@ -594,7 +677,7 @@ class NotificationOutboxServiceTest {
         }
 
         verify(mapper).renewClaim(eq(8L), anyString(), any(LocalDateTime.class));
-        verify(mapper).update(any(), any());
+        assertTheStateWriteStampsGmtModified(mapper);
         verify(heartbeatFuture).cancel(false);
     }
 
