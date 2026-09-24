@@ -49,6 +49,7 @@ import {
 } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -57,27 +58,6 @@ const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
 const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
 
 /* ─── Helpers ─── */
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
-};
 
 export const formatDateTime = (value?: string | number | null): string => {
   if (value === undefined || value === null || value === '') return '-';
@@ -219,7 +199,7 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
-          setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
           setLoading(false);
         }
       });
@@ -296,7 +276,7 @@ const DLQPage = () => {
       setRetryError(null);
     } catch (error) {
       if (retryRequestIdRef.current === requestId) {
-        setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+        setRetryError(describeThrownMessage(error) || DEFAULT_RETRY_ERROR);
       }
     } finally {
       if (retryRequestIdRef.current === requestId) {
@@ -323,7 +303,7 @@ const DLQPage = () => {
         message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 
@@ -367,7 +347,7 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '死信消息明细加载失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -406,7 +386,7 @@ const DLQPage = () => {
       await loadDetailMessages(group, pageToReload, pageSizeToReload);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');
       }
     } finally {
       if (detailResendRequestIdRef.current === requestId) {
@@ -437,7 +417,7 @@ const DLQPage = () => {
         );
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 

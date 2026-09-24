@@ -45,6 +45,7 @@ import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeClientConnections,
@@ -142,27 +143,6 @@ const countBy = (values: string[]) =>
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-function getLoadErrorMessage(error: unknown): string {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return DEFAULT_LOAD_ERROR;
-}
-
 const displayMetadata = (value: string | null | undefined) => value || '-';
 
 /**
@@ -241,7 +221,7 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
+        setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
@@ -273,7 +253,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(getLoadErrorMessage(error));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
         }
       })
       .finally(() => {
