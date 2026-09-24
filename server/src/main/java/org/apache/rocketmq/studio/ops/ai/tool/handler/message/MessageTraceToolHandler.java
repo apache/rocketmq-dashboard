@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageTraceOutpu
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 @RequiredArgsConstructor
@@ -48,8 +49,11 @@ public class MessageTraceToolHandler
     public MessageTraceOutput execute(
             MessageTraceInput input,
             ToolExecutionContext context) {
-        TraceRecordVO trace = messageService.getMessageTrace(
-                context.instanceId(), input.msgId(), input.topicName());
+        TraceRecordVO trace = StringUtils.hasText(input.traceTopicName())
+                ? messageService.getMessageTrace(
+                        context.instanceId(), input.msgId(), input.topicName(), input.traceTopicName())
+                : messageService.getMessageTrace(
+                        context.instanceId(), input.msgId(), input.topicName());
         return project(input.msgId(), trace);
     }
 

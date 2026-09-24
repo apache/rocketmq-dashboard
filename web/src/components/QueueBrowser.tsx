@@ -139,8 +139,10 @@ export const useQueueBrowser = (instanceId?: string) => {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      pullingRef.current.delete(key);
-      if (requestId === requestSeqRef.current) setPulling(new Set(pullingRef.current));
+      if (requestId === requestSeqRef.current) {
+        pullingRef.current.delete(key);
+        setPulling(new Set(pullingRef.current));
+      }
     }
   };
 

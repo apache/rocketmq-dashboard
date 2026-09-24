@@ -345,19 +345,36 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     void deleteTopicShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/topics/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", "test-topic"))))
+                        .content(objectMapper.writeValueAsString(Map.of("instanceId", "instance-a", "name", "test-topic"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteTopic(isNull(), eq("test-topic"));
+        verify(metadataService).deleteTopic(eq("instance-a"), eq("test-topic"));
+    }
+
+    @Test
+    void deleteTopicRequiresInstanceTest() throws Exception {
+        mockMvc.perform(post("/api/topics/delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"orders\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(400));
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void deleteTopicReportsOwnershipConflictTest() throws Exception {
+        org.mockito.Mockito.doThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(409, "Ownership conflict"))
+                .when(metadataService).deleteTopic("instance-a", "orders");
+        mockMvc.perform(post("/api/topics/delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"instance-a\",\"name\":\"orders\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(409));
     }
 
     @Test
     void deleteTopicShouldRejectMissingName() throws Exception {
         mockMvc.perform(post("/api/topics/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"instanceId\":\"instance-a\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));
@@ -369,7 +386,7 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     void deleteTopicShouldRejectBlankName() throws Exception {
         mockMvc.perform(post("/api/topics/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", " "))))
+                        .content(objectMapper.writeValueAsString(Map.of("instanceId", "instance-a", "name", " "))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("name is required"));

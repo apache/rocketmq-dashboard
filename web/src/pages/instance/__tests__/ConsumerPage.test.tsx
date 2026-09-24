@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal, message } from 'antd';
+import { App, Modal } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -312,14 +312,29 @@ describe('Consumer page', () => {
     });
   });
 
-  afterEach(() => {
-    cleanup();
-    Modal.destroyAll();
-    message.destroy();
+  it('clears selected consumer groups when the search scope changes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'missing-group');
+
+    expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      cleanup();
+      Modal.destroyAll();
+    });
+    // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     let call = 0;
     vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
       call += 1;
@@ -348,7 +363,7 @@ describe('Consumer page', () => {
   });
 
   it('reloads the server page after deleting one consumer group', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -371,7 +386,7 @@ describe('Consumer page', () => {
   });
 
   it('moves back from an emptied last consumer group page after batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -427,7 +442,7 @@ describe('Consumer page', () => {
   });
 
   it('keeps failed consumer groups selected after a partially successful batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -466,7 +481,7 @@ describe('Consumer page', () => {
   });
 
   it('submits the canonical global delivery order type', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -515,7 +530,7 @@ describe('Consumer page', () => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await screen.findByText('remote-cg');
@@ -548,7 +563,7 @@ describe('Consumer page', () => {
   });
 
   it('downloads all consumer groups matching the current filters when exporting', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
     let exportedBlob: Blob | undefined;
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
@@ -631,7 +646,7 @@ describe('Consumer page', () => {
   });
 
   it('loads subscriptions and progress when opening a group', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -649,6 +664,45 @@ describe('Consumer page', () => {
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
   });
 
+  it('does not report a failed progress load as an offline consumer group', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: '*',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+    ]);
+    vi.mocked(consumerService.getConsumerProgress).mockRejectedValue(
+      new Error('broker unreachable'),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() =>
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+
+    // The empty-state text claims the group is offline; the read simply failed.
+    await user.click(await screen.findByRole('tab', { name: /消费进度/ }));
+    const progressPanel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() =>
+      expect(
+        within(progressPanel).queryByText('消费组不在线，暂无队列进度数据'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(within(progressPanel).getByText('队列进度暂不可用')).toBeInTheDocument();
+    expect(
+      within(progressPanel).getByText('消费进度加载失败，无法判断消费组是否在线'),
+    ).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await waitFor(() => expect(within(panel).queryByText(/消费进度加载失败/)).toBeInTheDocument());
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,
@@ -658,7 +712,7 @@ describe('Consumer page', () => {
       instances: [
         {
           clientId: 'remote-cg-0@10.0.0.1',
-          protocol: 'GRPC',
+          protocol: 'gRPC',
           address: '10.0.0.1:49152',
           subscribedTopics: ['remote-topic'],
           lastHeartbeat: '2026-07-23T00:00:00Z',
@@ -666,7 +720,7 @@ describe('Consumer page', () => {
         },
         {
           clientId: 'remote-cg-1@10.0.0.2',
-          protocol: 'REMOTING',
+          protocol: 'Remoting',
           address: '10.0.0.2:49152',
           subscribedTopics: [],
           lastHeartbeat: '2026-07-23T00:00:00Z',
@@ -702,7 +756,7 @@ describe('Consumer page', () => {
         diffTotal: 1_100,
       },
     ]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -733,7 +787,7 @@ describe('Consumer page', () => {
         consistency: '一致',
       },
     ]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -767,7 +821,7 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([{ ...group, instanceId: 'instance-a' }]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -784,7 +838,7 @@ describe('Consumer page', () => {
   });
 
   it('previews queue impact before resetting consumer offsets', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -840,7 +894,7 @@ describe('Consumer page', () => {
   });
 
   it('invalidates the reset preview when reset parameters change', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -866,7 +920,7 @@ describe('Consumer page', () => {
   });
 
   it('supports skipping accumulation by resetting to the latest offsets', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -929,7 +983,7 @@ describe('Consumer page', () => {
         },
       ],
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /重置位点/ }));
@@ -981,7 +1035,7 @@ describe('Consumer page', () => {
         size: params?.pageSize ?? 20,
       }),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1084,7 +1138,7 @@ describe('Consumer page', () => {
         },
       ]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1119,7 +1173,7 @@ describe('Consumer page', () => {
         },
       ]),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1174,7 +1228,7 @@ describe('Consumer page', () => {
         },
       ]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1191,6 +1245,55 @@ describe('Consumer page', () => {
     expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes the subscription verdict on the 2s modal auto-refresh', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'inconsistent',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'consistent',
+        },
+      ]);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    // The modal advertises that the diagnostic result refreshes every 2 seconds. Without any
+    // further user action the subscription consistency verdict must be re-checked alongside
+    // the progress table, not stay frozen at whatever the first load returned.
+    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
+      timeout: 10000,
+    });
+    expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
@@ -1202,7 +1305,7 @@ describe('Consumer page', () => {
       },
     ]);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1216,7 +1319,7 @@ describe('Consumer page', () => {
       new Error('request failed'),
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
@@ -1251,7 +1354,7 @@ describe('Consumer page', () => {
       failures: [{ index: 1, name: 'cg-fail', message: 'broker rejected group' }],
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 4,
@@ -1267,7 +1370,16 @@ describe('Consumer page', () => {
     ]);
     renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
 
-    await screen.findByText(/共 0 个 Group/);
+    // NOT `findByText(/共 0 个 Group/)`: the header subtitle carries that text from the very
+    // first render (totalGroups starts at 0), so it resolves before the instance list lands.
+    // Uploading that early races `handleImportFile`'s `selectedInstanceId` guard, which then
+    // bails with 请先选择实例 and the import modal never opens. The instance-scoped fetch only
+    // fires once the selection resolved, so observing the call is the race-free readiness mark.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
     const csv = [
       '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type","Delivery Order Type"',
       '"cg-ok","Push","CLUSTERING","16","NORMAL",""',
@@ -1338,7 +1450,7 @@ describe('Consumer page', () => {
   });
 
   it('auto-refreshes the selected group while the detail modal is open', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1371,7 +1483,7 @@ describe('Consumer page', () => {
       retryQueueNums: 2,
       retryMaxTimes: 8,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1424,7 +1536,7 @@ describe('Consumer page', () => {
       consumeMessageOrderly: true,
       consumeBroadcastEnable: false,
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });
@@ -1456,7 +1568,7 @@ describe('Consumer page', () => {
   });
 
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         { ...group, name: 'unknown-lag-cg', totalLag: -1 },
@@ -1476,7 +1588,7 @@ describe('Consumer page', () => {
   });
 
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         { ...group, name: 'unknown-lag-cg', totalLag: -1 },
@@ -1504,6 +1616,39 @@ describe('Consumer page', () => {
     });
   });
 
+  it('sorts groups with unavailable connections after known client counts', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-conn-cg', onlineInstances: -1 },
+        { ...group, name: 'known-conn-cg', onlineInstances: 12 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByRole('row', { name: /unknown-conn-cg/ });
+
+    // The sentinel must never reach the cell as a bare -1 ...
+    expect(screen.getByRole('row', { name: /unknown-conn-cg/ }).textContent).toContain('不可用');
+
+    // ... and must not sort as "fewer clients than zero".
+    const [clientsHeader] = screen.getAllByText('在线客户端');
+    await user.click(clientsHeader);
+    await waitFor(() => {
+      const rows = Array.from(document.querySelectorAll('tbody tr'));
+      const order = rows
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unknown-conn-cg')
+            ? 'unknown'
+            : /\bknown-conn-cg\b/.test(text)
+              ? 'known'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['known', 'unknown']);
+    });
+  });
+
   it('ignores settings responses from a previously closed group modal', async () => {
     const otherGroup = { ...group, name: 'other-cg' };
     const firstSettings = deferred<{
@@ -1522,7 +1667,7 @@ describe('Consumer page', () => {
     vi.mocked(consumerService.getConsumerGroupSettings)
       .mockImplementationOnce(() => firstSettings.promise)
       .mockImplementationOnce(() => secondSettings.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
 
     const firstRow = await screen.findByRole('row', { name: /remote-cg/ });

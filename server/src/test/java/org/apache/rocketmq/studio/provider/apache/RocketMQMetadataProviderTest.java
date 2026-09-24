@@ -591,21 +591,8 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
-    void getGroupSubscriptionsShouldCreateMissingRetryTopicBeforeQueryingTest() throws Exception {
+    void getGroupSubscriptionsShouldNeverCreateRetryTopicTest() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        when(admin.examineTopicRouteInfo("%RETRY%group-pop"))
-                .thenThrow(new IllegalStateException("route not found"));
-
-        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
-                new org.apache.rocketmq.remoting.protocol.body.ClusterInfo();
-        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
-        brokerAddrs.put(0L, "10.0.0.11:10911");
-        Map<String, org.apache.rocketmq.remoting.protocol.route.BrokerData> brokerAddrTable =
-                new java.util.HashMap<>();
-        brokerAddrTable.put("broker-a", new org.apache.rocketmq.remoting.protocol.route.BrokerData(
-                "cluster-a", "broker-a", brokerAddrs));
-        clusterInfo.setBrokerAddrTable(brokerAddrTable);
-        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
 
         org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
                 new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
@@ -624,24 +611,30 @@ class RocketMQMetadataProviderTest {
                 newLiveProvider(admin).getGroupSubscriptions(null, "group-pop");
 
         assertThat(subscriptions).extracting(SubscriptionEntryVO::getTopic).containsExactly("TopicA");
-        org.mockito.ArgumentCaptor<org.apache.rocketmq.common.TopicConfig> captor =
-                org.mockito.ArgumentCaptor.forClass(org.apache.rocketmq.common.TopicConfig.class);
-        verify(admin).createAndUpdateTopicConfig(eq("10.0.0.11:10911"), captor.capture());
-        assertThat(captor.getValue().getTopicName()).isEqualTo("%RETRY%group-pop");
-        assertThat(captor.getValue().getReadQueueNums()).isEqualTo(1);
-        assertThat(captor.getValue().getWriteQueueNums()).isEqualTo(1);
+        verify(admin).examineConsumerConnectionInfo("group-pop");
+        org.mockito.Mockito.verifyNoMoreInteractions(admin);
+    }
+
+    @Test
+    void groupReadsWithoutRetryRouteHaveNoWriteSideEffectsTest() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        var missing = new org.apache.rocketmq.client.exception.MQClientException(
+                org.apache.rocketmq.remoting.protocol.ResponseCode.TOPIC_NOT_EXIST, "retry route missing");
+        when(admin.examineConsumerConnectionInfo("group-pop")).thenThrow(missing);
+        when(admin.examineConsumeStats("group-pop")).thenThrow(missing);
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        assertThat(provider.getGroupSubscriptions(null, "group-pop")).isEmpty();
+        assertThat(provider.getGroupProgress(null, "group-pop")).isEmpty();
+
+        verify(admin).examineConsumerConnectionInfo("group-pop");
+        verify(admin).examineConsumeStats("group-pop");
+        org.mockito.Mockito.verifyNoMoreInteractions(admin);
     }
 
     @Test
     void getGroupSubscriptionsShouldReturnEmptyWhenGroupOnlyConnectsViaProxyTest() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        org.apache.rocketmq.remoting.protocol.route.TopicRouteData route =
-                new org.apache.rocketmq.remoting.protocol.route.TopicRouteData();
-        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
-        brokerAddrs.put(0L, "10.0.0.11:10911");
-        route.setBrokerDatas(List.of(new org.apache.rocketmq.remoting.protocol.route.BrokerData(
-                "cluster-a", "broker-a", brokerAddrs)));
-        when(admin.examineTopicRouteInfo("%RETRY%group-proxy")).thenReturn(route);
         when(admin.examineConsumerConnectionInfo("group-proxy")).thenThrow(
                 new org.apache.rocketmq.client.exception.MQBrokerException(
                         org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
@@ -667,13 +660,6 @@ class RocketMQMetadataProviderTest {
     @Test
     void getGroupSubscriptionsShouldFallBackToProxyConnectionsTest() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        org.apache.rocketmq.remoting.protocol.route.TopicRouteData route =
-                new org.apache.rocketmq.remoting.protocol.route.TopicRouteData();
-        java.util.HashMap<Long, String> brokerAddrs = new java.util.HashMap<>();
-        brokerAddrs.put(0L, "10.0.0.11:10911");
-        route.setBrokerDatas(List.of(new org.apache.rocketmq.remoting.protocol.route.BrokerData(
-                "cluster-a", "broker-a", brokerAddrs)));
-        when(admin.examineTopicRouteInfo("%RETRY%group-proxy")).thenReturn(route);
         when(admin.examineConsumerConnectionInfo("group-proxy")).thenThrow(
                 new org.apache.rocketmq.client.exception.MQBrokerException(
                         org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE,
@@ -754,6 +740,38 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldMarkOnlineInstancesUnknownWhenConnectionLookupFailsTest() throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-unknown-connections");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("cg-unknown-connections"))
+                .thenThrow(new IllegalStateException("nameserver unavailable"));
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue queue = new MessageQueue("orders", "broker-a", 0);
+        OffsetWrapper wrapper = new OffsetWrapper();
+        wrapper.setBrokerOffset(100L);
+        wrapper.setConsumerOffset(60L);
+        stats.getOffsetTable().put(queue, wrapper);
+        when(admin.examineConsumeStats("cg-unknown-connections")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation ->
+                        invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getOnlineInstances()).isEqualTo(-1);
+            assertThat(group.getTotalLag()).isEqualTo(40L);
+            assertThat(group.getInstances()).isEmpty();
+        });
+    }
+
+    @Test
     void listConsumerGroupsShouldEnrichOnlineInstancesViaProxyFallbackTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-proxy");
@@ -780,7 +798,8 @@ class RocketMQMetadataProviderTest {
         conn.setClientAddr("10.0.3.104:50124");
         connections.add(conn);
         viaProxy.setConnectionSet(connections);
-        when(resolver.resolveConsumerConnection("instance-a", "cg-proxy")).thenReturn(viaProxy);
+        when(resolver.resolveConsumerConnectionStatus("instance-a", "cg-proxy"))
+                .thenReturn(ProxyConsumerResolver.ConsumerConnectionResolution.available(viaProxy));
 
         RocketMQMetadataProvider provider = newLiveProvider(admin);
         org.springframework.test.util.ReflectionTestUtils.setField(

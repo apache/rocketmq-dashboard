@@ -651,7 +651,7 @@ const InstancePage = () => {
       key: 'actions',
       width: 150,
       render: (_: unknown, record: Instance) => (
-        <Flex gap={6} onClick={(e) => e.stopPropagation()}>
+        <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
             size="small"
             icon={<EditOutlined />}

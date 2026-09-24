@@ -201,6 +201,37 @@ describe('QueueBrowser request ownership', () => {
     await act(async () => pull.resolve(messageRecord('message-a')));
   });
 
+  it('keeps a replacement pull locked when a stale pull settles', async () => {
+    const stalePull = createDeferred<MessageRecord | null>();
+    const currentPull = createDeferred<MessageRecord | null>();
+    const unexpectedPull = createDeferred<MessageRecord | null>();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockReturnValueOnce(stalePull.promise)
+      .mockReturnValueOnce(currentPull.promise)
+      .mockReturnValue(unexpectedPull.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
+
+    await act(async () => stalePull.resolve(messageRecord('stale-message')));
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(2);
+    await act(async () => currentPull.resolve(messageRecord('current-message')));
+  });
+
   it('deduplicates queue loads before loading state renders', async () => {
     const queues = createDeferred<QueueOffset[]>();
     vi.mocked(getQueueOffsets).mockReturnValue(queues.promise);

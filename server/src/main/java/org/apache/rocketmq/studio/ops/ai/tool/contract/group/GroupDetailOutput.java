@@ -40,6 +40,7 @@ public record GroupDetailOutput(
         String group,
         SubscriptionMode subscriptionMode,
         ConsumeType consumeType,
+        /** Confirmed online clients, or -1 when the connection inventory is unavailable. */
         int onlineInstances,
         long totalLag,
         List<String> subscribedTopics,

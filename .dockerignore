@@ -1,0 +1,60 @@
+# Docker applies .dockerignore from the BUILD CONTEXT ROOT.
+#
+# The rocketmq-server image context was widened from `server/` to the repository
+# root so the Dockerfile's `rmqctl-build` stage can `COPY rmqctl/ ...`. That move
+# makes `server/.dockerignore` stop applying, so this root-level file carries its
+# intent forward and adds the root-scope directories that would otherwise be
+# shipped into the build (hundreds of MB of node_modules / logs / broker data).
+#
+# DO NOT exclude `server/target/` — deploy.sh mode A builds `--target
+# runtime-prebuilt`, which runs `COPY server/target/*.jar app.jar`.
+# DO NOT exclude `rmqctl/` — the Go stage needs the module sources (only the
+# local build output `rmqctl/bin` is dropped below).
+
+# VCS / CI / hooks
+.git
+.github
+.husky
+
+# IDE & OS noise
+.idea
+.vscode
+*.iml
+.DS_Store
+Thumbs.db
+
+# Dependencies & front-end build output
+**/node_modules
+web/dist
+
+# Logs & local Maven repository
+**/*.log
+server/logs
+localRepository
+
+# Local RocketMQ broker runtime data used for manual testing.
+# Wildcard, not exact names: on a deployment host this directory gets renamed and
+# accumulated — /opt/rocketmq-studio/deploy has been observed holding `rocketmq`,
+# `rocketmq-551`, `rocketmq.acl-from-backup` and `rocketmq.disabled-<timestamp>`.
+# Nothing else under deploy/ starts with "rocketmq", so the glob is safe.
+deploy/rocketmq*
+deploy/.env
+
+# ── Secrets must never enter the build context ───────────────────────────────
+# The context is the repository root, and a deployment checkout (e.g.
+# /opt/rocketmq-studio on the test host) keeps a mode-600 `.env` right there
+# holding SPRING_APPLICATION_JSON (plaintext instance admin AK/SK),
+# MYSQL_ROOT_PASSWORD, STUDIO_AUTH_ADMIN_PASSWORD, STUDIO_AI_TOKEN_SECRET and
+# RMQ_LLM_TOKEN — plus several timestamped `.env.bak-*` copies of the same, and
+# `*.bak-*` backups under deploy/. None of them are matched by any COPY, but they
+# would still be packed into the context, handed to the Docker daemon and kept in
+# the build cache; with a remote builder configured they would leave the host.
+.env
+.env.*
+**/*.bak-*
+# The template is not a secret and is deliberately kept in the context.
+!deploy/.env.example
+
+# Local build output only — the rmqctl SOURCES stay in the context
+rmqctl/bin
+docs/generated

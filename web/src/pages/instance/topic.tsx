@@ -336,19 +336,21 @@ const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-const TopicPage = () => {
+type TopicPageContentProps = ReturnType<typeof useInstanceFilter>;
+
+const TopicPageContent = ({
+  selectedInstanceId,
+  selectedInstance,
+  selectInstance,
+  instanceOptions,
+  instancesLoading,
+  instances,
+}: TopicPageContentProps) => {
   const { t } = useLang();
   const navigate = useNavigate();
-  const {
-    selectedInstanceId,
-    selectedInstance,
-    selectInstance,
-    instanceOptions,
-    instancesLoading,
-    instances,
-  } = useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
+  const canSendTestMessage = (topic: Topic) => !isCloudInstance || topic.type === 'NORMAL';
   const hasSelectedInstance = Boolean(selectedInstanceId);
 
   // ─── State ─────────────────────────────────────────────────────
@@ -400,7 +402,15 @@ const TopicPage = () => {
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
+  const syncRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      syncRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   const sendPayloadPreview = useMemo(
     () =>
@@ -566,7 +576,18 @@ const TopicPage = () => {
     consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
 
   // ─── Sync data: find topics without broker routes and sync them ──
+  const invalidateSyncRequest = () => {
+    syncRequestIdRef.current += 1;
+  };
+
+  const closeSyncModal = () => {
+    invalidateSyncRequest();
+    setSyncModalOpen(false);
+  };
+
   const openSyncModal = async () => {
+    const requestId = syncRequestIdRef.current + 1;
+    syncRequestIdRef.current = requestId;
     setSyncModalOpen(true);
     setSyncChecking(true);
     setSyncMissing([]);
@@ -582,6 +603,7 @@ const TopicPage = () => {
           }
         }),
       );
+      if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
         message.error('部分 Topic 路由校验失败，请稍后重试');
@@ -597,7 +619,7 @@ const TopicPage = () => {
         checked.filter(({ routes }) => (routes as BrokerRoute[]).length === 0).map((r) => r.topic),
       );
     } finally {
-      setSyncChecking(false);
+      if (syncRequestIdRef.current === requestId) setSyncChecking(false);
     }
   };
 
@@ -697,7 +719,7 @@ const TopicPage = () => {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
-      minWidth: 200,
+      width: 200,
       ellipsis: true,
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
@@ -746,9 +768,12 @@ const TopicPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 280,
+      // 4 个小按钮实测 274px + 单元格左 padding 8px = 282px；按钮右对齐贴住表格右缘，
+      // 与 Group 管理页操作列样式保持一致。勿随意改小：列宽不足时按钮溢出产生横向滚动条。
+      // 宽度由 TopicPage.test.tsx 「keeps the action column wide enough」用例守护。
+      width: 282,
       render: (_: unknown, record: Topic) => (
-        <Flex gap={6} onClick={(e) => e.stopPropagation()}>
+        <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
             size="small"
             icon={<EyeOutlined />}
@@ -765,7 +790,7 @@ const TopicPage = () => {
           >
             配置
           </Button>
-          {!isCloudInstance && (
+          {canSendTestMessage(record) && (
             <Button
               size="small"
               icon={<SendOutlined />}
@@ -1256,10 +1281,9 @@ const TopicPage = () => {
     setImportRows([...nextRows]);
 
     if (createdTopics.length > 0) {
-      setTopics((previous) => {
-        const createdNames = new Set(createdTopics.map((topic) => topic.name));
-        return [...createdTopics, ...previous.filter((topic) => !createdNames.has(topic.name))];
-      });
+      // The inventory is server-paginated, so a local prepend leaves the rows,
+      // the header count and the pagination total disagreeing with the server.
+      await reloadTopicPage();
     }
 
     const failedCount = nextRows.filter((row) => row.status === 'failed').length;
@@ -1493,6 +1517,8 @@ const TopicPage = () => {
           <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={(value) => {
+              closeSyncModal();
+              setSelectedRowKeys([]);
               resetTablePage();
               selectInstance(value);
             }}
@@ -1506,11 +1532,13 @@ const TopicPage = () => {
             onSearch={(value) => {
               // Store the trimmed term so the client-side row filter matches what the
               // server query used; padded input would otherwise filter out every row.
+              setSelectedRowKeys([]);
               setSearchText(value.trim());
               resetTablePage();
             }}
             onChange={(e) => {
               if (!e.target.value) {
+                setSelectedRowKeys([]);
                 setSearchText('');
                 resetTablePage();
               }
@@ -1520,6 +1548,7 @@ const TopicPage = () => {
             placeholder="类型筛选"
             value={typeFilter}
             onChange={(value) => {
+              setSelectedRowKeys([]);
               setTypeFilter(value);
               resetTablePage();
             }}
@@ -1638,6 +1667,7 @@ const TopicPage = () => {
             showSizeChanger: true,
             showTotal: (t) => `共 ${t} 条`,
             onChange: (page, pageSize) => {
+              setSelectedRowKeys([]);
               setTablePage(page);
               setTablePageSize(pageSize);
             },
@@ -2012,8 +2042,8 @@ const TopicPage = () => {
       <Modal
         title="同步数据"
         open={syncModalOpen}
-        onCancel={() => setSyncModalOpen(false)}
-        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        onCancel={closeSyncModal}
+        footer={<Button onClick={closeSyncModal}>关闭</Button>}
         width={680}
         destroyOnHidden
       >
@@ -2080,6 +2110,16 @@ const TopicPage = () => {
         )}
       </Modal>
     </div>
+  );
+};
+
+const TopicPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <TopicPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 

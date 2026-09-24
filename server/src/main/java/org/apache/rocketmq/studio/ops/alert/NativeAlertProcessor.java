@@ -103,7 +103,8 @@ public class NativeAlertProcessor {
                 .filter(rule -> rule.getId() != null)
                 .filter(AlertRuleVO::isEnabled)
                 .filter(rule -> scope.metricKeys().contains(StringUtils.trimWhitespace(rule.getMetric())))
-                .filter(rule -> rule.getInstanceId() == null || scope.instanceId().equals(rule.getInstanceId()))
+                .filter(rule -> !StringUtils.hasText(rule.getInstanceId())
+                        || scope.instanceId().equals(StringUtils.trimWhitespace(rule.getInstanceId())))
                 .toList();
         if (rules.isEmpty()) {
             return;

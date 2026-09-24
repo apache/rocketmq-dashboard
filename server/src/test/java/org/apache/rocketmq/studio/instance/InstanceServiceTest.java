@@ -106,8 +106,42 @@ class InstanceServiceTest {
     @Mock
     private RegionNames regionNames;
 
+    @Mock
+    private ResourceOwnershipGuard ownershipGuard;
+
     @InjectMocks
     private InstanceService instanceService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void registrationGuardFixture() {
+        org.mockito.Mockito.lenient().when(ownershipGuard.withInstanceRegistration(anyString(), any()))
+                .thenAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(1)).get());
+    }
+
+    @Test
+    void deleteOwnedInstanceStopsBeforeProviderTest() {
+        org.mockito.Mockito.doThrow(new BusinessException(409, "Instance still holds resources"))
+                .when(ownershipGuard).lockForInstanceDeletion(1L);
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        verifyNoInteractions(instanceRepository, providerRegistry, adminFactory, clientPool);
+    }
+
+    @Test
+    void updateOwnedInstanceStopsBeforeSaveTest() {
+        InstanceVO existing = InstanceVO.builder().name("instance-a")
+                .endpoint("old:9876").vendor(InstanceVendor.APACHE).build();
+        existing.setId(1L);
+        InstanceVO request = InstanceVO.builder().endpoint("new:9876").build();
+        request.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        org.mockito.Mockito.doThrow(new BusinessException(409, "Instance still holds resources"))
+                .when(ownershipGuard).lockForInstanceUpdate(eq(existing), any());
+        assertThatThrownBy(() -> instanceService.updateInstance(request))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        verify(instanceRepository, never()).save(any());
+        verifyNoInteractions(adminFactory, clientPool);
+    }
 
     @Test
     void listInstancesShouldReturnAllWhenNoFilters() {
@@ -511,6 +545,112 @@ class InstanceServiceTest {
                 .hasMessage("InstanceVO endpoint must not contain empty addresses");
     }
 
+    @Test
+    void createInstanceShouldBoundTheEndpointToTheColumnWidthTest() {
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        String atLimit = "n".repeat(512);
+        InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint(atLimit).build();
+
+        assertThat(instanceService.createInstance(accepted).getEndpoint()).isEqualTo(atLimit);
+
+        InstanceVO rejected = InstanceVO.builder().name("inst-b").type(InstanceType.PROXY_CLUSTER)
+                .endpoint(atLimit + ";namesrv-2:9876").build();
+        assertThatThrownBy(() -> instanceService.createInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not exceed 512 characters");
+        verify(instanceRepository, never()).save(argThat(instance -> instance.getEndpoint().length() > 512));
+    }
+
+    @Test
+    void updateInstanceShouldBoundTheEndpointToTheColumnWidthTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").build();
+        existing.setId(1L);
+        String atLimit = "n".repeat(512);
+        InstanceVO accepted = InstanceVO.builder().endpoint(atLimit).build();
+        accepted.setId(1L);
+        InstanceVO rejected = InstanceVO.builder().endpoint(atLimit + "n").build();
+        rejected.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.updateInstance(accepted).getEndpoint()).isEqualTo(atLimit);
+        assertThatThrownBy(() -> instanceService.updateInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not exceed 512 characters");
+    }
+
+    @Test
+    void createInstanceShouldBoundTheRemarkToTheColumnWidthTest() {
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        String atLimit = "r".repeat(255);
+        InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").remark(atLimit).build();
+
+        assertThat(instanceService.createInstance(accepted).getRemark()).isEqualTo(atLimit);
+
+        InstanceVO rejected = InstanceVO.builder().name("inst-b").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").remark(atLimit + "r").build();
+        assertThatThrownBy(() -> instanceService.createInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO remark must not exceed 255 characters");
+        verify(instanceRepository, never()).save(argThat(instance -> instance.getRemark() != null
+                && instance.getRemark().length() > 255));
+    }
+
+    @Test
+    void updateInstanceShouldBoundTheRemarkToTheColumnWidthTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").build();
+        existing.setId(1L);
+        String atLimit = "r".repeat(255);
+        InstanceVO accepted = InstanceVO.builder().remark(atLimit).build();
+        accepted.setId(1L);
+        InstanceVO rejected = InstanceVO.builder().remark(atLimit + "r").build();
+        rejected.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.updateInstance(accepted).getRemark()).isEqualTo(atLimit);
+        assertThatThrownBy(() -> instanceService.updateInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO remark must not exceed 255 characters");
+    }
+    @Test
+    void createInstanceShouldBoundTheAdminCredentialReferenceToTheColumnWidthTest() {
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        String atLimit = "c".repeat(128);
+        InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").adminCredentialRef(atLimit).build();
+
+        assertThat(instanceService.createInstance(accepted).getAdminCredentialRef()).isEqualTo(atLimit);
+
+        InstanceVO rejected = InstanceVO.builder().name("inst-b").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").adminCredentialRef(atLimit + "c").build();
+        assertThatThrownBy(() -> instanceService.createInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO adminCredentialRef must not exceed 128 characters");
+    }
+
+    @Test
+    void updateInstanceShouldBoundTheAdminCredentialReferenceToTheColumnWidthTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").build();
+        existing.setId(1L);
+        String atLimit = "c".repeat(128);
+        InstanceVO accepted = InstanceVO.builder().adminCredentialRef(atLimit).build();
+        accepted.setId(1L);
+        InstanceVO rejected = InstanceVO.builder().adminCredentialRef(atLimit + "c").build();
+        rejected.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.updateInstance(accepted).getAdminCredentialRef()).isEqualTo(atLimit);
+        assertThatThrownBy(() -> instanceService.updateInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO adminCredentialRef must not exceed 128 characters");
+    }
     @Test
     void createInstanceShouldTrimEndpointBeforeSaving() {
         InstanceVO input = InstanceVO.builder().name("valid-name").type(InstanceType.PROXY_CLUSTER)

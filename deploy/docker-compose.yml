@@ -30,8 +30,8 @@ services:
 
   rocketmq-server:
     build:
-      context: ../server
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
     image: rocketmq-server:latest
     container_name: rocketmq-server
     restart: unless-stopped
@@ -40,12 +40,49 @@ services:
       STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-true}
       STUDIO_AUTH_ADMIN_USERNAME: ${STUDIO_AUTH_ADMIN_USERNAME:-}
       STUDIO_AUTH_ADMIN_PASSWORD: ${STUDIO_AUTH_ADMIN_PASSWORD:-}
+      # Must be forwarded explicitly: compose only passes through names it declares, so setting this
+      # in .env alone does nothing. An HTTP-only deployment needs `false` — with login required, a
+      # Secure cookie is never stored by the browser, so login appears to succeed and every later
+      # request answers 401. Default stays true so HTTPS deployments are secure out of the box.
+      STUDIO_AUTH_SESSION_COOKIE_SECURE: ${STUDIO_AUTH_SESSION_COOKIE_SECURE:-true}
       STUDIO_CORS_ALLOWED_ORIGINS: ${STUDIO_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       STUDIO_METRICS_PROMETHEUS_BASE_URL: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:-}
       STUDIO_METRICS_PROMETHEUS_USERNAME: ${STUDIO_METRICS_PROMETHEUS_USERNAME:-}
       STUDIO_METRICS_PROMETHEUS_PASSWORD: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}
       STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      # These three MUST be declared here, not only in .env: compose forwards only what the
+      # environment block names, so a variable set in .env without a matching line below never
+      # reaches the container. They used to exist only on the deployed host, and a deploy.sh run
+      # (which does `rm -rf server web deploy`) wiped them on 2026-09-17 — SPRING_APPLICATION_JSON
+      # carries studio.cluster.admin.credentials.<ref>, so without it an instance's
+      # admin_credential_ref cannot resolve and every /api/mcp call returns 401. The outage was
+      # invisible from /api/topics, which serves Studio's own metadata rows and needs no
+      # credential. STUDIO_AI_TOKEN_SECRET signs the L2/L3 confirm tokens; without it every
+      # mutation tool answers "UNAVAILABLE: Tool confirmation tokens are unavailable".
+      SPRING_APPLICATION_JSON: ${SPRING_APPLICATION_JSON:-}
+      STUDIO_AI_TOKEN_SECRET: ${STUDIO_AI_TOKEN_SECRET:-}
+      STUDIO_AI_ALLOW_L3_TOOLS: ${STUDIO_AI_ALLOW_L3_TOOLS:-false}
+      # AI conversation persistence, retention and the hosted-agent workspace. These must be
+      # declared here for the same reason as above — deploy/.env.example documents them and a
+      # variable compose does not forward never reaches the container. Unlike the String knobs
+      # above, they are NOT forwarded as empty: application.yml reads them as
+      # ${STUDIO_AI_...:<default>}, and a placeholder resolves to "" when the variable exists but
+      # is empty, which then fails int/boolean/Duration conversion at startup. So the defaults are
+      # repeated here and MUST stay in sync with the studio.ai.conversation block in
+      # server/src/main/resources/application.yml, which remains the source of truth.
+      STUDIO_AI_CONVERSATION_RETENTION_DAYS: ${STUDIO_AI_CONVERSATION_RETENTION_DAYS:-90}
+      STUDIO_AI_CONVERSATION_CLEANUP_BATCH_SIZE: ${STUDIO_AI_CONVERSATION_CLEANUP_BATCH_SIZE:-500}
+      STUDIO_AI_CONVERSATION_CLEANUP_MAX_BATCHES: ${STUDIO_AI_CONVERSATION_CLEANUP_MAX_BATCHES:-20}
+      STUDIO_AI_CONVERSATION_CLEANUP_INTERVAL: ${STUDIO_AI_CONVERSATION_CLEANUP_INTERVAL:-PT24H}
+      STUDIO_AI_CONVERSATION_ORPHAN_RUN_TIMEOUT: ${STUDIO_AI_CONVERSATION_ORPHAN_RUN_TIMEOUT:-PT10M}
+      STUDIO_AI_CONVERSATION_STOP_GRACE: ${STUDIO_AI_CONVERSATION_STOP_GRACE:-PT3S}
+      STUDIO_AI_CONVERSATION_WORKSPACE_DIR: ${STUDIO_AI_CONVERSATION_WORKSPACE_DIR:-/tmp/rocketmq-studio-ai}
+      STUDIO_AI_RMQCTL_ENABLED: ${STUDIO_AI_RMQCTL_ENABLED:-true}
+      STUDIO_AI_RMQCTL_TIMEOUT: ${STUDIO_AI_RMQCTL_TIMEOUT:-PT60S}
+      # A String, and blank is meaningful here: it tells the server to derive the loopback URL from
+      # server.port. Only override with an https URL when rmqctl runs outside this container.
+      STUDIO_AI_RMQCTL_SERVER_URL: ${STUDIO_AI_RMQCTL_SERVER_URL:-}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}

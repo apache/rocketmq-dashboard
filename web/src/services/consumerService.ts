@@ -17,6 +17,7 @@ import type {
   SubscriptionEntry,
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
+import { formatOnlineInstances } from '../utils/consumerConnections';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
@@ -28,7 +29,10 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
   { header: 'Cluster ID', value: (group) => group.clusterId },
   { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
   { header: 'Consume Type', value: (group) => group.consumeType },
-  { header: 'Online Instances', value: (group) => group.onlineInstances },
+  {
+    header: 'Online Instances',
+    value: (group) => formatOnlineInstances(group.onlineInstances, 'unknown'),
+  },
   { header: 'Total Lag', value: (group) => group.totalLag },
   { header: 'Delay Seconds', value: (group) => group.delaySeconds },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },

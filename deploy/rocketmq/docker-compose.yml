@@ -21,7 +21,7 @@ services:
     cpus: 1
     mem_limit: 2g
     environment:
-      NAMESRV_ADDR: nameserver:9876
+      NAMESRV_ADDR: rmq-nameserver:9876
       JAVA_OPT_EXT: -Xms1g -Xmx1g -Xmn256m -XX:MaxDirectMemorySize=512m
     volumes:
       - ./conf/broker-0.conf:/etc/rocketmq/broker-0.conf:ro
@@ -41,7 +41,7 @@ services:
     cpus: 1
     mem_limit: 2g
     environment:
-      NAMESRV_ADDR: nameserver:9876
+      NAMESRV_ADDR: rmq-nameserver:9876
       JAVA_OPT_EXT: -Xms1g -Xmx1g -Xmn256m -XX:MaxDirectMemorySize=512m
     volumes:
       - ./conf/broker-1.conf:/etc/rocketmq/broker-1.conf:ro
@@ -81,7 +81,7 @@ services:
       && java -cp 'lib/*:/tmp/classes' TraceProducer"
     environment:
       # 直连 NameServer，broker 端可见 producer 容器真实连接（供 Studio 客户端连接视图展示）
-      NAMESRV_ADDR: nameserver:9876
+      NAMESRV_ADDR: rmq-nameserver:9876
       TOPIC: StudioTest
       SEND_INTERVAL_MS: "1000"
     volumes:
@@ -99,7 +99,7 @@ services:
       && java -cp 'lib/*:/tmp/classes' TraceConsumer"
     environment:
       # 直连 NameServer，broker 端可见 consumer 容器真实连接（供 Studio 客户端连接视图展示）
-      NAMESRV_ADDR: nameserver:9876
+      NAMESRV_ADDR: rmq-nameserver:9876
       TOPIC: StudioTest
     volumes:
       - ./clients:/clients:ro

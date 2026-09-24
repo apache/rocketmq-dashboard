@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -123,6 +124,14 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 throw new BusinessException(409,
                         "Instance update was not applied: " + entity.getId());
             }
+            if (instance.getAdminCredentialRef() == null) {
+                // updateById omits null entity fields, so a cleared reference has to be
+                // assigned explicitly; otherwise the stored reference survives an update that
+                // removed it.
+                instanceMapper.update(null, new UpdateWrapper<RmqInstance>()
+                        .eq("id", entity.getId())
+                        .set("admin_credential_ref", null));
+            }
         } else {
             instanceMapper.insert(entity);
             instance.setId(entity.getId());
@@ -183,9 +192,16 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     private InstanceVendor parseVendor(Long instanceId, String vendor) {
+        if (vendor == null || vendor.isBlank()) {
+            // vendor is an optional column and every writer stores a name, so a missing value is
+            // a row written before the column existed. Every reader treats that as APACHE
+            // (InstanceService, InstanceCapabilityService, the metrics collectors), so only a
+            // value that names no vendor at all is a corrupt row.
+            return InstanceVendor.APACHE;
+        }
         try {
             return InstanceVendor.valueOf(vendor);
-        } catch (IllegalArgumentException | NullPointerException ex) {
+        } catch (IllegalArgumentException ex) {
             throw invalidPersistedValue(instanceId, "vendor", vendor);
         }
     }

@@ -30,4 +30,10 @@ public interface ClientProvider {
     List<String> findProducerGroups(String instanceId, String topic, String query, int limit);
 
     List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup);
+
+    default ProducerConnectionScanResult scanProducerConnections(
+            String instanceId, String topic, String producerGroup) {
+        return ProducerConnectionScanResult.complete(
+                findProducerConnections(instanceId, topic, producerGroup));
+    }
 }

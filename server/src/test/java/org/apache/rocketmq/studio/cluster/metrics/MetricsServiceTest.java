@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
 import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
@@ -561,5 +562,81 @@ class MetricsServiceTest {
                 .isThrownBy(() -> metricsService.queryByDataSource("  ", request))
                 .satisfies(exception -> assertThat(exception.getStatusCode()).isEqualTo(400));
         verifyNoInteractions(settingsService, metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryInstanceShouldPreferDedicatedSourceOverSharedSourceTest() {
+        DataSourceVO dedicated = dataSource("ds-dedicated", List.of("instance-a"));
+        DataSourceVO shared = dataSource("ds-shared", List.of("instance-a", "instance-b"));
+        when(settingsService.listDataSources()).thenReturn(List.of(shared, dedicated));
+        when(settingsService.getDataSource("ds-dedicated")).thenReturn(dedicated);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryInstance("instance-a", rawQuery());
+
+        verify(settingsService).getDataSource("ds-dedicated");
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryInstanceShouldAcceptSoleSharedSourceTest() {
+        DataSourceVO shared = dataSource("ds-shared", List.of("instance-a", "instance-b"));
+        when(settingsService.listDataSources()).thenReturn(List.of(shared));
+        when(settingsService.getDataSource("ds-shared")).thenReturn(shared);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryInstance("instance-b", rawQuery());
+
+        verify(settingsService).getDataSource("ds-shared");
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryInstanceShouldRejectInstanceWithoutAnyBoundSourceTest() {
+        DataSourceVO other = dataSource("ds-other", List.of("instance-b"));
+        when(settingsService.listDataSources()).thenReturn(List.of(other));
+
+        assertThatExceptionOfType(BusinessException.class)
+                .isThrownBy(() -> metricsService.queryInstance("instance-a", rawQuery()))
+                .satisfies(exception -> {
+                    assertThat(exception.getCode()).isEqualTo(409);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("Configure exactly one metrics data source bound to Instance instance-a");
+                });
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryInstanceShouldRejectAmbiguousSharedSourcesTest() {
+        DataSourceVO first = dataSource("ds-1", List.of("instance-a", "instance-b"));
+        DataSourceVO second = dataSource("ds-2", List.of("instance-a", "instance-c"));
+        when(settingsService.listDataSources()).thenReturn(List.of(first, second));
+
+        assertThatExceptionOfType(BusinessException.class)
+                .isThrownBy(() -> metricsService.queryInstance("instance-a", rawQuery()))
+                .satisfies(exception -> assertThat(exception.getCode()).isEqualTo(409));
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    private DataSourceVO dataSource(String key, List<String> instanceIds) {
+        return DataSourceVO.builder()
+                .key(key)
+                .name(key)
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("none")
+                .instanceIds(instanceIds)
+                .build();
+    }
+
+    private MetricQueryDTO rawQuery() {
+        return MetricQueryDTO.builder()
+                .metric("cpu")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
     }
 }

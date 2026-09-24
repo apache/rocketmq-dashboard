@@ -1,13 +1,30 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: CI
 
-# 检测前端与后端是否都能正确编译
+# Verify the build, tests, and generated artifacts for the frontend, backend, and CLI.
 on:
   push:
     branches:
       - master
+      - rocketmq-studio
   pull_request:
     branches:
       - master
+      - rocketmq-studio
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -72,7 +89,19 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
+        # Keep the dependency install scripts, but forbid husky in prepare from modifying the Git hooks config.
+        env:
+          HUSKY: "0"
         run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Run all frontend tests
+        run: npm test
+
+      - name: Run frontend license tests
+        run: npm run license:test
 
       - name: Build frontend
         run: npm run build
@@ -95,3 +124,38 @@ jobs:
           tags: rocketmq-studio-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  rmqctl-test:
+    name: rmqctl Build (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rmqctl
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: rmqctl/go.mod
+          cache-dependency-path: rmqctl/go.sum
+
+      - name: Check formatting
+        run: make fmt
+
+      # Check whether the Go catalog is stale against the server-side YAML, so the full repository must be checked out.
+      - name: Verify generated tool catalog
+        run: make catalog-verify
+
+      - name: Run tests (race)
+        run: make test-race
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Build rmqctl binary
+        run: make build
+
+      - name: Build rmqctl for all supported platforms
+        run: make build-all

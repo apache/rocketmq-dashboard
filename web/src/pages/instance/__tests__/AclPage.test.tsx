@@ -132,7 +132,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -176,7 +176,7 @@ describe('ACL page', () => {
   });
 
   it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.pageAclUsers).mockResolvedValue({
       items: [
         {
@@ -203,7 +203,7 @@ describe('ACL page', () => {
   });
 
   it('clamps rules back to a valid page when the current page becomes empty', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const ruleItems = (count: number) =>
       Array.from({ length: count }, (_, index) => ({
         id: index + 1,
@@ -246,7 +246,7 @@ describe('ACL page', () => {
   });
 
   it('closes an ACL rule dialog when switching to another instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 1,
@@ -295,7 +295,7 @@ describe('ACL page', () => {
   });
 
   it('keeps users available when loading rules fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.listAclRules).mockRejectedValue(new Error('rules unavailable'));
     renderWithProviders(<AclPage />);
 
@@ -313,7 +313,7 @@ describe('ACL page', () => {
   });
 
   it('uses Tencent role names for role-backed ACL rules and users', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 21,
@@ -425,7 +425,7 @@ describe('ACL page', () => {
   });
 
   it('renders backend users on the user tab', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
@@ -435,7 +435,7 @@ describe('ACL page', () => {
   });
 
   it('shows missing backend timestamps as unavailable', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.listAclRules).mockResolvedValue({
       items: [
         {
@@ -483,7 +483,7 @@ describe('ACL page', () => {
   });
 
   it('does not submit masked credentials when editing a user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -519,7 +519,7 @@ describe('ACL page', () => {
 
   it('ignores duplicate admin toggles while an update is pending', async () => {
     vi.mocked(aclService.updateAclUser).mockImplementation(() => new Promise(() => {}));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
@@ -533,7 +533,7 @@ describe('ACL page', () => {
   });
 
   it('does not submit masked credentials when toggling admin', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -563,7 +563,7 @@ describe('ACL page', () => {
   });
 
   it('creates a user with the selected cluster scope', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAclUser).mockResolvedValue({
       id: 13,
       username: 'orders-service',
@@ -598,7 +598,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server user page after creating an ACL user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAclUser).mockResolvedValue({
       id: 13,
       username: 'orders-service',
@@ -628,7 +628,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server user page after deleting one ACL user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -647,7 +647,7 @@ describe('ACL page', () => {
   });
 
   it('replaces the cluster scope of an existing user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -680,7 +680,7 @@ describe('ACL page', () => {
   });
 
   it('examines the broker cluster ACL config', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
       clusterId: 'DefaultCluster',
       aclEnabled: true,
@@ -727,7 +727,7 @@ describe('ACL page', () => {
       deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
     const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig)
       .mockReturnValueOnce(firstExamine.promise)
       .mockReturnValueOnce(secondExamine.promise)
@@ -823,7 +823,7 @@ describe('ACL page', () => {
     const secondReveal = deferred<CredentialResponse>();
     const thirdReveal = deferred<CredentialResponse>();
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.getAclUserCredentials)
       .mockReturnValueOnce(firstReveal.promise)
       .mockReturnValueOnce(secondReveal.promise)
@@ -897,7 +897,7 @@ describe('ACL page', () => {
   });
 
   it('renders ACL risk diagnostics for the examined cluster config', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
       clusterId: 'DefaultCluster',
       aclEnabled: true,
@@ -934,7 +934,7 @@ describe('ACL page', () => {
   });
 
   it('creates a plain access account', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAndUpdatePlainAccessConfig).mockResolvedValue({
       accessKey: 'new-svc',
       admin: false,

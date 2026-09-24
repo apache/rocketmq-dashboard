@@ -25,6 +25,8 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -63,15 +65,14 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -106,6 +107,9 @@ class MetadataServiceTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private ResourceOwnershipGuard ownershipGuard;
+
     @InjectMocks
     private MetadataService metadataService;
 
@@ -122,7 +126,7 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         SendMessageVO result = metadataService.redeliverMessage(
@@ -130,7 +134,7 @@ class MetadataServiceTest {
 
         assertThat(result.getMsgId()).isEqualTo("msg-new");
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("orders-retry");
         assertThat(request.getValue().getTag()).isEqualTo("paid");
         assertThat(request.getValue().getKey()).isEqualTo("order-1");
@@ -148,13 +152,13 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
 
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
     }
 
@@ -182,13 +186,13 @@ class MetadataServiceTest {
         when(messageService.queryMessages(
                 "instance-a", "orders", "msg-original", null, null, null, null))
                 .thenReturn(List.of(original));
-        when(adminClient.sendMessage(any(SendMessageDTO.class)))
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
                 .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
 
         metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", "orders-copy");
 
         ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
-        verify(adminClient).sendMessage(request.capture());
+        verify(apacheProvider).sendMessage(request.capture());
         assertThat(request.getValue().getProperties())
                 .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha"));
         assertThat(request.getValue().getTag()).isEqualTo("paid");
@@ -224,7 +228,16 @@ class MetadataServiceTest {
     }
 
     @BeforeEach
-    void routeBlankInstanceIdsToApacheProvider() {
+    void configureReadRoutingAndExplicitWriteOwnership() {
+        lenient().when(ownershipGuard.requireInstance(any())).thenAnswer(call -> {
+            String name = ResourceOwnershipGuard.requireText(call.getArgument(0), "instanceId");
+            return InstanceVO.builder().name(name).vendor("cloud-instance".equals(name)
+                    ? InstanceVendor.TENCENT : InstanceVendor.APACHE).build();
+        });
+        lenient().when(ownershipGuard.topicResource(any())).thenCallRealMethod();
+        lenient().doCallRealMethod().when(ownershipGuard).requireSupportedProvider(any());
+        lenient().when(ownershipGuard.withOwned(any(), any(), any())).thenAnswer(call ->
+                call.<java.util.function.Supplier<Object>>getArgument(2).get());
         lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
         lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
         lenient().when(cloudProvider.vendor()).thenReturn(InstanceVendor.TENCENT);
@@ -296,6 +309,22 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listTopicsPageShouldApplyClusterFilterForInstanceScopedQueriesTest() {
+        TopicVO clusterATopic = new TopicVO();
+        clusterATopic.setName("orders-a");
+        clusterATopic.setClusterId("cluster-a");
+        when(apacheProvider.listTopicsPage("instance-a", "cluster-a", null, null, 1, 20))
+                .thenReturn(PageResult.of(List.of(clusterATopic), 1, 1, 20));
+
+        PageResult<TopicVO> result = metadataService.listTopicsPage(
+                "instance-a", "cluster-a", null, null, 1, 20);
+
+        assertThat(result.getItems()).containsExactly(clusterATopic);
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(apacheProvider).listTopicsPage("instance-a", "cluster-a", null, null, 1, 20);
+    }
+
+    @Test
     void topicWriteOperationsShouldRejectNullRequest() {
         assertThatThrownBy(() -> metadataService.createTopic(null))
                 .isInstanceOf(BusinessException.class)
@@ -337,8 +366,8 @@ class MetadataServiceTest {
         verify(apacheProvider).createConsumerGroup("instance-a", group);
         verify(apacheProvider).updateConsumerGroup("instance-a", group);
         verify(apacheProvider).deleteConsumerGroup("instance-a", "consumers");
-        // decision 17: group deletion cascades to the dead-letter topic
-        verify(apacheProvider).deleteTopic("instance-a", "%DLQ%consumers");
+        // Derived cleanup must happen within the underlying group ownership lock; the common layer does not re-issue the delete.
+        verify(apacheProvider, never()).deleteTopic("instance-a", "%DLQ%consumers");
         verifyNoInteractions(operationAuditService);
     }
 
@@ -346,6 +375,7 @@ class MetadataServiceTest {
     void createTopicShouldDelegateToApacheProvider() {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
+        input.setInstanceId("instance-a");
         input.setWriteQueues(8);
         input.setReadQueues(8);
 
@@ -359,7 +389,7 @@ class MetadataServiceTest {
         TopicVO result = metadataService.createTopic(input);
 
         assertThat(result.getName()).isEqualTo("new-topic");
-        verify(apacheProvider).createTopic(null, input);
+        verify(apacheProvider).createTopic("instance-a", input);
         verifyNoInteractions(operationAuditService);
     }
 
@@ -399,7 +429,7 @@ class MetadataServiceTest {
                 .key("order-1")
                 .body("hello")
                 .build();
-        when(adminClient.sendMessage(message)).thenReturn(SendMessageVO.builder().msgId("msg-1").build());
+        when(apacheProvider.sendMessage(message)).thenReturn(SendMessageVO.builder().msgId("msg-1").build());
 
         metadataService.updateTopic(topic);
         metadataService.deleteTopic("instance-a", " orders ");
@@ -408,67 +438,6 @@ class MetadataServiceTest {
         verifyNoInteractions(operationAuditService);
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void cloudTopicWriteOperationsShouldRecordServiceBoundaryAudit(boolean explicitInstance) {
-        TopicVO topic = new TopicVO();
-        topic.setName("orders");
-        topic.setInstanceId("cloud-instance");
-        topic.setWriteQueues(4);
-        topic.setReadQueues(4);
-        if (explicitInstance) {
-            metadataService.createTopic("cloud-instance", topic);
-            metadataService.updateTopic("cloud-instance", topic);
-            metadataService.deleteTopic("cloud-instance", " orders ");
-        } else {
-            metadataService.createTopic(topic);
-            metadataService.updateTopic(topic);
-            metadataService.deleteTopic("cloud-instance", " orders ");
-        }
-
-        verify(operationAuditService).record("CREATE_TOPIC", "TOPIC", "orders", "cloud-instance",
-                "type=-, writeQueues=4, readQueues=4, perm=-", "SUCCESS", null);
-        verify(operationAuditService).record("UPDATE_TOPIC", "TOPIC", "orders", "cloud-instance",
-                "type=-, writeQueues=4, readQueues=4, perm=-", "SUCCESS", null);
-        verify(operationAuditService).record("DELETE_TOPIC", "TOPIC", "orders", "cloud-instance",
-                null, "SUCCESS", null);
-        verifyNoMoreInteractions(operationAuditService);
-    }
-
-    @Test
-    void auditFailureShouldNotAbortCloudMetadataOperation() {
-        doThrow(new RuntimeException("audit unavailable")).when(operationAuditService)
-                .record("DELETE_TOPIC", "TOPIC", "orders", "cloud-instance", null, "SUCCESS", null);
-
-        metadataService.deleteTopic("cloud-instance", "orders");
-
-        verify(cloudProvider).deleteTopic("cloud-instance", "orders");
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void failedCloudMetadataOperationShouldRecordFailedAuditTest(boolean explicitInstance) {
-        TopicVO topic = new TopicVO();
-        topic.setName("orders");
-        topic.setInstanceId("cloud-instance");
-        topic.setWriteQueues(4);
-        topic.setReadQueues(4);
-        when(cloudProvider.createTopic("cloud-instance", topic))
-                .thenThrow(new BusinessException(502, "open api unavailable"));
-
-        assertThatThrownBy(() -> {
-            if (explicitInstance) {
-                metadataService.createTopic("cloud-instance", topic);
-            } else {
-                metadataService.createTopic(topic);
-            }
-        })
-                .isInstanceOf(BusinessException.class);
-
-        verify(operationAuditService).record("CREATE_TOPIC", "TOPIC", "orders", "cloud-instance",
-                "type=-, writeQueues=4, readQueues=4, perm=-", "FAILED", "open api unavailable");
-        verifyNoMoreInteractions(operationAuditService);
-    }
 
     @Test
     void exportTopicsShouldApplyFiltersSelectedNamesSortingAndCsvEscaping() {
@@ -489,8 +458,8 @@ class MetadataServiceTest {
     }
 
     @Test
-    void importTopicsShouldContinueAfterRowFailure() {
-        when(apacheProvider.createTopic(eq("instance-a"), any(TopicVO.class))).thenAnswer(invocation -> {
+    void importTopicsShouldContinueAfterRowFailureTest() {
+        when(apacheProvider.importTopic(eq("instance-a"), any(TopicVO.class))).thenAnswer(invocation -> {
             TopicVO topic = invocation.getArgument(1);
             if ("topic-fail".equals(topic.getName())) {
                 throw new BusinessException(500, "broker rejected topic");
@@ -511,16 +480,71 @@ class MetadataServiceTest {
         assertThat(result.getFailures().get(0).getMessage()).isEqualTo("broker rejected topic");
 
         ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
-        verify(apacheProvider, org.mockito.Mockito.times(2)).createTopic(eq("instance-a"), captor.capture());
+        verify(apacheProvider, org.mockito.Mockito.times(2)).importTopic(eq("instance-a"), captor.capture());
+        verify(apacheProvider, never()).createTopic(anyString(), any());
         assertThat(captor.getAllValues()).extracting(TopicVO::getInstanceId)
                 .containsExactly("instance-a", "instance-a");
     }
 
     @Test
-    void deleteTopicShouldDelegateToApacheProvider() {
-        metadataService.deleteTopic("topic-to-delete");
+    void missingInstanceRejectsAllPublicWritesBeforeProviderTest() {
+        TopicVO topic = topic("orders", null, TopicType.NORMAL);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("buyers");
+        assertCode(() -> metadataService.createTopic(topic), 400);
+        assertCode(() -> metadataService.updateTopic(topic), 400);
+        assertCode(() -> metadataService.deleteTopic("orders"), 400);
+        assertCode(() -> metadataService.createConsumerGroup(group), 400);
+        assertCode(() -> metadataService.updateConsumerGroup(group), 400);
+        assertCode(() -> metadataService.deleteConsumerGroup("buyers"), 400);
+        assertCode(() -> metadataService.resetOffset("buyers", 1L, "orders"), 400);
+        assertCode(() -> metadataService.skipAccumulated(null, "buyers", "orders"), 400);
+        assertCode(() -> metadataService.importTopics(null, List.of(topicImportRequest("orders", null))), 400);
+        assertCode(() -> metadataService.importConsumerGroups(" ", List.of(importRequest("buyers", null))), 400);
+        assertCode(() -> metadataService.sendMessage(SendMessageDTO.builder().topic("orders").body("x").build()), 400);
+        verifyNoInteractions(apacheProvider, cloudProvider, adminClient, runtimeAdminClientResolver);
+    }
 
-        verify(apacheProvider).deleteTopic(null, "topic-to-delete");
+    @Test
+    void crossInstanceWritesStopBeforeProviderTest() {
+        when(ownershipGuard.check(any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenThrow(new BusinessException(409, "Resource belongs to another instance"));
+        TopicVO topic = topic("orders", null, TopicType.NORMAL);
+        topic.setInstanceId("instance-a");
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("buyers");
+        group.setInstanceId("instance-a");
+        assertCode(() -> metadataService.createTopic(topic), 409);
+        assertCode(() -> metadataService.updateTopic(topic), 409);
+        assertCode(() -> metadataService.deleteTopic("instance-a", "orders"), 409);
+        assertCode(() -> metadataService.createConsumerGroup(group), 409);
+        assertCode(() -> metadataService.updateConsumerGroup(group), 409);
+        assertCode(() -> metadataService.deleteConsumerGroup("instance-a", "buyers"), 409);
+        assertCode(() -> metadataService.resetOffset("instance-a", "buyers", 1L, "orders"), 409);
+        assertCode(() -> metadataService.skipAccumulated("instance-a", "buyers", "orders"), 409);
+        assertCode(() -> metadataService.redeliverMessage("instance-a", "buyers", "orders", "msg", null), 409);
+        assertCode(() -> metadataService.sendMessage(SendMessageDTO.builder()
+                .instanceId("instance-a").topic("orders").body("x").build()), 409);
+        var topics = metadataService.importTopics("instance-a", List.of(topicImportRequest("orders", null)));
+        assertThat(topics.getFailed()).isEqualTo(1);
+        assertThat(topics.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getName()).isEqualTo("orders");
+            assertThat(failure.getIndex()).isZero();
+            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
+        });
+        var groups = metadataService.importConsumerGroups("instance-a", List.of(importRequest("buyers", null)));
+        assertThat(groups.getFailed()).isEqualTo(1);
+        assertThat(groups.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getName()).isEqualTo("buyers");
+            assertThat(failure.getIndex()).isZero();
+            assertThat(failure.getMessage()).isEqualTo("Resource belongs to another instance");
+        });
+        verifyNoInteractions(apacheProvider, cloudProvider, adminClient, runtimeAdminClientResolver, messageService);
+    }
+
+    private static void assertCode(Runnable operation, int code) {
+        assertThatThrownBy(operation::run).isInstanceOfSatisfying(BusinessException.class,
+                error -> assertThat(error.getCode()).isEqualTo(code));
     }
 
     @Test
@@ -612,16 +636,11 @@ class MetadataServiceTest {
     }
 
     @Test
-    void deleteConsumerGroupShouldNotFailWhenDlqDeletionFailsTest() {
-        // Decision 17: DLQ cascade is best-effort — a missing/undeletable DLQ never blocks group deletion.
-        doThrow(new BusinessException(502, "no route for %DLQ%group-a"))
-                .when(apacheProvider).deleteTopic("instance-a", "%DLQ%group-a");
-
-        assertThatCode(() -> metadataService.deleteConsumerGroup("instance-a", "group-a"))
-                .doesNotThrowAnyException();
-
-        verify(apacheProvider).deleteConsumerGroup("instance-a", "group-a");
-        verify(apacheProvider).deleteTopic("instance-a", "%DLQ%group-a");
+    void deleteConsumerGroupPropagatesPartialCleanupFailureTest() {
+        doThrow(new BusinessException(502, "Derived resource cleanup failed; reservation kept"))
+                .when(apacheProvider).deleteConsumerGroup("instance-a", "group-a");
+        assertCode(() -> metadataService.deleteConsumerGroup("instance-a", "group-a"), 502);
+        verify(apacheProvider, never()).deleteTopic(any(), any());
     }
 
     /** Runs the resolver action against the given admin mock, wrapping failures like MqAdminExtFactory does. */
@@ -697,6 +716,7 @@ class MetadataServiceTest {
     @Test
     void sendMessageShouldReturnResult() {
         SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a")
                 .topic("test-topic")
                 .tag("TagA")
                 .body("hello")
@@ -708,13 +728,13 @@ class MetadataServiceTest {
                 .offsetMsgId("offset-001")
                 .build();
 
-        when(adminClient.sendMessage(request)).thenReturn(expectedResult);
+        when(apacheProvider.sendMessage(request)).thenReturn(expectedResult);
 
         SendMessageVO result = metadataService.sendMessage(request);
 
         assertThat(result.getMsgId()).isEqualTo("msg-001");
         assertThat(result.getOffsetMsgId()).isEqualTo("offset-001");
-        verify(adminClient).sendMessage(request);
+        verify(apacheProvider).sendMessage(request);
         verifyNoInteractions(operationAuditService);
     }
 
@@ -758,7 +778,7 @@ class MetadataServiceTest {
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", "order", 2, 2))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", 2, 2))
                 .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
@@ -768,8 +788,24 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", "order", 2, 2);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", 2, 2);
         verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldApplyClusterFilterForInstanceScopedQueriesTest() {
+        ConsumerGroupVO clusterAGroup = new ConsumerGroupVO();
+        clusterAGroup.setName("group-a");
+        clusterAGroup.setClusterId("cluster-a");
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20))
+                .thenReturn(PageResult.of(List.of(clusterAGroup), 1, 1, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", "cluster-a", null, 1, 20);
+
+        assertThat(result.getItems()).containsExactly(clusterAGroup);
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20);
     }
 
     @Test
@@ -822,30 +858,6 @@ class MetadataServiceTest {
         assertThat(metadataService.refreshConsumerGroup("instance-a", "cg-gone")).isNull();
     }
 
-    @Test
-    void cloudConsumerGroupWriteOperationsShouldRecordServiceBoundaryAudit() {
-        ConsumerGroupVO group = new ConsumerGroupVO();
-        group.setName("cg-orders");
-        group.setInstanceId("cloud-instance");
-        group.setRetryMaxTimes(16);
-        metadataService.createConsumerGroup(group);
-        metadataService.updateConsumerGroup(group);
-        metadataService.deleteConsumerGroup("cloud-instance", " cg-orders ");
-        metadataService.resetOffset("cloud-instance", " cg-orders ", 1784246400000L, " orders ");
-
-        verify(operationAuditService).record("CREATE_GROUP", "GROUP", "cg-orders",
-                "cloud-instance", "consumeType=-, subscriptionMode=-, retryMaxTimes=16", "SUCCESS", null);
-        verify(operationAuditService).record("UPDATE_GROUP", "GROUP", "cg-orders",
-                "cloud-instance", "consumeType=-, subscriptionMode=-, retryMaxTimes=16", "SUCCESS", null);
-        verify(operationAuditService).record("DELETE_GROUP", "GROUP", "cg-orders",
-                "cloud-instance", null, "SUCCESS", null);
-        verify(operationAuditService).record("DELETE_TOPIC", "TOPIC", "%DLQ%cg-orders",
-                "cloud-instance", null, "SUCCESS", null);
-        verify(operationAuditService).record("RESET_OFFSET", "GROUP", "cg-orders",
-                "cloud-instance", "topic=orders, timestamp=1784246400000", "SUCCESS", null);
-        verifyNoMoreInteractions(operationAuditService);
-        verify(cloudProvider).resetOffset("cloud-instance", "cg-orders", 1784246400000L, "orders");
-    }
 
     @Test
     void resetOffsetShouldRejectBlankTopicBeforeProviderResolution() {
@@ -882,6 +894,22 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldRenderUnavailableOnlineInstancesAsUnknownTest() {
+        ConsumerGroupVO unavailable = consumerGroup("orders-unavailable", "orders", 10, SubscriptionMode.Pop);
+        unavailable.setOnlineInstances(-1);
+        ConsumerGroupVO confirmedOffline = consumerGroup("orders-offline", "orders", 10, SubscriptionMode.Pop);
+        confirmedOffline.setOnlineInstances(0);
+        when(apacheProvider.listConsumerGroups("instance-a", null))
+                .thenReturn(List.of(unavailable, confirmedOffline));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        // The -1 sentinel must not reach the export, while a confirmed zero still exports as 0.
+        assertThat(csv).contains("\"orders-unavailable\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"unknown\"");
+        assertThat(csv).contains("\"orders-offline\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"0\"");
+    }
+
+    @Test
     void exportConsumerGroupsShouldEscapeFormulaCells() {
         ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
         when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
@@ -892,8 +920,8 @@ class MetadataServiceTest {
     }
 
     @Test
-    void importConsumerGroupsShouldContinueAfterRowFailure() {
-        when(apacheProvider.createConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
+    void importConsumerGroupsShouldContinueAfterRowFailureTest() {
+        when(apacheProvider.importConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
                 .thenAnswer(invocation -> {
                     ConsumerGroupVO group = invocation.getArgument(1);
                     if ("cg-fail".equals(group.getName())) {
@@ -916,7 +944,8 @@ class MetadataServiceTest {
 
         ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
         verify(apacheProvider, org.mockito.Mockito.times(2))
-                .createConsumerGroup(eq("instance-a"), captor.capture());
+                .importConsumerGroup(eq("instance-a"), captor.capture());
+        verify(apacheProvider, never()).createConsumerGroup(anyString(), any());
         assertThat(captor.getAllValues()).extracting(ConsumerGroupVO::getInstanceId)
                 .containsExactly("instance-a", "instance-a");
     }

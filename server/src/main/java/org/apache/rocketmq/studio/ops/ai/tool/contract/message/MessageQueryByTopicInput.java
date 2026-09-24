@@ -21,5 +21,19 @@ public record MessageQueryByTopicInput(
         String topicName,
         String tag,
         Long startTime,
-        Long endTime) {
+        Long endTime,
+        Integer limit,
+        boolean includeBody) {
+
+    private static final int DEFAULT_LIMIT = 20;
+    private static final int MAX_LIMIT = 100;
+
+    public MessageQueryByTopicInput(String instanceId, String topicName, String tag,
+                                    Long startTime, Long endTime) {
+        this(instanceId, topicName, tag, startTime, endTime, null, false);
+    }
+
+    public int resultLimit() {
+        return limit == null ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
+    }
 }

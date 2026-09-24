@@ -29,7 +29,8 @@ cd deploy/rocketmq
 # 1. 构建镜像（首次约 10-20 分钟，含 clone + mvn 编译；国内自动切阿里源）
 ./build.sh
 
-# 2. 拉起集群与收发客户端
+# 2. 拉起集群与收发客户端（compose 把 rocketmq_net 声明为 external，需先创建）
+docker network create rocketmq_net 2>/dev/null || true
 docker compose up -d
 
 # 3. 观察收发日志（1 TPS）

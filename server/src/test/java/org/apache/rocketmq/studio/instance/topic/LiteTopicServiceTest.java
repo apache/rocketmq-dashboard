@@ -18,6 +18,9 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
@@ -39,8 +42,10 @@ import static org.mockito.Mockito.when;
 class LiteTopicServiceTest {
 
     /** No NameServer configured: the provider reports the feature as unavailable. */
+    private final ResourceOwnershipGuard guard = mock(ResourceOwnershipGuard.class);
     private final LiteTopicService unavailableService = new LiteTopicService(
-            new RocketMQLiteTopicProvider(new MqAdminExtFactory(), new RocketMQProperties()));
+            new RocketMQLiteTopicProvider(new MqAdminExtFactory(), new RocketMQProperties(),
+                    mock(RuntimeAdminClientResolver.class), guard), guard);
 
     @Test
     void listLiteTopicsShouldReportUnsupportedWhenProviderIsUnavailable() {
@@ -71,23 +76,30 @@ class LiteTopicServiceTest {
 
     @Test
     void extendTTLShouldRejectInvalidInput() {
-        assertThatThrownBy(() -> unavailableService.extendTTL("", 1L))
+        assertThatThrownBy(() -> unavailableService.extendTTL("instance-a", "", 1L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("topicPattern is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-        assertThatThrownBy(() -> unavailableService.extendTTL("chat/{sessionId}", 0L))
+        assertThatThrownBy(() -> unavailableService.extendTTL("instance-a", "chat/{sessionId}", 0L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("newTTL must be positive")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test
-    void extendTTLShouldReportUnsupportedWhenProviderIsUnavailable() {
-        assertThatThrownBy(() -> unavailableService.extendTTL("chat/{sessionId}", 7_200_000L))
-                .isInstanceOfSatisfying(BusinessException.class, ex -> {
-                    assertThat(ex.getCode()).isEqualTo(501);
-                    assertThat(ex.getMessage()).isEqualTo(LiteTopicProvider.UNSUPPORTED);
-                });
+    void extendTTLRequiresInstanceAndOwnershipTest() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        LiteTopicService service = new LiteTopicService(provider, guard);
+        assertThatThrownBy(() -> service.extendTTL(null, "chat", 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
+        InstanceVO instance = InstanceVO.builder().name("instance-a").build();
+        var resource = new ResourceOwnershipGuard.Resource(ResourceOwnershipGuard.Kind.TOPIC, "chat");
+        when(guard.requireInstance("instance-a")).thenReturn(instance);
+        when(guard.topicResource(" chat ")).thenReturn(resource);
+        when(guard.check(instance, resource, true)).thenThrow(new BusinessException(409, "Ownership conflict"));
+        assertThatThrownBy(() -> service.extendTTL(" instance-a ", " chat ", 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        org.mockito.Mockito.verifyNoInteractions(provider);
     }
 
     @Test
@@ -117,7 +129,7 @@ class LiteTopicServiceTest {
         when(provider.listLiteTopics("chat", "DEFAULT")).thenReturn(List.of(summary));
         when(provider.isSupported()).thenReturn(true);
 
-        LiteTopicService service = new LiteTopicService(provider);
+        LiteTopicService service = new LiteTopicService(provider, guard);
         List<LiteTopicItemVO> items = service.listLiteTopics("chat", "DEFAULT");
 
         assertThat(items).singleElement().satisfies(item -> {
@@ -154,7 +166,7 @@ class LiteTopicServiceTest {
         session.setLiteTopics(new LinkedHashSet<>(List.of("bob", "alice")));
         when(provider.getSession("chat~g~c1")).thenReturn(session);
 
-        LiteTopicSessionVO vo = new LiteTopicService(provider).getSession("chat~g~c1");
+        LiteTopicSessionVO vo = new LiteTopicService(provider, guard).getSession("chat~g~c1");
 
         assertThat(vo.getSessionId()).isEqualTo("chat~g~c1");
         assertThat(vo.getClientAddress()).isEqualTo("10.0.0.9:1234");
@@ -187,7 +199,7 @@ class LiteTopicServiceTest {
         quota.setMaxCreationRate(0.0);
         when(provider.getQuota("DEFAULT")).thenReturn(quota);
 
-        LiteTopicQuotaVO vo = new LiteTopicService(provider).getQuota("DEFAULT");
+        LiteTopicQuotaVO vo = new LiteTopicService(provider, guard).getQuota("DEFAULT");
 
         assertThat(vo.getCurrentTopicCount()).isEqualTo(10);
         assertThat(vo.getMaxTopicCount()).isEqualTo(40);
