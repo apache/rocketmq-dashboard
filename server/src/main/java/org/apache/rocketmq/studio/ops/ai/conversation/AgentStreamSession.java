@@ -165,18 +165,22 @@ final class AgentStreamSession {
      * Ends the replay: live frames stop being buffered and the buffer is drained in arrival order.
      * A session that is used without a replay (the observer that started the run) is simply moved to
      * LIVE, with the watermark the caller already recorded through {@link #noteWatermark(long)}.
+     *
+     * <p>The drain happens with {@code sendLock} held, because that lock is what serialises this
+     * socket. Releasing it after the state flip would let a frame published by the run's own thread
+     * slip in between two buffered ones — the reordering the buffering exists to prevent — since
+     * {@link #deliver} only re-acquires the lock per frame.
      */
     void finishReplay() {
-        Deque<LiveFrame> pending;
         synchronized (sendLock) {
             if (state.get() != State.REPLAYING) {
                 return;
             }
             state.set(State.LIVE);
-            pending = new ArrayDeque<>(buffered);
+            Deque<LiveFrame> pending = new ArrayDeque<>(buffered);
             buffered.clear();
+            pending.forEach(frame -> deliver(frame.seq(), frame.event()));
         }
-        pending.forEach(frame -> deliver(frame.seq(), frame.event()));
     }
 
     /**
