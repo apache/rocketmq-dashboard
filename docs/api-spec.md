@@ -2061,9 +2061,21 @@ GET /api/settings/general
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是否需要登录 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
+| `llmEngine` | `string` | LLM 执行引擎 |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
 | `baseUrl` | `string` | Base URL |
+| `deploymentName` | `string` | Azure 部署名 |
+| `apiVersion` | `string` | Azure API 版本 |
+| `awsRegion` | `string` | AWS 区域（Bedrock） |
+| `maxTokens` | `number` | 最大输出 token 数 |
+| `temperature` | `number` | 采样温度 |
+| `dingtalkWebhook` | `string` | 钉钉机器人 Webhook |
+| `dingtalkWebhookConfigured` | `boolean` | 是否已配置钉钉 Webhook |
+| `dingtalkSigningSecretConfigured` | `boolean` | 是否已配置钉钉加签密钥；响应不会返回密钥内容 |
+| `emailRecipients` | `string` | 邮件通知收件人 |
+| `smsWebhook` | `string` | 短信通知 Webhook |
+| `smsWebhookConfigured` | `boolean` | 是否已配置短信 Webhook |
 
 ### 14.2 保存通用设置
 
@@ -2082,10 +2094,19 @@ POST /api/settings/general/save
 | `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是 | 是否需要登录 |
 | `llmProvider` | `string` | 是 | LLM 提供商 |
+| `llmEngine` | `string` | 否 | LLM 执行引擎 |
 | `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
 | `model` | `string` | 是 | 模型名称 |
 | `baseUrl` | `string` | 是 | Base URL |
+| `deploymentName` | `string` | 否 | Azure 部署名 |
+| `apiVersion` | `string` | 否 | Azure API 版本 |
+| `awsRegion` | `string` | 否 | AWS 区域（Bedrock） |
+| `dingtalkWebhook` | `string` | 否 | 钉钉机器人 Webhook |
+| `dingtalkSigningSecret` | `string` | 否 | 新钉钉加签密钥；省略时保留现有密钥 |
+| `clearDingtalkSigningSecret` | `boolean` | 否 | 传 `true` 时显式清除现有加签密钥 |
+| `emailRecipients` | `string` | 否 | 邮件通知收件人 |
+| `smsWebhook` | `string` | 否 | 短信通知 Webhook |
 
 **Response `data`:** `null`
 
@@ -2149,6 +2170,7 @@ POST /api/settings/datasources/create
 | `type` | `string` | 是 | 类型 |
 | `url` | `string` | 是 | URL |
 | `auth` | `string` | 否 | 认证方式，默认 `None` |
+| `instanceIds` | `string[]` | 否 | 关联的实例 ID 列表 |
 
 **Response `data`:** `DataSource`
 
@@ -2167,6 +2189,7 @@ POST /api/settings/datasources/update
 | `type` | `string` | 是 | 类型 |
 | `url` | `string` | 是 | URL |
 | `auth` | `string` | 否 | 认证方式，默认 `None` |
+| `instanceIds` | `string[]` | 否 | 关联的实例 ID 列表 |
 
 **Response `data`:** `DataSource`
 
@@ -2197,6 +2220,9 @@ POST /api/settings/datasources/test
 | `url` | `string` | 是 | 连接 URL |
 | `type` | `string` | 是 | 类型 |
 | `auth` | `string` | 否 | 认证方式 |
+| `username` | `string` | 否 | Basic Auth 用户名 |
+| `password` | `string` | 否 | Basic Auth 密码 |
+| `bearerToken` | `string` | 否 | Bearer Token |
 
 **Response `data`:**
 
@@ -2204,6 +2230,22 @@ POST /api/settings/datasources/test
 |------|------|------|
 | `success` | `boolean` | 是否连接成功 |
 | `message` | `string?` | 错误信息 |
+
+### 14.9 测试通知渠道
+
+```
+POST /api/settings/general/test-notification?channel={channel}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `channel` | `string` | 是 | 通知渠道: `dingtalk` / `email` / `sms` |
+
+使用当前保存的通知设置向该渠道发送一条测试消息。
+
+**Response `data`:** 空（失败直接返回错误响应）
 
 ---
 
