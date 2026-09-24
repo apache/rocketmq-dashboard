@@ -65,3 +65,34 @@ func TestRowsEscapesControlCharactersInCellValues(t *testing.T) {
 		t.Fatalf("data line does not contain escaped value: %q", data)
 	}
 }
+
+func TestRowsRendersNestedValuesAsJSON(t *testing.T) {
+	buf := &bytes.Buffer{}
+	rows := []map[string]any{
+		{
+			"name":  "group-a",
+			"quota": map[string]any{"max": float64(10), "used": float64(3)},
+			"tags":  []any{"a", "b"},
+		},
+	}
+	columns := []Column{
+		{Header: "NAME", Key: "name"},
+		{Header: "QUOTA", Key: "quota"},
+		{Header: "TAGS", Key: "tags"},
+	}
+	if err := Rows(buf, rows, columns); err != nil {
+		t.Fatal(err)
+	}
+	data := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")[1]
+	// Go's default map/slice formatting is noise ("map[max:10 used:3]"), and nested
+	// values are JSON to begin with, so the cell should carry the JSON form instead.
+	if strings.Contains(data, "map[") || strings.Contains(data, "[a b]") {
+		t.Fatalf("data line renders Go syntax for nested values: %q", data)
+	}
+	if !strings.Contains(data, `"max":10`) {
+		t.Fatalf("data line does not render the nested object as JSON: %q", data)
+	}
+	if !strings.Contains(data, `["a","b"]`) {
+		t.Fatalf("data line does not render the nested array as JSON: %q", data)
+	}
+}
