@@ -95,6 +95,12 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
                 }
                 if (group.isConsumptionTimestampAvailable()) {
                     samples.add(delaySample(instance, group, collectedAt));
+                } else {
+                    // Stats without a consumed-message timestamp leave the delay unknown; emit it as
+                    // unavailable instead of omitting the sample, so reconciliation does not see the
+                    // group's delay series vanish and resolve an active delay alert for it.
+                    samples.add(unavailable(CONSUMER_DELAY_SECONDS, instance, group.getClusterId(),
+                            Map.of("consumerGroup", group.getName()), collectedAt, "CONSUMER_TIMESTAMP_UNAVAILABLE"));
                 }
                 samples.addAll(queueLagSamples(provider, instance, group, collectedAt));
             }
