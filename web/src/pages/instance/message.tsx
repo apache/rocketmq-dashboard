@@ -722,7 +722,6 @@ const MessagePageContent = ({
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 170,
       ellipsis: true,
-      sorter: (a, b) => a.topic.localeCompare(b.topic),
       render: (topic: string) => (
         <Text strong style={{ fontSize: 14 }}>
           {topic}
@@ -766,7 +765,6 @@ const MessagePageContent = ({
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 185,
-      sorter: (a, b) => new Date(a.storeTime).valueOf() - new Date(b.storeTime).valueOf(),
       render: (time: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {formatTimeMs(time)}
