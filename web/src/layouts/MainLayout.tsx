@@ -606,7 +606,7 @@ const MainLayout = () => {
                     size={28}
                     style={{
                       background: 'linear-gradient(135deg, #7c3aed, #d946ef)',
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: 600,
                       color: '#ffffff',
                     }}
@@ -754,7 +754,7 @@ const MainLayout = () => {
                           padding: '8px 10px',
                           borderRadius: 10,
                           cursor: 'pointer',
-                          fontSize: 13,
+                          fontSize: 14,
                           border: `1px solid ${active ? 'rgba(124, 58, 237, 0.35)' : 'transparent'}`,
                           background: active
                             ? darkMode
