@@ -684,6 +684,65 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getGroupProgressShouldMapMissingConsumerLagToUnknownTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        subscription.setConsumerLag(null);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<QueueProgressVO> progress = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(progress).hasSize(1);
+        assertThat(progress.get(0).getDiffTotal()).isEqualTo(-1L);
+    }
+
+    @Test
+    void getGroupProgressShouldPreserveGenuineZeroConsumerLagTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        subscription.setConsumerLag(0L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<QueueProgressVO> progress = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(progress).hasSize(1);
+        assertThat(progress.get(0).getDiffTotal()).isZero();
+    }
+
+    @Test
+    void getTopicConsumersShouldMarkMissingConsumerLagUnavailableTest() throws Exception {
+        SubscriptionData known = new SubscriptionData();
+        known.setConsumerGroup("GID_known");
+        known.setConsumeType("CLUSTERING");
+        known.setMessageModel("CLUSTERING");
+        known.setConsumerLag(0L);
+        SubscriptionData unknown = new SubscriptionData();
+        unknown.setConsumerGroup("GID_unknown");
+        unknown.setConsumeType("CLUSTERING");
+        unknown.setMessageModel("CLUSTERING");
+        unknown.setConsumerLag(null);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{known, unknown});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(2);
+        assertThat(consumers.get(0).getDiffTotal()).isZero();
+        assertThat(consumers.get(0).isMetricsAvailable()).isTrue();
+        assertThat(consumers.get(1).getDiffTotal()).isEqualTo(-1L);
+        assertThat(consumers.get(1).isMetricsAvailable()).isFalse();
+    }
+
+    @Test
     void getGroupProgressAndSubscriptionsShouldMapSubscriptionDataTest() throws Exception {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setTopic("orders");

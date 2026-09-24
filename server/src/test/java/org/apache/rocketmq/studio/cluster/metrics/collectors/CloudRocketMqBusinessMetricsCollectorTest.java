@@ -67,4 +67,97 @@ class CloudRocketMqBusinessMetricsCollectorTest {
         assertThat(new CloudRocketMqBusinessMetricsCollector(mock(InstanceProviderRegistry.class)).collect(instance))
                 .isEmpty();
     }
+
+    @Test
+    void reportsUnavailableGroupLagWhenAnyProgressRowIsUnknownTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("tencent").vendor(InstanceVendor.TENCENT).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cloud-a");
+        when(registry.byInstanceId("tencent")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("tencent", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("tencent", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("orders-known").diffTotal(12).build(),
+                QueueProgressVO.builder().topic("orders-unknown").diffTotal(-1).build()));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.total"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.max_queue"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                });
+    }
+
+    @Test
+    void keepsKnownTopicBacklogAndMarksUnknownTopicUnavailableTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("tencent").vendor(InstanceVendor.TENCENT).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cloud-a");
+        when(registry.byInstanceId("tencent")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("tencent", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("tencent", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("orders-known").diffTotal(7).build(),
+                QueueProgressVO.builder().topic("orders-known").diffTotal(5).build(),
+                QueueProgressVO.builder().topic("orders-unknown").diffTotal(-1).build()));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total")
+                && "orders-known".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(12D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total")
+                && "orders-unknown".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_LAG_UNKNOWN");
+                });
+    }
+
+    @Test
+    void preservesGenuineZeroLagAsAvailableZeroTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("tencent").vendor(InstanceVendor.TENCENT).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cloud-a");
+        when(registry.byInstanceId("tencent")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("tencent", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("tencent", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("orders-topic").diffTotal(0).build()));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.total"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(0D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("consumer.lag.max_queue"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(0D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(0D);
+                });
+    }
 }
