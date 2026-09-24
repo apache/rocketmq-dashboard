@@ -892,7 +892,7 @@ POST /api/topics/send
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `msgId` | `string` | 消息 ID |
-| `sendTime` | `string` | 发送时间 (ISO 8601) |
+| `sendTime` | `number` | 发送时间（Unix 毫秒时间戳） |
 | `offsetMsgId` | `string` | 含偏移量的消息 ID |
 
 **示例：**
@@ -913,7 +913,7 @@ POST /api/topics/send
 // Response
 {
   "msgId": "7F000001234567890000",
-  "sendTime": "2026-07-08T10:30:45.123Z",
+  "sendTime": 1783506645123,
   "offsetMsgId": "7F000001234567890000-0:0:0:0"
 }
 ```

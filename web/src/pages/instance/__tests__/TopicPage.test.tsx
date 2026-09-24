@@ -185,7 +185,7 @@ describe('TopicPage', () => {
     });
     topicServiceMocks.sendTopicMessage.mockResolvedValue({
       msgId: 'MSG-0001',
-      sendTime: '2026-01-02T00:00:00Z',
+      sendTime: Date.parse('2026-01-02T00:00:00Z'),
       offsetMsgId: 'OFFSET-0001',
     });
     instanceServiceMocks.listInstances.mockResolvedValue([

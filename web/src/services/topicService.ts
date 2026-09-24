@@ -238,7 +238,7 @@ export async function sendTopicMessage(
     await new Promise((r) => setTimeout(r, 400));
     return {
       msgId: `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}`,
-      sendTime: new Date().toISOString(),
+      sendTime: Date.now(),
       offsetMsgId: `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}-0:0:0:0`,
     };
   }
