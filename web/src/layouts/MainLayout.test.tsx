@@ -199,6 +199,29 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.getByRole('button', { name: 'Switch to Chinese' })).toBeInTheDocument();
   });
 
+  it('keeps every inline font size at the 14px minimum', () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<div>protected home</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    // The 14px minimum is a project-wide review rule; the layout must not reintroduce 13px text
+    // (avatar fallback letter and the user-menu data-mode entry both regressed to it once).
+    const tooSmall = Array.from(document.querySelectorAll<HTMLElement>('[style]')).filter(
+      (element) => element.style.fontSize === '13px',
+    );
+    expect(tooSmall).toHaveLength(0);
+  });
+
   it('hides unsupported instance navigation after capabilities load', async () => {
     instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
       instanceId: 'cloud-1',
