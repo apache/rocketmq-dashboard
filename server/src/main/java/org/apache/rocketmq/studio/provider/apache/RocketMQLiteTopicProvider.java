@@ -204,13 +204,19 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         summary.setMaxTTL(ttlMillis);
 
         int topicCount = 0;
-        try {
-            GetParentTopicInfoResponseBody parentInfo = admin.getParentTopicInfo(parent.brokerAddr, parent.parentTopic);
-            if (parentInfo != null) {
-                topicCount = Math.max(parentInfo.getLiteTopicCount(), 0);
+        // Every master holds its own shard of the parent topic; getLiteGroupInfo reads only
+        // the queried broker's offset table, so both counts must be gathered per master.
+        for (String master : parent.masters) {
+            try {
+                GetParentTopicInfoResponseBody parentInfo = admin.getParentTopicInfo(master,
+                        parent.parentTopic);
+                if (parentInfo != null) {
+                    topicCount += Math.max(parentInfo.getLiteTopicCount(), 0);
+                }
+            } catch (Exception failure) {
+                log.debug("Failed to read parent topic info for {} on {}: {}",
+                        parent.parentTopic, master, failure.getMessage());
             }
-        } catch (Exception failure) {
-            log.debug("Failed to read parent topic info for {}: {}", parent.parentTopic, failure.getMessage());
         }
 
         long totalBacklog = 0;
@@ -219,7 +225,9 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         int consumerCount = 0;
         int sessionBudget = MAX_LITE_SESSION_SCAN;
         for (String group : parent.groups) {
-            totalBacklog += groupLag(admin, parent.brokerAddr, group);
+            for (String master : parent.masters) {
+                totalBacklog += groupLag(admin, master, group);
+            }
             for (Connection connection : consumerConnections(admin, group)) {
                 if (sessionBudget-- <= 0) {
                     log.warn("LiteTopic session scan for {} truncated at {} sessions",
@@ -659,17 +667,17 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     /** One parent topic observed across broker masters, with its TTL and bound consumer groups. */
     private static final class ParentTopicAccumulator {
         private final String parentTopic;
-        private String brokerAddr;
+        private final Set<String> masters = new LinkedHashSet<>();
         private final Set<String> groups = new LinkedHashSet<>();
         private int ttlMinutes = -1;
 
         private ParentTopicAccumulator(String parentTopic, String brokerAddr) {
             this.parentTopic = parentTopic;
-            this.brokerAddr = brokerAddr;
+            this.masters.add(brokerAddr);
         }
 
         private void merge(String brokerAddr, Integer ttlMinutes) {
-            this.brokerAddr = brokerAddr;
+            this.masters.add(brokerAddr);
             if (ttlMinutes != null && ttlMinutes > this.ttlMinutes) {
                 this.ttlMinutes = ttlMinutes;
             }
