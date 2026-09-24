@@ -43,6 +43,9 @@ class DLQServiceTest {
     @Mock
     private InstanceProviderRegistry providerRegistry;
 
+    @Mock
+    private DLQFeatureClusteringEngine dlqFeatureClusteringEngine;
+
     @InjectMocks
     private DLQService dlqService;
 
@@ -258,5 +261,25 @@ class DLQServiceTest {
         verify(dlqProvider).listMessages("instance-1", "group-1", 5000L, 5001L, 1, 20);
         verify(dlqProvider).exportMessages("instance-1", "group-1", 5000L, 5001L, 100);
         verify(dlqProvider).exportExcel("instance-1", "group-1", 5000L, 5001L, null);
+    }
+
+    @Test
+    void clusterDLQMessagesShouldDelegateToProviderAndEngine() {
+        DLQMessageVO msg = DLQMessageVO.builder().msgId("m1").build();
+        when(dlqProvider.exportMessages("instance-1", "group-1", 1000L, 2000L, 200))
+                .thenReturn(List.of(msg));
+
+        DLQClusteringReportVO report = DLQClusteringReportVO.builder()
+                .groupName("group-1")
+                .totalSampledMessages(1)
+                .build();
+        when(dlqFeatureClusteringEngine.clusterAndEvaluateReplay("group-1", List.of(msg)))
+                .thenReturn(report);
+
+        DLQClusteringReportVO result = dlqService.clusterDLQMessages("instance-1", "group-1", 1000L, 2000L);
+
+        assertThat(result).isSameAs(report);
+        verify(dlqProvider).exportMessages("instance-1", "group-1", 1000L, 2000L, 200);
+        verify(dlqFeatureClusteringEngine).clusterAndEvaluateReplay("group-1", List.of(msg));
     }
 }

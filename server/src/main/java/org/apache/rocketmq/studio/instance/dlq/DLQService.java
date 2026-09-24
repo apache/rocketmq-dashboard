@@ -37,6 +37,15 @@ public class DLQService {
 
     private final DLQProvider dlqProvider;
     private final InstanceProviderRegistry providerRegistry;
+    private final DLQFeatureClusteringEngine dlqFeatureClusteringEngine;
+
+    public DLQClusteringReportVO clusterDLQMessages(String instanceId, String groupName, Long startTime, Long endTime) {
+        requireApacheInstance(instanceId);
+        String normalizedGroupName = requireGroupName(groupName);
+        validateTimeRange(startTime, endTime);
+        List<DLQMessageVO> sampleList = dlqProvider.exportMessages(instanceId, normalizedGroupName, startTime, endTime, 200);
+        return dlqFeatureClusteringEngine.clusterAndEvaluateReplay(normalizedGroupName, sampleList);
+    }
 
     public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
         requireApacheInstance(instanceId);

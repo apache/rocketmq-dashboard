@@ -552,4 +552,37 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(dlqService);
     }
+
+    @Test
+    void clusterDLQMessagesShouldReturnClusteringReport() throws Exception {
+        DLQClusteringReportVO report = DLQClusteringReportVO.builder()
+                .groupName("test-group")
+                .totalSampledMessages(2)
+                .clusterCount(1)
+                .clusters(List.of(
+                        DLQClusteringReportVO.DLQMessageClusterVO.builder()
+                                .originTopic("OrderTopic")
+                                .detectedExceptionClass("SocketTimeoutException")
+                                .messageCount(2)
+                                .recommendedForReplay(true)
+                                .riskAssessment("SAFE_TO_REPLAY")
+                                .build()
+                ))
+                .build();
+        when(dlqService.clusterDLQMessages("instance-1", "test-group", 1000L, 2000L))
+                .thenReturn(report);
+
+        mockMvc.perform(get("/api/dlq/test-group/cluster-analysis")
+                        .param("instanceId", "instance-1")
+                        .param("startTime", "1000")
+                        .param("endTime", "2000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.groupName").value("test-group"))
+                .andExpect(jsonPath("$.data.totalSampledMessages").value(2))
+                .andExpect(jsonPath("$.data.clusterCount").value(1))
+                .andExpect(jsonPath("$.data.clusters[0].originTopic").value("OrderTopic"));
+
+        verify(dlqService).clusterDLQMessages("instance-1", "test-group", 1000L, 2000L);
+    }
 }
