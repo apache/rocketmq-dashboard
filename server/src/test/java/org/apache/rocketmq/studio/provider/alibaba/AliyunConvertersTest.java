@@ -18,12 +18,48 @@ package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AliyunConvertersTest {
+
+    @Test
+    void toTopicTypeShouldMapEveryDocumentedAliyunMessageTypeTest() {
+        assertThat(AliyunConverters.toTopicType("NORMAL")).isEqualTo(TopicType.NORMAL);
+        assertThat(AliyunConverters.toTopicType("FIFO")).isEqualTo(TopicType.FIFO);
+        assertThat(AliyunConverters.toTopicType("DELAY")).isEqualTo(TopicType.DELAY);
+        assertThat(AliyunConverters.toTopicType("TRANSACTION")).isEqualTo(TopicType.TRANSACTION);
+        assertThat(AliyunConverters.toTopicType("LITE")).isEqualTo(TopicType.LITE);
+    }
+
+    @Test
+    void toTopicTypeShouldAcceptTheLowerCaseSpellingOfALiteTopicTest() {
+        assertThat(AliyunConverters.toTopicType("lite")).isEqualTo(TopicType.LITE);
+    }
+
+    @Test
+    void toTopicTypeShouldFallBackToNormalOnlyForAnUnknownMessageTypeTest() {
+        assertThat(AliyunConverters.toTopicType(null)).isEqualTo(TopicType.NORMAL);
+        assertThat(AliyunConverters.toTopicType("   ")).isEqualTo(TopicType.NORMAL);
+        assertThat(AliyunConverters.toTopicType("SCHEDULED")).isEqualTo(TopicType.NORMAL);
+    }
+
+    @Test
+    void toTopicVoShouldKeepALiteTopicTypeTest() {
+        ListTopicsResponseBody.List data = ListTopicsResponseBody.List.builder()
+                .topicName("session-lite")
+                .messageType("LITE")
+                .build();
+
+        TopicVO vo = AliyunConverters.toTopicVO(data, "7");
+
+        assertThat(vo.getType()).isEqualTo(TopicType.LITE);
+    }
 
     @Test
     void toInstanceOptionShouldClampCountsOutsideTheIntegerRange() {

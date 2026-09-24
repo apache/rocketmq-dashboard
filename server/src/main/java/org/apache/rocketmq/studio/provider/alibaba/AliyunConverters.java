@@ -145,9 +145,15 @@ final class AliyunConverters {
                 return TopicType.DELAY;
             case "TRANSACTION":
                 return TopicType.TRANSACTION;
+            case "LITE":
+                // Aliyun RocketMQ 5.0 publishes lite topics as a first class message type
+                // (messageType=LITE), spelled exactly like TopicType.LITE. The Apache and Tencent
+                // converters already resolve it through TopicType.valueOf, so only this switch
+                // needs the case to keep the three vendors reporting the same type.
+                return TopicType.LITE;
             default:
-                // Unknown message types fall back to NORMAL so read paths (web
-                // detail, AI rmq.topic.list) never see a null type, matching the
+                // Message types this Studio build does not know yet fall back to NORMAL so read
+                // paths (web detail, AI rmq.topic.list) never see a null type, matching the
                 // Apache provider's parseTopicType fallback.
                 return TopicType.NORMAL;
         }
