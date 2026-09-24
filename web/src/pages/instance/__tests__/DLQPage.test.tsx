@@ -763,6 +763,30 @@ describe('DLQ page', () => {
     expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2);
   });
 
+  it('clears the search term when the selected instance changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'ord');
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'ord', 1, 20),
+    );
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    // The old term is meaningless for the new instance: it must not filter the
+    // next request, and the input has to show the cleared value.
+    await waitFor(() => {
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2', undefined, 1, 20);
+    });
+    expect(searchInput).toHaveDisplayValue('');
+  });
+
   it('ignores a stale group response after changing instances', async () => {
     let resolveFirstInstance!: (page: DLQGroupPage) => void;
     vi.mocked(messageService.listDLQGroups)
