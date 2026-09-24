@@ -296,6 +296,7 @@ const ConsumerPageContent = ({
 
   const groupRequestIdRef = useRef(0);
   const progressRequestIdRef = useRef<Record<string, number>>({});
+  const subscriptionRequestIdRef = useRef<Record<string, number>>({});
   const stackRequestIdRef = useRef(0);
   const settingsRequestIdRef = useRef(0);
   // Consumption switches as loaded from the broker, used to detect high-risk changes
@@ -388,6 +389,8 @@ const ConsumerPageContent = ({
     async (groupName: string, force = false, silent = false) => {
       const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
       if (!force && subscriptionsByGroup[cacheKey]) return;
+      const requestId = (subscriptionRequestIdRef.current[cacheKey] ?? 0) + 1;
+      subscriptionRequestIdRef.current[cacheKey] = requestId;
       if (!silent) {
         setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
       }
@@ -397,14 +400,18 @@ const ConsumerPageContent = ({
           groupName,
           selectedInstanceId || undefined,
         );
-        setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
+        }
       } catch {
-        setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
-        if (!silent) {
-          message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+          if (!silent) {
+            message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+          }
         }
       } finally {
-        if (!silent) {
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
           setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
         }
       }

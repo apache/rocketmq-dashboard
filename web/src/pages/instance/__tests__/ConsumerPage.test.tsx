@@ -1327,6 +1327,60 @@ describe('Consumer page', () => {
     expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
+  it('ignores stale subscription responses after a newer diagnostic request completes', async () => {
+    const firstRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    const latestRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(latestRequest.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const healthPanel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await user.click(within(healthPanel).getByRole('button', { name: /重新诊断/ }));
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      latestRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'new-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+      ]);
+      await latestRequest.promise;
+    });
+    expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+
+    await act(async () => {
+      firstRequest.resolve([
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'inconsistent',
+        },
+      ]);
+      await firstRequest.promise;
+    });
+    expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
