@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
@@ -151,8 +152,11 @@ public class NotificationOutboxService {
     }
 
     public void sendTestMessage(String channel) {
+        // The settings UI surfaces this reason verbatim, so it must travel as a business error:
+        // a plain RuntimeException falls through GlobalExceptionHandler to a generic 500 that
+        // hides whether the channel is unknown, unconfigured, or the remote side rejected it.
         if (!"dingtalk".equals(channel) && !"email".equals(channel) && !"sms".equals(channel)) {
-            throw new IllegalArgumentException("Unsupported notification channel: " + channel);
+            throw new BusinessException(400, "Unsupported notification channel: " + channel);
         }
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.info)
@@ -163,7 +167,7 @@ public class NotificationOutboxService {
             if ("email".equals(channel)) sendEmail(settings, alert, content);
             else sendWebhook(settings, alert, channel, content);
         } catch (Exception error) {
-            throw new IllegalStateException("Test notification failed: " + error.getMessage(), error);
+            throw new BusinessException(502, "Test notification failed: " + error.getMessage());
         }
     }
 
