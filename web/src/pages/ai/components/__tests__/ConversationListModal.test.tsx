@@ -472,6 +472,29 @@ describe('ConversationListModal', () => {
     expect(screen.getAllByRole('checkbox')[1]).not.toBeChecked();
   });
 
+  it('dropsTheSelectionWhenARowIsArchivedOutOfTheListTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock
+      .mockResolvedValueOnce(
+        page([conversation(7, '检查集群状态'), conversation(8, '另一个会话')], 2, 1),
+      )
+      .mockResolvedValue(page([conversation(7, '检查集群状态')], 1, 1));
+    updateMock.mockResolvedValue({ id: 8 } as never);
+    renderModal();
+    await screen.findByText('另一个会话');
+
+    // Index 0 is the header's select-all, so index 2 is the second row.
+    await user.click(screen.getAllByRole('checkbox')[2]);
+    expect(screen.getByTestId('ai-conversation-selected-delete')).toHaveTextContent('删除 (1)');
+
+    await user.click(screen.getByTestId('ai-conversation-row-archive-8'));
+    await waitFor(() => expect(screen.queryByText('另一个会话')).not.toBeInTheDocument());
+
+    // Archiving took the row out of the scope, exactly like a page change does: the toolbar must not
+    // keep offering to delete a row the operator can no longer see.
+    expect(screen.queryByTestId('ai-conversation-selected-delete')).not.toBeInTheDocument();
+  });
+
   it('deletesEveryConversationOnThePageTest', async () => {
     const user = userEvent.setup();
     listMock

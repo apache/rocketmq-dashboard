@@ -196,6 +196,10 @@ const ConversationListPanel = ({
       setArchivingIds((ids) => [...ids, id]);
       try {
         await updateConversation(id, { archived: !archived });
+        // The row leaves the scope it was listed in, so its tick goes with it. Keeping it would put
+        // the list back where `clearSelection` keeps it out of: a batch delete acting on a row the
+        // operator can no longer see. The other ticks still refer to visible rows and stay.
+        setSelectedRowKeys((keys) => keys.filter((key) => Number(key) !== id));
         message.success(archived ? t('ai.list.unarchivedToast') : t('ai.list.archivedToast'));
         reload();
       } catch {
