@@ -530,6 +530,7 @@ const ClusterPage = () => {
   const selectedInstanceIdRef = useRef<string | undefined>(undefined);
   const apacheInstancesRef = useRef<Array<{ name: string; endpoint: string }>>([]);
   const instanceLoadRetryRef = useRef(0);
+  const instanceLoadRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -560,7 +561,10 @@ const ClusterPage = () => {
         setLoading(false);
         if (instanceLoadRetryRef.current < 3) {
           instanceLoadRetryRef.current += 1;
-          window.setTimeout(() => setInstanceLoadKey((key) => key + 1), 3000);
+          instanceLoadRetryTimerRef.current = window.setTimeout(
+            () => setInstanceLoadKey((key) => key + 1),
+            3000,
+          );
         } else {
           setInstanceLoadError(tRef.current('common.fetchDataFailed'));
           setAutoRefresh(false);
@@ -569,6 +573,10 @@ const ClusterPage = () => {
       });
     return () => {
       cancelled = true;
+      if (instanceLoadRetryTimerRef.current !== null) {
+        window.clearTimeout(instanceLoadRetryTimerRef.current);
+        instanceLoadRetryTimerRef.current = null;
+      }
     };
   }, [instanceLoadKey, requestedInstanceId]);
 

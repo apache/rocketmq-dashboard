@@ -855,7 +855,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      // The timer must be cleared on cleanup: this effect re-runs whenever any of its
+      // frequently changing dependencies change, and without cleanup every re-run schedules
+      // another fallback that mutates state (and fires queries) after unmount.
+      const fallbackTimer = window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
         dataSourceCredentialsRef.current = null;
@@ -867,6 +870,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           void runCustomQuery(appliedCustomPromql, selectedRange);
         }
       }, 0);
+      return () => {
+        window.clearTimeout(fallbackTimer);
+      };
     }
   }, [
     availableDataSources,
