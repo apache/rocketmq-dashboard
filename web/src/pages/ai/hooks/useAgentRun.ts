@@ -303,15 +303,20 @@ export function useAgentRun(
       userMessage?: string,
     ): Promise<void> => {
       // Double-submit guard: Enter twice in one tick must not admit two runs (the server would
-      // reject the second with 409 anyway, but the UI should not even try).
-      if (chatInFlightRef.current) return;
+      // reject the second with 409 anyway, but the UI should not even try). The rejection (not a
+      // silent return) matters: the stop window flips the composer's `generating` off while the
+      // in-flight guard still holds, so a send accepted there would lose its prompt with zero
+      // feedback — the caller restores the draft when the send throws.
+      if (chatInFlightRef.current) {
+        throw new Error('A run is still in flight');
+      }
       // The route already moved on to another conversation: refuse to start a stream whose frames
       // the generation guard would drop anyway.
       if (
         conversationIdRef.current !== null &&
         conversationIdRef.current !== targetConversationId
       ) {
-        return;
+        throw new Error('The conversation has moved on before the stream could start');
       }
       chatInFlightRef.current = true;
       // Only `send` carries a prompt; a re-attach finds the user row already in the timeline.

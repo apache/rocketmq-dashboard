@@ -196,7 +196,9 @@ describe('useAgentRun', () => {
 
     await act(async () => {
       void result.current.send(7, { message: 'one' });
-      void result.current.send(7, { message: 'two' });
+      // The in-flight guard now rejects (the caller restores the draft), so swallow the second
+      // send the way index.tsx's fire-and-forget `void` does.
+      result.current.send(7, { message: 'two' }).catch(() => undefined);
     });
 
     // The server would answer the second one with 409; the UI must not even try.
@@ -375,6 +377,41 @@ describe('useAgentRun', () => {
 
     expect(result.current.lastStatus).toBe('STOPPED');
     expect(result.current.stopRequested).toBe(false);
+  });
+
+  it('reportsASendInTheStoppingWindowInsteadOfSilentlyDroppingItTest', async () => {
+    const { result } = render();
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.send(7, { message: 'hi' });
+    });
+    await act(async () => {
+      openedStreams[0].emit(runStarted());
+      openedStreams[0].emit(textDelta('partial'));
+      await flushFrame();
+    });
+    await act(async () => {
+      await result.current.stop();
+    });
+
+    // The stop POST resolved but the terminal frames have not arrived: the composer's
+    // `generating = isStreaming && !stopRequested` is false, so a send in this window passes every
+    // disabled gate — yet `chatInFlightRef` still holds. The hook must not silently no-op; the
+    // caller (index.tsx) restores the draft on a thrown send.
+    await act(async () => {
+      await expect(result.current.send(7, { message: 'next question' })).rejects.toThrow();
+    });
+
+    // And the in-flight stream still owns the UI: the rejected send must not have clobbered it.
+    expect(result.current.stopRequested).toBe(true);
+    await act(async () => {
+      openedStreams[0].emit(runFinished('STOPPED'));
+      openedStreams[0].finish();
+      await flushFrame();
+      await sent;
+    });
+    expect(result.current.lastStatus).toBe('STOPPED');
   });
 
   it('ignoresAStopBeforeTheRunStartedFrameTest', async () => {

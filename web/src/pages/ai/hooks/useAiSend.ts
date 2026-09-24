@@ -107,7 +107,9 @@ export function useAiSend(
     async ({ createBody, request, carryState }: StartRunOptions): Promise<number | null> => {
       const current = conversationIdRef.current;
       if (current !== null) {
-        void optionsRef.current.send(current, request);
+        // An inline await keeps a refused send (a run still in flight) rejecting through to the
+        // caller, which restores the cleared draft — a `void` here would swallow it.
+        await optionsRef.current.send(current, request);
         return current;
       }
       let createdId: number;
