@@ -22,8 +22,8 @@ import java.util.List;
  * Message query outcome with a provider truncation signal.
  *
  * @param messages rows returned within the provider's bounded result budget
- * @param mayBeTruncated true when the provider stopped because its result budget was reached,
- *         not because the query was exhausted
+ * @param mayBeTruncated true when the provider cannot prove that the query was exhausted, for
+ *         example because a result/scan budget was reached or a queue scan was abandoned
  */
 public record MessageQueryResult(
         List<MessageRecordVO> messages,

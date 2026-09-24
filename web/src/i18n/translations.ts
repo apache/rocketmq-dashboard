@@ -560,8 +560,8 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'messagePage.totalMessages': { zh: '共 {total} 条消息', en: '{total} messages in total' },
   'messagePage.truncatedWarning': {
-    zh: '查询结果达到服务端扫描上限，当前总数可能不完整。',
-    en: 'The query reached the server-side scan limit; the total count may be incomplete.',
+    zh: '查询结果可能因服务端扫描上限或队列扫描提前结束而不完整。',
+    en: 'The query may be incomplete because the server hit a scan limit or stopped scanning a queue early.',
   },
   'messagePage.bodyTruncatedWarning': {
     zh: '消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。',

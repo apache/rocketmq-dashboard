@@ -137,8 +137,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (begin >= 0 && end >= 0 && end - begin > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
                 throw new BusinessException(400, "Topic message query time range must not exceed 7 days");
             }
-            return MessageQueryResult.complete(
-                    queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT));
+            return queryByTopic(instanceId, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         }
 
         log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
@@ -363,15 +362,16 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Scan a topic within a time range on the pooled long-lived pull consumer, mirroring the
      * approach used by the RocketMQ dashboard for time-range topic queries.
      */
-    private List<MessageRecordVO> queryByTopic(String instanceId, String topic, String tag,
-                                                long begin, long end, int limit) {
+    private MessageQueryResult queryByTopic(String instanceId, String topic, String tag,
+                                            long begin, long end, int limit) {
         int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
         return runtimeAdminClientResolver.executePullConsumer(instanceId, consumer -> {
             PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
+            boolean mayBeTruncated = false;
             try {
                 Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
                 if (queues == null || queues.isEmpty()) {
-                    return Collections.emptyList();
+                    return MessageQueryResult.complete(Collections.emptyList());
                 }
                 for (MessageQueue queue : queues) {
                     TopicQueueScanPlan scanPlan = buildTopicQueueScanPlan(consumer, queue, begin, end);
@@ -379,6 +379,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                         continue;
                     }
                     if (scanPlan.truncated()) {
+                        mayBeTruncated = true;
                         log.info("Truncate topic query for {} queue {} to offsets [{}..{}) within the guarded tail budget",
                                 topic, queue, scanPlan.startOffset(), scanPlan.endOffsetExclusive());
                     }
@@ -386,17 +387,20 @@ public class RocketMQMessageProvider implements MessageProvider {
                     int pullAttempts = 0;
                     for (long offset = scanPlan.startOffset(); offset < scanPlan.endOffsetExclusive(); ) {
                         if (++pullAttempts > MAX_PULL_ATTEMPTS_PER_QUEUE) {
+                            mayBeTruncated = true;
                             log.warn("Stop topic query for {} because queue {} exhausted the guarded pull budget at offset {}",
                                     topic, queue, offset);
                             break;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, TOPIC_PULL_BATCH_SIZE);
                         if (pullResult == null) {
+                            mayBeTruncated = true;
                             log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
                             break;
                         }
                         long nextOffset = pullResult.getNextBeginOffset();
                         if (nextOffset <= offset) {
+                            mayBeTruncated = true;
                             log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
                             break;
                         }
@@ -408,6 +412,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                             // position instead of abandoning the queue -- otherwise messages
                             // that still exist after the corrected offset are silently dropped.
                             if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
+                                mayBeTruncated = true;
                                 log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
                                         + "{} times consecutively, giving up at offset {}", topic, queue,
                                         consecutiveIllegalOffsets, offset);
@@ -417,8 +422,17 @@ public class RocketMQMessageProvider implements MessageProvider {
                                     queue, topic, offset);
                             continue;
                         }
-                        if (pullResult.getPullStatus() != PullStatus.FOUND
+                        PullStatus pullStatus = pullResult.getPullStatus();
+                        boolean malformedResponse = pullStatus == null
+                                || pullStatus == PullStatus.FOUND && pullResult.getMsgFoundList() == null;
+                        if (pullStatus == null || pullStatus != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
+                            if (malformedResponse) {
+                                // A null status or FOUND with no message list is a malformed broker
+                                // response. It is not equivalent to an exhausted queue because
+                                // messages may have been omitted from the response.
+                                mayBeTruncated = true;
+                            }
                             break;
                         }
                         consecutiveIllegalOffsets = 0;
@@ -443,18 +457,19 @@ public class RocketMQMessageProvider implements MessageProvider {
                     // rebalance, stalling queues. Degrade to an empty result instead of failing.
                     log.warn("queryByTopic(topic={}) skipped: reading a %RETRY% topic requires a "
                             + "group-matched pull consumer; returning empty. cause={}", topic, e.getMessage());
-                    return Collections.emptyList();
+                    return MessageQueryResult.complete(Collections.emptyList());
                 }
                 if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
                     log.info("queryByTopic(topic={}) matched nothing ({}), returning empty list", topic, e.getMessage());
-                    return Collections.emptyList();
+                    return MessageQueryResult.complete(Collections.emptyList());
                 }
                 log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
                 throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
             }
-            return newestMessages.stream()
+            List<MessageRecordVO> messages = newestMessages.stream()
                     .sorted(TOPIC_QUERY_ORDER.reversed())
                     .toList();
+            return mayBeTruncated ? MessageQueryResult.truncated(messages) : MessageQueryResult.complete(messages);
         });
     }
 
