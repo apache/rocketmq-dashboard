@@ -800,4 +800,27 @@ class NotificationOutboxServiceTest {
         verify(audit, never()).record(any(), any(), any(), any(), any(), any(), any());
         verify(heartbeatFuture).cancel(false);
     }
+
+    @Test
+    void testMessageNamesTheChannelItExercisesTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        RestTemplate client = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .smsWebhook("https://example.com/sms").build());
+        server.expect(once(), requestTo("https://example.com/sms"))
+                .andExpect(method(org.springframework.http.HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers
+                        .containsString("SMS notification configuration is working.")))
+                .andExpect(content().string(org.hamcrest.Matchers
+                        .not(org.hamcrest.Matchers.containsString("DingTalk"))))
+                .andRespond(withSuccess("{\"code\":200}", MediaType.APPLICATION_JSON));
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class),
+                mock(AlertRepository.class), mock(OperationAuditService.class),
+                client).sendTestMessage("sms");
+
+        server.verify();
+    }
 }
