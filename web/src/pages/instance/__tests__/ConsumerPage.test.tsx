@@ -1707,4 +1707,19 @@ describe('Consumer page', () => {
     expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
     expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
   });
+
+  it('renders the consumer delay in the console language', async () => {
+    // The page used to carry its own Chinese-only copy of formatDelay, which shadowed the
+    // language-aware one in utils/format, so this column stayed Chinese in an English console.
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    try {
+      renderWithProviders(<ConsumerPage />);
+
+      // The shared fixture reports delaySeconds: 3.
+      await waitFor(() => expect(screen.getByText('3s')).toBeInTheDocument());
+      expect(screen.queryByText('3\u79d2')).not.toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
+  });
 });
