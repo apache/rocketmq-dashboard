@@ -162,7 +162,16 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             throws Exception {
         Map<String, ParentTopicAccumulator> parents = new LinkedHashMap<>();
         for (String master : masters) {
-            GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+            final GetBrokerLiteInfoResponseBody info;
+            try {
+                info = admin.getBrokerLiteInfo(master);
+            } catch (Exception failure) {
+                // Every other per-master read in this provider degrades instead of failing
+                // the page; a single unreachable (or pre-lite) master must not turn the
+                // whole list into a 502 when its peers still answer.
+                log.warn("Skipping master {} for the LiteTopic list: {}", master, failure.getMessage());
+                continue;
+            }
             if (info == null || info.getTopicMeta() == null) {
                 continue;
             }
@@ -422,7 +431,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             long currentSessions = 0;
             long maxSessions = 0;
             for (String master : masters) {
-                GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+                final GetBrokerLiteInfoResponseBody info;
+                try {
+                    info = admin.getBrokerLiteInfo(master);
+                } catch (Exception failure) {
+                    // Same per-master degradation as the list path: one unreachable or
+                    // pre-lite master must not fail the whole quota page with a 502.
+                    log.warn("Skipping master {} for the LiteTopic quota: {}", master, failure.getMessage());
+                    continue;
+                }
                 if (info == null) {
                     // Skip the master entirely: adding its session cap without its current
                     // counts would build the ratio out of two different master sets.
