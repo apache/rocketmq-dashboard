@@ -188,52 +188,61 @@ const AclPageContent = ({
   useEffect(() => {
     let mounted = true;
 
-    void listAclRules({
-      instanceId: selectedInstanceId,
-      principal: rulePrincipalFilter || undefined,
-      resource: ruleResourceFilter || undefined,
-      scope: ruleScopeFilter === 'all' ? undefined : ruleScopeFilter,
-      aclVersion: ruleVersionFilter === 'all' ? undefined : ruleVersionFilter,
-      decision: ruleDecisionFilter === 'all' ? undefined : ruleDecisionFilter,
-      page: rulePage,
-      pageSize: rulePageSize,
-    })
-      .then((nextRules) => {
+    // Every re-run of this effect (instance switch, paging, filter change, manual refresh)
+    // issues new requests, so the loading flags have to be re-armed before they start —
+    // otherwise they stay false after the first successful load and the tables keep
+    // showing stale rows. They are set inside the async loaders rather than in the effect
+    // body so each run does not cascade an extra render.
+    const loadRules = async () => {
+      setRulesLoading(true);
+      try {
+        const nextRules = await listAclRules({
+          instanceId: selectedInstanceId,
+          principal: rulePrincipalFilter || undefined,
+          resource: ruleResourceFilter || undefined,
+          scope: ruleScopeFilter === 'all' ? undefined : ruleScopeFilter,
+          aclVersion: ruleVersionFilter === 'all' ? undefined : ruleVersionFilter,
+          decision: ruleDecisionFilter === 'all' ? undefined : ruleDecisionFilter,
+          page: rulePage,
+          pageSize: rulePageSize,
+        });
         if (!mounted) return;
         setRules(nextRules.items.map(normalizeRule));
         setRuleTotal(nextRules.total);
         if (nextRules.items.length === 0 && nextRules.total > 0 && rulePage > 1) {
           setRulePage(Math.max(1, Math.ceil(nextRules.total / rulePageSize)));
         }
-      })
-      .catch(() => {
+      } catch {
         if (mounted) message.error(t('common.fetchDataFailed'));
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setRulesLoading(false);
-      });
+      }
+    };
 
-    void pageAclUsers({
-      instanceId: selectedInstanceId,
-      page: userPage,
-      pageSize: userPageSize,
-      keyword: userKeyword || undefined,
-    })
-      .then((result) => {
-        if (mounted) {
-          setUsers(result.items.map(normalizeUser));
-          setUserTotal(result.total);
-          if (result.items.length === 0 && result.total > 0 && userPage > 1) {
-            setUserPage(Math.max(1, Math.ceil(result.total / userPageSize)));
-          }
+    const loadUsers = async () => {
+      setUsersLoading(true);
+      try {
+        const result = await pageAclUsers({
+          instanceId: selectedInstanceId,
+          page: userPage,
+          pageSize: userPageSize,
+          keyword: userKeyword || undefined,
+        });
+        if (!mounted) return;
+        setUsers(result.items.map(normalizeUser));
+        setUserTotal(result.total);
+        if (result.items.length === 0 && result.total > 0 && userPage > 1) {
+          setUserPage(Math.max(1, Math.ceil(result.total / userPageSize)));
         }
-      })
-      .catch(() => {
+      } catch {
         if (mounted) message.error(t('common.fetchDataFailed'));
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setUsersLoading(false);
-      });
+      }
+    };
+
+    void loadRules();
+    void loadUsers();
 
     return () => {
       mounted = false;
