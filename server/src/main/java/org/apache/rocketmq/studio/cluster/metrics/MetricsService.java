@@ -109,10 +109,11 @@ public class MetricsService {
     public MetricDataVO queryInstance(String instanceId, MetricQueryDTO query) {
         if (!StringUtils.hasText(instanceId)) throw badRequest("Instance is required for metrics query");
         List<DataSourceVO> boundSources = settingsService.listDataSources().stream()
-                .filter(source -> source.getInstanceIds() != null
-                        && source.getInstanceIds().contains(instanceId)).toList();
+                .filter(source -> source.getInstanceIds() == null
+                        || source.getInstanceIds().isEmpty()
+                        || source.getInstanceIds().contains(instanceId)).toList();
         List<DataSourceVO> dedicatedSources = boundSources.stream()
-                .filter(source -> source.getInstanceIds().size() == 1).toList();
+                .filter(source -> source.getInstanceIds() != null && source.getInstanceIds().size() == 1).toList();
         DataSourceVO source;
         if (dedicatedSources.size() == 1) {
             source = dedicatedSources.get(0);

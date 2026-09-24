@@ -594,6 +594,34 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryInstanceShouldAcceptSoleGlobalSourceTest() {
+        DataSourceVO global = dataSource("ds-global", List.of());
+        when(settingsService.listDataSources()).thenReturn(List.of(global));
+        when(settingsService.getDataSource("ds-global")).thenReturn(global);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryInstance("instance-a", rawQuery());
+
+        verify(settingsService).getDataSource("ds-global");
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryInstanceShouldAcceptNullBindingAsGlobalSourceTest() {
+        DataSourceVO global = dataSource("ds-global", null);
+        when(settingsService.listDataSources()).thenReturn(List.of(global));
+        when(settingsService.getDataSource("ds-global")).thenReturn(global);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryInstance("instance-a", rawQuery());
+
+        verify(settingsService).getDataSource("ds-global");
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
     void queryInstanceShouldRejectInstanceWithoutAnyBoundSourceTest() {
         DataSourceVO other = dataSource("ds-other", List.of("instance-b"));
         when(settingsService.listDataSources()).thenReturn(List.of(other));

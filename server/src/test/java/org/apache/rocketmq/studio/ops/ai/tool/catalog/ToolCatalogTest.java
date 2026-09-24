@@ -52,6 +52,19 @@ class ToolCatalogTest {
     }
 
     @Test
+    void instanceMetricsDescriptionMatchesDatasourceSelectionContract() {
+        String description = new ToolCatalog(new DefaultResourceLoader())
+                .getDefinition("rmq.instance.metrics")
+                .description();
+
+        assertThat(description)
+                .contains("instance-bound data source is preferred")
+                .contains("a single global/shared data source may be used")
+                .contains("Multiple matching global/shared sources are not selected automatically")
+                .doesNotContain("Shared or unbound sources are unsupported");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void messageQueriesAdvertiseBoundedResultsAndOptionalBodiesTest() {
         ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
