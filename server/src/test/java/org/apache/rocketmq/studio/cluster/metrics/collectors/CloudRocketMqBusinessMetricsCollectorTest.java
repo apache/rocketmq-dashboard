@@ -61,6 +61,26 @@ class CloudRocketMqBusinessMetricsCollectorTest {
     }
 
     @Test
+    void keepsTheGroupClusterScopeWhenConsumerProgressFailsTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceVO instance = InstanceVO.builder().name("aliyun").vendor(InstanceVendor.ALIYUN).build();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cloud-a");
+        when(registry.byInstanceId("aliyun")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("aliyun", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("aliyun", "orders")).thenThrow(new IllegalStateException("offline"));
+
+        List<MetricSample> samples = new CloudRocketMqBusinessMetricsCollector(registry).collect(instance);
+
+        assertThat(samples).hasSize(3).allSatisfy(sample -> {
+            assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+            assertThat(sample.value()).isNull();
+            assertThat(sample.clusterId()).isEqualTo("cloud-a");
+        });
+    }
+    @Test
     void skipsApacheInstancesHandledByTheApacheCollectorTest() {
         InstanceVO instance = InstanceVO.builder().name("local").vendor(InstanceVendor.APACHE).build();
 
