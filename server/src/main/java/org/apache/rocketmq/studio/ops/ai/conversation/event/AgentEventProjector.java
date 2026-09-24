@@ -142,6 +142,13 @@ public final class AgentEventProjector {
     private final Long runId;
     private final LongSupplier nanoTime;
 
+    /**
+     * The duration the live {@code run_finished} carried, replayed on the terminal frame. The client
+     * contract pins {@code durationMs} as a required run_finished field, so a replayed terminal must
+     * carry it too; the value is only knowable by the caller at replay time, hence the holder.
+     */
+    private Long replayedDurationMs;
+
     /** tcId -> remembered call. Insertion ordered so a dump reads like the run did. */
     private final Map<String, ToolCall> toolCalls = new LinkedHashMap<>();
 
@@ -162,6 +169,14 @@ public final class AgentEventProjector {
     AgentEventProjector(Long runId, LongSupplier nanoTime) {
         this.runId = runId;
         this.nanoTime = nanoTime;
+    }
+
+    /**
+     * Sets the duration replayed on the terminal {@code run_finished} frame. Called by the attach
+     * path with the run row's {@code durationMs} before the persisted rows are replayed.
+     */
+    public void setReplayedDurationMs(Long replayedDurationMs) {
+        this.replayedDurationMs = replayedDurationMs;
     }
 
     /**
@@ -269,7 +284,7 @@ public final class AgentEventProjector {
             case TimelineEvent.Notice notice -> new LiveEvent.Notice(notice.level(), notice.message());
             case TimelineEvent.Error error -> new LiveEvent.Error(error.code(), error.message(), error.hint());
             case TimelineEvent.RunStatus terminal ->
-                    new LiveEvent.RunFinished(runId, terminal.status(), null);
+                    new LiveEvent.RunFinished(runId, terminal.status(), replayedDurationMs);
         };
         return Optional.ofNullable(live);
     }
