@@ -328,6 +328,26 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void probeBrokerReplicationShouldReturnReport() throws Exception {
+        BrokerHaReportVO report = BrokerHaReportVO.builder()
+                .clusterId("cluster-1")
+                .totalMasterBrokers(1)
+                .totalSlaveBrokers(1)
+                .allReplicasHealthy(true)
+                .build();
+        when(clusterService.probeBrokerReplication("cluster-1", "instance-1")).thenReturn(report);
+
+        mockMvc.perform(get("/api/clusters/cluster-1/replication-probe")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.clusterId").value("cluster-1"))
+                .andExpect(jsonPath("$.data.allReplicasHealthy").value(true));
+
+        verify(clusterService).probeBrokerReplication("cluster-1", "instance-1");
+    }
+
+    @Test
     void updateConfigShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/clusters/config/update")
                         .contentType(MediaType.APPLICATION_JSON)

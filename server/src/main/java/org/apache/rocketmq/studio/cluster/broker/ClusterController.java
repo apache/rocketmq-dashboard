@@ -85,6 +85,13 @@ public class ClusterController {
         return Result.ok(brokerConfigDiffService.compare(id, instanceId));
     }
 
+    @GetMapping("/{id}/replication-probe")
+    public Result<BrokerHaReportVO> probeBrokerReplication(
+            @PathVariable String id,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.probeBrokerReplication(id, instanceId));
+    }
+
     @PostMapping("/{clusterId}/brokers/{name}/restart")
     public Result<Map<String, Object>> restartBroker(@PathVariable String clusterId,
                                                      @PathVariable String name) {

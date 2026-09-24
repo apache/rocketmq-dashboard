@@ -75,6 +75,12 @@ class ClusterServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private BrokerReplicationHealthProbe brokerReplicationHealthProbe;
+
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
     @InjectMocks
     private ClusterService clusterService;
 
@@ -855,6 +861,21 @@ class ClusterServiceTest {
                 .hasMessageContaining("Selected NameServer unavailable");
         verify(clusterProvider, never()).refreshClusterDetail(any());
         verifyNoInteractions(brokerConfigService, clusterRepository);
+    }
+
+    @Test
+    void probeBrokerReplicationShouldExecuteViaAdminAndProbe() {
+        BrokerHaReportVO mockReport = BrokerHaReportVO.builder()
+                .clusterId("cluster-1")
+                .allReplicasHealthy(true)
+                .build();
+        when(runtimeAdminClientResolver.execute(eq("inst-1"), any())).thenReturn(mockReport);
+
+        BrokerHaReportVO result = clusterService.probeBrokerReplication("cluster-1", "inst-1");
+
+        assertThat(result).isSameAs(mockReport);
+        assertThat(result.isAllReplicasHealthy()).isTrue();
+        verify(runtimeAdminClientResolver).execute(eq("inst-1"), any());
     }
 
 }

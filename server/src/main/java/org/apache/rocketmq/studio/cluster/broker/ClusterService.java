@@ -64,6 +64,24 @@ public class ClusterService {
     private final RocketMQBrokerConfigService brokerConfigService;
     private final AuditService auditService;
     private final NameserverRegistryService registryService;
+    private final BrokerReplicationHealthProbe brokerReplicationHealthProbe;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    public BrokerHaReportVO probeBrokerReplication(String clusterId, String instanceId) {
+        String normalizedClusterId = clusterId != null ? clusterId.trim() : "";
+        if (runtimeAdminClientResolver == null) {
+            throw new BusinessException(503, "Runtime admin client resolver not available");
+        }
+        return runtimeAdminClientResolver.execute(instanceId, admin -> {
+            try {
+                org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+                return brokerReplicationHealthProbe.probeClusterHaStatus(normalizedClusterId, clusterInfo, admin);
+            } catch (Exception e) {
+                log.warn("Failed to probe replication for cluster {}: {}", normalizedClusterId, e.getMessage());
+                throw new BusinessException(502, "Failed to probe broker replication: " + e.getMessage());
+            }
+        });
+    }
 
     // Bounded so blocked probes cannot accumulate threads; replaceable in unit tests.
     private RegistryProbeRunner registryProbeRunner = new RegistryProbeRunner(
