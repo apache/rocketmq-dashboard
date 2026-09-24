@@ -103,7 +103,7 @@ class AclServiceTest {
                 .thenReturn(PageResult.of(rules, 12, 2, 5));
 
         PageResult<AclRuleVO> result = aclService.listRules("user1", "topic", "cluster",
-                "ALLOW", null, 2, 5);
+                "ALLOW", null, null, 2, 5);
 
         assertThat(result.getItems()).hasSize(2);
         assertThat(result.getItems().get(0).getPrincipal()).isEqualTo("user1");
@@ -145,25 +145,48 @@ class AclServiceTest {
         when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
                 .thenReturn(PageResult.empty(1, 20));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null, null,
                 null, null);
 
         assertThat(result.getItems()).isEmpty();
         verify(aclRepository).findRulePage(null, null, null, null, null, 1, 20);
     }
 
+    /**
+     * A role-backed instance has no {@code acl_version} column to query; its rules are projected
+     * from the cloud role and filtered in memory next to the resource/scope/decision filters.
+     */
+    @Test
+    void listRulesShouldFilterTencentRulesByAclVersion() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-a").aclVersion("1.0").build(),
+                AclRuleVO.builder().principal("role-b").aclVersion("2.0").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, "2.0",
+                "tencent-instance", 1, 20);
+
+        assertThat(result.getItems()).extracting(AclRuleVO::getPrincipal).containsExactly("role-b");
+        assertThat(result.getTotal()).isEqualTo(1);
+    }
+
     @Test
     void listRulesShouldRejectInvalidPaginationBeforeQueryingRules() {
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null, null,
                 0, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null, null,
                 1, 0))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null, null,
                 1, 101))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
@@ -176,14 +199,14 @@ class AclServiceTest {
         when(aclRepository.findRulePage(null, null, null, null, null, 1, 100))
                 .thenReturn(PageResult.empty(1, 100));
 
-        aclService.listRules(null, null, null, null, null, 1, 100);
+        aclService.listRules(null, null, null, null, null, null, 1, 100);
 
         verify(aclRepository).findRulePage(null, null, null, null, null, 1, 100);
     }
 
     @Test
     void listRulesShouldRejectInvalidPaginationBeforeTencentRuleDiscovery() {
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
                 "tencent-instance", 1, 101))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be >= 1 and pageSize must be between 1 and 100");
@@ -230,7 +253,7 @@ class AclServiceTest {
         when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
                 AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
                 "tencent-instance", Integer.MAX_VALUE, 100);
 
         assertThat(result.getItems()).isEmpty();
@@ -327,7 +350,7 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL rule not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        assertThat(aclService.listRules(null, null, null, null, null, 1, 20).getItems()).isEmpty();
+        assertThat(aclService.listRules(null, null, null, null, null, null, 1, 20).getItems()).isEmpty();
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 
@@ -999,7 +1022,7 @@ class AclServiceTest {
         when(clusterProvider.discoverBrokers("apache-instance", null))
                 .thenReturn(List.of(BrokerVO.builder().name("broker-a").version("V5_1_0").build()));
 
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
                 "apache-instance", 1, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL 2.0 requires broker >= 5.3.0")
@@ -1035,7 +1058,7 @@ class AclServiceTest {
                         BrokerVO.builder().name("broker-a").version("V5_3_1").build(),
                         BrokerVO.builder().name("broker-b").version("V5_2_9").build()));
 
-        assertThatThrownBy(() -> aclService.listRules(null, null, null, null,
+        assertThatThrownBy(() -> aclService.listRules(null, null, null, null, null,
                 "apache-instance", 1, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("detected 5.2.9");
@@ -1050,7 +1073,7 @@ class AclServiceTest {
         when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
                 .thenReturn(PageResult.empty(1, 20));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
                 "apache-instance", 1, 20);
 
         assertThat(result.getItems()).isEmpty();
@@ -1066,7 +1089,7 @@ class AclServiceTest {
         when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
                 .thenReturn(PageResult.empty(1, 20));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
                 "apache-instance", 1, 20);
 
         assertThat(result.getItems()).isEmpty();
@@ -1084,7 +1107,7 @@ class AclServiceTest {
         when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
                 AclRuleVO.builder().principal("role-a").resource("topic-a").build()));
 
-        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null,
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
                 "tencent-instance", 1, 20);
 
         assertThat(result.getItems()).hasSize(1);
