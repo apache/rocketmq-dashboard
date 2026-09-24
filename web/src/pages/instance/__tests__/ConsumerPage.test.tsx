@@ -703,6 +703,39 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).queryByText(/消费进度加载失败/)).toBeInTheDocument());
   });
 
+  it('renders an offset the provider cannot report as unavailable', async () => {
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        // A cloud provider reports the lag per topic and no per-queue offsets, so it sends the
+        // negative sentinel the backend uses for a value it cannot determine.
+        broker: 'topic:remote-topic',
+        queueId: 0,
+        brokerOffset: -1,
+        consumerOffset: -1,
+        diffTotal: 42,
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /消费进度/ }));
+    const progressPanel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() =>
+      expect(within(progressPanel).getByText('remote-topic')).toBeInTheDocument(),
+    );
+
+    const row = within(progressPanel)
+      .getAllByRole('row')
+      .find((candidate) => within(candidate).queryByText('remote-topic'));
+    expect(row).toBeDefined();
+    const cells = within(row!)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent?.trim());
+    expect(cells.filter((cell) => cell === '-')).toHaveLength(2);
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,

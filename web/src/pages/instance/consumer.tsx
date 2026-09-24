@@ -1268,8 +1268,11 @@ const ConsumerPageContent = ({
       key: 'brokerOffset',
       width: 140,
       align: 'right',
+      // Cloud providers report the lag per topic and cannot supply per-queue offsets, so they
+      // send the negative sentinel: show it as unavailable instead of a number that would read
+      // like a measurement next to the real lag.
       render: (offset: number) => (
-        <Text style={{ fontFamily: 'monospace' }}>{offset.toLocaleString()}</Text>
+        <Text style={{ fontFamily: 'monospace' }}>{formatOffsetValue(offset)}</Text>
       ),
     },
     {
@@ -1279,7 +1282,7 @@ const ConsumerPageContent = ({
       width: 150,
       align: 'right',
       render: (offset: number) => (
-        <Text style={{ fontFamily: 'monospace' }}>{offset.toLocaleString()}</Text>
+        <Text style={{ fontFamily: 'monospace' }}>{formatOffsetValue(offset)}</Text>
       ),
     },
     {

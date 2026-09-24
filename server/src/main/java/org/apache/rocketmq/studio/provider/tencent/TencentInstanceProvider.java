@@ -535,8 +535,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .topic(subscription.getTopic())
                     .broker("topic:" + subscription.getTopic())
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    // The Tencent API reports the lag per topic, so this row carries no queue
+                    // offsets; report the unknown sentinel instead of a zero that the console
+                    // would render as a real measurement next to the real lag.
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                     .build());
         }
