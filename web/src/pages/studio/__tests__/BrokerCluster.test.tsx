@@ -402,4 +402,32 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
+
+  it('keeps the last topology and stays quiet when a live-refresh tick fails', async () => {
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockRejectedValue(new Error('instance down'));
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('switch'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+
+    // The failing silent tick neither blanks the table nor toasts on every interval.
+    expect(screen.getByText('broker-api-a')).toBeInTheDocument();
+    expect(screen.queryByText('刷新失败')).not.toBeInTheDocument();
+
+    // An explicit refresh after the outage keeps the loud failure: data clears and one toast shows.
+    await act(async () => {
+      fireEvent.click(screen.getByText('重置'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+    expect(screen.getByText('刷新失败')).toBeInTheDocument();
+    visibilityState.mockRestore();
+  });
 });
