@@ -24,6 +24,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as downloadUtils from '../../../utils/download';
+import { UNKNOWN_MESSAGE_SIZE } from '../../../utils/format';
 
 const messageServiceMocks = vi.hoisted(() => ({
   consumeMessageDirectly: vi.fn(),
@@ -922,5 +923,31 @@ describe('Message page query history', () => {
     // The topic query always carries a start/end pair, so a clear control would
     // snap back and silently reuse the previous window. It must not be offered.
     expect(container.querySelector('.ant-picker-clear')).toBeNull();
+  });
+
+  it('renders an unknown message size as unavailable instead of 0 B', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-UNKNOWN-SIZE'), size: UNKNOWN_MESSAGE_SIZE },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-UNKNOWN-SIZE/ });
+    // -1 is the server's unknown sentinel: the size column must not claim a fabricated
+    // "0 B", and the sentinel itself must not leak into the table either.
+    expect(within(row).queryByText('0 B')).not.toBeInTheDocument();
+    expect(within(row).queryByText('-1 B')).not.toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const sizeItems = within(dialog)
+      .getAllByText('大小')
+      .map((label) => label.closest('.ant-descriptions-item'));
+    expect(sizeItems).toHaveLength(1);
+    const content = sizeItems[0]?.querySelector('.ant-descriptions-item-content');
+    expect(content?.textContent?.trim()).toBe('-');
   });
 });

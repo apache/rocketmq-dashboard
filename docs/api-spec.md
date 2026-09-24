@@ -2085,7 +2085,7 @@ GET /api/messages
 | `storeHost` | `string` | 存储 Broker 地址 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
 | `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
-| `size` | `number` | 消息大小（字节） |
+| `size` | `number` | 消息大小（字节）；`-1` 表示云厂商 API 未返回大小（未知，不是 0 字节），前端渲染为 `-` |
 
 ### 8.2 分页查询消息
 

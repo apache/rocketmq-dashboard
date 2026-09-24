@@ -79,7 +79,7 @@ import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
-import { formatBytes, formatOptionalTimeMs, formatTimeMs } from '../../utils/format';
+import { formatOptionalBytes, formatOptionalTimeMs, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -904,7 +904,7 @@ const MessagePageContent = ({
       // 「12.3 MB」实测 48px + 左右 padding 16px；原来给 80 是把宽度让给了溢出的操作列。
       width: 68,
       align: 'right',
-      render: (size: number) => formatBytes(size),
+      render: (size: number) => formatOptionalBytes(size),
     },
     {
       title: t('common.actions'),
@@ -1027,7 +1027,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatBytes(selectedMsg.size)}
+              {formatOptionalBytes(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
