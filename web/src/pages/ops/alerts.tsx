@@ -38,7 +38,7 @@ import {
   theme,
   Pagination,
 } from 'antd';
-import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
+import type { ColumnsType, SorterResult, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type {
@@ -46,6 +46,7 @@ import type {
   AlertRuleDomain,
   AlertRuleTestResult,
   AlertRuleRuntime,
+  AlertRuleSortField,
   NativeAlertMetricInfo,
 } from '../../api/ops';
 import type { AlertRuleTransfer } from '../../api/ops';
@@ -162,6 +163,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [search, setSearch] = useState('');
   const [enabledFilter, setEnabledFilter] = useState<boolean | undefined>();
   const [rulesVersion, setRulesVersion] = useState(0);
+  const [sort, setSort] = useState<{ field: AlertRuleSortField; ascending: boolean } | null>(null);
   const [runtime, setRuntime] = useState<AlertRuleRuntime[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -365,6 +367,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       pageSize,
       search: search || undefined,
       enabled: enabledFilter,
+      sortField: sort?.field,
+      sortOrder: sort ? (sort.ascending ? 'asc' : 'desc') : undefined,
     })
       .then((result) => {
         if (!cancelled) {
@@ -399,7 +403,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     return () => {
       cancelled = true;
     };
-  }, [domain, enabledFilter, page, pageSize, rulesVersion, search, t]);
+  }, [domain, enabledFilter, page, pageSize, rulesVersion, search, sort, t]);
 
   useEffect(() => {
     void listInstances()
@@ -654,6 +658,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     }),
   };
 
+  // Every sortable column delegates to the server (`AlertRuleSortField` allow-list): rows hold
+  // one page of a larger feed ordered by name, so a client sorter could only re-order the visible
+  // page while claiming a full sort. A header click re-queries with the new sort.
   const columns: ColumnsType<AlertRule> = [
     {
       title: t('alerts.ruleName'),
@@ -661,28 +668,37 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 170,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
+      // Matches the server's default order (name ASC) — active sort indicator without
+      // client-side reordering.
+      sorter: true,
+      sortOrder: sort === null || sort.field !== 'NAME' ? null : sort.ascending ? 'ascend' : 'descend',
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
       width: 110,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
+      sorter: true,
+      sortOrder:
+        sort?.field === 'METRIC' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: (metric: string) => metricLabel(metric),
     },
     {
       title: t('alerts.threshold'),
       width: 120,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
+      sorter: true,
+      sortOrder:
+        sort?.field === 'THRESHOLD' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
     },
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
       width: 80,
-      sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
+      sorter: true,
+      sortOrder:
+        sort?.field === 'DURATION' ? (sort.ascending ? 'ascend' : 'descend') : null,
     },
     {
       title: t('alerts.reminderInterval'),
@@ -707,7 +723,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       title: t('common.status'),
       width: 64,
       align: 'center',
-      sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
+      sorter: true,
+      sortOrder:
+        sort?.field === 'ENABLED' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: (_, record) => (
         <Switch
           checked={record.enabled}
@@ -720,7 +738,9 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.lastTriggered'),
       width: 150,
-      sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
+      sorter: true,
+      sortOrder:
+        sort?.field === 'LAST_TRIGGERED' ? (sort.ascending ? 'ascend' : 'descend') : null,
       render: (_, record) =>
         record.lastTriggered ? (
           // The backend stamps lastTriggered with ZoneOffset.UTC without an offset suffix;
@@ -1030,6 +1050,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           </Flex>
         </Flex>
         <Table<AlertRule>
+          data-testid="alert-rules-table"
           columns={columns}
           dataSource={rules}
           rowKey="id"
@@ -1039,6 +1060,28 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           pagination={false}
           tableLayout="fixed"
           scroll={{ x: tableScrollX(columns, { selection: true }) }}
+          onChange={(_pagination, _filters, sorter) => {
+            // Header sort clicks only translate into a re-query (allow-listed field + direction
+            // above); the rows themselves always render exactly what the server returned.
+            const { column, order } = sorter as SorterResult<AlertRule>;
+            if (!column || !order) {
+              setSort(null);
+              return;
+            }
+            const field = (column as { dataIndex?: string }).dataIndex;
+            const mapped: Record<string, AlertRuleSortField> = {
+              name: 'NAME',
+              metric: 'METRIC',
+              threshold: 'THRESHOLD',
+              duration: 'DURATION',
+              enabled: 'ENABLED',
+              lastTriggered: 'LAST_TRIGGERED',
+            };
+            const mappedField = field ? mapped[field] : undefined;
+            if (!mappedField) return;
+            setSort({ field: mappedField, ascending: order === 'ascend' });
+            setPage(1);
+          }}
         />
         <Flex justify="flex-end" style={{ padding: '16px' }}>
           <Pagination

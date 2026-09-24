@@ -24,7 +24,8 @@ public interface AuditRepository {
                                        String resourceType, String target, String clusterId,
                                        boolean clusterIdMissing,
                                        LocalDateTime startDate, LocalDateTime endDate,
-                                       String result, int page, int pageSize);
+                                       String result, AuditSortField sortField, boolean ascending,
+                                       int page, int pageSize);
 
     AuditFilterOptionsVO findFilterOptions();
 

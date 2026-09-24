@@ -44,7 +44,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -98,29 +97,18 @@ class AlertServiceTest {
     }
 
     @Test
-    void listRulesShouldNormalizeSearchAndDelegateFiltersToRepository() {
-        PageResult<AlertRuleVO> repositoryPage = PageResult.of(List.of(), 0, 2, 20);
-        when(alertRepository.findRulePage("lag", true, 2, 20)).thenReturn(repositoryPage);
-
-        PageResult<AlertRuleVO> result = alertService.listRules("  lag  ", true, 2, 20);
-
-        assertThat(result).isSameAs(repositoryPage);
-        verify(alertRepository).findRulePage("lag", true, 2, 20);
-    }
-
-    @Test
     void listRulesShouldRejectInvalidPaginationBeforeRepositoryAccess() {
-        assertThatThrownBy(() -> alertService.listRules("lag", true, 0, 20))
+        assertThatThrownBy(() -> alertService.listRules(AlertDomain.CLUSTER, "lag", true, 0, 20, null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("page must be greater than zero");
-        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 0))
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> alertService.listRules(AlertDomain.CLUSTER, "lag", true, 1, 0, null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("pageSize must be between 1 and 100");
-        assertThatThrownBy(() -> alertService.listRules("lag", true, 1, 101))
+                .hasMessage("Invalid page or pageSize");
+        assertThatThrownBy(() -> alertService.listRules(AlertDomain.CLUSTER, "lag", true, 1, 101, null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("pageSize must be between 1 and 100");
+                .hasMessage("Invalid page or pageSize");
 
-        verify(alertRepository, never()).findRulePage(any(), any(), anyInt(), anyInt());
+        verify(alertRepository, never()).findRulesPage(any(AlertRuleQuery.class));
     }
 
     @Test
@@ -139,20 +127,21 @@ class AlertServiceTest {
         PageResult<AlertRuleVO> expected = PageResult.of(List.of(), 0, 2, 10);
         when(alertRepository.findRulesPage(any(AlertRuleQuery.class))).thenReturn(expected);
 
-        assertThat(alertService.listRules(AlertDomain.BUSINESS, " lag ", true, 2, 10)).isSameAs(expected);
+        assertThat(alertService.listRules(AlertDomain.BUSINESS, " lag ", true, 2, 10, null, null))
+                .isSameAs(expected);
 
         verify(alertRepository).findRulesPage(argThat(query -> query.domain() == AlertDomain.BUSINESS
                 && "lag".equals(query.search()) && Boolean.TRUE.equals(query.enabled())
-                && query.page() == 2 && query.pageSize() == 10));
+                && query.page() == 2 && query.pageSize() == 10 && query.sortField() == null));
         verify(alertRepository, never()).findAllRules();
     }
 
     @Test
     void listRulesPageShouldRejectInvalidPageBoundsTest() {
-        assertThatThrownBy(() -> alertService.listRules(AlertDomain.BUSINESS, null, null, 0, 20))
+        assertThatThrownBy(() -> alertService.listRules(AlertDomain.BUSINESS, null, null, 0, 20, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Invalid page or pageSize");
-        assertThatThrownBy(() -> alertService.listRules(AlertDomain.CLUSTER, null, null, 1, 101))
+        assertThatThrownBy(() -> alertService.listRules(AlertDomain.CLUSTER, null, null, 1, 101, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Invalid page or pageSize");
         verify(alertRepository, never()).findRulesPage(any(AlertRuleQuery.class));

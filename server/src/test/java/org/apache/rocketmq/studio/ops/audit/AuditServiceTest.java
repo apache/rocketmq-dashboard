@@ -92,33 +92,36 @@ class AuditServiceTest {
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
         when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
-                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20)))
+                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), isNull(), eq(false),
+                eq(2), eq(20)))
                 .thenReturn(PageResult.of(List.of(record), 21, 2, 20));
 
         PageResult<AuditRecordVO> result = auditService.queryLogs(
                 2, 20, "topic-a", "CREATE", "TOPIC", "orders", "prod-cn", false,
-                null, null, "SUCCESS");
+                null, null, "SUCCESS", null, null);
 
         assertThat(result.getItems()).containsExactly(record);
         assertThat(result.getTotal()).isEqualTo(21);
         verify(auditRepository).findPage(eq("topic-a"), eq("CREATE"), eq("TOPIC"), eq("orders"),
-                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), eq(2), eq(20));
+                eq("prod-cn"), eq(false), isNull(), isNull(), eq("SUCCESS"), isNull(), eq(false),
+                eq(2), eq(20));
     }
 
     @Test
     void queryLogsParsesDateRangeBeforeDelegating() {
         when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
-                isNull(), eq(1), eq(10)))
+                isNull(), isNull(), eq(false), eq(1), eq(10)))
                 .thenReturn(PageResult.empty(1, 10));
 
         auditService.queryLogs(1, 10, null, null, null, null, null, false,
-                "2026-08-01", "2026-08-02", null);
+                "2026-08-01", "2026-08-02", null, null, null);
 
         ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(auditRepository).findPage(isNull(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), start.capture(), end.capture(), isNull(), eq(1), eq(10));
+                isNull(), eq(false), start.capture(), end.capture(), isNull(), isNull(), eq(false),
+                eq(1), eq(10));
         assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
         assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
     }
@@ -126,11 +129,11 @@ class AuditServiceTest {
     @Test
     void queryLogsRejectsInvalidPageBounds() {
         assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null,
-                null, false, null, null, null))
+                null, false, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("page must be greater than 0");
         assertThatThrownBy(() -> auditService.queryLogs(1, 101, null, null, null, null,
-                null, false, null, null, null))
+                null, false, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("pageSize must be between 1 and 100");
     }
@@ -138,7 +141,7 @@ class AuditServiceTest {
     @Test
     void queryLogsRejectsInvalidDateRange() {
         assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, null, null,
-                null, false, "2026-08-02", "2026-08-01", null))
+                null, false, "2026-08-02", "2026-08-01", null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate must not be after endDate");
     }
@@ -158,7 +161,7 @@ class AuditServiceTest {
                 .build();
         when(auditRepository.findPage(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("topic,a"),
                 eq("prod-cn"), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),
-                eq("FAILED"), eq(1), eq(10_000)))
+                eq("FAILED"), isNull(), eq(false), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
         String csv = auditService.exportLogs("topic", "DELETE", "TOPIC", "topic,a", "prod-cn", false,
@@ -180,7 +183,8 @@ class AuditServiceTest {
                 .result("SUCCESS")
                 .build();
         when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), eq(false),
-                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), eq(1), eq(10_000)))
+                any(LocalDateTime.class), any(LocalDateTime.class), isNull(), isNull(), eq(false),
+                eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
         TimeZone originalZone = TimeZone.getDefault();
@@ -203,7 +207,7 @@ class AuditServiceTest {
     @Test
     void exportLogsRejectsResultsBeyondBound() {
         when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(false), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
+                eq(false), isNull(), isNull(), isNull(), isNull(), eq(false), eq(1), eq(10_000)))
                 .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
 
         assertThatThrownBy(() -> auditService.exportLogs(
@@ -271,35 +275,37 @@ class AuditServiceTest {
     @Test
     void queryLogsShouldTrimSearchTermBeforeDelegating() {
         auditService.queryLogs(1, 10, "  ops  ", null, null, null, null, false,
-                null, null, null);
+                null, null, null, null, null);
 
         ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
         verify(auditRepository).findPage(search.capture(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(10));
+                isNull(), eq(false), isNull(), isNull(), isNull(), isNull(), eq(false),
+                eq(1), eq(10));
         assertThat(search.getValue()).isEqualTo("ops");
     }
 
     @Test
     void queryLogsShouldTreatWhitespaceOnlySearchAsAbsent() {
         auditService.queryLogs(1, 10, "   ", null, null, null, null, false,
-                null, null, null);
+                null, null, null, null, null);
 
         ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
         verify(auditRepository).findPage(search.capture(), isNull(), isNull(), isNull(),
-                isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(10));
+                isNull(), eq(false), isNull(), isNull(), isNull(), isNull(), eq(false),
+                eq(1), eq(10));
         assertThat(search.getValue()).isNull();
     }
 
     @Test
     void exportLogsShouldTrimSearchTermBeforeDelegating() {
         when(auditRepository.findPage(any(), any(), any(), any(), any(), anyBoolean(),
-                any(), any(), any(), anyInt(), anyInt())).thenReturn(PageResult.empty(1, 10));
+                any(), any(), any(), any(), anyBoolean(), anyInt(), anyInt())).thenReturn(PageResult.empty(1, 10));
 
         auditService.exportLogs("  50% off  ", null, null, null, null, false, null, null, null);
 
         ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
         verify(auditRepository).findPage(search.capture(), any(), any(), any(), any(), anyBoolean(),
-                any(), any(), any(), anyInt(), anyInt());
+                any(), any(), any(), any(), anyBoolean(), anyInt(), anyInt());
         assertThat(search.getValue()).isEqualTo("50% off");
     }
 

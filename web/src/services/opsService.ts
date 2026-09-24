@@ -486,7 +486,37 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
 
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
-  const records = filterAuditRecords(params);
+  // Mirror the backend contract: an allow-listed sortField re-orders the mock feed (id is the
+  // tiebreaker, like the repository), and no sortField keeps the newest-first default.
+  const direction = params.sortOrder === 'asc' ? 1 : -1;
+  const sortKey = (record: AuditRecord): string | number => {
+    switch (params.sortField) {
+      case 'OPERATOR':
+        return record.operator ?? '';
+      case 'OPERATION_TYPE':
+        return record.operationType ?? '';
+      case 'RESOURCE_TYPE':
+        return record.resourceType ?? '';
+      case 'TARGET':
+        return record.target ?? '';
+      case 'CLUSTER_ID':
+        return record.clusterId ?? '';
+      case 'RESULT':
+        return record.result ?? '';
+      case 'TIMESTAMP':
+      default:
+        return record.timestamp;
+    }
+  };
+  const records = filterAuditRecords(params).sort((left, right) => {
+    const leftKey = sortKey(left);
+    const rightKey = sortKey(right);
+    const compared =
+      typeof leftKey === 'number' && typeof rightKey === 'number'
+        ? leftKey - rightKey
+        : String(leftKey).localeCompare(String(rightKey));
+    return compared !== 0 ? compared * direction : (left.id - right.id) * direction;
+  });
   const from = (page - 1) * pageSize;
   return {
     items: records.slice(from, from + pageSize).map(copyAuditRecord),

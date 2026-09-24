@@ -16,6 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
-/** Server-side filters for the paged alert-rule feed. */
-public record AlertRuleQuery(AlertDomain domain, String search, Boolean enabled, int page, int pageSize) {
+/**
+ * Server-side filters for the paged alert-rule feed. {@code sortField} is a caller-facing name
+ * resolved through the {@link AlertSortField} allow-list ({@code null} keeps the default
+ * `name ASC, id ASC` order); {@code sortAscending} flips an explicit sort to descending.
+ */
+public record AlertRuleQuery(AlertDomain domain, String search, Boolean enabled, int page,
+                             int pageSize, String sortField, boolean sortAscending) {
 }

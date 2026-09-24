@@ -94,18 +94,37 @@ public class MybatisPlusAlertRepository implements AlertRepository {
                 .and(StringUtils.hasText(query.search()), wrapper -> wrapper
                         .like("name", query.search().trim())
                         .or()
-                        .like("metric", query.search().trim()))
-                .orderByAsc("name")
-                .orderByAsc("id");
+                        .like("metric", query.search().trim()));
         if (query.domain() == AlertDomain.BUSINESS) {
             // Rules created before alert domains were introduced are business rules.
             conditions.and(wrapper -> wrapper.isNull("domain").or().eq("domain", AlertDomain.BUSINESS.name()));
         } else {
             conditions.eq("domain", query.domain().name());
         }
+        applyRuleOrder(conditions, query.sortField(), query.sortAscending());
         Page<RmqAlertRule> result = ruleMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toRuleVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
+    }
+
+    /**
+     * ORDER BY comes from the {@link AlertSortField} allow-list only — never from raw caller
+     * input. An explicit sort replaces the default `name ASC, id ASC` (a blank sortField keeps
+     * that default); `id` is appended as the stable tiebreaker in the same direction so
+     * pagination stays deterministic.
+     */
+    private void applyRuleOrder(QueryWrapper<RmqAlertRule> conditions, String sortField,
+                                boolean ascending) {
+        AlertSortField sort = AlertSortField.parse(sortField);
+        if (sort == null) {
+            conditions.orderByAsc("name").orderByAsc("id");
+            return;
+        }
+        if (ascending) {
+            conditions.orderByAsc(sort.column(), "id");
+        } else {
+            conditions.orderByDesc(sort.column(), "id");
+        }
     }
 
     @Override

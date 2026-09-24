@@ -48,9 +48,12 @@ public class AuditController {
             @RequestParam(defaultValue = "false") boolean clusterIdMissing,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String result) {
+            @RequestParam(required = false) String result,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) String sortOrder) {
         return Result.ok(auditService.queryLogs(page, pageSize, search, operationType,
-                resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result));
+                resourceType, target, clusterId, clusterIdMissing, startDate, endDate, result,
+                sortField, sortOrder));
     }
 
     @GetMapping("/filter-options")

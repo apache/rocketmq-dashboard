@@ -91,7 +91,7 @@ class AlertRuleControllerTest extends WebMvcAuthTestSupport {
                 .name("High Lag")
                 .enabled(true)
                 .build();
-        when(alertService.listRules("lag", true, 2, 20))
+        when(alertService.listRules(AlertDomain.CLUSTER, "lag", true, 2, 20, null, null))
                 .thenReturn(PageResult.of(List.of(rule), 21, 2, 20));
 
         mockMvc.perform(get("/api/alert-rules/page")
@@ -106,14 +106,14 @@ class AlertRuleControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.items[0].id").value(1));
 
-        verify(alertService).listRules("lag", true, 2, 20);
+        verify(alertService).listRules(AlertDomain.CLUSTER, "lag", true, 2, 20, null, null);
     }
 
     @Test
     void businessRulesPageEndpointShouldForwardFiltersTest() throws Exception {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("High Lag")
                 .domain(AlertDomain.BUSINESS).enabled(true).build();
-        when(alertService.listRules(AlertDomain.BUSINESS, "lag", true, 2, 10))
+        when(alertService.listRules(AlertDomain.BUSINESS, "lag", true, 2, 10, null, null))
                 .thenReturn(PageResult.of(List.of(rule), 11, 2, 10));
 
         mockMvc.perform(get("/api/business-alert-rules/page")
@@ -123,7 +123,7 @@ class AlertRuleControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.total").value(11))
                 .andExpect(jsonPath("$.data.items[0].id").value(1));
 
-        verify(alertService).listRules(AlertDomain.BUSINESS, "lag", true, 2, 10);
+        verify(alertService).listRules(AlertDomain.BUSINESS, "lag", true, 2, 10, null, null);
     }
 
     @Test
