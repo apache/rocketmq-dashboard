@@ -83,6 +83,16 @@ function stubStreamFunction(fn: unknown): StreamCall[] {
   return calls;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 /** Let the requestAnimationFrame-coalesced tick fire (jsdom paints at ~16ms). */
 async function flushFrame(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 32));
@@ -405,6 +415,40 @@ describe('useAgentRun', () => {
     expect(result.current.stopRequested).toBe(false);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(openedStreams[0].signal.aborted).toBe(false);
+  });
+
+  it('ignoresAStopFailureAfterNavigatingToAnotherConversationTest', async () => {
+    const onError = vi.fn();
+    const pendingStop = deferred<Awaited<ReturnType<typeof stopRun>>>();
+    vi.mocked(stopRun).mockReturnValue(pendingStop.promise);
+    const { result, rerender } = render({ onError });
+
+    await act(async () => {
+      void result.current.send(7, { message: 'hi' });
+      openedStreams[0].emit(runStarted());
+    });
+
+    let stopPromise!: Promise<void>;
+    await act(async () => {
+      stopPromise = result.current.stop();
+      await Promise.resolve();
+    });
+    expect(result.current.stopRequested).toBe(true);
+
+    await act(async () => {
+      rerender({ id: 8 });
+    });
+    expect(result.current.stopRequested).toBe(false);
+    expect(result.current.error).toBe('');
+
+    await act(async () => {
+      pendingStop.reject(new Error('conversation 7 stop failed late'));
+      await stopPromise;
+    });
+
+    expect(result.current.error).toBe('');
+    expect(result.current.stopRequested).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('attachesToAnAlreadyRunningRunWithTheReplayCursorTest', async () => {
