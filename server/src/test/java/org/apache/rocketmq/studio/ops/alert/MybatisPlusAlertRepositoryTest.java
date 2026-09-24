@@ -194,6 +194,38 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
+    void findRulePageShouldEscapeLikeWildcardsInTheSearchTermTest() {
+        Page<RmqAlertRule> mapperPage = new Page<RmqAlertRule>(1, 10)
+                .setRecords(List.of())
+                .setTotal(0);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        repository.findRulePage("a%b_c\\d", null, 1, 10);
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs()).containsValue("%a\\%b\\_c\\\\d%");
+    }
+
+    @Test
+    void findRulesPageShouldEscapeLikeWildcardsInTheSearchTermTest() {
+        Page<RmqAlertRule> page = new Page<RmqAlertRule>(1, 10);
+        page.setRecords(List.of());
+        page.setTotal(0);
+        when(ruleMapper.selectPage(any(Page.class), any())).thenReturn(page);
+
+        repository.findRulesPage(new AlertRuleQuery(AlertDomain.BUSINESS, " 50%_off ", true, 1, 10));
+
+        ArgumentCaptor<Wrapper<RmqAlertRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(Page.class), queryCaptor.capture());
+        QueryWrapper<RmqAlertRule> query = (QueryWrapper<RmqAlertRule>) queryCaptor.getValue();
+        query.getSqlSegment();
+        assertThat(query.getParamNameValuePairs()).containsValue("%50\\%\\_off%");
+    }
+
+    @Test
     void findRuleByIdShouldReturnOnlyTheRequestedRuleTest() {
         RmqAlertRule entity = new RmqAlertRule();
         entity.setId(7L);
