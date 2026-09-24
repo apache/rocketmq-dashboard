@@ -10,6 +10,10 @@ export interface MessageRecord {
   queueId: number | null;
   queueOffset: number | null;
   body: string;
+  /** 'UTF-8' for a text body, 'BASE64' when the server could not decode the bytes as text. */
+  bodyEncoding?: string | null;
+  /** True when the server cut the body short for display (64 KiB text / 48 KiB base64). */
+  bodyTruncated?: boolean;
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
