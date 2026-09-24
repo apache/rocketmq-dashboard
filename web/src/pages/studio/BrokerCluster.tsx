@@ -59,7 +59,6 @@ interface NameServerRecord {
   status: NodeStatus;
   version: string;
   address: string;
-  connections: number;
 }
 
 interface ProxyRecord {
@@ -90,7 +89,6 @@ const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
   { header: 'Status', value: (nameServer) => nameServer.status },
   { header: 'Version', value: (nameServer) => nameServer.version },
   { header: 'Address', value: (nameServer) => nameServer.address },
-  { header: 'Connections', value: (nameServer) => nameServer.connections },
 ];
 
 const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
@@ -158,7 +156,6 @@ function mapClusters(clusters: ClusterInfo[]): {
         status: normalizeStatus(nameServer.status),
         version: cluster.version,
         address: nameServer.addr,
-        connections: 0,
       });
     });
 
@@ -428,12 +425,6 @@ const BrokerClusterPage = () => {
           {text}
         </code>
       ),
-    },
-    {
-      title: t('brokerCluster.connections'),
-      dataIndex: 'connections',
-      key: 'connections',
-      render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
   ];
 
