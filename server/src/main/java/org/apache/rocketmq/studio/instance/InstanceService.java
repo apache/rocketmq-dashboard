@@ -231,6 +231,12 @@ public class InstanceService {
         try {
             saved = ownershipGuard.withInstanceRegistration(instance.getName(), () -> instanceRepository.save(instance));
         } catch (DataIntegrityViolationException exception) {
+            // Two concurrent creates can both pass requireUniqueInstanceName; the loser hits the
+            // uk_instance_name unique key and must surface as the same duplicate-name error as
+            // the sequential case instead of a raw 500.
+            if (isUniqueInstanceNameViolation(exception)) {
+                throw new DuplicateInstanceNameException(instance.getName());
+            }
             if (vendor != InstanceVendor.APACHE && isCloudCredentialReferenceViolation(exception)) {
                 throw new BusinessException(409, "Cloud credential no longer exists: " + instance.getCredentialId());
             }
@@ -778,6 +784,18 @@ public class InstanceService {
     private String instanceAuditDetail(InstanceVO instance) {
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
+    }
+
+    private boolean isUniqueInstanceNameViolation(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase(Locale.ROOT).contains("uk_instance_name")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private boolean isCloudCredentialReferenceViolation(Throwable exception) {
