@@ -915,4 +915,44 @@ class RocketMQMetadataProviderTest {
         offset.setConsumerOffset(consumerOffset);
         return offset;
     }
+
+    @Test
+    void topicAndGroupSearchShouldEscapeTheTermAndNameTheEscapeCharacterTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+
+        RocketMQMetadataProvider provider = newProvider();
+        provider.listTopics("DefaultCluster", null, null, "100%_done");
+        provider.listConsumerGroups("DefaultCluster", null, "100%_done");
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> topics = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> groups = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(topics.capture());
+        verify(groupMapper).selectList(groups.capture());
+
+        for (LambdaQueryWrapper<?> query : List.of(topics.getValue(), groups.getValue())) {
+            assertThat(query.getSqlSegment()).contains("LIKE", "ESCAPE CHAR(92)");
+            assertThat(query.getParamNameValuePairs().values()).contains("%100\\%\\_done%");
+        }
+    }
+
+    @Test
+    void paginatedTopicSearchShouldKeepTheHardCodedNotLikePatternsTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectPage(any(), any()))
+                .thenReturn(new Page<RmqTopic>(1, 20).setRecords(List.of()).setTotal(0));
+
+        newProvider().listTopicsPage(null, "DefaultCluster", null, "100%_done", 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> query = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectPage(any(), query.capture());
+        String sql = query.getValue().getSqlSegment();
+        assertThat(sql).contains("LIKE", "ESCAPE CHAR(92)");
+        // The system-topic exclusions own their wildcards: three notLikeRight patterns, not escaped
+        // with the search term.
+        assertThat(sql.split("NOT LIKE", -1).length - 1).isEqualTo(3);
+        assertThat(query.getValue().getParamNameValuePairs().values()).contains("%100\\%\\_done%");
+    }
 }

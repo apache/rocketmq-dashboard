@@ -206,6 +206,31 @@ class AiConversationPersistenceIntegrationTest {
     }
 
     /**
+     * The escape clause has two jobs, and the bare-wildcard case above only proves the first: a term
+     * that is nothing but {@code %} must not match everything. It must also still match a title that
+     * really contains a {@code %} or an {@code _} — that is what "escaped as literal text" means — and
+     * a term that merely looks like a pattern must not match in its place.
+     *
+     * <p>This case goes through {@code selectPage}, i.e. through the MyBatis-Plus pagination
+     * interceptor, so the {@code COUNT} query the interceptor derives runs the same predicate: an
+     * {@code ESCAPE} clause its parser could not carry into the count SQL would fail here rather than
+     * on a MySQL deployment.
+     */
+    @Test
+    void theSearchShouldMatchALiteralPercentOrUnderscoreInTheTitleTest() {
+        long literal = seedConversation(OWNER, "progress 100%_done");
+        seedConversation(OWNER, "progress 100xydone");
+
+        assertThat(conversationService.list(OWNER, "100%_done", null, 1, 10).getItems())
+                .extracting(RmqAiConversation::getId)
+                .containsExactly(literal);
+        assertThat(conversationService.list(OWNER, "100xydone", null, 1, 10).getItems())
+                .extracting(RmqAiConversation::getId)
+                .hasSize(1)
+                .doesNotContain(literal);
+    }
+
+    /**
      * Ordering, paging and owner scoping against a real database, because all three are properties of the
      * SQL and of {@code idx_ai_conversation_owner} rather than of the Java that calls them.
      *
