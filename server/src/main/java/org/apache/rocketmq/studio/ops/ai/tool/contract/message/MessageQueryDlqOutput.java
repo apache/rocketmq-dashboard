@@ -68,8 +68,7 @@ public record MessageQueryDlqOutput(
                     group.getRetryCount(),
                     group.getStatus(),
                     group.isStatsAvailable(),
-                    group.getLastEnqueueTime() != null
-                            ? group.getLastEnqueueTime().toString() : null);
+                    group.getLastEnqueueTime());
         }
     }
 

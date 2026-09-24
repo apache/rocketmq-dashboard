@@ -34,7 +34,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -70,7 +69,7 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                 .groupName("test-group")
                 .dlqTopic("%DLQ%test-group")
                 .messageCount(10)
-                .lastEnqueueTime(LocalDateTime.of(2026, 7, 8, 10, 0))
+                .lastEnqueueTime("2026-07-08T02:00:00Z")
                 .retryCount(3)
                 .status("ACTIVE")
                 .build();

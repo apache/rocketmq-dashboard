@@ -30,7 +30,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +58,7 @@ class MessageQueryDlqToolHandlerTest {
                 .retryCount(3)
                 .status("ACTIVE")
                 .statsAvailable(true)
-                .lastEnqueueTime(LocalDateTime.of(2024, 1, 1, 12, 0))
+                .lastEnqueueTime("2024-01-01T04:00:00Z")
                 .build();
         when(dlqService.listDLQGroups(eq("instance-a"), isNull(), eq(1), eq(20)))
                 .thenReturn(PageResult.of(List.of(group), 1, 1, 20));
