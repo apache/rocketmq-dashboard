@@ -555,12 +555,14 @@ public class MetadataService {
         instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
+        requirePositiveTimestamp(timestamp);
         return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
+        requirePositiveTimestamp(timestamp);
         instanceId = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
         requireWriteInstance(instanceId, ownershipGuard.topicResource(topicName), true);
         InstanceProvider provider = resolve(instanceId);
@@ -830,6 +832,18 @@ public class MetadataService {
                     topic.getGmtCreate(), topic.getGmtModified());
         }
         return csv.toString();
+    }
+
+    /**
+     * A non-positive reset point is not a timestamp the broker can resolve, so reject it at the
+     * service boundary like the request DTOs do instead of resetting the group to the earliest
+     * offset. Both reset entrypoints share this guard because the AI/rmqctl tool path reaches them
+     * without the request DTO validation.
+     */
+    private static void requirePositiveTimestamp(long timestamp) {
+        if (timestamp <= 0) {
+            throw new BusinessException(400, "timestamp must be positive");
+        }
     }
 
     private String requireName(String value, String fieldName) {
