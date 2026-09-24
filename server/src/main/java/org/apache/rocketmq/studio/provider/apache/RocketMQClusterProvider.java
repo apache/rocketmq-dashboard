@@ -143,6 +143,11 @@ public class RocketMQClusterProvider implements ClusterProvider {
             log.debug("NameServer address not configured, cannot refresh cluster detail");
             return null;
         }
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        if (StringUtils.hasText(configuredCluster) && !configuredCluster.equals(clusterId)) {
+            return null;
+        }
 
         try {
             return executeAdmin(instanceId, namesrvAddr, admin -> {
