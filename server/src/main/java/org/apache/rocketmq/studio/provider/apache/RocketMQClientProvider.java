@@ -455,7 +455,11 @@ public class RocketMQClientProvider implements ClientProvider {
                 return ClientLanguage.CSharp;
             case PHP:
                 return ClientLanguage.PHP;
+            case NODE_JS:
+                return ClientLanguage.NodeJS;
             default:
+                // LanguageCode values with no ClientLanguage counterpart (RUBY, HTTP, OMS, OTHER,
+                // DELPHI, ERLANG) stay unmapped; the client diagnostics report them as unknown.
                 return null;
         }
     }
