@@ -903,6 +903,23 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesByMsgIdShouldReportUnknownSizeTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setBody("hello body");
+        detail.setProduceTime("2024-09-12 14:06:55,591");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        List<MessageRecordVO> messages =
+                provider.queryMessages(STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null);
+
+        // DescribeMessage carries no body size; the record must not claim a fabricated zero.
+        assertThat(messages).singleElement()
+                .satisfies(record -> assertThat(record.getSize()).isEqualTo(MessageRecordVO.UNKNOWN_SIZE));
+    }
+
+    @Test
     void getMessageTraceShouldPreserveOffsetsForAllTimestampedStagesTest() throws Exception {
         MessageTraceItem produce = new MessageTraceItem();
         produce.setStage("produce");
