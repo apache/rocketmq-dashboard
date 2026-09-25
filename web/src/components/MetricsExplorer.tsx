@@ -65,6 +65,8 @@ import {
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
   mergeMetricsQueryHistory,
+  metricSeriesFullLabel,
+  metricSeriesIdentity,
   metricSeriesLabel,
   saveMetricsQueryHistory,
   summarizeMetricData,
@@ -125,18 +127,25 @@ const MetricChart = ({
     .flatMap((series, index) => {
       const { samples } = toMetricSeriesSamples(series);
       const baseLabel = metricSeriesLabel(series, metric.name);
+      const baseTooltip = metricSeriesFullLabel(series, metric.name);
+      // The display label drops every label past the third one, so it cannot
+      // identify a series: two series differing only in a later label share it.
+      const identity = metricSeriesIdentity(series, index);
       const isMixed =
         samples.some((sample) => sample.kind === 'scalar') &&
         samples.some((sample) => sample.kind === 'histogram');
       // Keep raw floats and histogram-derived trends on separate lines.
-      return (['scalar', 'histogram'] as const).map((kind, kindIndex) => ({
-        color: SERIES_COLORS[(isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length],
-        label: isMixed
-          ? `${baseLabel} (${kind === 'histogram' ? histogramLabel : 'scalar'})`
-          : baseLabel,
-        samples: samples.filter((sample) => sample.kind === kind),
-        fromHistogram: kind === 'histogram',
-      }));
+      return (['scalar', 'histogram'] as const).map((kind, kindIndex) => {
+        const kindSuffix = kind === 'histogram' ? histogramLabel : 'scalar';
+        return {
+          color: SERIES_COLORS[(isMixed ? index * 2 + kindIndex : index) % SERIES_COLORS.length],
+          key: `${identity}-${kind}`,
+          label: isMixed ? `${baseLabel} (${kindSuffix})` : baseLabel,
+          tooltip: isMixed ? `${baseTooltip} (${kindSuffix})` : baseTooltip,
+          samples: samples.filter((sample) => sample.kind === kind),
+          fromHistogram: kind === 'histogram',
+        };
+      });
     })
     .filter((series) => series.samples.length > 0);
 
@@ -217,7 +226,7 @@ const MetricChart = ({
         })}
         {chartSeries.map((series) => (
           <polyline
-            key={`${series.label}-${series.fromHistogram}`}
+            key={series.key}
             fill="none"
             stroke={series.color}
             strokeWidth="2.5"
@@ -253,7 +262,7 @@ const MetricChart = ({
           const latest = series.samples[series.samples.length - 1];
           return (
             <Flex
-              key={`${series.label}-${series.fromHistogram}`}
+              key={series.key}
               align="center"
               gap={6}
               style={{ flex: '0 1 auto', minWidth: 0, maxWidth: '100%' }}
@@ -261,7 +270,11 @@ const MetricChart = ({
               <span
                 style={{ width: 14, height: 3, background: series.color, display: 'inline-block' }}
               />
-              <Text type="secondary" ellipsis={{ tooltip: series.label }} style={{ maxWidth: 160 }}>
+              <Text
+                type="secondary"
+                ellipsis={{ tooltip: series.tooltip }}
+                style={{ maxWidth: 160 }}
+              >
                 {series.label}
               </Text>
               {series.fromHistogram ? (
@@ -343,6 +356,18 @@ interface PendingAuthReplay {
   profile: MetricProfile | undefined;
   range: RangeOption;
   customPromql?: string;
+  /**
+   * Selection the deferred restore replaced while it waits for credentials. A cancelled prompt
+   * puts it back, so only a confirmed source applies the restored entry.
+   */
+  checkpoint: RestoreCheckpoint;
+}
+
+interface RestoreCheckpoint {
+  profileId: string;
+  rangeId: RangeOption['value'];
+  customPromql: string;
+  storedProfileId: string | null;
 }
 
 const getQueryErrorMessage = (error: unknown, fallback: string): string => {
@@ -698,13 +723,6 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     void loadAll(nextProfile, selectedRange);
   };
 
-  const handleRangeChange = (nextRangeId: RangeOption['value']) => {
-    const nextRange =
-      RANGE_OPTIONS.find((range) => range.value === nextRangeId) ?? RANGE_OPTIONS[0];
-    setRangeId(nextRangeId);
-    void loadAll(selectedProfile, nextRange);
-  };
-
   const runCustomQuery = useCallback(
     async (promql: string, range: RangeOption) => {
       const trimmed = promql.trim();
@@ -770,6 +788,18 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     [copy.customTitle, instanceId, queryErrorFallback, runQuery],
   );
 
+  const handleRangeChange = (nextRangeId: RangeOption['value']) => {
+    const nextRange =
+      RANGE_OPTIONS.find((range) => range.value === nextRangeId) ?? RANGE_OPTIONS[0];
+    setRangeId(nextRangeId);
+    void loadAll(selectedProfile, nextRange);
+    // The range control scopes the whole explorer, so a committed custom query follows the new
+    // window the same way the refresh button and an instance switch already make it follow.
+    if (appliedCustomPromql) {
+      void runCustomQuery(appliedCustomPromql, nextRange);
+    }
+  };
+
   const activateDataSource = (
     nextKey: string,
     credentials?: AuthFormValues,
@@ -817,7 +847,21 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleAuthCancel = () => {
+    const replay = pendingAuthReplayRef.current;
     pendingAuthReplayRef.current = null;
+    if (replay) {
+      // Only the credentials were declined, so put back everything the deferred restore had
+      // already replaced: otherwise the explorer shows the restored profile's cards with the
+      // previous source's data and nothing ever queries them.
+      setProfileId(replay.checkpoint.profileId);
+      setRangeId(replay.checkpoint.rangeId);
+      setCustomPromql(replay.checkpoint.customPromql);
+      if (replay.checkpoint.storedProfileId === null) {
+        localStorage.removeItem(PROFILE_STORAGE_KEY);
+      } else {
+        localStorage.setItem(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
+      }
+    }
     setPendingDataSource(null);
     authForm.resetFields();
   };
@@ -1039,12 +1083,19 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     dataSource: DataSource,
     profile: MetricProfile | undefined,
     range: RangeOption,
-    customPromqlToRun?: string,
+    customPromqlToRun: string | undefined,
+    checkpoint: RestoreCheckpoint,
   ) => {
     // The data source switch itself is deferred to handleAuthSubmit: the current source stays
     // active while credentials are being asked for, so cancelling the dialog leaves the
-    // explorer exactly where it was instead of stranded on an unauthenticated source.
-    pendingAuthReplayRef.current = { profile, range, customPromql: customPromqlToRun };
+    // explorer exactly where it was instead of stranded on an unauthenticated source. The
+    // profile, window and custom expression the entry already replaced come back with it.
+    pendingAuthReplayRef.current = {
+      profile,
+      range,
+      customPromql: customPromqlToRun,
+      checkpoint,
+    };
     setPendingDataSource(dataSource);
     void message.info(copy.protectedHistory);
   };
@@ -1056,13 +1107,27 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
       : undefined;
     const nextDataSourceKey = nextDataSource?.key ?? '';
+    // The current selection, read before the entry replaces it below, so that declining the
+    // credentials prompt can put it back (see handleAuthCancel).
+    const checkpoint: RestoreCheckpoint = {
+      profileId,
+      rangeId,
+      customPromql,
+      storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
+    };
     setRangeId(nextRange.value);
     setHistoryOpen(false);
 
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
       setCustomPromql(entry.promql);
       if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
-        restoreProtectedDataSource(nextDataSource, selectedProfile, nextRange, entry.promql);
+        restoreProtectedDataSource(
+          nextDataSource,
+          selectedProfile,
+          nextRange,
+          entry.promql,
+          checkpoint,
+        );
         return;
       }
       activateDataSource(nextDataSourceKey, undefined, selectedProfile, nextRange, entry.promql);
@@ -1078,7 +1143,13 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
-      restoreProtectedDataSource(nextDataSource, nextProfile, nextRange, appliedCustomPromql);
+      restoreProtectedDataSource(
+        nextDataSource,
+        nextProfile,
+        nextRange,
+        appliedCustomPromql,
+        checkpoint,
+      );
       return;
     }
     activateDataSource(nextDataSourceKey, undefined, nextProfile, nextRange, appliedCustomPromql);

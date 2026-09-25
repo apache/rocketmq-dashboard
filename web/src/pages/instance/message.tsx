@@ -70,6 +70,7 @@ import {
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -88,15 +89,6 @@ const { RangePicker } = DatePicker;
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const },
@@ -188,18 +180,6 @@ const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQu
     return { ...commonParams, ...(key ? { key } : {}) };
   }
   return commonParams;
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
 };
 
 const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
@@ -524,7 +504,7 @@ const MessagePageContent = ({
       message.success(t('messagePage.queryCompleted', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, t('messagePage.queryFailed')));
+        setQueryError(describeThrownMessage(error) || t('messagePage.queryFailed'));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -612,7 +592,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -671,7 +651,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -721,14 +701,14 @@ const MessagePageContent = ({
       );
       setDirectConsumeOpen(false);
     } catch (error) {
-      message.error(getErrorMessage(error, t('messagePage.directConsumeFailed')));
+      message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
     } finally {
       setDirectConsumeSubmitting(false);
     }
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob([record.body], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
     message.success(t('messagePage.downloadSuccess'));
   };
@@ -942,8 +922,24 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             {t('topic.messageBody')}
           </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t('messagePage.bodyTruncatedWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          {selectedMsg.bodyEncoding === 'BASE64' && (
+            <Alert
+              showIcon
+              type="info"
+              message={t('messagePage.bodyBinaryWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Paragraph
-            copyable
+            copyable={{ text: selectedMsg.body }}
             style={{
               background: '#f5f5f5',
               padding: '12px 16px',

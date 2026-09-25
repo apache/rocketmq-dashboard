@@ -540,8 +540,10 @@ class AliyunInstanceProviderTest {
         assertThat(first.getBornHost()).isEqualTo("10.0.0.1");
         assertThat(first.getProperties()).containsEntry("a", "b");
         MessageRecordVO second = records.get(1);
+        // "{}" is not Base64, so the API handed back literal text; the shared contract has no
+        // "TEXT" label and UTF-8 is the one that describes a plain string body.
         assertThat(second.getBody()).isEqualTo("{}");
-        assertThat(second.getBodyEncoding()).isEqualTo("TEXT");
+        assertThat(second.getBodyEncoding()).isEqualTo("UTF-8");
 
         List<MessageRecordVO> filtered = provider.queryMessages(STUDIO_INSTANCE_ID, "topic-a", null,
                 "tagB", null, null, null);
@@ -644,6 +646,36 @@ class AliyunInstanceProviderTest {
         assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(created.getDeliveryOrderType()).isEqualTo("Concurrently");
         assertThat(created.getRetryMaxTimes()).isEqualTo(16);
+    }
+
+    @Test
+    void createConsumerGroupShouldKeepPartitionOrderedGroupsOrderlyTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        // exactly what the console form submits when the subscription data type is FIFO
+        group.setDeliveryOrderType("PARTITON_ORDER");
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        CreateConsumerGroupRequest request = captor.getValue();
+        assertThat(request.getDeliveryOrderType()).isEqualTo("Orderly");
+        // ordered groups reject DefaultRetryPolicy, so the retry policy has to travel with the type
+        assertThat(request.getConsumeRetryPolicy().getRetryPolicy()).isEqualTo("FixedRetryPolicy");
+        assertThat(request.getConsumeRetryPolicy().getFixedIntervalRetryTime()).isEqualTo(10);
+        assertThat(request.getConsumeRetryPolicy().getMaxRetryTimes()).isEqualTo(5);
+        assertThat(created.getDeliveryOrderType()).isEqualTo("Orderly");
     }
 
     @Test
@@ -1036,6 +1068,27 @@ class AliyunInstanceProviderTest {
                 AliyunInstanceProvider.normalizeDeliveryOrderType(null));
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"));
+    }
+
+    /**
+     * The consumer group form never submits FIFO/ORDERLY. It submits the RocketMQ order-type
+     * spellings - PARTITON_ORDER for partition ordered and MESSAGES_ORDER for globally ordered -
+     * and the CSV importer additionally accepts PARTITION_ORDER. An unrecognised spelling used to
+     * fall through to Concurrently, so an ordered group created on an Aliyun instance came back
+     * concurrent with no error anywhere.
+     */
+    @Test
+    void normalizeDeliveryOrderTypeShouldMapConsoleOrderTypesToOrderlyTest() {
+        for (String value : List.of("PARTITON_ORDER", "MESSAGES_ORDER", "PARTITION_ORDER",
+                "partiton_order", " PARTITON_ORDER ")) {
+            assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType(value))
+                    .as("value " + value)
+                    .isEqualTo("Orderly");
+        }
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"))
+                .isEqualTo("Concurrently");
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("   "))
+                .isEqualTo("Concurrently");
     }
 
     @Test

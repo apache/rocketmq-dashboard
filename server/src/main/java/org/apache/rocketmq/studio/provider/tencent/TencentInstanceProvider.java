@@ -55,6 +55,7 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -534,8 +535,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .topic(subscription.getTopic())
                     .broker("topic:" + subscription.getTopic())
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    // The Tencent API reports the lag per topic, so this row carries no queue
+                    // offsets; report the unknown sentinel instead of a zero that the console
+                    // would render as a real measurement next to the real lag.
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                     .build());
         }
@@ -1033,7 +1037,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .expression(subscription.getSubString())
                 .type(subscription.getExpressionType())
                 .filterMode(subscription.getExpressionType())
-                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .consistency(SubscriptionConsistency.fromCode(subscription.getConsistency()))
                 .build();
     }
 

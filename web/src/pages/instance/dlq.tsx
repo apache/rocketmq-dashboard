@@ -39,7 +39,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
-import type { DLQGroup, DLQMessage } from '../../api/message';
+import type { DLQGroup, DLQMessage, DLQResendResult } from '../../api/message';
 import {
   exportDLQExcel,
   listDLQGroups,
@@ -49,6 +49,7 @@ import {
 } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -57,27 +58,6 @@ const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
 const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
 
 /* ─── Helpers ─── */
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
-};
 
 export const formatDateTime = (value?: string | number | null): string => {
   if (value === undefined || value === null || value === '') return '-';
@@ -219,7 +199,7 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
-          setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
           setLoading(false);
         }
       });
@@ -257,6 +237,57 @@ const DLQPage = () => {
     setRetryModalOpen(true);
   };
 
+  const showResendFailures = (result: DLQResendResult) => {
+    const summaryKey =
+      result.outcome === 'FAILED' ? 'dlq.resendFailedSummary' : 'dlq.resendPartialSummary';
+    const summary = t(summaryKey, { resent: result.resent, failed: result.failed });
+    const failures = result.failures ?? [];
+    if (failures.length === 0) {
+      if (result.outcome === 'FAILED') {
+        message.error(summary);
+      } else {
+        message.warning(summary);
+      }
+      return;
+    }
+
+    const openFailureModal = result.outcome === 'FAILED' ? Modal.error : Modal.warning;
+    openFailureModal({
+      title: summary,
+      width: 720,
+      content: (
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Text strong>{t('dlq.failureDetails')}</Text>
+          <div role="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
+            {failures.map((failure, index) => (
+              <div
+                role="listitem"
+                key={`${failure.msgId}-${index}`}
+                style={{ borderBottom: '1px solid #f0f0f0', padding: '8px 0' }}
+              >
+                <div>
+                  <Text type="secondary">{t('dlq.failureMessageId')}: </Text>
+                  <Text code>{failure.msgId || '-'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary">{t('dlq.failureTargetTopic')}: </Text>
+                  <Text code>{failure.targetTopic || '-'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary">{t('dlq.failureReason')}: </Text>
+                  <Text>{failure.reason}</Text>
+                </div>
+              </div>
+            ))}
+          </div>
+          {result.failuresTruncated && (
+            <Alert type="warning" showIcon message={t('dlq.failureDetailsTruncated')} />
+          )}
+        </Space>
+      ),
+    });
+  };
+
   const handleRetry = async () => {
     if (!retryTargetTopic) {
       message.warning('请输入目标 Topic');
@@ -282,12 +313,17 @@ const DLQPage = () => {
       });
       if (retryRequestIdRef.current !== requestId) return;
       setRefreshKey((key) => key + 1);
-      if (result.scanIncomplete) {
+      if (result.failed > 0) {
+        showResendFailures(result);
+        if (result.scanIncomplete) {
+          message.warning(
+            `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+          );
+        }
+      } else if (result.scanIncomplete) {
         message.warning(
           `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
         );
-      } else if (result.failed > 0) {
-        message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
       } else {
         message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
       }
@@ -296,7 +332,7 @@ const DLQPage = () => {
       setRetryError(null);
     } catch (error) {
       if (retryRequestIdRef.current === requestId) {
-        setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+        setRetryError(describeThrownMessage(error) || DEFAULT_RETRY_ERROR);
       }
     } finally {
       if (retryRequestIdRef.current === requestId) {
@@ -323,7 +359,7 @@ const DLQPage = () => {
         message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 
@@ -341,6 +377,10 @@ const DLQPage = () => {
     setDetailGroup(group);
     setDetailOpen(true);
     setDetailPage(1);
+    // The drawer now belongs to another group: its rows, and the total the export and the
+    // pagination are driven by, must not survive from the group that was open before.
+    setDetailMessages([]);
+    setDetailTotal(0);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
     void loadDetailMessages(group, 1, detailPageSize);
@@ -367,7 +407,7 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '死信消息明细加载失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -395,10 +435,8 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
-      if (result.outcome === 'FAILED' && result.failed > 0) {
-        message.error(`重发失败：成功 ${result.resent}，失败 ${result.failed}`);
-      } else if (result.resent > 0 && result.failed > 0) {
-        message.warning(`重发部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+      if (result.failed > 0) {
+        showResendFailures(result);
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
@@ -406,7 +444,7 @@ const DLQPage = () => {
       await loadDetailMessages(group, pageToReload, pageSizeToReload);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
-        setDetailError(getErrorMessage(error, '重发死信消息失败，请稍后重试'));
+        setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');
       }
     } finally {
       if (detailResendRequestIdRef.current === requestId) {
@@ -437,7 +475,7 @@ const DLQPage = () => {
         );
       }
     } catch (error) {
-      message.error(getErrorMessage(error, '导出死信消息失败，请稍后重试'));
+      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
     }
   };
 

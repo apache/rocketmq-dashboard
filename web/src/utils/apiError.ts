@@ -20,5 +20,9 @@ export function describeThrownMessage(error: unknown): string {
   const serverMessage = describeApiError(error, '');
   if (serverMessage) return serverMessage;
   if (error instanceof Error && error.message.trim()) return error.message;
+  // Not everything thrown is an Error: a rejected promise can carry a bare object, and the
+  // page-level extractors this replaced accepted any string `message`.
+  const thrownMessage = (error as { message?: unknown } | null | undefined)?.message;
+  if (typeof thrownMessage === 'string' && thrownMessage.trim()) return thrownMessage;
   return '';
 }

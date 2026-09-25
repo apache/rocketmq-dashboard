@@ -68,6 +68,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.export': { zh: '导出', en: 'Export' },
   'common.detail': { zh: '详情', en: 'Detail' },
   'common.close': { zh: '关闭', en: 'Close' },
+  'common.open': { zh: '打开', en: 'Open' },
   'common.noData': { zh: '暂无数据', en: 'No Data' },
   'common.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
   'common.liveRefresh': { zh: '实时刷新', en: 'Live Refresh' },
@@ -75,9 +76,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
   'common.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'common.unknown': { zh: '未知', en: 'Unknown' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.noMatchingPage': { zh: '未找到匹配页面', en: 'No matching pages' },
+  'layout.shortcutNavigate': { zh: '切换', en: 'Navigate' },
   'layout.goHome': { zh: '返回首页', en: 'Go to home' },
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
@@ -559,6 +563,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '查询结果达到服务端扫描上限，当前总数可能不完整。',
     en: 'The query reached the server-side scan limit; the total count may be incomplete.',
   },
+  'messagePage.bodyTruncatedWarning': {
+    zh: '消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。',
+    en: 'The body exceeds the server display limit and was truncated, so what is shown and downloaded here is incomplete.',
+  },
+  'messagePage.bodyBinaryWarning': {
+    zh: '消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。',
+    en: 'The body is not UTF-8 text and the server returned it BASE64-encoded; below is the encoded form.',
+  },
   'messagePage.queryFailed': {
     zh: '消息查询失败，请稍后重试',
     en: 'Failed to query messages, please try again later',
@@ -836,6 +848,22 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
+  'dlq.resendPartialSummary': {
+    zh: '重投部分完成：成功 {resent}，失败 {failed}',
+    en: 'Resend partially completed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.resendFailedSummary': {
+    zh: '重投失败：成功 {resent}，失败 {failed}',
+    en: 'Resend failed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
+  'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
+  'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },
+  'dlq.failureReason': { zh: '失败原因', en: 'Failure reason' },
+  'dlq.failureDetailsTruncated': {
+    zh: '失败明细较多，仅显示前 100 条。',
+    en: 'Only the first 100 failure details are shown.',
+  },
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
@@ -1560,6 +1588,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
+  'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
+  'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
+  'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
+  'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
@@ -2720,6 +2753,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
   'user.logout': { zh: '退出登录', en: 'Logout' },
+  'user.logoutFailed': {
+    zh: '服务端退出失败，已清除本地登录状态',
+    en: 'Signing out on the server failed. The local session has been cleared.',
+  },
 
   // ─── User Management ───
   'userMgmt.title': { zh: '用户管理', en: 'User Management' },

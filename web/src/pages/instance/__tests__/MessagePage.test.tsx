@@ -23,6 +23,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
+import * as downloadUtils from '../../../utils/download';
 
 const messageServiceMocks = vi.hoisted(() => ({
   consumeMessageDirectly: vi.fn(),
@@ -276,6 +277,71 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['UnsafeInteger', '{"orderId":9007199254740993}'],
+    ['Int64Max', '{"orderId":9223372036854775807}'],
+    ['SafeInteger', '{\n  "orderId": 9007199254740991\n}'],
+    ['QuotedId', '{\n  "orderId": "9223372036854775807"\n}'],
+    ['JsonWhitespace', '{\r\n\t"message": "你好",  "enabled": true\r\n}\r\n'],
+    ['PlainText', '订单状态: ready\r\n  next line\r\n'],
+  ])('preservesOriginal%sBodyWhenDownloadingTest', async (_name, body) => {
+    const user = userEvent.setup();
+    const download = vi.spyOn(downloadUtils, 'downloadBlob').mockImplementation(() => {});
+    const msgId = 'MID-DOWNLOAD';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage(msgId), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: new RegExp(msgId) });
+    await user.click(within(row).getByRole('button', { name: /下载/ }));
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const [blob, filename] = download.mock.calls[0];
+    expect(filename).toBe(`${msgId}.json`);
+    expect(blob.type).toBe('application/json');
+    await expect(blob.text()).resolves.toBe(body);
+  });
+
+  it('copiesOriginalBodyFromMessageDetailsTest', async () => {
+    const user = userEvent.setup();
+    const body = '{ "orderId":9223372036854775807 }\r\n';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage('MID-COPY'), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-COPY/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const bodyParagraph = within(dialog).getByText(/"orderId":/);
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    let copiedText: string | undefined;
+    const execCommand = vi.fn(() => {
+      copiedText = document.getSelection()?.toString();
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
+    try {
+      await user.click(within(bodyParagraph).getByRole('button'));
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(copiedText).toBe(body);
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
   it('shows the redelivery count on the message detail panel', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -403,6 +469,56 @@ describe('Message page query history', () => {
     expect(locationItems[0]).toHaveTextContent('broker-a');
     expect(locationItems[1]).toHaveTextContent('0');
     expect(locationItems[2]).toHaveTextContent('0');
+  });
+
+  it('warns on the detail panel when the body was truncated or is not text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-BODY-FLAGS'),
+        body: 'AAEC',
+        bodyEncoding: 'BASE64',
+        bodyTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-FLAGS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-FLAGS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not warn on the detail panel when the body is complete UTF-8 text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BODY-PLAIN'), bodyEncoding: 'UTF-8', bodyTruncated: false },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-PLAIN');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-PLAIN')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
 
   it('renders trace diagnostics in English when the UI language is English', async () => {

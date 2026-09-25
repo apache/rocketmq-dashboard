@@ -14,31 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.group;
+package org.apache.rocketmq.studio.instance.dlq;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.Value;
 
-@Data
+@Value
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class QueueProgressVO {
-
-    /**
-     * Sentinel for an offset the provider cannot report, e.g. the per-topic lag rows of the cloud
-     * providers, which carry no per-queue offsets at all. It matches the {@code -1} the broker uses
-     * for an undeterminable lag, and the console renders a negative offset as unavailable instead
-     * of a number that would read like a measurement.
-     */
-    public static final long UNKNOWN_OFFSET = -1L;
-
-    private String topic;
-    private String broker;
-    private int queueId;
-    private long brokerOffset;
-    private long consumerOffset;
-    private long diffTotal;
+public class DLQResendFailureVO {
+    String msgId;
+    String targetTopic;
+    String reason;
 }

@@ -424,6 +424,153 @@ describe('ACL page', () => {
     expect(await within(userRow).findByText('full-secret-key')).toBeInTheDocument();
   });
 
+  it.each(['edit', 'create'] as const)('preservesTencentPrincipal%sTest', async (mode) => {
+    const user = userEvent.setup();
+    const readerRule = {
+      principal: 'reader-role',
+      resource: '*',
+      resourceType: 'Cluster',
+      resourcePattern: 'LITERAL',
+      actions: ['SUB'],
+      decision: 'ALLOW',
+      scope: 'cluster',
+      aclVersion: '1.0',
+      gmtCreate: '2026-07-23T00:00:00Z',
+    } as AclRule;
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 21,
+        name: 'tencent-rmq',
+        type: 'CLOUD',
+        endpoint: 'vpc.tencent:8080',
+        vendor: 'TENCENT',
+        cloudInstanceId: 'rmq-cloud',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [readerRule, { ...readerRule, principal: 'publisher-role', actions: ['PUB'] }],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: ['reader-role', 'publisher-role'].map(
+        (username) =>
+          ({
+            username,
+            admin: false,
+            clusters: ['rmq-cloud'],
+            accessKey: null,
+            secretKey: null,
+          }) as AclUser,
+      ),
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.updateAclRule).mockResolvedValue({ ...readerRule, id: 'reader-role' });
+    vi.mocked(aclService.createAclRule).mockResolvedValue({
+      ...readerRule,
+      id: 'publisher-role',
+      principal: 'publisher-role',
+      actions: ['PUB'],
+    });
+    renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await waitFor(() =>
+      expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
+        'Tencent Cloud Role',
+      ),
+    );
+    if (mode === 'edit') {
+      const readerRow = await screen.findByRole('row', { name: /reader-role/ });
+      await user.click(within(readerRow).getByRole('button', { name: /编辑/ }));
+    } else {
+      await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    }
+    const dialog = await screen.findByRole('dialog');
+    const principal = within(dialog).getByLabelText('主体');
+    if (mode === 'edit') {
+      expect(principal).toBeDisabled();
+      expect(
+        within(dialog).getByText('reader-role', { selector: '.ant-select-selection-item' }),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('订阅 (SUB)')).toBeChecked();
+      await user.click(within(dialog).getByLabelText('发布 (PUB)'));
+      await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+      await waitFor(() => expect(aclService.updateAclRule).toHaveBeenCalledTimes(1));
+      expect(aclService.createAclRule).not.toHaveBeenCalled();
+      expect(aclService.updateAclRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'reader-role',
+          principal: 'reader-role',
+          actions: expect.arrayContaining(['SUB', 'PUB']),
+          instanceId: 'tencent-rmq',
+        }),
+      );
+      expect(vi.mocked(aclService.updateAclRule).mock.calls[0][0].actions).toHaveLength(2);
+    } else {
+      expect(principal).toBeEnabled();
+      await user.click(principal);
+      await user.click(
+        await screen.findByText('publisher-role', { selector: '.ant-select-item-option-content' }),
+      );
+      expect(
+        within(dialog).getByText('publisher-role', { selector: '.ant-select-selection-item' }),
+      ).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: /添\s*加/ }));
+      await waitFor(() => expect(aclService.createAclRule).toHaveBeenCalledTimes(1));
+      expect(aclService.updateAclRule).not.toHaveBeenCalled();
+      expect(aclService.createAclRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          principal: 'publisher-role',
+          actions: ['PUB'],
+          instanceId: 'tencent-rmq',
+        }),
+      );
+    }
+  });
+
+  it('keepsLocalMetadataPrincipalEditableTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.updateAclRule).mockResolvedValue({
+      id: 1,
+      principal: 'remote-admin',
+      resource: 'remote-topic',
+      resourceType: 'Topic',
+      resourcePattern: 'LITERAL',
+      actions: ['PUB'],
+      decision: 'ALLOW',
+      scope: 'cluster',
+      aclVersion: 2,
+    });
+    renderWithProviders(<AclPage />);
+    const row = await screen.findByRole('row', { name: /remote-user/ });
+    await user.click(within(row).getByRole('button', { name: /编辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    const principal = within(dialog).getByLabelText('主体');
+    expect(principal).toBeEnabled();
+    await user.click(principal);
+    await user.click(
+      await screen.findByText('remote-admin', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(aclService.updateAclRule).toHaveBeenCalledTimes(1));
+    expect(aclService.createAclRule).not.toHaveBeenCalled();
+    expect(aclService.updateAclRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 1,
+        principal: 'remote-admin',
+        resource: 'remote-topic',
+        actions: ['PUB'],
+      }),
+    );
+  });
+
   it('renders backend users on the user tab', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<AclPage />);

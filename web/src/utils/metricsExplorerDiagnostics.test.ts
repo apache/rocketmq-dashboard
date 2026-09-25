@@ -29,6 +29,8 @@ import {
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
   mergeMetricsQueryHistory,
+  metricSeriesFullLabel,
+  metricSeriesIdentity,
   metricSeriesLabel,
   saveMetricsQueryHistory,
   stableLabelsText,
@@ -186,6 +188,40 @@ describe('metrics explorer diagnostics', () => {
         histogramSum: 600,
       },
     ]);
+  });
+
+  it('keeps the display label compact but the full label set and identity unique', () => {
+    const colliding = ['a', 'b'].map((pod) => ({
+      labels: { cluster: 'prod', job: 'rmq', namespace: 'ns', pod },
+      values: [],
+      histograms: [],
+    }));
+
+    // The legend stays compact, so both series render the same visible text.
+    expect(colliding.map((series) => metricSeriesLabel(series, metric.name))).toEqual([
+      'cluster=prod / job=rmq / namespace=ns',
+      'cluster=prod / job=rmq / namespace=ns',
+    ]);
+    // The tooltip keeps the labels the display dropped.
+    expect(colliding.map((series) => metricSeriesFullLabel(series, metric.name))).toEqual([
+      'cluster=prod / job=rmq / namespace=ns / pod=a',
+      'cluster=prod / job=rmq / namespace=ns / pod=b',
+    ]);
+    // The rendering identity stays unique per original series.
+    const identities = colliding.map((series, index) => metricSeriesIdentity(series, index));
+    expect(new Set(identities).size).toBe(2);
+  });
+
+  it('falls back to the metric name or __name__ for the full label as well', () => {
+    expect(
+      metricSeriesFullLabel(
+        { labels: { __name__: 'up' }, values: [], histograms: [] },
+        metric.name,
+      ),
+    ).toBe('up');
+    expect(metricSeriesFullLabel({ labels: {}, values: [], histograms: [] }, metric.name)).toBe(
+      metric.name,
+    );
   });
 
   it('exports scalar and histogram samples as formula-safe CSV rows', () => {

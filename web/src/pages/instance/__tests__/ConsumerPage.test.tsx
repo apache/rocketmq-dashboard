@@ -703,6 +703,39 @@ describe('Consumer page', () => {
     await waitFor(() => expect(within(panel).queryByText(/消费进度加载失败/)).toBeInTheDocument());
   });
 
+  it('renders an offset the provider cannot report as unavailable', async () => {
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        // A cloud provider reports the lag per topic and no per-queue offsets, so it sends the
+        // negative sentinel the backend uses for a value it cannot determine.
+        broker: 'topic:remote-topic',
+        queueId: 0,
+        brokerOffset: -1,
+        consumerOffset: -1,
+        diffTotal: 42,
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /消费进度/ }));
+    const progressPanel = await screen.findByRole('tabpanel', { name: /消费进度/ });
+    await waitFor(() =>
+      expect(within(progressPanel).getByText('remote-topic')).toBeInTheDocument(),
+    );
+
+    const row = within(progressPanel)
+      .getAllByRole('row')
+      .find((candidate) => within(candidate).queryByText('remote-topic'));
+    expect(row).toBeDefined();
+    const cells = within(row!)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent?.trim());
+    expect(cells.filter((cell) => cell === '-')).toHaveLength(2);
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,
@@ -1294,6 +1327,60 @@ describe('Consumer page', () => {
     expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
+  it('ignores stale subscription responses after a newer diagnostic request completes', async () => {
+    const firstRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    const latestRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(latestRequest.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const healthPanel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await user.click(within(healthPanel).getByRole('button', { name: /重新诊断/ }));
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      latestRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'new-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+      ]);
+      await latestRequest.promise;
+    });
+    expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+
+    await act(async () => {
+      firstRequest.resolve([
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'inconsistent',
+        },
+      ]);
+      await firstRequest.promise;
+    });
+    expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
@@ -1706,5 +1793,20 @@ describe('Consumer page', () => {
     });
     expect(within(secondDialog).getByLabelText('重试队列数')).toHaveValue('4');
     expect(within(secondDialog).getByLabelText('最大重试次数')).toHaveValue('12');
+  });
+
+  it('renders the consumer delay in the console language', async () => {
+    // The page used to carry its own Chinese-only copy of formatDelay, which shadowed the
+    // language-aware one in utils/format, so this column stayed Chinese in an English console.
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    try {
+      renderWithProviders(<ConsumerPage />);
+
+      // The shared fixture reports delaySeconds: 3.
+      await waitFor(() => expect(screen.getByText('3s')).toBeInTheDocument());
+      expect(screen.queryByText('3\u79d2')).not.toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
   });
 });

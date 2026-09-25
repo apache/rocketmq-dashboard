@@ -185,7 +185,7 @@ describe('TopicPage', () => {
     });
     topicServiceMocks.sendTopicMessage.mockResolvedValue({
       msgId: 'MSG-0001',
-      sendTime: '2026-01-02T00:00:00Z',
+      sendTime: Date.parse('2026-01-02T00:00:00Z'),
       offsetMsgId: 'OFFSET-0001',
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -1156,6 +1156,51 @@ describe('TopicPage', () => {
       20,
     );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+  });
+
+  it('renders the broadcasting consumer model from the API value with the broadcast color', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'BROADCASTING',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-aliyun-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'Broadcasting',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-clustering',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          diffTotal: 0,
+        },
+      ],
+      total: 3,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const broadcastTags = await screen.findAllByText('广播消费');
+    expect(broadcastTags).toHaveLength(2);
+    for (const tag of broadcastTags) {
+      expect(tag.closest('.ant-tag')).toHaveClass('ant-tag-orange');
+    }
+    const clusteringTags = await screen.findAllByText('集群消费');
+    expect(clusteringTags).toHaveLength(1);
+    expect(clusteringTags[0].closest('.ant-tag')).toHaveClass('ant-tag-blue');
   });
 
   it('renders subscription group names as links in the topic detail modal', async () => {

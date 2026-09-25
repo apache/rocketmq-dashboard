@@ -143,7 +143,7 @@ describe('topic metadata API', () => {
     await expect(deleteTopic(topic.name, 'instance-1')).resolves.toBeUndefined();
     await expect(
       sendTopicMessage({ topic: topic.name, instanceId: 'instance-1', body: '{"id":1}' }),
-    ).resolves.toMatchObject({ msgId: 'msg-1' });
+    ).resolves.toMatchObject({ msgId: 'msg-1', sendTime: 1 });
   });
 
   it('passes consumer group import and export contracts through API endpoints', async () => {

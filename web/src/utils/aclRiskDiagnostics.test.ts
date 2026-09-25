@@ -169,4 +169,60 @@ describe('ACL risk diagnostics', () => {
       ]),
     );
   });
+
+  it('reads the comma-joined action list the server writes for a multi-action rule', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [
+          account({
+            // One rule with PUB and SUB checked is stored with its actions joined by a comma
+            // (MybatisPlusAclRepository#joinNormalizedCsv), and examineBrokerClusterAclConfig
+            // hands that value back verbatim as "resource=PUB,SUB".
+            topicPerms: ['order-events=PUB,SUB'],
+            groupPerms: ['cg-order=PUB,SUB'],
+          }),
+        ],
+      }),
+    );
+
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('INVALID_PERMISSION_ENTRY');
+    expect(diagnostics.summary.wildcardPermissionAccountCount).toBe(0);
+  });
+
+  it('counts a comma-joined default permission as an allow', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [account({ defaultTopicPerm: 'PUB,SUB', defaultGroupPerm: 'DENY' })],
+      }),
+    );
+
+    expect(diagnostics.summary.defaultAllowAccountCount).toBe(1);
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'DEFAULT_TOPIC_ALLOW',
+          severity: 'critical',
+          evidence: ['defaultTopicPerm=PUB,SUB'],
+        }),
+      ]),
+    );
+  });
+
+  it('ranks a publish+subscribe wildcard as full access', () => {
+    const diagnostics = analyzeAclRisk(
+      config({
+        accounts: [account({ topicPerms: ['*=PUB,SUB'] })],
+      }),
+    );
+
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'WILDCARD_TOPIC_PERMISSION',
+          severity: 'critical',
+          evidence: ['*=PUB,SUB'],
+        }),
+      ]),
+    );
+  });
 });

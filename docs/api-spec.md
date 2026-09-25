@@ -140,6 +140,10 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
+| 100 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
+| 101 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
+| 102 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
 
 ## 通用响应格式
 
@@ -888,7 +892,7 @@ POST /api/topics/send
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `msgId` | `string` | 消息 ID |
-| `sendTime` | `string` | 发送时间 (ISO 8601) |
+| `sendTime` | `number` | 发送时间（Unix 毫秒时间戳） |
 | `offsetMsgId` | `string` | 含偏移量的消息 ID |
 
 **示例：**
@@ -909,7 +913,7 @@ POST /api/topics/send
 // Response
 {
   "msgId": "7F000001234567890000",
-  "sendTime": "2026-07-08T10:30:45.123Z",
+  "sendTime": 1783506645123,
   "offsetMsgId": "7F000001234567890000-0:0:0:0"
 }
 ```
@@ -1567,6 +1571,120 @@ POST /api/dlq/resend
 | `outcome` | `string` | 结果: `SUCCESS` / `PARTIAL` / `FAILED` / `NO_MESSAGES` |
 | `scanIncomplete` | `boolean` | 是否有部分队列扫描失败 |
 | `failedQueueCount` | `number` | 扫描失败的队列数 |
+| `failures` | `DLQResendFailure[]` | 逐条失败明细，最多 100 条；无失败时为空数组 |
+| `failuresTruncated` | `boolean` | 失败明细是否被截断：失败条数超过 100 时为 `true`，此时 `failed` 仍是真实的失败总数 |
+
+`DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
+Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
+§9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
+
+### 9.3 分页获取死信消息明细
+
+```
+GET /api/dlq/{groupName}/messages?instanceId={instanceId}&startTime={ms}&endTime={ms}&page={page}&pageSize={pageSize}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `groupName` | `string` | 是 | 路径参数，消费组名称，需 URL 编码 |
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `page` | `number` | 否 | 页码，默认 `1`，最小 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，范围 `1`–`100` |
+
+**Response `data`:** `PageResult<DLQMessage>`（分页外壳同 §9.1）
+
+#### DLQMessage
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `msgId` | `string` | 消息 ID |
+| `topic` | `string` | 死信 Topic 名称（`%DLQ%{groupName}`） |
+| `queueId` | `number` | 队列 ID |
+| `offset` | `number` | 队列位点 |
+| `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
+| `reconsumeTimes` | `number` | 已重试次数 |
+| `keys` | `string` | 消息 Key，可能为 `null` |
+| `body` | `string` | 按 UTF-8 解码的消息体；消息没有 body 时为 `null` |
+| `bodyBase64` | `string` | 原始字节的 Base64，供二进制消息无损导出；消息没有 body 时为 `null` |
+| `properties` | `Record<string, string>` | 用户属性。已剔除 Broker 系统属性，按 key 排序，最多 `64` 条，单值超过 `1024` 码点时截断并追加 `...` |
+| `propertiesTruncated` | `boolean` | 属性条数或单值长度是否触发了上述截断 |
+
+> **时间窗口**：`startTime` / `endTime` 必须同时提供或同时省略（`DLQService.validateTimeRange`）。省略时服务端使用 `[endTime - 1 小时, endTime]`，`endTime` 再省略则取服务端当前时间。两者都为正数且 `endTime` 必须严格大于 `startTime`，否则返回 `400`。
+>
+> **扫描上限**：单次扫描最多读取 `5000` 条死信消息（`RocketMQDLQProvider.RESEND_HARD_CAP`），命中该上限或部分队列扫描失败时结果不完整，导出接口通过响应头告知调用方。
+>
+> **仅自建集群**：DLQ 全部接口只对 `vendor=APACHE` 的实例开放，云实例（Aliyun / Tencent）返回 `501 DLQ operations are not supported for cloud instances`，与 `InstanceCapability.DLQ_MANAGEMENT` 的声明一致。
+
+> `total` 是本次扫描命中的条数而非 DLQ Topic 的全量条数：分页在服务端对扫描结果做内存切片，翻到 `5000` 条之后不会返回更多数据。
+
+### 9.4 重发选中的死信消息
+
+```
+POST /api/dlq/resend-selected
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `msgIds` | `string[]` | 是 | 待重投的消息 ID，`1`–`100` 条，元素不可为空白 |
+| `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
+
+**Response `data`:** `DLQResendResult`（结构同 §9.2）
+
+`targetTopic` 走 §9.2 相同的 `validateResendTargetTopic` 校验：必须是合法 Topic 名、不能是 RocketMQ 系统 / Retry / DLQ Topic，且必须已存在于所选实例上（`autoCreateTopicEnable` 也不会替调用者建 Topic），否则返回 `400`。请求体缺失返回 `400 DLQ resend request is required`；`msgIds` 为空或超过 `100` 条由 Bean Validation 拦截。
+
+### 9.5 导出死信消息（JSON）
+
+```
+GET /api/dlq/export?instanceId={instanceId}&groupName={groupName}&startTime={ms}&endTime={ms}&maxCount={n}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `maxCount` | `number` | 否 | 导出条数上限；省略或 `<= 0` 时取 `5000`，否则取 `min(maxCount, 5000)` |
+
+**Response:** 不走统一 `Result` 外壳，直接返回 `DLQMessage[]` 的 JSON 数组（字段见 §9.3 的 `DLQMessage`），`Content-Type: application/json`，`Content-Disposition: attachment; filename="dlq-{groupName}.json"`。序列化失败返回 `500 Failed to serialize DLQ export`。
+
+### 9.6 导出死信消息（Excel）
+
+```
+GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTime={ms}&endTime={ms}&msgIds={id}&msgIds={id}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `msgIds` | `string[]` | 否 | 只导出选中的消息，最多 `100` 条；省略则导出整个时间窗口 |
+
+**Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body`，其中 `Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
+
+`msgIds` 是重复同名参数（`msgIds=a&msgIds=b`），不是 `msgIds[]=a`：Spring 的 `@RequestParam List<String>` 不绑定方括号形式，写成方括号会静默退化为导出整个时间窗口。
+
+> `msgIds` 是在一次上限 `5000` 条的扫描之后再做过滤，因此选中的消息若不在该窗口内不会出现在导出结果里；`X-DLQ-Export-Limit` 恒为 `5000`，不随 `msgIds` 条数变化。
+
+**9.5 / 9.6 共用的导出响应头**
+
+两个导出接口都通过响应头返回扫描完整性元数据（`DlqExportHeaders`），浏览器跨域读取依赖 `CorsConfig` 已把它们列入 `Access-Control-Expose-Headers`：
+
+| 响应头 | 类型 | 说明 |
+|------|------|------|
+| `X-DLQ-Export-Truncated` | `boolean` | 扫描是否命中条数上限而未读完 |
+| `X-DLQ-Export-FailedQueues` | `number` | 扫描失败的队列数，`> 0` 表示结果不完整 |
+| `X-DLQ-Export-Limit` | `number` | 本次扫描实际生效的条数上限 |
+
+文件名中的 `"`、反斜杠、控制字符与 `0x7F` 会被替换为 `_`；含非 ASCII 字符时按 RFC 5987 追加 `filename*` 参数，避免浏览器丢失原始字符。
 
 ---
 

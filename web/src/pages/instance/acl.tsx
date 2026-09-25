@@ -1463,6 +1463,7 @@ const AclPageContent = ({
           >
             <Select
               placeholder={t('acl.selectPrincipal')}
+              disabled={tencentRoleMode && !!editingRule}
               showSearch
               optionFilterProp="label"
               options={users.map((u) => ({

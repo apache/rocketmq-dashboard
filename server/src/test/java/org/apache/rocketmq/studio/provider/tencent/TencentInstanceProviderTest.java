@@ -705,6 +705,48 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("consistent");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldMapInconsistentAndUnknownConsistencyTest() throws Exception {
+        SubscriptionData inconsistent = new SubscriptionData();
+        inconsistent.setTopic("orders");
+        inconsistent.setSubString("*");
+        inconsistent.setExpressionType("TAG");
+        inconsistent.setConsistency(1L);
+        SubscriptionData unknown = new SubscriptionData();
+        unknown.setTopic("payments");
+        unknown.setSubString("tag-a");
+        unknown.setExpressionType("TAG");
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{inconsistent, unknown});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(subscriptions).hasSize(2);
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("inconsistent");
+        assertThat(subscriptions.get(1).getConsistency()).isNull();
+    }
+
+    @Test
+    void getGroupProgressShouldReportUnknownQueueOffsetsTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        // The Tencent API exposes the lag per topic and no per-queue offsets, so the row must not
+        // claim offsets of zero next to the real lag.
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getDiffTotal()).isEqualTo(42L);
+                });
     }
 
     @Test

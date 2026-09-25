@@ -150,6 +150,31 @@ describe('message trace diagnostics', () => {
     ]);
   });
 
+  it('does not claim a delivery failure when only the latency is critical', () => {
+    const diagnostics = analyzeMessageTrace(
+      baseTrace({
+        nodes: [
+          node('Producer 发送', '2026-07-01T10:00:00.000Z', 4),
+          node('Broker 存储', '2026-07-01T10:00:00.040Z', 8),
+          // 31s end to end, while every phase stays far below the 5s critical node cost,
+          // and the only delivery of the trace succeeded.
+          node('Consumer 消费', '2026-07-01T10:00:31.000Z', 70),
+        ],
+        consumerStatus: [delivery('cg-orders')],
+      }),
+    );
+
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'SLOW_END_TO_END_TRACE', severity: 'critical' }),
+      ]),
+    );
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('FAILED_TRACE_NODE');
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('FAILED_CONSUMER_DELIVERY');
+    expect(diagnostics.statusKey).toBe('messagePage.traceStatusCritical');
+  });
+
   it('flags consumer delivery failures, pending statuses, unknown states and retries', () => {
     const diagnostics = analyzeMessageTrace(
       baseTrace({

@@ -76,6 +76,17 @@ public class NativeAlertProcessor {
                         && sample.labels().isEmpty());
     }
 
+    /**
+     * A rule stored without a metric - legacy rows, and rules imported through the JSON transfer
+     * where {@code metric} is not validated - belongs to no collection scope. An absent metric
+     * must not reach the membership test either: {@link MetricCollectionScope#metricKeys()} is an
+     * immutable set, whose {@code contains(null)} throws instead of answering false.
+     */
+    private static String normalizedMetric(AlertRuleVO rule) {
+        String metric = StringUtils.trimWhitespace(rule.getMetric());
+        return metric == null ? "" : metric;
+    }
+
     private void processSamples(List<MetricSample> samples) {
         Map<AlertDomain, List<AlertRuleVO>> rulesByDomain = new EnumMap<>(AlertDomain.class);
         int failedEvaluations = 0;
@@ -102,7 +113,7 @@ public class NativeAlertProcessor {
         List<AlertRuleVO> rules = alertService.listRules(scope.domain()).stream()
                 .filter(rule -> rule.getId() != null)
                 .filter(AlertRuleVO::isEnabled)
-                .filter(rule -> scope.metricKeys().contains(StringUtils.trimWhitespace(rule.getMetric())))
+                .filter(rule -> scope.metricKeys().contains(normalizedMetric(rule)))
                 .filter(rule -> !StringUtils.hasText(rule.getInstanceId())
                         || scope.instanceId().equals(StringUtils.trimWhitespace(rule.getInstanceId())))
                 .toList();

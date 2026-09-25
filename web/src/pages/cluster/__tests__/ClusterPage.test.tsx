@@ -1419,4 +1419,78 @@ describe('Cluster page', () => {
 
     expect(screen.getByText('502')).toBeInTheDocument();
   });
+
+  it('ignores extra confirm clicks while a NameServer create is in flight', async () => {
+    vi.useRealTimers();
+    // The modal stays open until the create resolves, and the OK button has no in-flight guard
+    // otherwise: a second click while the request is on the wire would POST the same registry
+    // entry twice.
+    const user = userEvent.setup();
+    const create = deferred<unknown>();
+    clusterServiceMocks.createNameserverRegistry.mockImplementationOnce(
+      () => create.promise as Promise<never>,
+    );
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /新建 NameServer/ }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // In test env rc-dialog assigns every modal the same ariaId ("test-id"), so accessible
+    // names of simultaneous dialogs collide and role queries are unreliable; locate the modal
+    // by its title text instead.
+    const nsModalTitle = await screen.findByText(
+      (content, element) =>
+        element?.className === 'ant-modal-title' && content === '新建 NameServer',
+      {},
+      { timeout: 5000 },
+    );
+    const dialog = nsModalTitle.closest('.ant-modal') as HTMLElement;
+    await user.type(within(dialog).getByLabelText('名称'), 'rocketmq9');
+    await user.type(within(dialog).getByLabelText('NameServer 地址'), 'rocketmq9-nameserver:9876');
+
+    const confirmButton = within(dialog).getByRole('button', { name: /确\s*认/ });
+    fireEvent.click(confirmButton);
+    await waitFor(() =>
+      expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1),
+    );
+
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+    // Flush the microtasks the extra handlers are waiting on: on unguarded code the second
+    // click posts the same entry again once its validateFields settles.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1);
+
+    // The failure path must release the guard: a rejected create lets the next confirm retry.
+    create.reject(new Error('registry unavailable'));
+    await waitFor(() =>
+      expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(1),
+    );
+    clusterServiceMocks.createNameserverRegistry.mockResolvedValueOnce({
+      id: 9,
+      name: 'rocketmq9',
+      namesrvAddr: 'rocketmq9-nameserver:9876',
+    } as never);
+    // The guard releases once the catch path settles; poll the click until the retry lands.
+    for (
+      let attempt = 0;
+      attempt < 20 && clusterServiceMocks.createNameserverRegistry.mock.calls.length < 2;
+      attempt++
+    ) {
+      fireEvent.click(confirmButton);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    }
+    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenCalledTimes(2);
+    expect(clusterServiceMocks.createNameserverRegistry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'rocketmq9', namesrvAddr: 'rocketmq9-nameserver:9876' }),
+    );
+  });
 });

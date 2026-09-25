@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -142,7 +143,73 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         if (rule.getId() == null || ruleMapper.selectById(rule.getId()) == null) {
             return false;
         }
-        return ruleMapper.updateById(toRuleEntity(rule)) > 0;
+        RmqAlertRule entity = toRuleEntity(rule);
+        boolean updated = ruleMapper.updateById(entity) > 0;
+        if (updated) {
+            clearOmittedOptionalColumns(entity);
+        }
+        return updated;
+    }
+
+    /**
+     * The rule update replaces every editable field of the rule, but MyBatis-Plus
+     * {@code updateById} omits null entity fields. An omitted optional value would therefore
+     * silently keep its previous stored value even though the request submitted no value for
+     * it (and the update response echoes the cleared value); assign those columns explicitly
+     * so the stored rule matches what the request asked for. {@code lastTriggered} is not an
+     * editable field (it is owned by {@link #markRuleTriggered}) and keeps the skip-on-null
+     * behaviour.
+     */
+    private void clearOmittedOptionalColumns(RmqAlertRule entity) {
+        UpdateWrapper<RmqAlertRule> cleared = new UpdateWrapper<>();
+        boolean anyCleared = false;
+        if (entity.getThresholdUnit() == null) {
+            cleared.set("threshold_unit", null);
+            anyCleared = true;
+        }
+        if (entity.getDuration() == null) {
+            cleared.set("duration", null);
+            anyCleared = true;
+        }
+        if (entity.getChannels() == null) {
+            cleared.set("channels", null);
+            anyCleared = true;
+        }
+        if (entity.getDescription() == null) {
+            cleared.set("description", null);
+            anyCleared = true;
+        }
+        if (entity.getBrokerName() == null) {
+            cleared.set("broker_name", null);
+            anyCleared = true;
+        }
+        if (entity.getClusterName() == null) {
+            cleared.set("cluster_name", null);
+            anyCleared = true;
+        }
+        if (entity.getSeverity() == null) {
+            cleared.set("severity", null);
+            anyCleared = true;
+        }
+        if (entity.getInstanceId() == null) {
+            cleared.set("instance_id", null);
+            anyCleared = true;
+        }
+        if (entity.getConsumerGroup() == null) {
+            cleared.set("consumer_group", null);
+            anyCleared = true;
+        }
+        if (entity.getTopic() == null) {
+            cleared.set("topic", null);
+            anyCleared = true;
+        }
+        if (entity.getNotificationTemplate() == null) {
+            cleared.set("notification_template", null);
+            anyCleared = true;
+        }
+        if (anyCleared) {
+            ruleMapper.update(null, cleared.eq("id", entity.getId()));
+        }
     }
 
     @Override

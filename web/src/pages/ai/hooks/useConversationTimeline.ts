@@ -87,7 +87,7 @@ export interface UseConversationTimelineResult {
   error: string;
   /** True when the bounded forward walk stopped before the tail; `loadMore` continues it. */
   hasMore: boolean;
-  /** Reload the whole transcript from `seq > 0`. Awaitable: `useAgentRun` depends on that. */
+  /** Reload the whole transcript from `seq > 0`; reject on failure so live blocks are retained. */
   refetch: () => Promise<void>;
   loadMore: () => Promise<void>;
 }
@@ -152,6 +152,7 @@ export function useConversationTimeline(
     } catch (loadError) {
       if (id !== requestId.current) return;
       setError(describeThrownMessage(loadError));
+      throw loadError;
     } finally {
       if (id === requestId.current) setLoading(false);
     }
@@ -188,7 +189,7 @@ export function useConversationTimeline(
   useEffect(() => {
     // Loading is asynchronous; state updates happen after the timeline API resolves.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refetch();
+    void refetch().catch(() => undefined);
     return () => {
       requestId.current += 1;
     };

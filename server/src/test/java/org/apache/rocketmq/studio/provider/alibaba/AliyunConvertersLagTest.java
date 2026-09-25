@@ -57,4 +57,34 @@ class AliyunConvertersLagTest {
                     assertThat(row.getDiffTotal()).isEqualTo(100L);
                 });
     }
+
+    @Test
+    void queueOffsetsShouldBeUnknownWhenOnlyTheTopicLagIsKnownTest() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .topicLagMap(Map.of("orders", DataTopicLagMapValue.builder().readyCount(40L).build()))
+                .build();
+
+        // The Aliyun API reports the lag per topic and no per-queue offsets, so the row must not
+        // claim offsets of zero next to the real lag.
+        assertThat(AliyunConverters.toQueueProgressRows(data)).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getDiffTotal()).isEqualTo(40L);
+                });
+    }
+
+    @Test
+    void aggregateRowOffsetsShouldBeUnknownTooTest() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder().readyCount(100L).build())
+                .build();
+
+        assertThat(AliyunConverters.toQueueProgressRows(data)).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBroker()).isEqualTo("total");
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                });
+    }
 }
