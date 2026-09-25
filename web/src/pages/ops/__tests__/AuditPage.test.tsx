@@ -389,4 +389,25 @@ describe('Audit page', () => {
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
+
+  it('does not submit the cleanup again while the first request is in flight', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<number>();
+    vi.mocked(opsService.cleanupAuditLogs).mockImplementation(() => pending.promise);
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清理日志' }));
+    const confirm = await screen.findByRole('button', { name: '确认清理' });
+    await user.click(confirm);
+    await user.click(confirm);
+
+    expect(opsService.cleanupAuditLogs).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveClass('ant-btn-loading');
+
+    await act(async () => {
+      pending.resolve(3);
+    });
+  });
 });

@@ -106,12 +106,14 @@ const AuditPage: React.FC = () => {
   const [filterOptions, setFilterOptions] = useState<AuditFilterOptions>(emptyFilterOptions);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
+  const [cleanupSubmitting, setCleanupSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
+  const cleanupSubmittingRef = useRef(false);
 
   useEffect(() => {
     const requestId = ++filterOptionsRequestRef.current;
@@ -289,6 +291,11 @@ const AuditPage: React.FC = () => {
   };
 
   const handleCleanup = async () => {
+    // The dialog stays open until the request resolves, so without an in-flight guard a second
+    // confirm click while the cleanup is on the wire would run it again.
+    if (cleanupSubmittingRef.current) return;
+    cleanupSubmittingRef.current = true;
+    setCleanupSubmitting(true);
     try {
       await cleanupAuditLogs(cleanupDays);
       setPage(1);
@@ -297,6 +304,9 @@ const AuditPage: React.FC = () => {
       setCleanupModalOpen(false);
     } catch {
       message.error('清理审计日志失败，请稍后重试');
+    } finally {
+      cleanupSubmittingRef.current = false;
+      setCleanupSubmitting(false);
     }
   };
 
@@ -562,6 +572,7 @@ const AuditPage: React.FC = () => {
         title={t('audit.cleanupTitle')}
         open={cleanupModalOpen}
         onOk={handleCleanup}
+        confirmLoading={cleanupSubmitting}
         onCancel={() => setCleanupModalOpen(false)}
         okText={t('audit.cleanupConfirm')}
         cancelText={t('common.cancel')}
