@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { zonedLocalDateTimeToUtc } from './timeZone';
+import { localDateTimeToUtc, zonedLocalDateTimeToUtc } from './timeZone';
 
 describe('zonedLocalDateTimeToUtc', () => {
   it('converts a positive fixed offset independently of the browser zone', () => {
@@ -55,5 +55,19 @@ describe('zonedLocalDateTimeToUtc', () => {
 
   it('rejects unknown IANA time zones', () => {
     expect(() => zonedLocalDateTimeToUtc('2026-09-07T09:00', 'Mars/Olympus')).toThrow();
+  });
+});
+
+describe('localDateTimeToUtc', () => {
+  it('rejects a browser-local time skipped by daylight saving', () => {
+    expect(() => localDateTimeToUtc('2026-03-08T02:30', 'America/New_York')).toThrow(
+      'Local date time does not exist in America/New_York',
+    );
+  });
+
+  it('converts an existing browser-local time', () => {
+    expect(localDateTimeToUtc('2026-03-08T01:30', 'America/New_York')).toBe(
+      '2026-03-08T06:30:00.000Z',
+    );
   });
 });

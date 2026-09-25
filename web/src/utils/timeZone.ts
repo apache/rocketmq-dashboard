@@ -114,3 +114,9 @@ export const zonedLocalDateTimeToUtc = (value: string, timeZone: string): string
   }
   return new Date(candidate).toISOString();
 };
+
+/** Converts a browser-local wall-clock date time to a UTC ISO timestamp. */
+export const localDateTimeToUtc = (
+  value: string,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+): string => zonedLocalDateTimeToUtc(value, timeZone);
