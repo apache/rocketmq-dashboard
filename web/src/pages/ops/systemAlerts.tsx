@@ -57,7 +57,7 @@ import type {
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
-import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
+import { localDateTimeToUtc, zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
 
@@ -101,7 +101,6 @@ const parseSilenceLabels = (
   return labels;
 };
 
-const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();
 const localDateTimeToUtcDatabaseValue = (value: string) =>
   new Date(`${value}:00`).toISOString().replace('Z', '');
 
