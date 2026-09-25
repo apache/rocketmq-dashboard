@@ -547,6 +547,20 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionCount(250L);
+        response.setSubscriptionData(IntStream.range(0, 40)
+                .mapToObj(index -> subscription("GID_" + index))
+                .toArray(SubscriptionData[]::new));
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void getTopicConsumersShouldStopAfterSubscriptionCountReachedOnFullPageTest() throws Exception {
         DescribeTopicResponse firstPage = new DescribeTopicResponse();
         firstPage.setSubscriptionCount(200L);
