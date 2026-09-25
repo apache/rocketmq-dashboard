@@ -397,7 +397,7 @@ describe('Audit page', () => {
 
     renderWithProviders(<AuditPage />);
 
-    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
     await user.click(screen.getByRole('button', { name: '清理日志' }));
     const confirm = await screen.findByRole('button', { name: '确认清理' });
     await user.click(confirm);
@@ -409,5 +409,10 @@ describe('Audit page', () => {
     await act(async () => {
       pending.resolve(3);
     });
+
+    // One cleanup, one confirmation: the second click used to run the request again and toast the
+    // same success after the dialog had already closed.
+    expect(await screen.findByText('已清理 30 天之前的日志')).toBeInTheDocument();
+    expect(screen.getAllByText('已清理 30 天之前的日志')).toHaveLength(1);
   });
 });
