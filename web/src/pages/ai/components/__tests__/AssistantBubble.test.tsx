@@ -148,6 +148,34 @@ describe('AssistantBubble', () => {
     expect(screen.getByText('mqadmin topicList').closest('pre')).toBeInTheDocument();
   });
 
+  it('rendersWellFormedMarkdownWithoutRewritingItTest', () => {
+    // The repair must be a no-op on Markdown that is already well formed. Before the fix the
+    // heading rule backtracked to a shorter marker run, so `## 概述` rendered as an h1 whose text
+    // started with a literal '#', `**加粗**` and *斜体* were read as list bullets, the `---`
+    // became a list item instead of a rule, and the diff markers inside the fence were rewritten.
+    const text = [
+      '## 概述',
+      '',
+      '**加粗** 与 *斜体*',
+      '',
+      '---',
+      '',
+      '```diff',
+      '-old line',
+      '+new line',
+      '```',
+    ].join('\n');
+
+    renderBubble({ blocks: appendText([], text) });
+
+    expect(screen.getByRole('heading', { name: '概述', level: 2 })).toBeInTheDocument();
+    expect(screen.getByText('加粗').tagName).toBe('STRONG');
+    expect(screen.getByText('斜体').tagName).toBe('EM');
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/-old line/)[0]).toHaveTextContent('+new line');
+    expect(screen.getAllByText(/-old line/)[0].closest('pre')).toBeInTheDocument();
+  });
+
   it('collapsesThinkingByDefaultAndCountsItsCharactersTest', () => {
     const text = '先确认实例能力。';
     renderBubble({ blocks: appendThinking([], text, 'model') });
