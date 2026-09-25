@@ -341,7 +341,7 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 1L);
         MessageExt deadLetter = new MessageExt();
         deadLetter.setMsgId("dlq-msg-1");
         deadLetter.setTopic("orders");
@@ -370,7 +370,7 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 1L);
         MessageExt deadLetter = new MessageExt();
         deadLetter.setMsgId("dlq-msg-2");
         deadLetter.setTopic("orders");
@@ -393,7 +393,7 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 1L);
         MessageExt deadLetter = new MessageExt();
         deadLetter.setMsgId("dlq-msg-retry");
         deadLetter.setTopic("orders");
@@ -571,7 +571,7 @@ class RocketMQDLQProviderTest {
         sendResult.setSendStatus(SendStatus.SEND_OK);
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(1L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
         TopicList existingTargets = new TopicList();
@@ -615,7 +615,7 @@ class RocketMQDLQProviderTest {
                 .thenReturn(Set.of(unavailableQueue, emptyQueue));
         when(pullConsumer.searchOffset(eq(unavailableQueue), anyLong()))
                 .thenThrow(new IllegalStateException("broker unavailable"));
-        when(pullConsumer.searchOffset(eq(emptyQueue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(emptyQueue), anyLong())).thenReturn(0L, 1L);
         when(pullConsumer.pull(eq(emptyQueue), eq("*"), eq(0L), eq(32))).thenReturn(emptyResult);
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
@@ -641,7 +641,7 @@ class RocketMQDLQProviderTest {
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
         PullResult stalledResult = new PullResult(PullStatus.FOUND, 10, 0, 10, List.of());
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(10L, 11L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
@@ -669,7 +669,7 @@ class RocketMQDLQProviderTest {
 
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(50L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(50L);
         when(pullConsumer.pull(queue, "*", 10L, 32)).thenReturn(illegalOffset);
         when(pullConsumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterCorrection);
         when(pullConsumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
@@ -710,7 +710,7 @@ class RocketMQDLQProviderTest {
 
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(1L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
         TopicList existingTargets = new TopicList();
@@ -758,7 +758,7 @@ class RocketMQDLQProviderTest {
 
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(1L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
         TopicList existingTargets = new TopicList();
@@ -878,7 +878,7 @@ class RocketMQDLQProviderTest {
 
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(100L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(101L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
         TopicList existingTargets = new TopicList();
@@ -915,7 +915,7 @@ class RocketMQDLQProviderTest {
 
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
         when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
-        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(5001L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(5001L);
         when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
         when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
         TopicList existingTargets = new TopicList();
@@ -949,7 +949,7 @@ class RocketMQDLQProviderTest {
         deadLetter.setBody("hello dlq".getBytes(StandardCharsets.UTF_8));
         PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 1L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
         DLQExportResultVO exported =
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
@@ -975,7 +975,7 @@ class RocketMQDLQProviderTest {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
-        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 1L);
         when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32)))
                 .thenReturn(new PullResult(PullStatus.NO_NEW_MSG, 1L, 0L, 0L, List.of()));
         // maxCount=0 falls back to the hard cap instead of failing; scan still completes.
@@ -983,6 +983,74 @@ class RocketMQDLQProviderTest {
                 provider.exportMessages("instance-a", "group-a", 100L, 200L, 0);
         assertThat(exported.getMessages()).isEmpty();
         assertThat(exported.getLimit()).isEqualTo(5000);
+    }
+
+    @Test
+    void exportMessagesIncludesAllMessagesAtEndTimestampTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        List<MessageExt> stored = IntStream.range(0, 81).mapToObj(index -> {
+            MessageExt message = new MessageExt();
+            message.setMsgId("boundary-" + index);
+            message.setTopic(dlqTopic);
+            message.setQueueOffset(index);
+            message.setStoreTimestamp(index < 80 ? 200L : 201L);
+            return message;
+        }).toList();
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        // Real lower-bound semantics: 80 messages share the inclusive end time.
+        when(pullConsumer.searchOffset(eq(queue), anyLong()))
+                .thenAnswer(invocation -> (long) invocation.getArgument(1) <= 200L ? 0L : 80L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation -> {
+            int offset = ((Long) invocation.getArgument(2)).intValue();
+            int next = Math.min(offset + 32, stored.size());
+            return new PullResult(PullStatus.FOUND, next, 0L, stored.size(), stored.subList(offset, next));
+        });
+
+        DLQExportResultVO result = provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
+
+        assertThat(result.getMessages()).extracting(DLQMessageVO::getMsgId)
+                .containsExactlyElementsOf(IntStream.range(0, 80).mapToObj(index -> "boundary-" + index).toList());
+        assertThat(result.isTruncated()).isFalse();
+        assertThat(result.getFailedQueueCount()).isZero();
+        verify(pullConsumer).searchOffset(queue, 201L);
+        verify(pullConsumer, times(3)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void exportMessagesSkipsAnEmptyOffsetWindowTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(7L);
+
+        DLQExportResultVO result = provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000);
+
+        assertThat(result.getMessages()).isEmpty();
+        assertThat(result.getFailedQueueCount()).isZero();
+        assertThat(result.isTruncated()).isFalse();
+        verify(pullConsumer, never()).pull(any(), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void exportMessagesUsesQueueEndForMaximumTimestampTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("last-message");
+        message.setTopic(dlqTopic);
+        message.setStoreTimestamp(150L);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
+        when(pullConsumer.maxOffset(queue)).thenReturn(1L);
+        when(pullConsumer.pull(queue, "*", 0L, 32))
+                .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 1L, List.of(message)));
+
+        DLQExportResultVO result = provider.exportMessages("instance-a", "group-a", 100L, Long.MAX_VALUE, 1000);
+
+        assertThat(result.getMessages()).extracting(DLQMessageVO::getMsgId).containsExactly("last-message");
+        verify(pullConsumer).maxOffset(queue);
+        verify(pullConsumer, never()).searchOffset(queue, Long.MIN_VALUE);
     }
 
     private void stubExistingTarget(String topic) throws Exception {
