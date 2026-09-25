@@ -15,6 +15,42 @@
  * limitations under the License.
  */
 
+/** An ATX heading whose full marker run runs straight into its text. */
+const ATX_HEADING = /^(#{1,6})(?=[^\s#])/;
+/** A list marker at the start of a line. */
+const LIST_BULLET = /^([-+*])(?=\S)/;
+/** A fence line, which delimits the regions the marker repairs must not touch. */
+const FENCE_LINE = /^```/;
+/** A fence info string that runs straight into the first command. */
+const FENCE_INFO = /^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim;
+
+/**
+ * A line may open with a list marker without being a list item: `**bold**` and `*italic*` are
+ * emphasis, `---` is a thematic break (or a setext underline), and `-1` / `+2` are signed numbers.
+ * Separating the marker from what follows would change what the line means, so keep it as written.
+ */
+function opensAsList(marker: string, rest: string): boolean {
+  if (rest.startsWith(marker)) {
+    return false;
+  }
+  if (marker !== '*' && /^\d/.test(rest)) {
+    return false;
+  }
+  return marker !== '*' || !rest.includes('*');
+}
+
+function repairMarkers(line: string): string {
+  const heading = line.replace(ATX_HEADING, '$1 ');
+  if (heading !== line) {
+    return heading;
+  }
+  const match = LIST_BULLET.exec(line);
+  if (match && opensAsList(match[1], line.slice(match[1].length))) {
+    return `${match[1]} ${line.slice(match[1].length)}`;
+  }
+  return line;
+}
+
 /**
  * Repair the Markdown models actually emit before handing it to `react-markdown`.
  *
@@ -25,11 +61,21 @@
  * string runs straight into the command swallows the whole code block.
  *
  * Purely textual and idempotent: well-formed input comes back unchanged, so this is safe to apply to
- * every assistant text block, live or replayed.
+ * every assistant text block, live or replayed. A marker is separated only when it runs straight into
+ * its own text: headings that already carry their space, emphasis runs, thematic breaks, signed
+ * numbers and fenced code all come back as written.
  */
 export function normalizeAiMarkdown(content: string): string {
+  let inFence = false;
   return content
-    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
-    .replace(/^([-+*])(?=\S)/gm, '$1 ')
-    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
+    .replace(FENCE_INFO, '```$1\n')
+    .split('\n')
+    .map((line) => {
+      if (FENCE_LINE.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      return inFence ? line : repairMarkers(line);
+    })
+    .join('\n');
 }
