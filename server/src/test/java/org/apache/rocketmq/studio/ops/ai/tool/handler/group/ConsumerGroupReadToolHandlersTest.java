@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.handler.group;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
@@ -151,8 +153,62 @@ class ConsumerGroupReadToolHandlersTest {
         assertThat(output.progress().queues()).singleElement()
                 .extracting(GroupDetailOutput.QueueProgress::queueId)
                 .isEqualTo(0);
+        assertThat(output.progress().queues()).singleElement()
+                .extracting(GroupDetailOutput.QueueProgress::topic)
+                .isEqualTo("TopicA");
         assertThat(output.progress().totalLag()).isEqualTo(12L);
         assertThat(output.clients().totalClients()).isEqualTo(1);
+    }
+
+    @Test
+    void detailPreservesTopicIdentityForSharedBrokerAndQueueIdTest() {
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a"))
+                .thenReturn(List.of(
+                        QueueProgressVO.builder().topic("TopicA").broker("broker-a").queueId(0)
+                                .brokerOffset(20).consumerOffset(8).diffTotal(12).build(),
+                        QueueProgressVO.builder().topic("TopicB").broker("broker-a").queueId(0)
+                                .brokerOffset(20).consumerOffset(8).diffTotal(12).build()));
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+        JsonNode progress = new LegacyJackson2Config().jackson2ObjectMapper().valueToTree(output.progress());
+
+        assertThat(progress.path("queues")).hasSize(2);
+        assertThat(progress.at("/queues/0/topic").asText()).isEqualTo("TopicA");
+        assertThat(progress.at("/queues/1/topic").asText()).isEqualTo("TopicB");
+        for (JsonNode queue : progress.path("queues")) {
+            assertThat(queue.path("broker").asText()).isEqualTo("broker-a");
+            assertThat(queue.path("queueId").asInt()).isZero();
+            assertThat(queue.path("brokerOffset").asLong()).isEqualTo(20);
+            assertThat(queue.path("consumerOffset").asLong()).isEqualTo(8);
+            assertThat(queue.path("lag").asLong()).isEqualTo(12);
+        }
+        assertThat(progress.path("totalLag").asLong()).isEqualTo(24);
+    }
+
+    @Test
+    void detailPreservesUnknownOffsetsAndTopiclessAggregateProgressTest() {
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a"))
+                .thenReturn(List.of(QueueProgressVO.builder().broker("total").queueId(0)
+                        .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                        .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET).diffTotal(-1).build()));
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+        JsonNode progress = new LegacyJackson2Config().jackson2ObjectMapper().valueToTree(output.progress());
+
+        assertThat(progress.path("queues")).hasSize(1);
+        assertThat(progress.at("/queues/0").has("topic")).isFalse();
+        assertThat(progress.at("/queues/0/brokerOffset").asLong()).isEqualTo(-1);
+        assertThat(progress.at("/queues/0/consumerOffset").asLong()).isEqualTo(-1);
+        assertThat(progress.at("/queues/0/lag").asLong()).isEqualTo(-1);
+        assertThat(progress.path("totalLag").asLong()).isEqualTo(-1);
     }
 
     @Test
