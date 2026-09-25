@@ -398,12 +398,12 @@ public class TencentInstanceProvider implements InstanceProvider {
         Context context = resolve(instanceId);
         requireTopicName(topicName);
         List<TopicConsumerVO> consumers = new ArrayList<>();
-        long fetchedSubscriptions = 0L;
         for (int page = 0; page < MAX_PAGES; page++) {
+            long offset = (long) page * CONSUMER_PAGE_SIZE;
             DescribeTopicRequest request = new DescribeTopicRequest();
             request.setInstanceId(context.cloudInstanceId());
             request.setTopic(topicName);
-            request.setOffset((long) page * CONSUMER_PAGE_SIZE);
+            request.setOffset(offset);
             request.setLimit((long) CONSUMER_PAGE_SIZE);
             DescribeTopicResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeTopic(request));
@@ -411,15 +411,15 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (data == null || data.length == 0) {
                 break;
             }
-            fetchedSubscriptions += data.length;
             for (SubscriptionData subscription : data) {
                 if (subscription != null) {
                     consumers.add(toTopicConsumer(subscription));
                 }
             }
             Long subscriptionCount = response.getSubscriptionCount();
-            if (data.length < CONSUMER_PAGE_SIZE
-                    || subscriptionCount != null && fetchedSubscriptions >= subscriptionCount) {
+            requireCompletePage("topic consumer", offset, data.length, subscriptionCount);
+            if (hasFetchedAll(offset, data.length, subscriptionCount)
+                    || isUnknownTotalCount(subscriptionCount) && data.length < CONSUMER_PAGE_SIZE) {
                 break;
             }
         }
