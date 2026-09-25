@@ -260,7 +260,7 @@ class ToolOutputSchemaContractTest {
                 new GroupDetailOutput.Health("HEALTHY", List.of()),
                 List.of(groupItem),
                 new GroupDetailOutput.Progress(100L, List.of(
-                        new GroupDetailOutput.QueueProgress("broker-a", 0, 120L, 90L, 30L))),
+                        new GroupDetailOutput.QueueProgress("orders", "broker-a", 0, 120L, 90L, 30L))),
                 new GroupDetailOutput.Clients(1, List.of(
                         new GroupDetailOutput.Client(
                                 "client-1", "gRPC", "127.0.0.1:50000", "JAVA", "5.0.7",
@@ -275,7 +275,8 @@ class ToolOutputSchemaContractTest {
                         new GroupDetailOutput.Health(
                                 "UNKNOWN", List.of("Consumer connection information is unavailable.")),
                         List.of(unknownConnectionsItem),
-                        null,
+                        new GroupDetailOutput.Progress(-1L, List.of(
+                                new GroupDetailOutput.QueueProgress(null, "total", 0, -1L, -1L, -1L))),
                         null)));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));
