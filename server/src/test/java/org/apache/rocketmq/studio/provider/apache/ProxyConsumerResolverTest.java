@@ -33,13 +33,26 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,6 +129,68 @@ class ProxyConsumerResolverTest {
 
         org.mockito.Mockito.verify(adminExt, org.mockito.Mockito.times(2))
                 .examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic");
+    }
+
+    @Test
+    void remotingClientShouldRetryStartupAfterFirstFailureTest() throws Exception {
+        NettyRemotingClient failedClient = mock(NettyRemotingClient.class);
+        NettyRemotingClient recoveredClient = mock(NettyRemotingClient.class);
+        doThrow(new IllegalStateException("startup failed")).when(failedClient).start();
+        when(recoveredClient.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "offline"));
+        ProxyConsumerResolver underTest = spy(resolver);
+        doReturn(failedClient, recoveredClient).when(underTest).newRemotingClient();
+
+        assertThatThrownBy(() -> underTest.queryProxy("10.0.4.66:8080", "cg-orders"))
+                .isInstanceOf(IllegalStateException.class).hasMessage("startup failed");
+        assertThat(underTest.queryProxy("10.0.4.66:8080", "cg-orders")).isNull();
+
+        verify(failedClient).start();
+        verify(failedClient).shutdown();
+        verify(recoveredClient).start();
+        verify(recoveredClient).invokeSync(anyString(), any(RemotingCommand.class), anyLong());
+    }
+
+    @Test
+    void concurrentProxyQueriesShouldWaitForRemotingClientStartupTest() throws Exception {
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        CountDownLatch startupEntered = new CountDownLatch(1);
+        CountDownLatch allowStartup = new CountDownLatch(1);
+        CountDownLatch secondQueryStarted = new CountDownLatch(1);
+        AtomicBoolean started = new AtomicBoolean();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            startupEntered.countDown();
+            assertThat(allowStartup.await(5, TimeUnit.SECONDS)).isTrue();
+            started.set(true);
+            return null;
+        }).when(client).start();
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenAnswer(invocation -> {
+                    assertThat(started.get()).isTrue();
+                    return RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "offline");
+                });
+        ProxyConsumerResolver underTest = spy(resolver);
+        doReturn(client).when(underTest).newRemotingClient();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<ConsumerConnection> first = pool.submit(() -> underTest.queryProxy("10.0.4.66:8080", "cg-a"));
+            assertThat(startupEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<ConsumerConnection> second = pool.submit(() -> {
+                secondQueryStarted.countDown();
+                return underTest.queryProxy("10.0.4.66:8080", "cg-b");
+            });
+            assertThat(secondQueryStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            allowStartup.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS)).isNull();
+            assertThat(second.get(5, TimeUnit.SECONDS)).isNull();
+            verify(client, times(2)).invokeSync(anyString(), any(RemotingCommand.class), anyLong());
+        } finally {
+            allowStartup.countDown();
+            pool.shutdownNow();
+        }
     }
 
     @Test

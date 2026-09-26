@@ -221,19 +221,31 @@ public class ProxyConsumerResolver {
     }
 
     private NettyRemotingClient remotingClient() {
-        NettyRemotingClient client = remotingClient;
-        if (client == null) {
-            synchronized (this) {
-                if (remotingClient == null) {
-                    remotingClient = new NettyRemotingClient(new NettyClientConfig());
+        if (clientStarted.get()) {
+            return remotingClient;
+        }
+        synchronized (this) {
+            if (!clientStarted.get()) {
+                NettyRemotingClient starting = newRemotingClient();
+                try {
+                    starting.start();
+                } catch (RuntimeException failure) {
+                    try {
+                        starting.shutdown();
+                    } catch (RuntimeException shutdownFailure) {
+                        failure.addSuppressed(shutdownFailure);
+                    }
+                    throw failure;
                 }
-                client = remotingClient;
+                remotingClient = starting;
+                clientStarted.set(true);
             }
+            return remotingClient;
         }
-        if (clientStarted.compareAndSet(false, true)) {
-            client.start();
-        }
-        return client;
+    }
+
+    NettyRemotingClient newRemotingClient() {
+        return new NettyRemotingClient(new NettyClientConfig());
     }
 
     @PreDestroy
