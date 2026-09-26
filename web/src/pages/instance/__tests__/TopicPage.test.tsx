@@ -897,6 +897,21 @@ describe('TopicPage', () => {
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
 
+  it('renders a legacy topic returned for the selected instance when instanceId is absent', async () => {
+    const legacyTopic = { ...buildTopics(1)[0], name: 'legacy-orders', instanceId: undefined };
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    topicServiceMocks.listTopicsPage.mockResolvedValue({
+      items: [legacyTopic],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    expect(await screen.findByText('legacy-orders')).toBeInTheDocument();
+  });
+
   it('imports valid topic CSV rows through the backend batch service with the selected instance', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([]);
