@@ -27,8 +27,11 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>Failed logins are counted per normalized username. The exact tracker has a strict size
  * bound. When that bound is occupied, previously unseen usernames use a second fixed-size set
- * of hash buckets instead of failing open or growing memory. Collisions can share a lock only
- * while the exact tracker is saturated; they cannot disable rate limiting.</p>
+ * of hash buckets instead of failing open or growing memory. Collisions can share a lock, and a
+ * lock the overflow tracker earned outlives the saturation that created it: all three paths that
+ * free an exact slot drop overflow state only when no lock in it is still in force. Rate limiting
+ * therefore cannot be disabled by freeing a slot, and the trade-off is that a colliding username
+ * stays rejected for the remainder of a lock it shares.</p>
  */
 @Slf4j
 @Component
@@ -132,10 +135,12 @@ public class LoginRateLimiter {
 
     public synchronized void recordSuccess(String username) {
         String key = key(username);
+        long now = clock.millis();
         if (attempts.remove(key) != null) {
-            // Once an exact slot is available, overflow state from the saturated period is no
-            // longer needed and must not affect a later saturation episode.
-            clearOverflowAttempts();
+            // The caller's own exact slot is free again, so overflow leftovers from the saturated
+            // period must not affect a later saturation episode. A lock that is still in force is
+            // not a leftover: it belongs to the username it rejects, not to this caller.
+            clearStaleOverflowAttempts(now);
             return;
         }
         overflowAttempts[overflowBucket(key)] = null;
@@ -162,7 +167,7 @@ public class LoginRateLimiter {
             return state;
         }
         attempts.remove(key);
-        clearOverflowAttempts();
+        clearStaleOverflowAttempts(now);
         return null;
     }
 
@@ -185,7 +190,7 @@ public class LoginRateLimiter {
                 .min()
                 .orElse(Long.MAX_VALUE);
         if (removed) {
-            clearOverflowAttempts();
+            clearStaleOverflowAttempts(now);
         }
     }
 
@@ -235,6 +240,27 @@ public class LoginRateLimiter {
 
     private void clearOverflowAttempts() {
         Arrays.fill(overflowAttempts, null);
+    }
+
+    /**
+     * Drops the overflow state of a saturated episode that is over, but never a lock that is still in
+     * force. All three callers free an exact slot - the two expiry paths on unauthenticated login
+     * requests, and {@link #recordSuccess} for the username that just authenticated - and that slot
+     * can be taken again immediately by anybody, which puts the overflow tracker back in charge of
+     * the usernames it is protecting. A successful login is evidence about its own username only: it
+     * says nothing about the failures behind a bucket that already earned a rejection, so cancelling a
+     * live lock here would release another username's lock with most of {@link #LOCK_DURATION} still
+     * to run. State that carries no lock has nothing to protect and is still dropped, so an episode's
+     * leftovers cannot outlive it.
+     */
+    private void clearStaleOverflowAttempts(long now) {
+        for (int index = 0; index < overflowAttempts.length; index++) {
+            AttemptState state = activeOverflowState(index, now);
+            if (state != null && state.lockedAt(now)) {
+                return;
+            }
+        }
+        clearOverflowAttempts();
     }
 
     private int overflowBucket(String key) {
