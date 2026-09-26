@@ -286,8 +286,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static void requireCompletePage(String resource, long offset, int returned, Long totalCount) {
-        if (totalCount != null && totalCount >= 0L
-                && returned < PAGE_SIZE && offset + returned < totalCount) {
+        if (Pagination.isIncompletePage(offset, returned, PAGE_SIZE, totalCount)) {
             throw new BusinessException(502,
                     "Tencent Cloud returned an incomplete " + resource + " page");
         }
@@ -668,13 +667,15 @@ public class TencentInstanceProvider implements InstanceProvider {
                     }
                 }
             }
-            // Stop on the last page (returned fewer rows than requested) or once all results have
-            // been collected. Like the Aliyun provider, the short-page check is the primary signal
-            // so we do not rely on TotalCount, which may not be populated for every query.
             int returned = data == null ? 0 : data.length;
-            // Stop on the last page (returned fewer rows than requested) or once all results have
-            // been collected. Like the Aliyun provider, the short-page check is the primary signal
-            // so we do not rely on TotalCount, which may not be populated for every query.
+            // A successful but incomplete task page is not an RPC failure. Keep collected
+            // rows and publish the existing truncation flag rather than a false complete result.
+            if (Pagination.isIncompletePage(request.getOffset(), returned, MESSAGE_LIMIT,
+                    response == null ? null : response.getTotalCount())) {
+                mayBeTruncated = true;
+                break;
+            }
+            // Missing totals retain the existing short-page termination fallback.
             if (isLastPage(returned, total, result.size())) {
                 break;
             }

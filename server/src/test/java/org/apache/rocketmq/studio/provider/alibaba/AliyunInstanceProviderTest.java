@@ -1101,4 +1101,32 @@ class AliyunInstanceProviderTest {
         // Round-trip formatting must restore the same calendar time in UTC+8.
         assertThat(AliyunConverters.formatTimeMillis(expectedUtc8)).isEqualTo("2024-01-01 00:00:00");
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3})
+    void queryMessagesShouldFlagContradictoryShortPageTest(int rows) {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(5L, 1, rows, "tagA")));
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+        assertThat(result.messages()).hasSize(rows);
+        assertThat(result.mayBeTruncated()).isTrue();
+        verify(asyncClient).listMessages(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {3, 5})
+    void shortPageCompletenessUsesRowsBeforeLocalTagFilteringTest(long total) {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                messagesResponse(total, 1, 3, "other-tag")));
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+        assertThat(result.messages()).isEmpty();
+        assertThat(result.mayBeTruncated()).isEqualTo(total > 3);
+        verify(asyncClient).listMessages(any());
+    }
+
 }
