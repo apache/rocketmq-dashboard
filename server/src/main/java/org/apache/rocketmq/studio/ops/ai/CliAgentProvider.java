@@ -105,7 +105,7 @@ public abstract class CliAgentProvider implements AgentProvider {
         }
         Process process;
         try {
-            process = builder.start();
+            process = startProcess(builder);
             if (!devNullAvailable) {
                 process.getOutputStream().close();
             }
@@ -121,11 +121,12 @@ public abstract class CliAgentProvider implements AgentProvider {
                 throw new CompletionException(exception);
             }
         });
+        long timeoutSeconds = completionTimeoutSeconds();
         boolean finished;
         try {
-            finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
-            process.destroyForcibly();
+            destroyProcessTree(process);
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
@@ -142,7 +143,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             }
             output = "";
         } catch (InterruptedException exception) {
-            process.destroyForcibly();
+            destroyProcessTree(process);
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI output collection was interrupted", "Retry the request.", exception);
@@ -150,9 +151,9 @@ public abstract class CliAgentProvider implements AgentProvider {
             output = "";
         }
         if (!finished) {
-            process.destroyForcibly();
+            destroyProcessTree(process);
             throw new LlmGatewayException(504, "llm.provider.timeout",
-                    binaryName() + " CLI timed out after " + TIMEOUT_SECONDS + "s",
+                    binaryName() + " CLI timed out after " + timeoutSeconds + "s",
                     "Retry with a shorter prompt or check the gateway latency.");
         }
         if (process.exitValue() != 0) {
@@ -178,7 +179,7 @@ public abstract class CliAgentProvider implements AgentProvider {
             int read;
             while ((read = input.read(buffer)) != -1) {
                 if (read > limitBytes - output.size()) {
-                    process.destroyForcibly();
+                    destroyProcessTree(process);
                     throw new OutputLimitException(limitBytes);
                 }
                 output.write(buffer, 0, read);
@@ -189,6 +190,18 @@ public abstract class CliAgentProvider implements AgentProvider {
 
     int outputLimitBytes() {
         return MAX_OUTPUT_BYTES;
+    }
+
+    protected Process startProcess(ProcessBuilder builder) throws IOException {
+        return builder.start();
+    }
+
+    protected long completionTimeoutSeconds() {
+        return TIMEOUT_SECONDS;
+    }
+
+    private void destroyProcessTree(Process process) {
+        AgentProcessTree.destroyForcibly(process, binaryName() + " CLI");
     }
 
     private String abbreviate(String value) {
