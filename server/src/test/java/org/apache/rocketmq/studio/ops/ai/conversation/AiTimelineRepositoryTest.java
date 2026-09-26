@@ -64,10 +64,10 @@ import static org.mockito.Mockito.when;
  * two sweeps are built on.
  *
  * <p>One assertion here is load-bearing and easy to mistake for pedantry: the generated SQL must order
- * by {@code seq} before applying its limit. Without that order MySQL may return any qualifying subset;
- * sorting that subset in Java cannot recover earlier rows and the cursor can skip them permanently.
- * {@code uk_ai_event_conversation_seq (conversation_id, seq)} serves the order directly because the
- * leading column is fixed and the second is the range/cursor column.
+ * by {@code seq} before applying its limit. MySQL 8.0.46 currently range-scans
+ * {@code uk_ai_event_conversation_seq (conversation_id, seq)} in that order with no filesort, but SQL
+ * does not promise the order unless the query states it. The assertion turns that optimizer behaviour
+ * into an explicit pagination contract; sorting after {@code LIMIT} cannot establish subset membership.
  *
  * <p>Two further choices are pinned the same way, because both fail in production rather than in a
  * functional test: an empty id collection never reaches the database (MyBatis-Plus renders {@code IN ()}

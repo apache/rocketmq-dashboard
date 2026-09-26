@@ -59,9 +59,9 @@ public class MybatisPlusAiEventRepository implements AiEventRepository {
             return List.of();
         }
         int bounded = Math.min(limit, MAX_LIMIT);
-        // The composite unique key (conversation_id, seq) serves this range and ordering directly.
-        // Ordering must happen before LIMIT; sorting an arbitrary limited subset in memory can skip
-        // earlier events and advance the caller's cursor past them permanently.
+        // MySQL 8.0.46 EXPLAIN selects uk_ai_event_conversation_seq as a range scan with no filesort.
+        // The explicit order codifies what that plan currently does instead of making cursor correctness
+        // depend on row order that SQL itself does not promise; an in-memory sort after LIMIT cannot do so.
         return eventMapper.selectList(new QueryWrapper<RmqAiEvent>()
                 .eq("conversation_id", conversationId)
                 .gt("seq", afterSeq)

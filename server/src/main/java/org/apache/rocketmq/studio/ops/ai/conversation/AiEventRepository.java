@@ -35,9 +35,10 @@ public interface AiEventRepository {
     /**
      * Events with seq strictly greater than afterSeq, capped at limit, ascending by seq.
      *
-     * <p>The ordering must be applied before the limit so pagination cannot skip an earlier event.
-     * {@code uk_ai_event_conversation_seq (conversation_id, seq)} satisfies both the range predicate
-     * and ascending order without sorting the MEDIUMTEXT payload.
+     * <p>The current InnoDB plan range-scans {@code uk_ai_event_conversation_seq} in sequence order,
+     * but SQL does not guarantee that order without an explicit clause. Applying the ordering before
+     * the limit makes the pagination contract deterministic. The same composite index satisfies both
+     * the range predicate and ascending order without sorting the MEDIUMTEXT payload.
      */
     List<RmqAiEvent> findByConversationIdAfterSeq(Long conversationId, int afterSeq, int limit);
 
