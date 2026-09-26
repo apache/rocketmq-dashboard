@@ -37,6 +37,9 @@ const topicServiceMocks = vi.hoisted(() => ({
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
+const instanceServiceMocks = vi.hoisted(() => ({
+  getInstanceCapabilities: vi.fn(),
+}));
 
 vi.mock('../../../services/messageService', () => ({
   ...messageServiceMocks,
@@ -52,6 +55,7 @@ vi.mock('../../../services/messageService', () => ({
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
+  getInstanceCapabilities: instanceServiceMocks.getInstanceCapabilities,
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => topicServiceMocks);
@@ -121,6 +125,12 @@ describe('Message page query history', () => {
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
       instanceOptions: [{ value: 1, label: 'Instance A' }],
+    });
+    instanceServiceMocks.getInstanceCapabilities.mockReset().mockResolvedValue({
+      instanceId: '1',
+      vendor: 'APACHE',
+      accessType: 'DIRECT',
+      capabilities: ['DIRECT_MESSAGE_CONSUME'],
     });
   });
 

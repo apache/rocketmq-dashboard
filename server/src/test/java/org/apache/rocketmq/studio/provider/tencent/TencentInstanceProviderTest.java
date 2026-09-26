@@ -44,6 +44,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
@@ -60,6 +62,8 @@ import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -131,6 +135,7 @@ class TencentInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -172,6 +177,42 @@ class TencentInstanceProviderTest {
         assertThatThrownBy(() -> provider.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("no message id");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldCallTencentVerifyApiTest() throws Exception {
+        VerifyMessageConsumptionResponse response = new VerifyMessageConsumptionResponse();
+        response.setRequestId("tencent-request-1");
+        when(client.VerifyMessageConsumption(any())).thenReturn(response);
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyMessageConsumptionRequest> captor =
+                ArgumentCaptor.forClass(VerifyMessageConsumptionRequest.class);
+        verify(client).VerifyMessageConsumption(captor.capture());
+        VerifyMessageConsumptionRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopic()).isEqualTo("orders");
+        assertThat(request.getMsgId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroup()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("REQUEST_ACCEPTED");
+        assertThat(result.getRemark())
+                .contains("verification request", "outcome is not returned", "tencent-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyTencentResponseTest() throws Exception {
+        when(client.VerifyMessageConsumption(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tencent direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
@@ -1193,5 +1234,15 @@ class TencentInstanceProviderTest {
         assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("process");
         assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.pending);
+    }
+
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
     }
 }

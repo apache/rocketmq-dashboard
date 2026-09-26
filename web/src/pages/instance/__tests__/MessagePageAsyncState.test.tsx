@@ -33,6 +33,9 @@ const serviceMocks = vi.hoisted(() => ({
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
+const instanceServiceMocks = vi.hoisted(() => ({
+  getInstanceCapabilities: vi.fn(),
+}));
 const historyMocks = vi.hoisted(() => ({
   getQueryHistorySummary: vi.fn(),
   listMessageQueryHistory: vi.fn(),
@@ -59,6 +62,7 @@ vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 vi.mock('../../../api/messageHistory', () => historyMocks);
 
 vi.mock('../../../services/instanceService', () => ({
+  getInstanceCapabilities: instanceServiceMocks.getInstanceCapabilities,
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => ({
@@ -164,6 +168,12 @@ describe('MessagePage async request ownership', () => {
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
       instanceOptions: [{ value: 1, label: 'Instance A' }],
+    });
+    instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
+      instanceId: '1',
+      vendor: 'APACHE',
+      accessType: 'DIRECT',
+      capabilities: ['DIRECT_MESSAGE_CONSUME'],
     });
     vi.spyOn(message, 'success').mockImplementation(vi.fn());
   });
@@ -368,6 +378,117 @@ describe('MessagePage async request ownership', () => {
 
     await user.click(within(consumeDialog as HTMLElement).getByRole('button', { name: /执\s*行/ }));
     expect(serviceMocks.consumeMessageDirectly).not.toHaveBeenCalled();
+  });
+
+  it('disablesDirectConsumeWithReasonWhenTheSelectedInstanceDoesNotAdvertiseItTest', async () => {
+    instanceServiceMocks.getInstanceCapabilities.mockResolvedValue({
+      instanceId: '1',
+      vendor: 'ALIYUN',
+      accessType: 'CLOUD',
+      capabilities: ['MESSAGE_QUERY'],
+    });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith(1),
+    );
+    const directConsumeButton = within(dialog).getByRole('button', { name: /直接消费/ });
+    expect(directConsumeButton).toBeDisabled();
+    await user.hover(directConsumeButton.parentElement as HTMLElement);
+    expect(await screen.findByText('当前实例不支持直接消费')).toBeInTheDocument();
+  });
+
+  it('disablesDirectConsumeWithReasonWhenCapabilityLoadingFailsTest', async () => {
+    instanceServiceMocks.getInstanceCapabilities.mockRejectedValue(
+      new Error('capability unavailable'),
+    );
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    const user = userEvent.setup();
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith(1),
+    );
+    const directConsumeButton = within(dialog).getByRole('button', { name: /直接消费/ });
+    expect(directConsumeButton).toBeDisabled();
+    await user.hover(directConsumeButton.parentElement as HTMLElement);
+    expect(await screen.findByText('无法获取实例能力，直接消费暂不可用')).toBeInTheDocument();
+  });
+
+  it('ignoresStaleDirectConsumeCapabilityAfterInstanceChangeTest', async () => {
+    const first = createDeferred<{
+      instanceId: string;
+      vendor: string;
+      accessType: string;
+      capabilities: string[];
+    }>();
+    const second = createDeferred<{
+      instanceId: string;
+      vendor: string;
+      accessType: string;
+      capabilities: string[];
+    }>();
+    instanceServiceMocks.getInstanceCapabilities
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    let selectedInstanceId = 'instance-a';
+    instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
+      selectedInstanceId,
+      selectInstance: vi.fn(),
+      instanceOptions: [
+        { value: 'instance-a', label: 'Instance A' },
+        { value: 'instance-b', label: 'Instance B' },
+      ],
+    }));
+    const view = renderPage();
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('instance-a'),
+    );
+
+    selectedInstanceId = 'instance-b';
+    view.rerender(<MessagePageWithProviders />);
+    await waitFor(() =>
+      expect(instanceServiceMocks.getInstanceCapabilities).toHaveBeenCalledWith('instance-b'),
+    );
+    await act(async () =>
+      second.resolve({
+        instanceId: 'instance-b',
+        vendor: 'ALIYUN',
+        accessType: 'CLOUD',
+        capabilities: ['MESSAGE_QUERY'],
+      }),
+    );
+    await act(async () =>
+      first.resolve({
+        instanceId: 'instance-a',
+        vendor: 'APACHE',
+        accessType: 'DIRECT',
+        capabilities: ['DIRECT_MESSAGE_CONSUME'],
+      }),
+    );
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-b')]);
+    const user = userEvent.setup();
+    await selectTopic(user);
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-b/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(dialog).getByRole('button', { name: /直接消费/ })).toBeDisabled();
   });
 
   it('queries trace by key with a custom trace topic from the trace tab', async () => {

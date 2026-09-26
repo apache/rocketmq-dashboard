@@ -22,17 +22,20 @@ import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import static org.mockito.ArgumentMatchers.any;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class MessageServiceTest {
@@ -175,6 +178,7 @@ class MessageServiceTest {
         DirectConsumeMessageResultVO expected = DirectConsumeMessageResultVO.builder()
                 .consumeResult("CR_SUCCESS").build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
         when(provider.consumeMessageDirectly(request)).thenReturn(expected);
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
 
@@ -199,6 +203,7 @@ class MessageServiceTest {
         request.setConsumerGroup("billing");
         request.setClientId("client-a");
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
         when(provider.consumeMessageDirectly(request)).thenReturn(DirectConsumeMessageResultVO.builder()
                 .consumeResult("CR_ROLLBACK").build());
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
@@ -224,6 +229,7 @@ class MessageServiceTest {
         request.setConsumerGroup("billing");
         request.setClientId("client-a");
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
         when(provider.consumeMessageDirectly(request)).thenThrow(new IllegalStateException("client offline"));
         MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
 
@@ -236,6 +242,35 @@ class MessageServiceTest {
                 org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
                 org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.eq("client offline"));
         verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void rejectsDirectConsumptionWhenSelectedProviderDoesNotAdvertiseCapabilityTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("cloud-instance");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.MESSAGE_QUERY));
+        MessageService service = new MessageService(
+                fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
+
+        assertThatThrownBy(() -> service.consumeMessageDirectly(request))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessage("Direct message consumption is not supported by this instance");
+
+        verify(provider, never()).consumeMessageDirectly(request);
+        verifyNoInteractions(fallback);
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("cloud-instance"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.contains("not supported"));
     }
 
     @Test

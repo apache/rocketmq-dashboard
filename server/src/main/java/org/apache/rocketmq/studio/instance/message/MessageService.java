@@ -23,6 +23,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
@@ -162,10 +164,10 @@ public class MessageService {
             DirectConsumeMessageResultVO result = apache
                     ? ownershipGuard.withOwned(instance, resources, () ->
                             providerRegistry.byInstanceId(request.getInstanceId())
-                                    .map(provider -> provider.consumeMessageDirectly(request))
+                                    .map(provider -> consumeDirectlyThrough(provider, request))
                                     .orElseGet(() -> messageProvider.consumeMessageDirectly(request)))
                     : providerRegistry.byInstanceId(request.getInstanceId())
-                            .map(provider -> provider.consumeMessageDirectly(request))
+                            .map(provider -> consumeDirectlyThrough(provider, request))
                             .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
             recordDirectConsumeAudit(request, detail + ", result=" + result.getConsumeResult(),
                     auditResult(result.getConsumeResult()), null);
@@ -174,6 +176,20 @@ public class MessageService {
             recordDirectConsumeAudit(request, detail, "FAILED", e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * Gate the registered-provider path on the advertised capability so a vendor without a
+     * direct-consume API answers 501 (see {@code GlobalExceptionHandler}) instead of letting the
+     * call fall through to an implementation that cannot honour it.
+     */
+    private static DirectConsumeMessageResultVO consumeDirectlyThrough(InstanceProvider provider,
+                                                                       DirectConsumeMessageDTO request) {
+        if (!provider.capabilities().contains(InstanceCapability.DIRECT_MESSAGE_CONSUME)) {
+            throw new UnsupportedOperationException(
+                    "Direct message consumption is not supported by this instance");
+        }
+        return provider.consumeMessageDirectly(request);
     }
 
     /** consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed. */
