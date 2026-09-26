@@ -1091,6 +1091,32 @@ class AclServiceTest {
         verify(clusterProvider, never()).discoverBrokers(any(), any());
     }
 
+    @Test
+    void listRulesShouldTrimTheSearchTermsBeforeQueryingTheRepository() {
+        aclService.listRules(" user1 ", " topic ", null, null, null, 1, 20);
+
+        verify(aclRepository).findRulePage("user1", "topic", null, null, null, 1, 20);
+    }
+
+    @Test
+    void listRulesShouldMatchPaddedSearchTermsOnTencentInstances() {
+        InstanceVO tencent = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencent));
+        when(tencentAclService.listRules(eq("tencent-instance"), any())).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-a").resource("topic-a").decision("ALLOW").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(" role-a ", " topic ", null, null,
+                "tencent-instance", 1, 20);
+
+        verify(tencentAclService).listRules("tencent-instance", "role-a");
+        assertThat(result.getItems()).singleElement()
+                .satisfies(rule -> assertThat(rule.getResource()).isEqualTo("topic-a"));
+    }
+
     @ParameterizedTest
     @MethodSource("brokerVersionDescriptors")
     void parseVersionShouldNormalizeBrokerVersionDescriptors(String raw, int[] expected) {
