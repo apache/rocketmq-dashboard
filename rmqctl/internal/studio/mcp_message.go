@@ -145,10 +145,10 @@ func (session *MCPClientSession) sendNotification(
 
 func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReconnect bool, send func() error) error {
 	session.sendMu.RLock()
-	generation, hadSession := session.sendSnapshot()
+	generation, canReconnect := session.sendSnapshot()
 	err := send()
 	session.sendMu.RUnlock()
-	if err != nil && hadSession && !skipReconnect && errors.Is(err, mcptransport.ErrSessionTerminated) {
+	if err != nil && canReconnect && !skipReconnect && errors.Is(err, mcptransport.ErrSessionTerminated) {
 		if reconnectErr := session.reinitialize(ctx, generation); reconnectErr != nil {
 			return reconnectErr
 		}
@@ -159,14 +159,19 @@ func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReco
 	return err
 }
 
-// sendSnapshot returns the current session generation and whether a session
-// id is already established. Callers must hold sendMu (at least RLock) so the
-// snapshot is consistent with the transport state used for the send.
+// sendSnapshot returns the current session generation and whether a terminated
+// session can be re-initialized, which is possible whenever the initialize
+// request has been recorded. The transport's session id cannot be used for
+// this decision: mcp-go clears it as soon as any request fails with a 404, so
+// a sender racing with that failure would wrongly see "no session" and skip
+// the reconnect. Callers must hold sendMu (at least RLock) so the snapshot is
+// consistent with the transport state used for the send.
 func (session *MCPClientSession) sendSnapshot() (uint64, bool) {
 	session.state.RLock()
 	generation := session.state.generation
+	initialize := session.state.initialize
 	session.state.RUnlock()
-	return generation, session.transport.GetSessionId() != ""
+	return generation, initialize != nil
 }
 
 func (session *MCPClientSession) recordInitialization(
