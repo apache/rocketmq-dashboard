@@ -76,6 +76,25 @@ public class NameServerConfigDiffService {
     private final ClusterService clusterService;
     private final MqAdminExtFactory adminFactory;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final MultiNamesrvRouteConsistencyProbe routeConsistencyProbe;
+
+    public NamesrvRouteConsistencyReportVO probeRouteConsistency(String topic, String clusterId, String instanceId) {
+        String normalizedClusterId = clusterId != null ? clusterId.trim() : "";
+        ClusterVO cluster = clusterService.getCluster(normalizedClusterId, instanceId);
+        List<String> addresses = collectNameServerAddresses(cluster);
+        Map<String, org.apache.rocketmq.remoting.protocol.route.TopicRouteData> routeMap = new LinkedHashMap<>();
+
+        for (String addr : addresses) {
+            try {
+                org.apache.rocketmq.remoting.protocol.route.TopicRouteData data =
+                        adminFactory.execute(addr, null, admin -> admin.examineTopicRouteInfo(topic));
+                routeMap.put(addr, data);
+            } catch (Exception ex) {
+                routeMap.put(addr, null);
+            }
+        }
+        return routeConsistencyProbe.probe(topic, routeMap);
+    }
 
     public NameServerConfigDiffVO compareForInstance(String instanceId) {
         if (instanceId == null || instanceId.isBlank()) {

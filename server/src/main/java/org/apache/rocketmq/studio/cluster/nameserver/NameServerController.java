@@ -74,6 +74,14 @@ public class NameServerController {
         return Result.ok(configDiffService.compare(clusterId, instanceId));
     }
 
+    @GetMapping("/route-consistency-probe")
+    public Result<NamesrvRouteConsistencyReportVO> probeRouteConsistency(
+            @RequestParam String topic,
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(configDiffService.probeRouteConsistency(topic, clusterId, instanceId));
+    }
+
     @PostMapping("/create")
     public Result<NameServerVO> createNameServer(@Valid @RequestBody(required = false) CreateNameServerDTO command) {
         requireCommand(command);

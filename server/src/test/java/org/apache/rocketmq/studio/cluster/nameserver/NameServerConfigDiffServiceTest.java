@@ -60,12 +60,15 @@ class NameServerConfigDiffServiceTest {
     @Mock
     private MQAdminExt admin;
 
+    @Mock
+    private MultiNamesrvRouteConsistencyProbe routeConsistencyProbe;
+
     private NameServerConfigDiffService service;
 
     @BeforeEach
     void setUp() {
         service = new NameServerConfigDiffService(
-                clusterService, adminFactory, runtimeAdminClientResolver);
+                clusterService, adminFactory, runtimeAdminClientResolver, routeConsistencyProbe);
     }
 
     private void stubAdminFactory() {
@@ -399,6 +402,22 @@ class NameServerConfigDiffServiceTest {
         assertThat(result.getNodes()).extracting(NameServerConfigDiffVO.NodeStatusVO::getAddress)
                 .containsExactly("selected-ns:9876");
         verifyNoInteractions(clusterService, adminFactory);
+    }
+
+    @Test
+    void probeRouteConsistencyShouldCollectAddressesAndDelegateToProbe() {
+        when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
+                "ns-a:9876", List.of(nameServer("ns-a:9876"))));
+        NamesrvRouteConsistencyReportVO mockReport = NamesrvRouteConsistencyReportVO.builder()
+                .topic("TopicOrders")
+                .fullyConsistent(true)
+                .build();
+        when(routeConsistencyProbe.probe(eq("TopicOrders"), any())).thenReturn(mockReport);
+
+        NamesrvRouteConsistencyReportVO result = service.probeRouteConsistency("TopicOrders", "cluster-a", "instance-a");
+
+        assertThat(result.isFullyConsistent()).isTrue();
+        verify(routeConsistencyProbe).probe(eq("TopicOrders"), any());
     }
 
 }
