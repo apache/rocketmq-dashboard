@@ -344,6 +344,14 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Replacing the hash and revoking the account's sessions are one logical change: a failure
+     * between the two writes would leave the account on its new password while its existing
+     * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements
+     * therefore run in one transaction, the same guarantee {@link #setUserEnabled} gives its own
+     * update-and-revoke pair.
+     */
+    @Transactional
     public void changePassword(Long userId, String currentPassword, String newPassword,
                                boolean requireCurrentPassword) {
         requireDatabaseBacked();
