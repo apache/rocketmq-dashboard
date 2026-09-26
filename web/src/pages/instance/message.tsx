@@ -314,10 +314,13 @@ type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
+  instancesFailed: boolean;
+  reloadInstances: () => void;
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -327,6 +330,8 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      instancesFailed={instancesFailed}
+      reloadInstances={reloadInstances}
     />
   );
 };
@@ -338,6 +343,8 @@ const MessagePageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instancesFailed,
+  reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
@@ -1115,6 +1122,8 @@ const MessagePageContent = ({
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
+              failed={instancesFailed}
+              onRetry={reloadInstances}
             />
             <Segmented
               options={QUERY_OPTIONS.map(({ value }) => ({
