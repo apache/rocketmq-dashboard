@@ -19,10 +19,12 @@ package org.apache.rocketmq.studio.provider.credential;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
 import org.junit.jupiter.api.Test;
@@ -37,6 +39,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
@@ -108,6 +111,49 @@ class MybatisPlusCloudCredentialRepositoryTest {
         QueryWrapper<RmqCloudCredential> query = (QueryWrapper<RmqCloudCredential>) queryCaptor.getValue();
         query.getCustomSqlSegment();
         assertThat(query.getParamNameValuePairs()).containsValue("%credential%");
+    }
+
+    @Test
+    void updateFieldsShouldLeaveOmittedCredentialColumnsUntouchedTest() {
+        when(credentialMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertThat(repository.updateFields(1L, "renamed", null, null)).isTrue();
+
+        ArgumentCaptor<Wrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(credentialMapper).update(isNull(), queryCaptor.capture());
+        UpdateWrapper<RmqCloudCredential> update = (UpdateWrapper<RmqCloudCredential>) queryCaptor.getValue();
+        assertThat(update.getSqlSet()).contains("name", "gmt_modified")
+                .doesNotContain("secret_key", "remark");
+        assertThat(update.getParamNameValuePairs().values()).contains("renamed");
+    }
+
+    @Test
+    void updateFieldsShouldEncodeOnlyTheSuppliedSecretTest() {
+        when(credentialMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertThat(repository.updateFields(1L, null, "new-secret", null)).isTrue();
+
+        ArgumentCaptor<Wrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(credentialMapper).update(isNull(), queryCaptor.capture());
+        UpdateWrapper<RmqCloudCredential> update = (UpdateWrapper<RmqCloudCredential>) queryCaptor.getValue();
+        assertThat(update.getSqlSet()).contains("secret_key", "gmt_modified")
+                .doesNotContain("name", "remark");
+        assertThat(update.getParamNameValuePairs().values())
+                .contains(CredentialUtils.encodeBase64("new-secret"))
+                .doesNotContain("new-secret");
+    }
+
+    @Test
+    void updateFieldsShouldAllowClearingTheRemarkTest() {
+        when(credentialMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        assertThat(repository.updateFields(1L, null, null, "")).isTrue();
+
+        ArgumentCaptor<Wrapper<RmqCloudCredential>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(credentialMapper).update(isNull(), queryCaptor.capture());
+        UpdateWrapper<RmqCloudCredential> update = (UpdateWrapper<RmqCloudCredential>) queryCaptor.getValue();
+        assertThat(update.getSqlSet()).contains("remark").doesNotContain("secret_key");
+        assertThat(update.getParamNameValuePairs().values()).contains("");
     }
 
     private RmqCloudCredential entity(Long id, String name, String vendor) {
