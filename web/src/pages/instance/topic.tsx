@@ -176,7 +176,12 @@ const visibleTopics = (
 ) =>
   topics
     .filter((topic) => {
-      if (selectedInstanceId && topic.instanceId !== selectedInstanceId) return false;
+      // Apache metadata can return legacy rows without an instanceId when their cluster is
+      // associated with the selected instance. Keep those rows visible while still excluding
+      // an explicitly different instance.
+      if (selectedInstanceId && topic.instanceId && topic.instanceId !== selectedInstanceId) {
+        return false;
+      }
       if (searchText && !topic.name.toLowerCase().includes(searchText.toLowerCase())) return false;
       if (typeFilter && topic.type !== typeFilter) return false;
       return true;
