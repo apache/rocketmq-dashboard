@@ -1699,7 +1699,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -3517,6 +3520,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Enter new TTL value (ms)',
   },
   'liteTopic.extendTtlModalTitle': { zh: '延长 TTL', en: 'Extend TTL' },
+  'liteTopic.selectInstance': { zh: '选择实例', en: 'Select instance' },
   'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
