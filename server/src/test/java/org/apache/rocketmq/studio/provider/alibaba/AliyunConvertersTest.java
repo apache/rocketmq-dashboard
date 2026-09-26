@@ -113,6 +113,16 @@ class AliyunConvertersTest {
         assertThat(AliyunConverters.toSubscriptionEntry(subscription(null)).getConsistency()).isNull();
     }
 
+    @Test
+    void toTraceStatusShouldMapVendorVocabularyToStepsStatusTest() {
+        assertThat(AliyunConverters.toTraceStatus("SUCCESS")).isEqualTo("finish");
+        assertThat(AliyunConverters.toTraceStatus("SEND_OK")).isEqualTo("finish");
+        assertThat(AliyunConverters.toTraceStatus("CONSUME_FAILED")).isEqualTo("error");
+        assertThat(AliyunConverters.toTraceStatus("PRODUCING")).isEqualTo("process");
+        assertThat(AliyunConverters.toTraceStatus("UNKNOWN")).isEqualTo("wait");
+        assertThat(AliyunConverters.toTraceStatus(null)).isEqualTo("wait");
+    }
+
     private static ListConsumerGroupSubscriptionsResponseBody.Data subscription(Boolean consistency) {
         return ListConsumerGroupSubscriptionsResponseBody.Data.builder()
                 .topicName("orders")

@@ -262,7 +262,7 @@ final class AliyunConverters {
                 nodes.add(TraceNodeVO.builder()
                         .title("Producer")
                         .timestamp(parseTimeMillis(record.getProduceTime()))
-                        .status(record.getProduceStatus())
+                        .status(toTraceStatus(record.getProduceStatus()))
                         .costTime(record.getProduceDuration() == null ? 0L : record.getProduceDuration())
                         .description(joinParts(", ", record.getClientHost(), record.getMessageSource()))
                         .build());
@@ -276,6 +276,10 @@ final class AliyunConverters {
                 nodes.add(TraceNodeVO.builder()
                         .title("Broker " + operation.getOperateType())
                         .timestamp(parseTimeMillis(operation.getOperateTime()))
+                        // GetTrace reports no status for broker operations (only operateTime and
+                        // operateType), so normalise the absent value to the Steps default instead
+                        // of leaving TraceNodeVO.status null, which the frontend cannot render.
+                        .status(toTraceStatus(null))
                         .build());
             }
         }
@@ -288,7 +292,7 @@ final class AliyunConverters {
                     String status = consumerInfo.getConsumeStatus();
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
-                            .status(status)
+                            .status(toTraceStatus(status))
                             .build());
                     consumerStatuses.add(consumerStatus(
                             consumerInfo.getConsumerGroupId(), status, 0L));
@@ -303,7 +307,7 @@ final class AliyunConverters {
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
                             .timestamp(consumeTime)
-                            .status(record.getConsumeStatus())
+                            .status(toTraceStatus(record.getConsumeStatus()))
                             .description(joinParts(", ", record.getClientHost(), record.getUserName()))
                             .build());
                     consumerStatuses.add(consumerStatus(
@@ -339,6 +343,26 @@ final class AliyunConverters {
                 .consumeTime(consumeTime)
                 .retryCount(0)
                 .build();
+    }
+
+    static String toTraceStatus(String rawStatus) {
+        // The trace Steps component accepts only wait / process / finish / error. Cloud
+        // providers return vendor vocabulary (SUCCESS / SEND_OK / CONSUME_FAILED / PRODUCING),
+        // so translate instead of leaking it into the API response.
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return "wait";
+        }
+        String status = rawStatus.toUpperCase(Locale.ROOT);
+        if (status.contains("SUCCESS") || status.contains("OK")) {
+            return "finish";
+        }
+        if (status.contains("FAIL")) {
+            return "error";
+        }
+        if (status.contains("ING")) {
+            return "process";
+        }
+        return "wait";
     }
 
     static java.time.LocalDateTime parseDateTime(String value) {
