@@ -1058,12 +1058,12 @@ const MessagePageContent = ({
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <Space size={12}>
+          <Flex gap={12} wrap>
             <InstanceSelect
               value={selectedInstanceId || undefined}
               onChange={selectInstance}
               options={instanceOptions}
-              style={{ width: 220 }}
+              style={{ width: 220, maxWidth: '100%' }}
             />
             <Segmented
               options={QUERY_OPTIONS.map(({ value }) => ({
@@ -1072,16 +1072,17 @@ const MessagePageContent = ({
               }))}
               value={queryMode}
               onChange={(v) => handleQueryModeChange(v as QueryMode)}
+              style={{ maxWidth: '100%', overflowX: 'auto' }}
             />
-          </Space>
+          </Flex>
 
           {queryMode !== 'queue' && (
-            <Space wrap size={12}>
+            <Flex gap={12} wrap>
               {queryMode === 'topic' && (
                 <>
                   <Select
                     placeholder={t('messagePage.topicPlaceholder')}
-                    style={{ width: 360 }}
+                    style={{ width: 360, maxWidth: '100%' }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
                     allowClear
@@ -1095,7 +1096,7 @@ const MessagePageContent = ({
                   />
                   <RangePicker
                     showTime
-                    style={{ width: 400 }}
+                    style={{ width: 400, maxWidth: '100%' }}
                     value={dateRange}
                     onChange={(vals) => {
                       if (vals && vals[0] && vals[1]) {
@@ -1110,7 +1111,7 @@ const MessagePageContent = ({
                 <>
                   <Select
                     placeholder={t('messagePage.topicPlaceholder')}
-                    style={{ width: 360 }}
+                    style={{ width: 360, maxWidth: '100%' }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
                     allowClear
@@ -1124,7 +1125,7 @@ const MessagePageContent = ({
                   />
                   <Input
                     placeholder={t('messagePage.inputKeyPlaceholder')}
-                    style={{ width: 240 }}
+                    style={{ width: 240, maxWidth: '100%' }}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
                   />
@@ -1135,7 +1136,7 @@ const MessagePageContent = ({
                 <>
                   <Select
                     placeholder={t('messagePage.topicPlaceholder')}
-                    style={{ width: 360 }}
+                    style={{ width: 360, maxWidth: '100%' }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
                     allowClear
@@ -1149,7 +1150,7 @@ const MessagePageContent = ({
                   />
                   <Input
                     placeholder={t('messagePage.inputMsgIdPlaceholder')}
-                    style={{ width: 400 }}
+                    style={{ width: 400, maxWidth: '100%' }}
                     value={msgIdInput}
                     onChange={(e) => setMsgIdInput(e.target.value)}
                   />
@@ -1173,7 +1174,7 @@ const MessagePageContent = ({
               <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
                 {t('messagePage.serverHistory')}
               </Button>
-            </Space>
+            </Flex>
           )}
 
           {queryMode === 'queue' && (
