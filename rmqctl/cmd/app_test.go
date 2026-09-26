@@ -291,6 +291,27 @@ func TestCatalogAllowsL1WithoutYes(t *testing.T) {
 	<-observed
 }
 
+func TestCatalogNonInteractiveConfirmationRejectsBeforePreview(t *testing.T) {
+	observed := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		observed <- struct{}{}
+		writeStudioSuccess(t, w, map[string]any{"status": "PLANNED"})
+	}))
+	defer server.Close()
+
+	_, stderr, exitCode := executeTestApp(t, server.Client(), server.URL,
+		"topic", "update", "--topic-name", "orders", "--write-queues", "8",
+	)
+	if exitCode == 0 || !strings.Contains(stderr, "requires interactive confirmation") {
+		t.Fatalf("non-interactive mutation should be rejected: exit=%d stderr=%s", exitCode, stderr)
+	}
+	select {
+	case <-observed:
+		t.Fatal("non-interactive rejection must happen before the preview request")
+	default:
+	}
+}
+
 // TestCatalogInteractiveConfirmAcceptsYes verifies that when the user types
 // "yes" at the prompt, the L2 operation proceeds to the server.
 func TestCatalogInteractiveConfirmAcceptsYes(t *testing.T) {
@@ -328,11 +349,9 @@ func TestCatalogInteractiveConfirmAcceptsYes(t *testing.T) {
 	}
 }
 
-// TestCatalogInteractiveConfirmAutoFetchesToken verifies that after the user
-// answers the interactive confirmation prompt, the client transparently runs
-// the dry-run preview to obtain the confirm_token: the server rejects any
-// non-dry-run mutation without a token, so without this the "Type yes to
-// continue" flow would always end in CONFIRMATION_TOKEN_REQUIRED.
+// TestCatalogInteractiveConfirmAutoFetchesToken verifies that the client shows
+// the server preview before asking the user to approve it, then carries the
+// preview's confirm_token into the apply call.
 func TestCatalogInteractiveConfirmAutoFetchesToken(t *testing.T) {
 	const confirmToken = "interactive-confirmation"
 	instanceKey := catalogInstanceArgumentKey(t, "rmq.topic.update")
@@ -366,8 +385,10 @@ func TestCatalogInteractiveConfirmAutoFetchesToken(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("interactive confirm should proceed: exit=%d stderr=%s", exitCode, stderr)
 	}
-	if !strings.Contains(stderr, "Type \"yes\" to continue:") {
-		t.Fatalf("expected confirmation prompt in stderr: %s", stderr)
+	previewPosition := strings.Index(stderr, "Update topic orders")
+	promptPosition := strings.Index(stderr, "Type \"yes\" to continue:")
+	if previewPosition < 0 || promptPosition < 0 || previewPosition >= promptPosition {
+		t.Fatalf("expected the server preview before the confirmation prompt: %s", stderr)
 	}
 
 	preview := <-observed
@@ -383,5 +404,51 @@ func TestCatalogInteractiveConfirmAutoFetchesToken(t *testing.T) {
 	var apply map[string]any
 	if err := json.Unmarshal([]byte(stdout), &apply); err != nil || apply["status"] != "EXECUTED" {
 		t.Fatalf("unexpected apply output: %#v, err=%v", apply, err)
+	}
+}
+
+func TestCatalogInteractiveRejectionStopsAfterThePreview(t *testing.T) {
+	instanceKey := catalogInstanceArgumentKey(t, "rmq.topic.update")
+	observed := make(chan types.ToolCallRequest, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request types.ToolCallRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		observed <- request
+		writeStudioSuccess(t, w, map[string]any{
+			"status":        "PLANNED",
+			"instanceId":    request.Arguments[instanceKey],
+			"plan":          map[string]any{"summary": "Update topic orders"},
+			"confirm_token": "must-not-be-applied",
+		})
+	}))
+	defer server.Close()
+
+	_, stderr, exitCode := executeTestAppWithStdin(t, server.Client(), server.URL, "dev",
+		"no\n",
+		"topic", "update", "--topic-name", "orders", "--write-queues", "8",
+	)
+	if exitCode == 0 {
+		t.Fatalf("rejected confirmation must fail: stderr=%s", stderr)
+	}
+	previewPosition := strings.Index(stderr, "Update topic orders")
+	promptPosition := strings.Index(stderr, "Type \"yes\" to continue:")
+	if previewPosition < 0 || promptPosition < 0 || previewPosition >= promptPosition {
+		t.Fatalf("expected the server preview before the confirmation prompt: %s", stderr)
+	}
+	select {
+	case request := <-observed:
+		if request.Arguments["dry_run"] != true {
+			t.Fatalf("only the preview may be sent after rejection: %#v", request)
+		}
+	default:
+		t.Fatal("the server preview was not requested before confirmation")
+	}
+	select {
+	case request := <-observed:
+		t.Fatalf("mutation was applied after rejection: %#v", request)
+	default:
 	}
 }

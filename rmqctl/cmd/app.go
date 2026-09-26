@@ -46,9 +46,10 @@ type App struct {
 // confirmFunc is the interactive confirmation hook for dangerous operations.
 // It receives the tool command path, risk level and target server, writes the
 // prompt to out, reads one line from in, and returns nil only when the user
-// explicitly approves. A non-nil error aborts the command before any HTTP
-// request is sent. Production code leaves App.confirm nil so the default
-// TTY-aware implementation in catalog.go is used; tests inject a stub.
+// explicitly approves. For automatic two-phase mutations it is invoked after
+// the safe server preview has been displayed and before the apply request.
+// Production code leaves App.confirm nil so the default TTY-aware
+// implementation in catalog.go is used; tests inject a stub.
 type confirmFunc func(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error
 
 func NewApp(out io.Writer, err io.Writer) *App {

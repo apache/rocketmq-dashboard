@@ -112,7 +112,9 @@ func executeTestAppWithInstance(t *testing.T, client *http.Client, serverURL, in
 	app := NewApp(stdout, stderr)
 	app.HTTP = client
 	app.Store.Getenv = testEnv
-	app.confirm = stubConfirmReject
+	// Exercise the production non-TTY gate deterministically. A plain reader is
+	// rejected before an automatic mutation preview can make an HTTP request.
+	app.In = strings.NewReader("")
 	configPath := newTestConfigPath(t)
 	if err := app.Store.Save(configPath, newTestConfig(serverURL)); err != nil {
 		t.Fatal(err)
