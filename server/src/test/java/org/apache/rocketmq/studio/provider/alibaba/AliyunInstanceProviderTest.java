@@ -28,6 +28,10 @@ import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
@@ -164,6 +168,31 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void topicReadsShouldTolerateOmittedSuccessFlagTest() {
+        stubInstance();
+        stubCallThrough();
+        ListTopicsResponse fixture = topicsResponse(topicRow("orders", "NORMAL"));
+        ListTopicsResponse response = ListTopicsResponse.create().toBuilder()
+                .body(ListTopicsResponseBody.builder().data(fixture.getBody().getData()).build()).build();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(response));
+        assertThat(provider.listTopics(STUDIO_INSTANCE_ID, null, null)).singleElement()
+                .extracting(TopicVO::getName).isEqualTo("orders");
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(1);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void topicReadsShouldRejectMissingResponseBodyTest(boolean nullResponse) {
+        stubInstance();
+        stubCallThrough();
+        ListTopicsResponse response = nullResponse ? null : ListTopicsResponse.create().toBuilder().build();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(response));
+        assertThatThrownBy(() -> provider.countTopics(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
+
+    @Test
     void listTopicsShouldMapMessageTypeAndFilterTest() {
         stubInstance();
         stubCallThrough();
@@ -272,7 +301,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(null,
                                         ListConsumerGroupsResponseBody.List.builder()
@@ -305,7 +334,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(ListConsumerGroupsResponseBody.List.builder()
                                         .consumerGroupId("GID_plain")
@@ -402,7 +431,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .topicLagMap(Map.of("topic-a",
@@ -435,7 +464,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder()
@@ -461,7 +490,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetConsumerGroupLagResponse response = GetConsumerGroupLagResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetConsumerGroupLagResponseBody.builder()
+                .body(GetConsumerGroupLagResponseBody.builder().success(true)
                         .data(GetConsumerGroupLagResponseBody.Data.builder()
                                 .consumerGroupId("GID_test")
                                 .topicLagMap(Map.of("topic-a",
@@ -493,7 +522,7 @@ class AliyunInstanceProviderTest {
         String encodedBody = Base64.getEncoder().encodeToString("hello".getBytes(StandardCharsets.UTF_8));
         ListMessagesResponse response = ListMessagesResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListMessagesResponseBody.builder()
+                .body(ListMessagesResponseBody.builder().success(true)
                         .data(ListMessagesResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(
                                         null,
@@ -708,7 +737,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder()
+                .body(GetTraceResponseBody.builder().success(true)
                         .data(GetTraceResponseBody.Data.builder()
                                 .producerInfo(GetTraceResponseBody.ProducerInfo.builder()
                                         .records(List.of(GetTraceResponseBody.ProducerInfoRecords.builder()
@@ -769,7 +798,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder()
+                .body(GetTraceResponseBody.builder().success(true)
                         .data(GetTraceResponseBody.Data.builder()
                                 .consumerInfos(List.of(GetTraceResponseBody.ConsumerInfos.builder()
                                         .consumerGroupId("GID_test")
@@ -804,7 +833,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetTraceResponseBody.builder().data(null).build())
+                .body(GetTraceResponseBody.builder().success(true).data(null).build())
                 .build();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
 
@@ -815,7 +844,7 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
-    void getMessageTraceShouldReturnEmptyTraceWhenAliyunBodyIsNullTest() {
+    void getMessageTraceShouldRejectMissingAliyunBodyTest() {
         stubInstance();
         stubCallThrough();
         GetTraceResponse response = GetTraceResponse.create().toBuilder()
@@ -824,22 +853,18 @@ class AliyunInstanceProviderTest {
                 .build();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders");
-
-        assertThat(trace.getNodes()).isEmpty();
-        assertThat(trace.getConsumerStatus()).isEmpty();
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
     @Test
-    void getMessageTraceShouldReturnEmptyTraceWhenAliyunResponseIsNullTest() {
+    void getMessageTraceShouldRejectMissingAliyunResponseTest() {
         stubInstance();
         stubCallThrough();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders");
-
-        assertThat(trace.getNodes()).isEmpty();
-        assertThat(trace.getConsumerStatus()).isEmpty();
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
     }
 
     @Test
@@ -870,6 +895,123 @@ class AliyunInstanceProviderTest {
                 .isEqualTo(400);
     }
 
+    @Test
+    void countTopicsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.countTopics(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void listTopicsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void countGroupsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.countGroups(STUDIO_INSTANCE_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void listConsumerGroupsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getTopicConsumersShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopicSubscriptions(any())).thenReturn(CompletableFuture.completedFuture(
+                ListTopicSubscriptionsResponse.create().toBuilder().statusCode(200)
+                        .body(ListTopicSubscriptionsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getGroupProgressShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getConsumerGroupLag(any())).thenReturn(CompletableFuture.completedFuture(
+                GetConsumerGroupLagResponse.create().toBuilder().statusCode(200)
+                        .body(GetConsumerGroupLagResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroupSubscriptions(any())).thenReturn(CompletableFuture.completedFuture(
+                ListConsumerGroupSubscriptionsResponse.create().toBuilder().statusCode(200)
+                        .body(ListConsumerGroupSubscriptionsResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void queryMessagesShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listMessages(any())).thenReturn(CompletableFuture.completedFuture(
+                ListMessagesResponse.create().toBuilder().statusCode(200)
+                        .body(ListMessagesResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null, null, null, null, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getMessageTraceShouldRejectUnsuccessfulBusinessResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(
+                GetTraceResponse.create().toBuilder().statusCode(200)
+                        .body(GetTraceResponseBody.builder().success(false)
+                                .code("OperationDenied").message("denied").build()).build()));
+
+        assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
     private void stubInstance() {
         InstanceVO instance = InstanceVO.builder()
                 .name("aliyun-prod")
@@ -896,7 +1038,7 @@ class AliyunInstanceProviderTest {
             ListTopicsResponseBody.List... rows) {
         return ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(java.util.Arrays.asList(rows))
                                 .pageNumber(pageNumber)
@@ -925,7 +1067,7 @@ class AliyunInstanceProviderTest {
                 .toList();
         return ListMessagesResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListMessagesResponseBody.builder()
+                .body(ListMessagesResponseBody.builder().success(true)
                         .data(ListMessagesResponseBody.Data.builder()
                                 .list(rows)
                                 .pageNumber((long) pageNumber)
@@ -942,7 +1084,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse response = ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
@@ -967,7 +1109,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(List.of(ListConsumerGroupsResponseBody.List.builder()
                                         .consumerGroupId("GID_one")
@@ -995,7 +1137,7 @@ class AliyunInstanceProviderTest {
         stubCallThrough();
         ListTopicsResponse missingTotal = ListTopicsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListTopicsResponseBody.builder()
+                .body(ListTopicsResponseBody.builder().success(true)
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
@@ -1037,7 +1179,7 @@ class AliyunInstanceProviderTest {
     private static ListConsumerGroupsResponse groupsResponse(Long totalCount, String... groupIds) {
         return ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListConsumerGroupsResponseBody.builder()
+                .body(ListConsumerGroupsResponseBody.builder().success(true)
                         .data(ListConsumerGroupsResponseBody.Data.builder()
                                 .list(java.util.Arrays.stream(groupIds)
                                         .map(groupId -> ListConsumerGroupsResponseBody.List.builder()
