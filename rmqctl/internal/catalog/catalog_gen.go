@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "bf33ada8149a42a0f44d3056b999841ae1cc1612735bfe0dc7fa20f5b707a17c",
+	Digest:               "378a711779f7ea73703c07cfc8fa757300c8fe0c77d967970564ef409834a85d",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -365,6 +365,50 @@ var defaultDocument = Document{
 					{Name: "start", Flag: "start", Description: "Unix timestamp in seconds (PromQL query_range start).", Kind: IntegerField, Required: true},
 					{Name: "end", Flag: "end", Description: "Unix timestamp in seconds (PromQL query_range end).", Kind: IntegerField, Required: true},
 					{Name: "step", Flag: "step", Description: "PromQL step duration, e.g. \"15s\", \"1m\".", Kind: StringField},
+				},
+			},
+			ViewHint: "object",
+		},
+		{
+			Name:                 "rmq.litetopic.list",
+			CLI:                  CLI{Resource: "litetopic", Verb: "list"},
+			Description:          "List LiteTopic pattern aggregates served by the configured default cluster's broker lite admin API (studio.rocketmq.namesrv-addr): per pattern the topic count, consumer count, total backlog, average TTL, TTL status, last active time and session ids. Optional pattern prefix and namespace filters. Absent statistics mean the broker could not report them, not zero. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "pattern", Flag: "pattern", Description: "LiteTopic pattern/prefix filter, e.g. \"chat/sess-\".", Kind: StringField, MinLength: 1},
+					{Name: "namespace", Flag: "namespace", Description: "Namespace filter.", Kind: StringField, MinLength: 1},
+				},
+			},
+			ViewHint:     "table",
+			TableDataKey: "items",
+		},
+		{
+			Name:                 "rmq.litetopic.session",
+			CLI:                  CLI{Resource: "litetopic", Verb: "session"},
+			Description:          "Describe one LiteTopic session on the configured default cluster: owning client, parent topic, consumer group, create/last-active time, TTL and remaining TTL, message and Pop progress counters, and the session's individual lite topics. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "sessionId", Flag: "session-id", Description: "Session id as listed by rmq.litetopic.list.", Kind: StringField, Required: true, MinLength: 1},
+				},
+			},
+			ViewHint: "object",
+		},
+		{
+			Name:                 "rmq.litetopic.quota",
+			CLI:                  CLI{Resource: "litetopic", Verb: "quota"},
+			Description:          "Read the LiteTopic quota watermark of the configured default cluster: current/max topic, session and creation-rate counts, usage rates, default/max TTL, remaining quota and consumer density, optionally filtered by namespace. Every field is optional — brokers may report only part of the watermark. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "namespace", Flag: "namespace", Description: "Namespace filter.", Kind: StringField, MinLength: 1},
 				},
 			},
 			ViewHint: "object",

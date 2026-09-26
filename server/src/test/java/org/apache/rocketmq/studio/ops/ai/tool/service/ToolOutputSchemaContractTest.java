@@ -35,6 +35,9 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicListItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicQuotaOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicSessionOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
@@ -150,6 +153,18 @@ class ToolOutputSchemaContractTest {
                         1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert"),
                 new AlertRuleListItem(2L, "draft-rule", null, null,
                         0.0, null, null, List.of(), false, null)))));
+
+        samples.put("rmq.litetopic.list", List.of(new ListOutput<>(List.of(
+                new LiteTopicListItem("chat/sess-", "ns-a", 12, 3, 120L, 3600L, "ACTIVE",
+                        1789092600000L, List.of("sess-1")),
+                new LiteTopicListItem("orders/", null, null, null, null, null, null, null, null)))));
+        samples.put("rmq.litetopic.session", List.of(new LiteTopicSessionOutput(
+                "sess-1", "client-1", "10.0.0.1:5678", "chat", "cg-chat",
+                1789092000000L, 1789092600000L, 3600L, 1800L, "ACTIVE",
+                10L, 4L, 6L, 40, 1,
+                List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L)))));
+        samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
+                120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
