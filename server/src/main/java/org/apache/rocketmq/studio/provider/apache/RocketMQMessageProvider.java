@@ -22,6 +22,7 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -641,7 +642,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, nodes, consumerStatus, true);
+                    parseTraceBody(traceMessage.getBody(), msgId, null, nodes, consumerStatus, true);
                 }
             }
         } catch (BusinessException e) {
@@ -666,10 +667,12 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Trace lookup by business key. The key query already scopes the returned trace messages to
-     * the requested message, so the body parser does not filter on a message id. The original
-     * message topic is not required to query the global trace topic but is kept in the signature
-     * for API symmetry and logged for diagnostics.
+     * Trace lookup by business key. RocketMQ appends every trace context for one source topic
+     * into the same trace message and indexes each business key on that message, so the query
+     * result can contain contexts for other keys. Contexts are kept only when their keys column
+     * contains {@code key} as a whole token. The original message topic is not required to query
+     * the global trace topic but is kept in the signature for API symmetry and logged for
+     * diagnostics.
      */
     private TraceRecordVO getMessageTraceByKey(String instanceId, DefaultMQAdminExt adminExt, String key,
                                                String topic, String traceTopic) {
@@ -688,7 +691,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     adminExt.queryMessage(effectiveTraceTopic(traceTopic), key, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), null, nodes, consumerStatus, false);
+                    parseTraceBody(traceMessage.getBody(), null, key, nodes, consumerStatus, false);
                 }
             }
         } catch (BusinessException e) {
@@ -747,10 +750,11 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Parse a trace message body. Trace contexts are separated by STX ({@code \u0002}) and the
      * fields in each context are separated by SOH ({@code \u0001}); the first field is the trace
      * type. When {@code filterByMsgId} is true only contexts whose message id matches
-     * {@code targetMsgId} are kept; otherwise every context is parsed (used by key lookups where
-     * the query already scoped the trace messages to the requested key).
+     * {@code targetMsgId} are kept. When {@code targetKey} is non-null, only contexts whose keys
+     * column contains that key as a whole token are kept. Message-id lookups pass a null key and
+     * are not filtered by key.
      */
-    private void parseTraceBody(byte[] body, String targetMsgId, List<TraceNodeVO> nodes,
+    private void parseTraceBody(byte[] body, String targetMsgId, String targetKey, List<TraceNodeVO> nodes,
                                 List<ConsumerStatusVO> consumerStatus, boolean filterByMsgId) {
         if (body == null || body.length == 0) {
             return;
@@ -769,6 +773,9 @@ public class RocketMQMessageProvider implements MessageProvider {
             // index 5, while SubAfter places it at index 2 in RocketMQ 5.5.0.
             int msgIdIndex = "SubAfter".equals(traceType) ? 2 : 5;
             if (filterByMsgId && !targetMsgId.equals(field(fields, msgIdIndex))) {
+                continue;
+            }
+            if (targetKey != null && !traceKeysContain(traceType, fields, targetKey)) {
                 continue;
             }
             try {
@@ -794,6 +801,44 @@ public class RocketMQMessageProvider implements MessageProvider {
                 log.debug("Skipping unparseable trace context: {}", e.getMessage());
             }
         }
+    }
+
+    /**
+     * Keys column of a RocketMQ 5.5.0 trace context. Recall has no keys column, so a key lookup
+     * cannot attribute it and the context is omitted. Pub, EndTransaction, and SubBefore store
+     * keys at index 7; SubAfter stores them at index 5.
+     */
+    private static int traceKeysIndex(String traceType) {
+        return switch (traceType) {
+            case "Pub", "EndTransaction", "SubBefore" -> 7;
+            case "SubAfter" -> 5;
+            default -> -1;
+        };
+    }
+
+    /**
+     * Same token split {@code TraceDataEncoder} uses when it indexes a trace message:
+     * {@code keys.split(MessageConst.KEY_SEPARATOR)} (a single space). {@code order-A} matches
+     * {@code extra order-A} and does not match {@code order-A-suffix}.
+     */
+    private static boolean traceKeysContain(String traceType, String[] fields, String queryKey) {
+        if (!StringUtils.hasText(queryKey)) {
+            return false;
+        }
+        int keysIndex = traceKeysIndex(traceType);
+        if (keysIndex < 0) {
+            return false;
+        }
+        String keys = field(fields, keysIndex);
+        if (!StringUtils.hasText(keys)) {
+            return false;
+        }
+        for (String token : keys.split(MessageConst.KEY_SEPARATOR)) {
+            if (queryKey.equals(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Pub layout (RocketMQ 5.5.0 TraceDataEncoder):
