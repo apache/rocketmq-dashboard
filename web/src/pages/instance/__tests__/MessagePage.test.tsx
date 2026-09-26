@@ -366,6 +366,31 @@ describe('Message page query history', () => {
     expect(retryItems[0]).toHaveTextContent('2');
   });
 
+  it('shows message properties and warns when the server shortened them', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-PROPERTIES'),
+        properties: { traceId: 'trace-123', route: 'priority' },
+        propertiesTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PROPERTIES');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const properties = screen.getByRole('region', { name: '消息属性' });
+    expect(within(properties).getByText('traceId')).toBeInTheDocument();
+    expect(within(properties).getByText('trace-123')).toBeInTheDocument();
+    expect(within(properties).getByText('priority')).toBeInTheDocument();
+    expect(within(properties).getByText('属性过多或单值过长，服务端已截断展示')).toBeInTheDocument();
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,

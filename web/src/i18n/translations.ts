@@ -3081,6 +3081,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.detail': { zh: '消息详情', en: 'Message Detail' },
   'message.body': { zh: '消息主体', en: 'Message Body' },
   'message.properties': { zh: '消息属性', en: 'Message Properties' },
+  'message.propertiesTruncated': {
+    zh: '属性过多或单值过长，服务端已截断展示',
+    en: 'Some properties were shortened by the server',
+  },
   'message.info': { zh: '消息信息', en: 'Message Info' },
   'message.tracking': { zh: '消息追踪', en: 'Message Tracking' },
   'message.showAll': { zh: '显示全部内容', en: 'Show All Content' },
