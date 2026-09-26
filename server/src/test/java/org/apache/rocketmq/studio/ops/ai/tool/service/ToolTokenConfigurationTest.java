@@ -47,7 +47,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -90,7 +90,7 @@ class ToolTokenConfigurationTest {
             ToolTokenService tokens = context.getBean(ToolTokenService.class);
             assertThatThrownBy(() -> tokens.issue(request)).isInstanceOfSatisfying(ToolExecutionException.class,
                     failure -> assertThat(failure.getErrorCode()).isEqualTo("UNAVAILABLE"));
-            assertThatThrownBy(() -> tokens.verify(request)).isInstanceOfSatisfying(ToolExecutionException.class,
+            assertThatThrownBy(() -> tokens.verifyAndConsume(request)).isInstanceOfSatisfying(ToolExecutionException.class,
                     failure -> assertThat(failure.getErrorCode()).isEqualTo("UNAVAILABLE"));
             ToolExecutionContext read = executionContext(catalog, "rmq.topic.list", Map.of("instanceId", "dev"));
             assertThat(context.getBean(ToolFilterChain.class).execute(
@@ -113,10 +113,16 @@ class ToolTokenConfigurationTest {
                     assertThat(output.get("confirm_token")).isInstanceOf(String.class);
                     ToolExecutionContext apply = executionContext(catalog, "rmq.topic.update", Map.of(
                             "instanceId", "dev", "topic", "orders", "confirm_token", output.get("confirm_token")));
-                    AtomicBoolean executed = new AtomicBoolean();
+                    AtomicInteger executed = new AtomicInteger();
                     MutationOutput<?> result = (MutationOutput<?>) chain.execute(new ToolInvocation(apply, executeHandler(executed)));
-                    assertThat(executed).isTrue();
+                    assertThat(executed).hasValue(1);
                     assertThat(result.status()).isEqualTo(MutationOutput.Status.EXECUTED);
+
+                    // Replaying the consumed token is rejected before the handler runs again.
+                    assertThatThrownBy(() -> chain.execute(new ToolInvocation(apply, executeHandler(executed))))
+                            .isInstanceOfSatisfying(ToolExecutionException.class,
+                                    failure -> assertThat(failure.getErrorCode()).isEqualTo("CONFLICT"));
+                    assertThat(executed).hasValue(1);
                 });
     }
 
@@ -146,7 +152,7 @@ class ToolTokenConfigurationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static MutationToolHandler<Map<String, Object>, Object> executeHandler(AtomicBoolean executed) {
+    private static MutationToolHandler<Map<String, Object>, Object> executeHandler(AtomicInteger executed) {
         return new MutationToolHandler<>((Class<Map<String, Object>>) (Class<?>) Map.class) {
             @Override
             public String name() {
@@ -160,7 +166,7 @@ class ToolTokenConfigurationTest {
 
             @Override
             public Object execute(Map<String, Object> input, ToolExecutionContext context) {
-                executed.set(true);
+                executed.incrementAndGet();
                 return Map.of("topic", "orders");
             }
         };
