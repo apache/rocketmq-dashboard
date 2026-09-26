@@ -49,10 +49,10 @@ import org.apache.rocketmq.studio.instance.dlq.DLQResendFailureVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayOutputStream;
@@ -75,7 +75,6 @@ import java.util.Set;
  * {@code %DLQ%} topics and resends dead-letter messages back to a target topic.
  */
 @Slf4j
-@RequiredArgsConstructor
 @Service
 @Primary
 public class RocketMQDLQProvider implements DLQProvider {
@@ -91,6 +90,20 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
+    private final BrokerHostResolver brokerHostResolver;
+
+    @Autowired
+    public RocketMQDLQProvider(RuntimeAdminClientResolver runtimeAdminClientResolver, AuditService auditService) {
+        this(runtimeAdminClientResolver, auditService, BrokerHostResolver.DEFAULT);
+    }
+
+    /** Visible for tests: injecting the resolver keeps the guard off DNS and makes lookups countable. */
+    RocketMQDLQProvider(RuntimeAdminClientResolver runtimeAdminClientResolver, AuditService auditService,
+                        BrokerHostResolver brokerHostResolver) {
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
+        this.auditService = auditService;
+        this.brokerHostResolver = brokerHostResolver;
+    }
 
     @Override
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
@@ -265,11 +278,15 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
+        // One resolver for the whole resend: the guard runs once per selected msgId, and a memoizing
+        // resolver keeps that at one lookup per registered host instead of one per msgId.
+        BrokerHostResolver hostResolver = BrokerHostResolver.caching(brokerHostResolver);
+
         List<MessageExt> deadLetters = runtimeAdminClientResolver.execute(instanceId, admin -> {
             List<MessageExt> resolved = new ArrayList<>(selected.size());
             for (String msgId : selected) {
                 try {
-                    if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId)) {
+                    if (!BrokerTopologyGuards.isWithinKnownBrokerTopology(admin, msgId, hostResolver)) {
                         continue;
                     }
                     MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
