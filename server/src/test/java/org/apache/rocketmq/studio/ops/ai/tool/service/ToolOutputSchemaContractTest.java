@@ -137,9 +137,13 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.user.create", List.of(planned(), executed(user)));
         samples.put("rmq.user.delete", List.of(planned(), executedVoid()));
 
+        // metric is optional at the service layer (AlertService only validates name),
+        // so a metric-less rule must still validate against the output schema
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(
                 new AlertRuleListItem(1L, "consumer-lag", "consumer.lag.total", ">",
-                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert")))));
+                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert"),
+                new AlertRuleListItem(2L, "draft-rule", null, null,
+                        0.0, null, null, List.of(), false, null)))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
