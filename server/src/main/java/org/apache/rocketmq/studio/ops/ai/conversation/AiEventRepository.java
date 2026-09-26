@@ -35,10 +35,10 @@ public interface AiEventRepository {
     /**
      * Events with seq strictly greater than afterSeq, capped at limit, ascending by seq.
      *
-     * <p>Deliberately does NOT use SQL ORDER BY. The payload column is MEDIUMTEXT, and any
-     * sort MySQL cannot satisfy from an index materialises the whole value into
-     * sort_buffer_size. The query filters on uk_ai_event_conversation_seq and the caller
-     * sorts the (small, bounded) result in memory. Do not "optimise" this into an ORDER BY.
+     * <p>The current InnoDB plan range-scans {@code uk_ai_event_conversation_seq} in sequence order,
+     * but SQL does not guarantee that order without an explicit clause. Applying the ordering before
+     * the limit makes the pagination contract deterministic. The same composite index satisfies both
+     * the range predicate and ascending order without sorting the MEDIUMTEXT payload.
      */
     List<RmqAiEvent> findByConversationIdAfterSeq(Long conversationId, int afterSeq, int limit);
 
