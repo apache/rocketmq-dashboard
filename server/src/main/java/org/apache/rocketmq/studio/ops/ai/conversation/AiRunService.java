@@ -262,29 +262,31 @@ public class AiRunService {
      * reconnect path: the client that lost its connection, a second tab, or a page reload that found an
      * {@code activeRun}.
      *
-     * <p>The observer is registered before the replay is flushed and every live frame carries the seq of
-     * the row it belongs to, so the two hazards of replay-then-tail are both covered: nothing is lost in
-     * the gap, and nothing already replayed is delivered twice.
+     * <p>The observer is registered before the first read and every live frame carries the seq of the row
+     * it belongs to, so the two hazards of replay-then-tail are both covered: nothing is lost in the gap,
+     * and nothing already replayed is delivered twice. Registration has to come first because the registry
+     * keeps no backlog — a frame published between the replay read and the registration reaches no
+     * observer at all, and it is then too old for the tail to ever send it.
      */
     public SseEmitter attach(Long runId, int afterSeq) {
         String owner = AiConversationService.currentOwner();
         RmqAiRun run = requireOwnedRun(runId, owner);
         AgentStreamSession session = runExecutor.newSession(run.getId(),
                 runExecutor.streamTimeoutMillis(run.getEngine()));
-        AgentEventProjector projector = new AgentEventProjector(run.getId());
-        List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
-                Math.max(0, afterSeq), AiConversationService.DEFAULT_TIMELINE_LIMIT);
-        boolean terminalReplayed = false;
-        for (RmqAiEvent row : rows) {
-            session.noteWatermark(row.getSeq());
-            Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
-            if (event.isEmpty()) {
-                continue;
-            }
-            terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
-        }
         boolean live = registry.attach(run.getId(), session);
+        AgentEventProjector projector = new AgentEventProjector(run.getId());
+        int replayedRows;
+        boolean terminalReplayed;
+        try {
+            AiEventReplay replay = replayInto(run, afterSeq, session, projector);
+            replayedRows = replay.rows();
+            terminalReplayed = replay.terminal();
+        } catch (RuntimeException exception) {
+            // A half-replayed observer would sit in the registry forever: its emitter only detaches on a
+            // transport callback, and the client that gave up on this response has already closed it.
+            registry.detach(run.getId(), session);
+            throw exception;
+        }
         session.finishReplay();
         if (!live) {
             // Nothing is generating here any more, so no further frame will ever arrive. A run reaped by
@@ -298,8 +300,53 @@ public class AiRunService {
             session.complete();
         }
         log.debug("attached an observer to agent run {} after seq {} ({} replayed row(s), live={})",
-                run.getId(), afterSeq, rows.size(), live);
+                run.getId(), afterSeq, replayedRows, live);
         return session.emitter();
+    }
+
+    /**
+     * Replays every persisted event after {@code afterSeq} into {@code session}, page by page.
+     *
+     * <p>A single page is not enough: a long tool-heavy run writes two rows per tool call plus one per
+     * coalesced text or thinking block, so a client that was away for a few minutes has more than
+     * {@link AiConversationService#DEFAULT_TIMELINE_LIMIT} rows waiting for it. Stopping after the first
+     * page would raise the watermark to the last row of that page, and the rows after it would then be
+     * neither replayed (they are behind the client's cursor) nor sent live (they were published before
+     * this observer existed), so the reconnected transcript would carry a permanent hole. The loop ends on
+     * the first short page, which is the only page that can prove the backlog is drained.
+     *
+     * @return how many rows were read, and whether a terminal run-status row was among them
+     */
+    private AiEventReplay replayInto(RmqAiRun run, int afterSeq, AgentStreamSession session,
+                                     AgentEventProjector projector) {
+        int cursor = Math.max(0, afterSeq);
+        int replayed = 0;
+        boolean terminalReplayed = false;
+        while (true) {
+            List<RmqAiEvent> rows = eventRepository.findByConversationIdAfterSeq(run.getConversationId(),
+                    cursor, AiConversationService.DEFAULT_TIMELINE_LIMIT);
+            if (rows.isEmpty()) {
+                return new AiEventReplay(replayed, terminalReplayed);
+            }
+            replayed += rows.size();
+            for (RmqAiEvent row : rows) {
+                cursor = Math.max(cursor, row.getSeq());
+                session.noteWatermark(row.getSeq());
+                Optional<TimelineEvent> event = AiEventCodec.read(objectMapper, row);
+                if (event.isEmpty()) {
+                    continue;
+                }
+                terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
+                projector.replay(event.get()).ifPresent(session::sendReplayed);
+            }
+            if (rows.size() < AiConversationService.DEFAULT_TIMELINE_LIMIT) {
+                return new AiEventReplay(replayed, terminalReplayed);
+            }
+        }
+    }
+
+    /** What {@link #replayInto} saw: the rows it replayed and whether one of them ended the run. */
+    private record AiEventReplay(int rows, boolean terminal) {
     }
 
     /**
