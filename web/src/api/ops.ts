@@ -141,6 +141,9 @@ export interface NotificationDeliveryQuery {
   channel?: string;
   status?: NotificationDelivery['status'];
   instanceId?: string;
+  search?: string;
+  from?: string;
+  to?: string;
   page?: number;
   pageSize?: number;
 }

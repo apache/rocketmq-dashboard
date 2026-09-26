@@ -275,6 +275,8 @@ Retries use bounded exponential backoff. Channel configuration is encrypted at r
 
 Terminal delivery rows are retained for `studio.alerting.notification-retention` (`P30D` by default). The scheduled cleanup only removes `DELIVERED` and `FAILED` rows older than the retention cutoff, and it runs with bounded batches using `studio.alerting.notification-cleanup-batch-size` and `studio.alerting.notification-cleanup-max-batches`.
 
+The Notification Deliveries page can narrow the feed by channel, status, instance, alert title or delivery error, and delivery creation time. Its time picker uses the operator's local time and sends UTC bounds to `GET /api/system-alerts/deliveries/page`; `from` and `to` are inclusive. Text search is case-insensitive and treats `%` and `_` as literal characters. The same filters determine both the rows and the pagination total.
+
 Silences match `domain`, rule ID, instance ID, and optional resource labels. They suppress delivery but do not hide active state from the Alert Events page.
 
 ## APIs
