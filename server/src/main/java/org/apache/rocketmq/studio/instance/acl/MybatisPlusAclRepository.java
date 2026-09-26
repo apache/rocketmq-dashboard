@@ -119,7 +119,7 @@ public class MybatisPlusAclRepository implements AclRepository {
 
     @Override
     public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
-        String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
+        String search = StringUtils.hasText(keyword) ? escapeLike(keyword.trim().toLowerCase(Locale.ROOT)) : null;
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
                         .like("username", search)
@@ -391,11 +391,23 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .build();
     }
 
+    /**
+     * Escapes the LIKE wildcards of a user-supplied search term so it matches literally instead of
+     * being read as a {@code %}/{@code _} pattern. MySQL treats a backslash as the default escape
+     * character, so escaping it first keeps a literal backslash from neutralising the other two.
+     */
+    private static String escapeLike(String search) {
+        if (!StringUtils.hasText(search)) {
+            return search;
+        }
+        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
     private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
             String decision, String aclVersion) {
         return new QueryWrapper<RmqAclRule>()
-                .like(StringUtils.hasText(principal), "principal", principal)
-                .like(StringUtils.hasText(resource), "resource", resource)
+                .like(StringUtils.hasText(principal), "principal", escapeLike(principal))
+                .like(StringUtils.hasText(resource), "resource", escapeLike(resource))
                 .eq(StringUtils.hasText(scope), "scope", scope)
                 .eq(StringUtils.hasText(decision), "decision", decision)
                 .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)
