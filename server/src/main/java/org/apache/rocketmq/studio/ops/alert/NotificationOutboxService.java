@@ -17,6 +17,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxMapper;
@@ -539,7 +540,9 @@ public class NotificationOutboxService {
 
     private static String abbreviate(String value) {
         if (value == null) return "Delivery failed";
-        return value.length() > 1000 ? value.substring(0, 1000) : value;
+        // The text comes from outside the codebase - a webhook receiver's response body, an SMTP
+        // reply - and those quote the notification content back, so an emoji can sit at the cut.
+        return TextBounds.truncate(value, 1000);
     }
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,
