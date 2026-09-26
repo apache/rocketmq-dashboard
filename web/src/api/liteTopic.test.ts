@@ -115,12 +115,13 @@ describe('LiteTopic API', () => {
   it('extends lite topic TTL', async () => {
     mock.onPost('/liteTopic/extendTTL').reply((config) => {
       const body = JSON.parse(config.data);
+      expect(body.instanceId).toBe('instance-a');
       expect(body.topicPattern).toBe('order-*');
       expect(body.newTTL).toBe(7200);
       return [200, { code: 200 }];
     });
 
-    await extendLiteTopicTTL('order-*', 7200);
+    await extendLiteTopicTTL('instance-a', 'order-*', 7200);
   });
 
   it('queries lite topic quota without namespace', async () => {
