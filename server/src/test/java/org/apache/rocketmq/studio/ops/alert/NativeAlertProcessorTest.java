@@ -20,6 +20,12 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
+import org.apache.rocketmq.studio.cluster.metrics.collectors.ApacheRocketMqBusinessMetricsCollector;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -31,6 +37,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -664,6 +671,137 @@ class NativeAlertProcessorTest {
 
         verify(states, never()).save(eq(oldKey), any(AlertRuleState.class));
         verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+    }
+
+    @Test
+    void doesNotResolveTopicAlertWhenItsConsumerGroupProgressIsUnavailableTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        rule.setMetric("topic.backlog.total");
+        rule.setTopic("orders-topic");
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        Map<String, String> labels = Map.of("consumerGroup", "orders", "topic", "orders-topic");
+        AlertStateKey key = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", labels));
+        Instant collectedAt = Instant.now();
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                collectedAt.minusSeconds(60), collectedAt.minusSeconds(60),
+                collectedAt.minusSeconds(60), null);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule))))
+                .thenReturn(List.of(new ActiveAlertState(key, firing, "local", labels)));
+        AlertRepository alerts = mock(AlertRepository.class);
+
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setClusterId("cluster-a");
+        group.setTotalLag(20);
+        group.setConsumeStatsAvailable(true);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("local", "orders"))
+                .thenThrow(new IllegalStateException("broker progress unavailable"));
+        ApacheRocketMqBusinessMetricsCollector collector = new ApacheRocketMqBusinessMetricsCollector(registry);
+        List<MetricSample> samples = collector.collect(InstanceVO.builder().name("local")
+                .vendor(InstanceVendor.APACHE).build());
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("topic.backlog.total"))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.labels()).isEqualTo(Map.of("consumerGroup", "orders"));
+                });
+        processor(service, states, alerts).processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local", collector.metricKeys()), samples);
+
+        verify(states, never()).save(eq(key), any(AlertRuleState.class));
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+    }
+
+    @Test
+    void resolvesPreservedTopicAlertAfterTheNextSuccessfulGroupCollectionTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        rule.setMetric("topic.backlog.total");
+        rule.setTopic("orders-topic");
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+
+        Map<String, String> labels = Map.of("consumerGroup", "orders", "topic", "orders-topic");
+        AlertStateKey key = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", labels));
+        Instant firstCollection = Instant.parse("2026-09-01T14:00:00Z");
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                firstCollection.minusSeconds(60), firstCollection.minusSeconds(60),
+                firstCollection.minusSeconds(60), null);
+        AtomicReference<AlertRuleState> currentState = new AtomicReference<>(firing);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule))))
+                .thenAnswer(invocation -> currentState.get().status() == AlertStateStatus.FIRING
+                        ? List.of(new ActiveAlertState(key, currentState.get(), "local", labels)) : List.of());
+        when(states.save(eq(key), any(AlertRuleState.class))).thenAnswer(invocation -> {
+            currentState.set(invocation.getArgument(1));
+            return true;
+        });
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        NotificationOutboxService outbox = mock(NotificationOutboxService.class);
+        NativeAlertProcessor processor = processor(service, states, mock(MetricSnapshotRepository.class), alerts,
+                outbox, suppression());
+        MetricCollectionScope scope = new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                java.util.Set.of("topic.backlog.total"));
+
+        processor.processSuccessfulCollection(scope, List.of(new MetricSample("topic.backlog.total",
+                AlertDomain.BUSINESS, "local", "cluster-a", Map.of("consumerGroup", "orders"), null,
+                MetricAvailability.UNAVAILABLE, firstCollection, "CONSUMER_PROGRESS_UNAVAILABLE")));
+        assertThat(currentState.get().status()).isEqualTo(AlertStateStatus.FIRING);
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+
+        processor.processSuccessfulCollection(scope, List.of(new MetricSample("topic.backlog.total",
+                AlertDomain.BUSINESS, "local", "cluster-a",
+                Map.of("consumerGroup", "orders", "topic", "another-topic"), 0D,
+                MetricAvailability.AVAILABLE, firstCollection.plusSeconds(30))));
+
+        assertThat(currentState.get().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        verify(alerts).saveAlert(org.mockito.ArgumentMatchers.argThat(event ->
+                event.getTransition().equals(AlertStateTransition.RESOLVED.name())
+                        && event.getLabels().equals(labels)));
+        verify(outbox).enqueue(any(SystemAlertVO.class), eq(rule), eq(labels));
+    }
+
+    @Test
+    void stillResolvesMissingTopicsInOtherGroupsAfterOneGroupProgressFailsTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        rule.setMetric("topic.backlog.total");
+        rule.setConsumerGroup(null);
+        rule.setTopic("orders-topic");
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        Map<String, String> failedLabels = Map.of("consumerGroup", "orders", "topic", "orders-topic");
+        Map<String, String> missingLabels = Map.of("consumerGroup", "billing", "topic", "orders-topic");
+        AlertStateKey failedKey = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", failedLabels));
+        AlertStateKey missingKey = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", missingLabels));
+        Instant collectedAt = Instant.now();
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, 20D,
+                collectedAt.minusSeconds(60), collectedAt.minusSeconds(60),
+                collectedAt.minusSeconds(60), null);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), eq(List.of(rule))))
+                .thenReturn(List.of(new ActiveAlertState(failedKey, firing, "local", failedLabels),
+                        new ActiveAlertState(missingKey, firing, "local", missingLabels)));
+        when(states.save(eq(missingKey), any(AlertRuleState.class))).thenReturn(true);
+        AlertRepository alerts = mock(AlertRepository.class);
+        when(alerts.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MetricSample unavailable = new MetricSample("topic.backlog.total", AlertDomain.BUSINESS,
+                "local", "cluster-a", Map.of("consumerGroup", "orders"), null,
+                MetricAvailability.UNAVAILABLE, collectedAt, "CONSUMER_PROGRESS_UNAVAILABLE");
+        processor(service, states, alerts).processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local", java.util.Set.of("topic.backlog.total")),
+                List.of(unavailable));
+
+        verify(states, never()).save(eq(failedKey), any(AlertRuleState.class));
+        verify(states).save(eq(missingKey), any(AlertRuleState.class));
+        verify(alerts).saveAlert(org.mockito.ArgumentMatchers.argThat(event ->
+                event.getTransition().equals(AlertStateTransition.RESOLVED.name())
+                        && event.getLabels().equals(missingLabels)));
     }
 
     @Test
