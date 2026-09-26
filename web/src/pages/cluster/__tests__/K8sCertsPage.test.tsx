@@ -129,6 +129,16 @@ describe('K8sCertsPage', () => {
     );
   });
 
+  it('shows future-dated certificates as not yet valid', async () => {
+    vi.mocked(listK8sCerts).mockResolvedValue([{
+      ...certs[0],
+      status: 'not_yet_valid',
+    }]);
+    renderPage();
+
+    expect(await screen.findByText('尚未生效')).toBeInTheDocument();
+  });
+
   it.each([
     ['staging-cluster', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
     ['prod-tls', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
