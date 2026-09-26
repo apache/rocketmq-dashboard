@@ -161,6 +161,28 @@ describe('DataSourceTab', () => {
     expect(await screen.findByPlaceholderText('Search data source names')).toBeInTheDocument();
   });
 
+  it('joins the applied instance list with the viewer language separator', async () => {
+    // The applied-instance column and the exported CSV both join the bound instance ids. The
+    // ideographic comma is Chinese punctuation, so an English reader saw "instance-a、instance-b".
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(listDataSourcesPage).mockResolvedValue({
+      items: [{ ...sources[0], name: 'Prometheus scoped', instanceIds: ['instance-a', 'instance-b'] }],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    const cell = await screen.findByText(/instance-a/u);
+    expect(cell.textContent).toBe('instance-a, instance-b');
+    expect(screen.queryByText(/、/u)).not.toBeInTheDocument();
+  });
   it('shows connection test loading only on the clicked row', async () => {
     let resolveTest: (value: { success: boolean; message: string }) => void = () => undefined;
     vi.mocked(testDataSource).mockReturnValue(
