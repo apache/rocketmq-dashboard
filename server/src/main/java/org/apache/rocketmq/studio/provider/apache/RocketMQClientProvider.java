@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -69,6 +71,7 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
+    private final ProxyConsumerResolver proxyConsumerResolver;
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
@@ -193,7 +196,7 @@ public class RocketMQClientProvider implements ClientProvider {
             return producerConnection.getConnectionSet().stream()
                     .filter(Objects::nonNull)
                     .map(connection -> toConnectionVO(
-                            connection, ClientType.Producer, topic, producerGroup, null))
+                            connection, ClientType.Producer, topic, producerGroup, null, false))
                     .toList();
         } catch (MQClientException e) {
             if (isTopicNotExist(e) || isGroupConnectionAbsent(e)) {
@@ -337,49 +340,92 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
-        List<ClientConnectionVO> result = new ArrayList<>();
-        Map<String, String> groups = collectSubscriptionGroups(adminExt, clusterId);
+        Map<String, ClientConnectionVO> result = new LinkedHashMap<>();
+        Map<ConsumerGroup, List<String>> groups = collectSubscriptionGroups(adminExt, clusterId);
+        Map<String, List<String>> proxiesByBroker = new LinkedHashMap<>();
         int attemptedGroupQueries = 0;
         int successfulGroupQueries = 0;
-        for (Map.Entry<String, String> groupEntry : groups.entrySet()) {
-            String group = groupEntry.getKey();
-            if (isSystemGroup(group)) {
+        for (Map.Entry<ConsumerGroup, List<String>> entry : groups.entrySet()) {
+            ConsumerGroup group = entry.getKey();
+            if (isSystemGroup(group.name())) {
                 continue;
             }
             attemptedGroupQueries++;
-            try {
-                ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
-                successfulGroupQueries++;
-                if (consumerConnection == null || consumerConnection.getConnectionSet() == null) {
-                    continue;
+            boolean complete = true;
+            LinkedHashSet<String> proxies = new LinkedHashSet<>();
+            for (String broker : entry.getValue()) {
+                complete &= addConsumerConnections(adminExt, broker, group, false, result);
+                try {
+                    List<String> addresses = proxiesByBroker.get(broker);
+                    if (addresses == null) {
+                        addresses = proxyConsumerResolver.discoverProxyAddresses(adminExt, broker);
+                        proxiesByBroker.put(broker, addresses);
+                    }
+                    proxies.addAll(addresses);
+                } catch (MQClientException | MQBrokerException | RemotingException e) {
+                    if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE)) {
+                        proxiesByBroker.put(broker, List.of());
+                    } else {
+                        log.warn("Failed to discover proxies for broker={}", broker, e);
+                        complete = false;
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new BusinessException(502, "Consumer connection query interrupted");
                 }
-                for (Connection connection : consumerConnection.getConnectionSet()) {
+            }
+            for (String proxy : proxies) {
+                complete &= addConsumerConnections(adminExt, proxy, group, true, result);
+            }
+            if (complete) {
+                successfulGroupQueries++;
+            }
+        }
+        // An empty response cannot carry the existing per-row partial flag.
+        if (successfulGroupQueries < attemptedGroupQueries && result.isEmpty()) {
+            throw new BusinessException(502, "Failed to query consumer connections from all groups");
+        }
+        if (successfulGroupQueries < attemptedGroupQueries) {
+            result.values().forEach(connection -> connection.setPartial(true));
+        }
+        return new ArrayList<>(result.values());
+    }
+
+    private boolean addConsumerConnections(MQAdminExt admin, String address, ConsumerGroup group,
+                                            boolean proxy, Map<String, ClientConnectionVO> result) {
+        try {
+            // Explicit addresses keep both Broker and Proxy queries inside the selected cluster.
+            ConsumerConnection connections = admin.examineConsumerConnectionInfo(group.name(), address);
+            if (connections != null && connections.getConnectionSet() != null) {
+                for (Connection connection : connections.getConnectionSet()) {
                     if (connection == null) {
                         continue;
                     }
-                    result.add(toConnectionVO(connection, ClientType.Consumer, group, null,
-                            groupEntry.getValue()));
+                    ClientConnectionVO row = toConnectionVO(connection, ClientType.Consumer,
+                            group.name(), null, group.cluster(), proxy);
+                    String key = group.cluster() + '\0' + group.name() + '\0'
+                            + connection.getClientId() + '\0' + connection.getClientAddr();
+                    result.putIfAbsent(key, row);
                 }
-            } catch (Exception e) {
-                if (e instanceof MQClientException clientException && isGroupConnectionAbsent(clientException)) {
-                    // An offline group is a normal "no connections right now" answer, not a
-                    // broken scan — count it so an all-offline cluster stays an empty result.
-                    successfulGroupQueries++;
-                    continue;
-                }
-                log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
+            return true;
+        } catch (MQClientException | MQBrokerException | RemotingException e) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE)) {
+                return true;
+            }
+            log.warn("Failed to examine consumer connection for group={} via {}", group.name(), address, e);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(502, "Consumer connection query interrupted");
         }
-        // Only fail when at least one non-system group was actually attempted and all of them
-        // failed; a cluster whose subscription table holds only system groups is not an error.
-        if (attemptedGroupQueries > 0 && successfulGroupQueries == 0) {
-            throw new BusinessException(502, "Failed to query consumer connections from all groups");
-        }
-        return result;
     }
 
-    private Map<String, String> collectSubscriptionGroups(MQAdminExt adminExt, String clusterId) {
-        Map<String, String> groups = new LinkedHashMap<>();
+    private record ConsumerGroup(String name, String cluster) {
+    }
+
+    private Map<ConsumerGroup, List<String>> collectSubscriptionGroups(MQAdminExt adminExt, String clusterId) {
+        Map<ConsumerGroup, List<String>> groups = new LinkedHashMap<>();
         BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "consumer connections");
         int attemptedBrokerQueries = 0;
         int successfulBrokerQueries = 0;
@@ -391,7 +437,8 @@ public class RocketMQClientProvider implements ClientProvider {
                 successfulBrokerQueries++;
                 if (wrapper != null && wrapper.getSubscriptionGroupTable() != null) {
                     wrapper.getSubscriptionGroupTable().keySet().forEach(group ->
-                            groups.putIfAbsent(group, topology.clusterFor(brokerAddr)));
+                            groups.computeIfAbsent(new ConsumerGroup(group, topology.clusterFor(brokerAddr)),
+                                    key -> new ArrayList<>()).add(brokerAddr));
                 }
             } catch (Exception e) {
                 log.warn("Failed to fetch subscription groups from broker={}, skipping", brokerAddr, e);
@@ -404,16 +451,17 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private ClientConnectionVO toConnectionVO(Connection connection, ClientType type, String groupOrTopic,
-                                              String producerGroup, String clusterId) {
+                                              String producerGroup, String clusterId, boolean proxy) {
         return ClientConnectionVO.builder()
                 .clientId(connection.getClientId())
                 .type(type)
                 .groupOrTopic(groupOrTopic)
                 .producerGroup(producerGroup)
-                .protocol(Protocol.Remoting)
+                // The Proxy response has no protocol; gRPC may carry a fixed compatibility version.
+                .protocol(proxy ? null : Protocol.Remoting)
                 .address(connection.getClientAddr())
                 .language(mapLanguage(connection.getLanguage()))
-                .version(MQVersion.getVersionDesc(connection.getVersion()))
+                .version(proxy ? null : MQVersion.getVersionDesc(connection.getVersion()))
                 .clusterName(clusterId)
                 .build();
     }

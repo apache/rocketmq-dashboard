@@ -210,6 +210,10 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
   'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
+  'clients.partialScan': {
+    zh: '客户端连接列表不完整：部分查询失败或达到了扫描上限。',
+    en: 'Client connections are incomplete: some queries failed or a scan limit was reached.',
+  },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
   'clients.selectNameserverPlaceholder': { zh: '选择 NameServer', en: 'Select NameServer' },
   'cluster.k8sIdExtra': {
