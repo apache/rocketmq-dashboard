@@ -1292,6 +1292,23 @@ class AlertServiceTest {
     }
 
     @Test
+    void listAlertsShouldCompareAStoredInstanceIdAsTrimmedTextTest() {
+        // No writer pads rmq_system_alert.instance_id today: the row takes its instance id from the
+        // metric sample, i.e. from the trimmed instance name. What this pins is the comparison rule
+        // itself. findAlerts(level) applies no instance filter in SQL, so this Java comparison is the
+        // only one that decides, and it must treat the stored value as text — the same way the paged
+        // path states the filter in SQL — instead of dropping a row that differs only by padding.
+        SystemAlertVO padded = SystemAlertVO.builder().id(3L).level(AlertLevel.error)
+                .title("Broker Down").domain(AlertDomain.CLUSTER).transition("FIRING")
+                .instanceId("local ").acknowledged(false).build();
+        when(alertRepository.findAlerts("error")).thenReturn(List.of(padded));
+
+        List<SystemAlertVO> result = alertService.listAlerts("error", AlertDomain.CLUSTER, " local ", "FIRING");
+
+        assertThat(result).containsExactly(padded);
+    }
+
+    @Test
     void listAlertsPageShouldReturnTheRequestedPage() {
         SystemAlertVO alert = SystemAlertVO.builder().id(7L).level(AlertLevel.warning)
                 .title("Slow Consumer").build();

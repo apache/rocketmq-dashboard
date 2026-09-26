@@ -503,7 +503,11 @@ public class AlertService {
     public List<SystemAlertVO> listAlerts(String level, AlertDomain domain, String instanceId, String transition) {
         return listAlerts(level).stream()
                 .filter(alert -> domain == null || domain == alert.getDomain())
-                .filter(alert -> !hasText(instanceId) || instanceId.trim().equals(alert.getInstanceId()))
+                // findAlerts(level) applies no instance filter in SQL, so this comparison is the
+                // only one that decides here. Compare stored text the way the paged path does, so
+                // the two list endpoints cannot disagree about the same row.
+                .filter(alert -> !hasText(instanceId)
+                        || instanceId.trim().equals(StringUtils.trimWhitespace(alert.getInstanceId())))
                 .filter(alert -> !hasText(transition) || transition.trim().equalsIgnoreCase(alert.getTransition()))
                 .toList();
     }
