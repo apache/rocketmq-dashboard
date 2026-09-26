@@ -64,6 +64,7 @@ test('missingOrUnknownLicenseFailsTest', (t) => {
 
 test('vitePackagingAndTamperGateTest', async (t) => {
   const directory = temporary(t);
+  const outDir = path.join(directory, 'dist');
   // Build only fixtures for React, CSS, SVG and small dependencies; do not build the app or run app tests.
   const result = await build({
     root,
@@ -79,20 +80,46 @@ test('vitePackagingAndTamperGateTest', async (t) => {
       },
       distributionLicenses(),
     ],
-    build: { write: false, minify: false, rollupOptions: { input: 'license-fixture' } },
+    build: { write: true, outDir, emptyOutDir: true, minify: false, rollupOptions: { input: 'license-fixture' } },
   });
-  for (const output of result.output) write(directory, output.fileName, output.type === 'chunk' ? output.code : output.source);
-  checkDistribution(directory);
-  const manifest = JSON.parse(readFileSync(path.join(directory, 'legal/manifest.json')));
+  void result;
+  checkDistribution(outDir);
+  const manifest = JSON.parse(readFileSync(path.join(outDir, 'legal/manifest.json')));
   assert(manifest.components.some((c) => c.name === 'react'));
   assert(manifest.components.some((c) => c.name === '@lobehub/icons-static-svg'));
   assert(manifest.components.some((c) => c.name === 'tailwindcss' && c.reason === 'bundled-preflight-css'));
   assert(manifest.components.some((c) => c.name === 'toggle-selection'));
   assert(!manifest.components.some((c) => c.name === 'vitest' || c.name === 'eslint'));
-  write(directory, 'NOTICE', 'tampered');
-  assert.throws(() => checkDistribution(directory), /modified or missing/);
-  write(directory, 'NOTICE', result.output.find((item) => item.fileName === 'NOTICE').source);
+  write(outDir, 'NOTICE', 'tampered');
+  assert.throws(() => checkDistribution(outDir), /modified or missing/);
+  write(outDir, 'NOTICE', result.output.find((item) => item.fileName === 'NOTICE').source);
   const output = Object.keys(manifest.outputFiles)[0];
-  write(directory, output, 'tampered');
-  assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
+  write(outDir, output, 'tampered');
+  assert.throws(() => checkDistribution(outDir), /build artifact verification failed/);
+});
+
+test('vitePackagingSurvivesDynamicImportPreloadInjectionTest', async (t) => {
+  // vite:build-import-analysis injects the __vite__mapDeps preload map into the entry chunk
+  // in its own generateBundle, which runs after this plugin's. The manifest must therefore be
+  // finalized at writeBundle, or the checksums never match the written entry chunk.
+  const directory = temporary(t);
+  write(directory, 'package.json', JSON.stringify({ name: 'license-fixture-app', version: '1.0.0', license: 'Apache-2.0', private: true }));
+  write(directory, 'LICENSE', readFileSync(path.join(root, 'LICENSE')));
+  write(directory, 'entry.mjs', `import React from '${root}node_modules/react/index.js'; import('./lazy.mjs').then((lazy) => console.log(React, lazy));`);
+  write(directory, 'lazy.mjs', `import toggle from '${root}node_modules/toggle-selection/index.js'; export default toggle;`);
+  const outDir = path.join(directory, 'dist');
+  await build({
+    root,
+    configFile: false,
+    logLevel: 'error',
+    plugins: [distributionLicenses()],
+    build: {
+      write: true,
+      outDir,
+      emptyOutDir: true,
+      minify: false,
+      rollupOptions: { input: path.join(directory, 'entry.mjs') },
+    },
+  });
+  checkDistribution(outDir);
 });

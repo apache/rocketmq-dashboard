@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,7 +45,10 @@ function legalFiles(dir) {
   const result = [];
   function walk(current) {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (['node_modules', '.git', 'test', 'tests', '__tests__'].includes(entry.name)) continue;
+      // 'dist' is excluded so the app's own build output (dist/legal/...) is never mistaken
+      // for a license source of the package: the gate re-collects at check time, after the
+      // output directory exists, and the two collections must see the same sources.
+      if (['node_modules', '.git', 'test', 'tests', '__tests__', 'dist'].includes(entry.name)) continue;
       const file = path.join(current, entry.name);
       if (entry.isDirectory()) walk(file);
       else if (legalName.test(entry.name) && !/\.(js|cjs|mjs|ts|tsx|jsx|class|map|svg|png|jpg|gif|woff2?)$/i.test(entry.name)) {
@@ -175,11 +178,16 @@ export function collectLicenses(moduleIds, base = root) {
 
 export function distributionLicenses() {
   let base;
+  let outDir;
+  let recorded;
   return {
     name: 'distribution-licenses',
     apply: 'build',
     enforce: 'post',
-    configResolved(config) { base = config.root; },
+    configResolved(config) {
+      base = config.root;
+      outDir = path.resolve(config.root, config.build.outDir || 'dist');
+    },
     generateBundle(_options, bundle) {
       const ids = new Set();
       for (const item of Object.values(bundle)) {
@@ -190,17 +198,26 @@ export function distributionLicenses() {
           }
         }
       }
-      const result = collectLicenses([...ids], base);
+      recorded = collectLicenses([...ids], base);
+      for (const [name, data] of recorded.files) {
+        this.emitFile({ type: 'asset', fileName: name, source: data });
+      }
+    },
+    writeBundle(_options, bundle) {
+      // The manifest must checksum the FINAL bundle: vite:build-import-analysis injects the
+      // `__vite__mapDeps` preload map into the entry chunk in its own (later) generateBundle,
+      // so checksums taken in this plugin's generateBundle never match the written files.
       const outputFiles = {};
       for (const [name, item] of Object.entries(bundle)) {
         outputFiles[name] = sha(item.type === 'chunk' ? item.code : item.source);
       }
-      const manifest = { modules: result.modules, components: result.components, outputFiles, files: {} };
-      for (const [name, data] of result.files) {
+      const manifest = { modules: recorded.modules, components: recorded.components, outputFiles, files: {} };
+      for (const [name, data] of recorded.files) {
         manifest.files[name] = sha(data);
-        this.emitFile({ type: 'asset', fileName: name, source: data });
       }
-      this.emitFile({ type: 'asset', fileName: 'legal/manifest.json', source: `${JSON.stringify(manifest, null, 2)}\n` });
+      const target = path.join(outDir, 'legal/manifest.json');
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
     },
   };
 }
