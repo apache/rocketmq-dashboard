@@ -288,6 +288,78 @@ class MessageServiceTest {
     }
 
     @Test
+    void keyQueryRejectsNegativeTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", -1000L, 2000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                -1000L, 2000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("message query timestamps must not be negative");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void keyQueryRejectsInvalidTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 2000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 1000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                2000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                1000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void keyQueryKeepsASingleSidedTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        service.queryMessages("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null);
+
+        verify(provider).queryMessagesDetailed("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null);
+    }
+
+    @Test
+    void messageIdLookupStillIgnoresTheTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        service.queryMessages("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L);
+
+        verify(provider).queryMessagesDetailed("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L);
+    }
+
+    @Test
     void pageQuerySlicesProviderResultAndSignalsBoundedTopicResult() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
@@ -456,6 +528,64 @@ class MessageServiceTest {
                 .hasMessage("uniqueKey is required");
 
         verifyNoInteractions(provider);
+    }
+
+    @Test
+    void uniqueKeyQueryRejectsInvertedTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1",
+                2000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void uniqueKeyQueryRejectsNegativeTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1",
+                -1L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("message query timestamps must not be negative");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void uniqueKeyQueryKeepsTheTimeWindowOptionalTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null))
+                .thenReturn(List.of(record));
+
+        assertThat(service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null))
+                .containsExactly(record);
+
+        verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null);
+    }
+
+    @Test
+    void uniqueKeyQueryAcceptsASingleSidedTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null))
+                .thenReturn(List.of(record));
+
+        assertThat(service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null))
+                .containsExactly(record);
+
+        verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null);
     }
 
     @Test

@@ -77,6 +77,7 @@ public class MessageService {
         if (!StringUtils.hasText(uniqueKey)) {
             throw new BusinessException(400, "uniqueKey is required");
         }
+        validateProvidedTimeWindow(startTime, endTime);
         log.info("Querying message by unique key: topic={}, uniqueKey={}", topic, uniqueKey);
         return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
     }
@@ -267,6 +268,27 @@ public class MessageService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * Rejects a supplied window that cannot describe a real lookup, for the two lookups whose
+     * window is optional and therefore not covered by {@link #validateTopicQueryWindow}: the key
+     * branch of {@code queryMessages} and {@code queryMessageByUniqueKey}. Both used to forward a
+     * negated or inverted window to the provider, which either rejected it with a message of its
+     * own or passed it on to the broker / cloud API, so a malformed request had no single
+     * documented answer. No length bound is applied: the documented seven-day maximum belongs to
+     * topic scans only.
+     */
+    private static void validateProvidedTimeWindow(Long startTime, Long endTime) {
+        if (startTime != null && startTime < 0) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
+        }
+        if (endTime != null && endTime < 0) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
+        }
+        if (startTime != null && endTime != null && startTime >= endTime) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
+    }
+
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
         boolean hasTopic = StringUtils.hasText(topic);
         boolean hasMessageId = StringUtils.hasText(msgId);
@@ -281,6 +303,11 @@ public class MessageService {
             throw new BusinessException(400, "topic or msgId is required");
         }
         if (hasMessageId || hasKey) {
+            // A message id is a point lookup and never needs a window. A key query may carry an
+            // explicit one, so it is validated here without the topic-scan length bound.
+            if (hasKey) {
+                validateProvidedTimeWindow(startTime, endTime);
+            }
             return;
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;
