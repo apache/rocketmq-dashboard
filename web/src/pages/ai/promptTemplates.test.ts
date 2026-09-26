@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_CUSTOM_PROMPT_TEMPLATES,
   MAX_PROMPT_TEMPLATE_BODY_LENGTH,
+  MAX_PROMPT_TEMPLATE_TITLE_LENGTH,
   PROMPT_TEMPLATE_STORAGE_KEY,
   applyPromptTemplate,
   buildPromptTemplatePreview,
@@ -165,6 +166,25 @@ describe('AI prompt templates', () => {
     expect(custom).toHaveLength(MAX_CUSTOM_PROMPT_TEMPLATES);
     expect(custom[0].title).toBe(`Template ${MAX_CUSTOM_PROMPT_TEMPLATES + 1}`);
     expect(custom[0].body).toHaveLength(MAX_PROMPT_TEMPLATE_BODY_LENGTH);
+  });
+
+  it('caps a stored title on code point boundaries', () => {
+    // A supplementary character is two UTF-16 units, so a length-based cut can keep half of one.
+    // The stored title is what the template list renders, so a lone surrogate shows up as U+FFFD.
+    const saved = saveCustomPromptTemplate({
+      title: `${'a'.repeat(MAX_PROMPT_TEMPLATE_TITLE_LENGTH - 1)}\u{1F600}tail`,
+      body: 'Inspect the backlog',
+    });
+
+    expect(saved.template?.title).toBe(
+      `${'a'.repeat(MAX_PROMPT_TEMPLATE_TITLE_LENGTH - 1)}\u{1F600}`,
+    );
+  });
+
+  it('cuts an over-long preview on code point boundaries', () => {
+    expect(buildPromptTemplatePreview(`${'a'.repeat(159)}\u{1F600}tail`)).toBe(
+      `${'a'.repeat(159)}\u{1F600}...`,
+    );
   });
 
   it('deletes only custom templates and leaves builtin templates available', () => {
