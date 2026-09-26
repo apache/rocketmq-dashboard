@@ -701,6 +701,40 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText(/broker-a.*\(直方图\)/)).toBeInTheDocument();
   });
 
+  it('gives a mixed series and the following pure series distinct colors', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_001, histogram: { count: '99', sum: '999', buckets: [] } },
+          ],
+        },
+        {
+          labels: { cluster: 'prod', node_id: 'broker-b' },
+          values: [
+            { timestamp: 1_799_996_400, value: '30' },
+            { timestamp: 1_800_000_000, value: '31' },
+          ],
+          histograms: [],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    // The mixed broker-a line is split into a scalar and a histogram trend; the broker-b
+    // line follows. Every drawn polyline must keep its own stroke so legend swatches
+    // stay matchable.
+    const strokes = Array.from(
+      screen.getByRole('img', { name: 'Message In TPS time series' }).querySelectorAll('polyline'),
+    ).map((line) => line.getAttribute('stroke'));
+    expect(strokes.length).toBe(3);
+    expect(new Set(strokes).size).toBe(strokes.length);
+  });
+
   it('queries the selected data source through the datasource endpoint', async () => {
     const user = userEvent.setup();
     vi.mocked(listDataSources).mockResolvedValue([
