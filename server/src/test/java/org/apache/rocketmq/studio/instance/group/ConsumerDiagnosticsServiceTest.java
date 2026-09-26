@@ -95,4 +95,20 @@ class ConsumerDiagnosticsServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("clientId is required");
     }
+
+    @Test
+    void validateSubscriptionConsistencyShouldDelegateToProvider() {
+        SubscriptionConsistencyReportVO report = SubscriptionConsistencyReportVO.builder()
+                .groupName("cg-orders")
+                .consistent(true)
+                .build();
+        when(diagnosticsProvider.validateSubscriptionConsistency("instance-a", "cg-orders"))
+                .thenReturn(report);
+
+        SubscriptionConsistencyReportVO result =
+                diagnosticsService.validateSubscriptionConsistency("instance-a", "cg-orders");
+
+        assertThat(result.isConsistent()).isTrue();
+        verify(diagnosticsProvider).validateSubscriptionConsistency("instance-a", "cg-orders");
+    }
 }

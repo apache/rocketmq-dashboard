@@ -55,9 +55,52 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final org.apache.rocketmq.studio.instance.group.ConsumerSubscriptionConsistencyValidator consistencyValidator;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ProxyConsumerResolver proxyConsumerResolver;
+
+    @Override
+    public org.apache.rocketmq.studio.instance.group.SubscriptionConsistencyReportVO validateSubscriptionConsistency(
+            String instanceId, String groupName) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> validateConsistencyWithAdmin(admin, groupName));
+        }
+        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+            throw new BusinessException(503, "RocketMQ admin not connected");
+        }
+        return adminFactory.execute(properties.getNamesrvAddr(), null,
+                admin -> validateConsistencyWithAdmin(admin, groupName));
+    }
+
+    private org.apache.rocketmq.studio.instance.group.SubscriptionConsistencyReportVO validateConsistencyWithAdmin(
+            MQAdminExt admin, String groupName) {
+        try {
+            org.apache.rocketmq.remoting.protocol.body.ConsumerConnection conn =
+                    admin.examineConsumerConnectionInfo(groupName);
+            if (conn == null || conn.getConnectionSet() == null || conn.getConnectionSet().isEmpty()) {
+                return consistencyValidator.validate(groupName, java.util.Collections.emptyMap());
+            }
+
+            java.util.Map<String, ConsumerRunningInfo> clientInfos = new java.util.LinkedHashMap<>();
+            for (org.apache.rocketmq.common.protocol.body.Connection c : conn.getConnectionSet()) {
+                String clientId = c.getClientId();
+                try {
+                    ConsumerRunningInfo info = admin.getConsumerRunningInfo(groupName, clientId, false);
+                    if (info != null) {
+                        clientInfos.put(clientId, info);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to get running info for client {} in group {}: {}", clientId, groupName, ex.getMessage());
+                }
+            }
+            return consistencyValidator.validate(groupName, clientInfos);
+        } catch (Exception e) {
+            log.warn("Failed to validate subscription consistency for group {}: {}", groupName, e.getMessage());
+            throw new BusinessException(502, "Failed to validate group subscriptions: " + e.getMessage());
+        }
+    }
 
     @Override
     public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {

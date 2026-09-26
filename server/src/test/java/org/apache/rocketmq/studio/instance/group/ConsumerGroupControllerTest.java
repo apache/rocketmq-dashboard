@@ -315,6 +315,29 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void validateSubscriptionConsistencyShouldReturnConsistencyReport() throws Exception {
+        SubscriptionConsistencyReportVO report = SubscriptionConsistencyReportVO.builder()
+                .groupName("cg-orders")
+                .totalClientsChecked(2)
+                .consistent(false)
+                .inconsistentTopicCount(1)
+                .build();
+        when(consumerDiagnosticsService.validateSubscriptionConsistency("instance-a", "cg-orders"))
+                .thenReturn(report);
+
+        mockMvc.perform(get("/api/groups/cg-orders/subscription-consistency")
+                        .param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
+                .andExpect(jsonPath("$.data.totalClientsChecked").value(2))
+                .andExpect(jsonPath("$.data.consistent").value(false))
+                .andExpect(jsonPath("$.data.inconsistentTopicCount").value(1));
+
+        verify(consumerDiagnosticsService).validateSubscriptionConsistency("instance-a", "cg-orders");
+    }
+
+    @Test
     void groupRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
         when(metadataService.getGroupProgress("instance-a", "cg-orders")).thenReturn(List.of());
         when(metadataService.getGroupSubscriptions("instance-a", "cg-orders")).thenReturn(List.of());

@@ -19,4 +19,6 @@ package org.apache.rocketmq.studio.instance.group;
 
 public interface ConsumerDiagnosticsProvider {
     ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId);
+
+    SubscriptionConsistencyReportVO validateSubscriptionConsistency(String instanceId, String groupName);
 }
