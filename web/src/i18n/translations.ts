@@ -1832,7 +1832,7 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI tool playground ───
   'ai.tools.title': { zh: 'AI 工具', en: 'AI tools' },
-  'ai.tools.selectCluster': { zh: '选择集群', en: 'Select a cluster' },
+  'ai.tools.selectInstance': { zh: '选择实例', en: 'Select an instance' },
   'ai.tools.globalScope': { zh: '全局工具', en: 'Global tools' },
   'ai.tools.selectTool': { zh: '选择工具', en: 'Select a tool' },
   'ai.tools.inputLabel': { zh: '输入参数 (JSON)', en: 'Input (JSON)' },
@@ -1868,9 +1868,9 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'AI 工具目录加载失败',
     en: 'Failed to load the AI tool catalog',
   },
-  'ai.clusterListLoadFailed': {
-    zh: '集群列表加载失败，已显示全局工具',
-    en: 'Failed to load clusters; showing global tools',
+  'ai.instanceListLoadFailed': {
+    zh: '实例列表加载失败，已显示全局工具',
+    en: 'Failed to load instances; showing global tools',
   },
   'ai.mode.title': { zh: '对话模式', en: 'Chat mode' },
   'ai.mode.chat': { zh: '对话', en: 'Chat' },
