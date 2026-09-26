@@ -288,11 +288,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         // The claude CLI waits 3s for stdin and emits a warning that leaks into the
         // reply unless stdin is explicitly /dev/null; fall back to closing the pipe
         // on platforms without it.
-        File devNull = new File("/dev/null");
-        boolean devNullAvailable = devNull.exists();
-        if (devNullAvailable) {
-            builder.redirectInput(ProcessBuilder.Redirect.from(devNull));
-        }
+        boolean devNullAvailable = redirectInputFromDevNull(builder);
         Process process = null;
         try {
             process = startProcess(builder);
@@ -306,7 +302,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
-                AgentProcessTree.destroyForcibly(process);
+                destroyProcessTree(process);
                 throw new LlmGatewayException(504, "llm.provider.timeout",
                         binaryName() + " CLI stream timed out after " + timeoutSeconds + "s",
                         "Retry with a shorter prompt or check the gateway latency.");
@@ -315,14 +311,14 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             return new SpawnResult(process.exitValue(), await(stderrFuture));
         } catch (IOException exception) {
             if (process != null) {
-                AgentProcessTree.destroyForcibly(process);
+                destroyProcessTree(process);
             }
             throw new LlmGatewayException(502, "llm.provider.io_error",
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
         } catch (InterruptedException exception) {
             if (process != null) {
-                AgentProcessTree.destroyForcibly(process);
+                destroyProcessTree(process);
             }
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
@@ -334,8 +330,21 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return builder.start();
     }
 
+    protected boolean redirectInputFromDevNull(ProcessBuilder builder) {
+        File devNull = new File("/dev/null");
+        if (!devNull.exists()) {
+            return false;
+        }
+        builder.redirectInput(ProcessBuilder.Redirect.from(devNull));
+        return true;
+    }
+
     protected long streamTimeoutSeconds() {
         return STREAM_TIMEOUT_SECONDS;
+    }
+
+    private void destroyProcessTree(Process process) {
+        AgentProcessTree.destroyForcibly(process, binaryName() + " CLI stream");
     }
 
     /** The Anthropic credentials for this configuration, unchanged from the text-only path. */

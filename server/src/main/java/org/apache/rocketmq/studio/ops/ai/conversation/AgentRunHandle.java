@@ -315,7 +315,7 @@ public final class AgentRunHandle implements AgentStreamOptions.AgentProcessSink
     }
 
     private List<ProcessHandle> enumerate(Process child) {
-        return AgentProcessTree.descendants(child);
+        return AgentProcessTree.descendants(child, "agent run " + runId);
     }
 
     private boolean awaitExit(Process child, Duration timeout) {

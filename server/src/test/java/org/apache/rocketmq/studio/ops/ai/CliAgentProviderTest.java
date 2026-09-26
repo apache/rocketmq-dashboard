@@ -13,15 +13,19 @@ package org.apache.rocketmq.studio.ops.ai;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.CliBinaryProbe;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,25 +36,34 @@ class CliAgentProviderTest {
         private final String script;
         private final int outputLimitBytes;
         private final Map<String, String> environment;
+        private final Process process;
+        private final long timeoutSeconds;
 
         FakeCli(String script) {
-            this(script, Integer.MAX_VALUE);
+            this(script, Integer.MAX_VALUE, new CliProcessEnvironment(List.of()), Map.of(), null, 300);
         }
 
         FakeCli(String script, int outputLimitBytes) {
-            this(script, outputLimitBytes, new CliProcessEnvironment(List.of()), Map.of());
+            this(script, outputLimitBytes, new CliProcessEnvironment(List.of()), Map.of(), null, 300);
         }
 
         FakeCli(String script, CliProcessEnvironment processEnvironment, Map<String, String> environment) {
-            this(script, Integer.MAX_VALUE, processEnvironment, environment);
+            this(script, Integer.MAX_VALUE, processEnvironment, environment, null, 300);
+        }
+
+        FakeCli(Process process, int outputLimitBytes, long timeoutSeconds) {
+            this("unused", outputLimitBytes, new CliProcessEnvironment(List.of()), Map.of(),
+                    process, timeoutSeconds);
         }
 
         FakeCli(String script, int outputLimitBytes, CliProcessEnvironment processEnvironment,
-                Map<String, String> environment) {
+                Map<String, String> environment, Process process, long timeoutSeconds) {
             super(processEnvironment);
             this.script = script;
             this.outputLimitBytes = outputLimitBytes;
             this.environment = environment;
+            this.process = process;
+            this.timeoutSeconds = timeoutSeconds;
         }
 
         @Override
@@ -76,6 +89,16 @@ class CliAgentProviderTest {
         @Override
         int outputLimitBytes() {
             return outputLimitBytes;
+        }
+
+        @Override
+        protected Process startProcess(ProcessBuilder builder) throws java.io.IOException {
+            return process == null ? super.startProcess(builder) : process;
+        }
+
+        @Override
+        protected long completionTimeoutSeconds() {
+            return timeoutSeconds;
         }
     }
 
@@ -137,6 +160,36 @@ class CliAgentProviderTest {
                     assertThat(exception.getCode()).isEqualTo("llm.provider.output_too_large");
                     assertThat(exception.getMessage()).contains("1024 bytes");
                 });
+    }
+
+    @Test
+    void completeTimeoutDestroysDescendantsBeforeTheCliProcessTest() throws Exception {
+        List<String> terminationOrder = new ArrayList<>();
+        Process process = processTree(new byte[0], false, terminationOrder);
+        FakeCli cli = new FakeCli(process, Integer.MAX_VALUE, 1);
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(504);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.timeout");
+                });
+
+        assertThat(terminationOrder).containsExactly("descendant", "root");
+    }
+
+    @Test
+    void completeOutputLimitDestroysDescendantsBeforeTheCliProcessTest() throws Exception {
+        List<String> terminationOrder = new ArrayList<>();
+        Process process = processTree(new byte[2048], true, terminationOrder);
+        FakeCli cli = new FakeCli(process, 1024, 5);
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.output_too_large");
+                });
+
+        assertThat(terminationOrder).containsExactly("descendant", "root");
     }
 
     @Test
@@ -290,5 +343,23 @@ class CliAgentProviderTest {
         assertThat(probe.isAvailable("qodercli")).isTrue();
         assertThat(probe.isAvailable("definitely-not-on-path-9f3a")).isTrue();
         assertThat(probe.isAvailable("rmqctl.beta_2+x")).isTrue();
+    }
+
+    private static Process processTree(byte[] output, boolean finished, List<String> terminationOrder)
+            throws Exception {
+        Process process = mock(Process.class);
+        ProcessHandle descendant = mock(ProcessHandle.class);
+        when(process.getInputStream()).thenReturn(new ByteArrayInputStream(output));
+        when(process.waitFor(anyLong(), eq(TimeUnit.SECONDS))).thenReturn(finished);
+        when(process.descendants()).thenReturn(Stream.of(descendant));
+        doAnswer(invocation -> {
+            terminationOrder.add("descendant");
+            return true;
+        }).when(descendant).destroyForcibly();
+        doAnswer(invocation -> {
+            terminationOrder.add("root");
+            return process;
+        }).when(process).destroyForcibly();
+        return process;
     }
 }

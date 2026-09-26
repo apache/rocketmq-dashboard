@@ -29,8 +29,8 @@ public final class AgentProcessTree {
     }
 
     /** Force-stops descendants before the root so a CLI failure cannot orphan its MCP server. */
-    public static void destroyForcibly(Process root) {
-        destroyForcibly(root, descendants(root));
+    public static void destroyForcibly(Process root, String context) {
+        destroyForcibly(root, descendants(root, context));
     }
 
     /** Force-stops a captured descendant set before its root process. */
@@ -45,11 +45,11 @@ public final class AgentProcessTree {
     }
 
     /** Snapshots descendants while the root still owns them. */
-    public static List<ProcessHandle> descendants(Process root) {
+    public static List<ProcessHandle> descendants(Process root, String context) {
         try (Stream<ProcessHandle> descendants = root.descendants()) {
             return descendants.toList();
         } catch (RuntimeException exception) {
-            log.warn("could not enumerate agent subprocess descendants: {}", exception.toString());
+            log.warn("could not enumerate descendants of {}: {}", context, exception.toString());
             return List.of();
         }
     }
