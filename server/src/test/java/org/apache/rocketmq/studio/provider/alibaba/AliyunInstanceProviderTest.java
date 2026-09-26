@@ -297,6 +297,38 @@ class AliyunInstanceProviderTest {
         assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
         assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+        assertThat(groups.get(0).getSubscribedTopics()).isEmpty();
+    }
+
+    @Test
+    void listConsumerGroupsShouldPreserveLiteConsumerTopicTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.List.of(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_lite")
+                                        .messageModel("LITE_SELECTIVE")
+                                        .topicName("lite-session-a")
+                                        .status("RUNNING")
+                                        .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getName()).isEqualTo("GID_lite");
+            assertThat(group.getSubscribedTopics()).containsExactly("lite-session-a");
+        });
     }
 
     @Test

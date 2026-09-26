@@ -176,6 +176,9 @@ final class AliyunConverters {
         // consumer groups are push consumers. Read paths (web detail, AI rmq.group.list) require
         // a non-null subscriptionMode, mirroring the Apache provider invariant.
         vo.setSubscriptionMode(SubscriptionMode.Push);
+        if (data.getTopicName() != null && !data.getTopicName().isBlank()) {
+            vo.setSubscribedTopics(List.of(data.getTopicName()));
+        }
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         return vo;
