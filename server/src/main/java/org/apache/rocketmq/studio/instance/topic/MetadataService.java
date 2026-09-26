@@ -676,9 +676,7 @@ public class MetadataService {
             CreateConsumerGroupDTO request = groups.get(index);
             String name = request == null ? null : request.getName();
             try {
-                if (request == null) {
-                    throw new BusinessException(400, "consumer group request is required");
-                }
+                validateConsumerGroupImportRow(request);
                 ConsumerGroupVO group = request.toConsumerGroupVO();
                 group.setInstanceId(normalizedInstanceId);
                 imported.add(saveConsumerGroup(normalizedInstanceId, group, Operation.CREATE_GROUP,
@@ -778,9 +776,7 @@ public class MetadataService {
             CreateTopicDTO request = topics.get(index);
             String name = request == null ? null : request.getName();
             try {
-                if (request == null) {
-                    throw new BusinessException(400, "topic request is required");
-                }
+                validateTopicImportRow(request);
                 TopicVO topic = request.toTopicVO();
                 topic.setInstanceId(normalizedInstanceId);
                 imported.add(saveTopic(normalizedInstanceId, topic, true));
@@ -800,6 +796,32 @@ public class MetadataService {
                 .topics(imported)
                 .failures(failures)
                 .build();
+    }
+
+    private void validateConsumerGroupImportRow(CreateConsumerGroupDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "consumer group request is required");
+        }
+        requireName(request.getName(), "name");
+        if (request.getRetryMaxTimes() != null && request.getRetryMaxTimes() < 0) {
+            throw new BusinessException(400, "retryMaxTimes must be zero or positive");
+        }
+        if (request.getDelaySeconds() != null && request.getDelaySeconds() < 0) {
+            throw new BusinessException(400, "delaySeconds must be zero or positive");
+        }
+    }
+
+    private void validateTopicImportRow(CreateTopicDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "topic request is required");
+        }
+        requireName(request.getName(), "name");
+        if (request.getWriteQueues() != null && request.getWriteQueues() < 0) {
+            throw new BusinessException(400, "writeQueues must be zero or positive");
+        }
+        if (request.getReadQueues() != null && request.getReadQueues() < 0) {
+            throw new BusinessException(400, "readQueues must be zero or positive");
+        }
     }
 
     public String exportTopics(String instanceId, String type, String search, List<String> names) {
