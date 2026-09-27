@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -35,6 +37,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -152,6 +155,27 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
         assertThat(captor.getValue().getInstanceId()).isEqualTo("rocketmq1");
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"omitted, 16", "null, 16", "0, 0", "8, 8"})
+    void createConsumerGroupShouldPreserveRetryLimitOrUseDefaultTest(String retryValue, int expected) throws Exception {
+        Map<String, Object> body = new HashMap<>(Map.of("instanceId", "instance-a", "name", "cg-orders"));
+        if (!"omitted".equals(retryValue)) {
+            body.put("retryMaxTimes", "null".equals(retryValue) ? null : Integer.valueOf(retryValue));
+        }
+        when(instanceService.normalizeIdentifier("instance-a")).thenReturn("instance-a");
+        when(metadataService.createConsumerGroup(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        mockMvc.perform(post("/api/groups/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.retryMaxTimes").value(expected));
+
+        ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
+        verify(metadataService).createConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(expected);
     }
 
     @Test
