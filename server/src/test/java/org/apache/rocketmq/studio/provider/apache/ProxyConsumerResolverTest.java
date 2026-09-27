@@ -33,6 +33,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -101,6 +104,103 @@ class ProxyConsumerResolverTest {
     }
 
     @Test
+    void discoverProxyAddressesShouldRefreshAfterInstanceEndpointChangesTest() throws Exception {
+        MQAdminExt oldEndpointAdmin = mock(MQAdminExt.class);
+        MQAdminExt newEndpointAdmin = mock(MQAdminExt.class);
+        ConsumerConnection oldSyncer = syncerWithProxy("10.0.1.10:10911");
+        ConsumerConnection newSyncer = syncerWithProxy("10.0.2.20:10911");
+        AtomicReference<MQAdminExt> activeAdmin = new AtomicReference<>(oldEndpointAdmin);
+        when(runtimeAdminClientResolver.execute(any(String.class), any()))
+                .thenAnswer(invocation -> invocation
+                        .<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(activeAdmin.get()));
+        when(oldEndpointAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(oldSyncer);
+        when(newEndpointAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(newSyncer);
+
+        assertThat(resolver.discoverProxyAddresses("instance-a"))
+                .containsExactly("10.0.1.10:8080");
+
+        // InstanceService releases the old broker client after an endpoint edit; the resolver
+        // must not keep serving proxy addresses discovered from that old endpoint.
+        activeAdmin.set(newEndpointAdmin);
+        resolver.invalidateInstance("instance-a");
+
+        assertThat(resolver.discoverProxyAddresses("instance-a"))
+                .containsExactly("10.0.2.20:8080");
+    }
+
+    @Test
+    void invalidatingOneInstanceShouldKeepAnotherInstanceCacheHitTest() throws Exception {
+        MQAdminExt instanceAAdmin = mock(MQAdminExt.class);
+        MQAdminExt instanceBAdmin = mock(MQAdminExt.class);
+        when(runtimeAdminClientResolver.execute(any(String.class), any()))
+                .thenAnswer(invocation -> {
+                    String instanceId = invocation.getArgument(0);
+                    MQAdminExt admin = "instance-a".equals(instanceId) ? instanceAAdmin : instanceBAdmin;
+                    return invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin);
+                });
+        when(instanceAAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(syncerWithProxy("10.0.1.10:10911"));
+        when(instanceBAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(syncerWithProxy("10.0.2.20:10911"));
+
+        assertThat(resolver.discoverProxyAddresses("instance-a")).containsExactly("10.0.1.10:8080");
+        assertThat(resolver.discoverProxyAddresses("instance-b")).containsExactly("10.0.2.20:8080");
+
+        resolver.invalidateInstance("instance-a");
+
+        assertThat(resolver.discoverProxyAddresses("instance-b")).containsExactly("10.0.2.20:8080");
+        org.mockito.Mockito.verify(instanceBAdmin, org.mockito.Mockito.times(1))
+                .examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic");
+    }
+
+    @Test
+    void discoverProxyAddressesShouldNotRepopulateAfterConcurrentInvalidationTest() throws Exception {
+        MQAdminExt oldEndpointAdmin = mock(MQAdminExt.class);
+        MQAdminExt newEndpointAdmin = mock(MQAdminExt.class);
+        CountDownLatch oldLookupStarted = new CountDownLatch(1);
+        CountDownLatch allowOldLookup = new CountDownLatch(1);
+        when(runtimeAdminClientResolver.execute(any(String.class), any()))
+                .thenAnswer(invocation -> invocation
+                        .<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(oldEndpointAdmin));
+        when(oldEndpointAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenAnswer(invocation -> {
+                    oldLookupStarted.countDown();
+                    try {
+                        assertThat(allowOldLookup.await(5, TimeUnit.SECONDS)).isTrue();
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(exception);
+                    }
+                    return syncerWithProxy("10.0.1.10:10911");
+                });
+        when(newEndpointAdmin.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenReturn(syncerWithProxy("10.0.2.20:10911"));
+
+        AtomicReference<List<String>> oldLookupResult = new AtomicReference<>();
+        Thread staleLookup = new Thread(
+                () -> oldLookupResult.set(resolver.discoverProxyAddresses("instance-a")));
+        staleLookup.start();
+        assertThat(oldLookupStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        resolver.invalidateInstance("instance-a");
+        when(runtimeAdminClientResolver.execute(any(String.class), any()))
+                .thenAnswer(invocation -> invocation
+                        .<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(newEndpointAdmin));
+        allowOldLookup.countDown();
+        staleLookup.join(TimeUnit.SECONDS.toMillis(5));
+
+        assertThat(staleLookup.isAlive()).isFalse();
+        assertThat(oldLookupResult.get()).containsExactly("10.0.1.10:8080");
+        assertThat(resolver.discoverProxyAddresses("instance-a"))
+                .containsExactly("10.0.2.20:8080");
+    }
+
+    @Test
     void discoverProxyAddressesShouldRetryAfterATransientFailureTest() throws Exception {
         ConsumerConnection syncer = new ConsumerConnection();
         Connection proxy = new Connection();
@@ -128,6 +228,14 @@ class ProxyConsumerResolverTest {
 
         assertThat(result.available()).isFalse();
         assertThat(result.connection()).isNull();
+    }
+
+    private ConsumerConnection syncerWithProxy(String address) {
+        Connection proxy = new Connection();
+        proxy.setClientAddr(address);
+        ConsumerConnection syncer = new ConsumerConnection();
+        syncer.setConnectionSet(new HashSet<>(List.of(proxy)));
+        return syncer;
     }
 
     @Test
