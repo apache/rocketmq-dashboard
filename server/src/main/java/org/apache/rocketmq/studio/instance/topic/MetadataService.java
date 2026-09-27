@@ -295,7 +295,14 @@ public class MetadataService {
         request.setTopic(requireName(request.getTopic(), "topicName"));
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
-        return resolve(request.getInstanceId()).sendMessage(request);
+        InstanceProvider provider = resolve(request.getInstanceId());
+        // The Apache layer audits the send itself (its admin client records SEND_MESSAGE), which is
+        // why executeWithAudit skips that vendor; the cloud providers do not, so a send on a cloud
+        // instance used to leave no audit row at all. Audit it here under the same operation,
+        // resource type and name the Apache path records.
+        return executeWithAudit(provider, Operation.SEND_MESSAGE, ResourceType.MESSAGE, request.getTopic(),
+                request.getInstanceId(), "tag=" + request.getTag() + ", key=" + request.getKey(),
+                () -> provider.sendMessage(request));
     }
 
     /**
