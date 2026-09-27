@@ -781,6 +781,30 @@ class MetadataServiceTest {
     }
 
     @Test
+    void cloudRedeliveryShouldBeAuditedLikeTheApachePathTest() {
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .build();
+        when(messageService.queryMessages("cloud-instance", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(cloudProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("cloud-instance", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(cloudProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+        // Redelivery publishes through sendMessage, so a cloud redelivery is audited exactly like
+        // the Apache one, whose admin client records SEND_MESSAGE for the copy it publishes.
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("%RETRY%group-a"), eq("cloud-instance"),
+                anyString(), eq(OperationAuditConstants.Result.SUCCESS), isNull());
+    }
+
+    @Test
     void listConsumerGroupsShouldReturnGroupsFromProvider() {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("test-group");
