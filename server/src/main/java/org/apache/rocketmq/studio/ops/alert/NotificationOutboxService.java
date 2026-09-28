@@ -250,6 +250,10 @@ public class NotificationOutboxService {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Provide between 1 and 100 notification delivery IDs");
         }
+        if (deliveryIds.stream().anyMatch(id -> id == null)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Notification delivery IDs must not contain null");
+        }
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new java.util.LinkedHashMap<>();
         for (Long deliveryId : new LinkedHashSet<>(deliveryIds)) {
