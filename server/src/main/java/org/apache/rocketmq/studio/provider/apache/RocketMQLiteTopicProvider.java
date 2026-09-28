@@ -281,11 +281,10 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 .toList();
         session.setLiteTopics(new LinkedHashSet<>(liteTopics));
 
-        long pending = sessionGroupLag(admin, located.master, group);
-        long consumed = consumedMessages(admin, located.master, group, liteTopics);
-        session.setPendingMessages(pending);
-        session.setConsumedMessages(consumed);
-        session.setTotalMessages(consumed + pending);
+        SessionProgress progress = sessionProgress(admin, located.master, group, liteTopics);
+        session.setPendingMessages(progress.pending());
+        session.setConsumedMessages(progress.consumed());
+        session.setTotalMessages(progress.pending() + progress.consumed());
         session.setConsumptionRate(session.getConsumptionProgress());
 
         long lastAccess = clientInfo.getLastAccessTime();
@@ -307,29 +306,46 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         session.setStatus(remaining > 0 ? "ACTIVE" : "EXPIRED");
     }
 
-    private long consumedMessages(MQAdminExt admin, String brokerAddr, String group, List<String> liteTopics) {
+    /**
+     * Consumed offsets and pending backlog of one session must share the same scope:
+     * the LiteTopics this client actually subscribes to. Mixing a group-wide lag query
+     * with client-scoped offsets inflates {@code totalMessages} and understates progress.
+     */
+    private SessionProgress sessionProgress(MQAdminExt admin, String brokerAddr, String group,
+                                            List<String> liteTopics) {
+        long pending = 0;
         long consumed = 0;
         int scanned = 0;
         for (String liteTopic : liteTopics) {
             if (scanned++ >= MAX_SESSION_LITE_TOPIC_SCAN) {
-                log.warn("LiteTopic session consumed-offset scan truncated at {} lite topics",
+                log.warn("LiteTopic session progress scan truncated at {} lite topics",
                         MAX_SESSION_LITE_TOPIC_SCAN);
                 break;
             }
             try {
                 GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, liteTopic, 1);
-                OffsetWrapper wrapper = body == null ? null : body.getLiteTopicOffsetWrapper();
+                if (body == null) {
+                    throw new BusinessException(502,
+                            "Broker returned no LiteTopic progress for " + group + "|" + liteTopic);
+                }
+                pending += Math.max(body.getTotalLagCount(), 0);
+                OffsetWrapper wrapper = body.getLiteTopicOffsetWrapper();
                 if (wrapper != null && wrapper.getConsumerOffset() > 0) {
                     consumed += wrapper.getConsumerOffset();
                 }
+            } catch (BusinessException failure) {
+                throw failure;
             } catch (Exception failure) {
                 restoreInterrupt(failure);
                 throw new BusinessException(502,
-                        "Failed to read LiteTopic consumed offset for " + group + "|" + liteTopic
+                        "Failed to read LiteTopic progress for " + group + "|" + liteTopic
                                 + ": " + failure.getMessage());
             }
         }
-        return consumed;
+        return new SessionProgress(pending, consumed);
+    }
+
+    private record SessionProgress(long pending, long consumed) {
     }
 
     // ─── TTL update ───────────────────────────────────────────────────
@@ -550,22 +566,6 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             }
         }
         return null;
-    }
-
-    private long sessionGroupLag(MQAdminExt admin, String brokerAddr, String group) {
-        try {
-            GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, null, 1);
-            if (body == null) {
-                throw new BusinessException(502, "Broker returned no LiteTopic backlog for group " + group);
-            }
-            return Math.max(body.getTotalLagCount(), 0);
-        } catch (BusinessException failure) {
-            throw failure;
-        } catch (Exception failure) {
-            restoreInterrupt(failure);
-            throw new BusinessException(502,
-                    "Failed to read LiteTopic backlog for group " + group + ": " + failure.getMessage());
-        }
     }
 
     private static void restoreInterrupt(Exception failure) {
