@@ -175,6 +175,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     private Map<String, ParentTopicAccumulator> discoverParentTopics(MQAdminExt admin, List<String> masters)
             throws Exception {
         Map<String, ParentTopicAccumulator> parents = new LinkedHashMap<>();
+        boolean receivedLiteInfo = false;
         for (String master : masters) {
             final GetBrokerLiteInfoResponseBody info;
             try {
@@ -186,7 +187,11 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 log.warn("Skipping master {} for the LiteTopic list: {}", master, failure.getMessage());
                 continue;
             }
-            if (info == null || info.getTopicMeta() == null) {
+            if (info == null) {
+                continue;
+            }
+            receivedLiteInfo = true;
+            if (info.getTopicMeta() == null) {
                 continue;
             }
             info.getTopicMeta().forEach((parent, ttlMinutes) -> parents
@@ -203,6 +208,9 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                             .groups.addAll(groups);
                 });
             }
+        }
+        if (!receivedLiteInfo) {
+            throw new BusinessException(502, "No broker master returned LiteTopic information");
         }
         return parents;
     }
@@ -444,6 +452,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             long maxTopics = 0;
             long currentSessions = 0;
             long maxSessions = 0;
+            boolean receivedLiteInfo = false;
             for (String master : masters) {
                 final GetBrokerLiteInfoResponseBody info;
                 try {
@@ -459,6 +468,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                     // counts would build the ratio out of two different master sets.
                     continue;
                 }
+                receivedLiteInfo = true;
                 currentTopics += Math.max(info.getCurrentLmqNum(), 0);
                 maxTopics += Math.max(info.getMaxLmqNum(), 0);
                 currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
@@ -466,6 +476,9 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 if (brokerConfig != null) {
                     maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
                 }
+            }
+            if (!receivedLiteInfo) {
+                throw new BusinessException(502, "No broker master returned LiteTopic information");
             }
 
             LiteTopicQuota quota = new LiteTopicQuota();
