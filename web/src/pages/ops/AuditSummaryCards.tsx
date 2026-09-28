@@ -15,7 +15,19 @@
  * limitations under the License.
  */
 
-import { Card, Col, Empty, Flex, Progress, Row, Skeleton, Statistic, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Card,
+  Col,
+  Empty,
+  Flex,
+  Progress,
+  Row,
+  Skeleton,
+  Statistic,
+  Tag,
+  Typography,
+} from 'antd';
 import type { AuditSummary, AuditSummaryBucket } from '../../api/audit';
 import { useLang } from '../../i18n/LangContext';
 
@@ -24,6 +36,7 @@ const { Text } = Typography;
 interface Props {
   summary: AuditSummary | null;
   loading: boolean;
+  error?: boolean;
 }
 
 const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: number }) => {
@@ -51,11 +64,12 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
   );
 };
 
-const AuditSummaryCards = ({ summary, loading }: Props) => {
+const AuditSummaryCards = ({ summary, loading, error = false }: Props) => {
   const { t } = useLang();
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
+  if (error) return <Alert type="error" showIcon message={t('audit.summaryUnavailable')} />;
   const data = summary || {
     total: 0,
     successful: 0,

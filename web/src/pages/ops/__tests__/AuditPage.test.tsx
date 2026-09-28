@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as opsService from '../../../services/opsService';
 import AuditPage from '../audit';
 
@@ -265,6 +266,17 @@ describe('Audit page', () => {
         ),
       { timeout: 1000 },
     );
+  });
+
+  it('reports an unavailable summary instead of rendering zero statistics', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('summary unavailable'));
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    expect(await screen.findByText('Audit summary unavailable. Please retry.')).toBeInTheDocument();
+    expect(screen.queryByText('Matched Records')).not.toBeInTheDocument();
   });
 
   it('loads persisted filter values and forwards their original codes', async () => {

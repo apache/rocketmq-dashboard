@@ -109,6 +109,7 @@ const AuditPage: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState(false);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
@@ -215,14 +216,23 @@ const AuditPage: React.FC = () => {
     // not shown while the refreshed aggregate is still in flight. The microtask
     // mirrors the record-list effect so the flag update is not applied synchronously.
     void Promise.resolve().then(() => {
-      if (!cancelled) setSummaryLoading(true);
+      if (!cancelled) {
+        setSummaryLoading(true);
+        setSummaryError(false);
+      }
     });
     void getAuditSummary(activeFilter)
       .then((value) => {
-        if (!cancelled) setSummary(value);
+        if (!cancelled) {
+          setSummary(value);
+          setSummaryError(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) {
+          setSummaryError(true);
+          message.error('审计概览加载失败，请稍后重试');
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -518,7 +528,7 @@ const AuditPage: React.FC = () => {
         </Flex>
       </Flex>
 
-      <AuditSummaryCards summary={summary} loading={summaryLoading} />
+      <AuditSummaryCards summary={summary} loading={summaryLoading} error={summaryError} />
       <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}

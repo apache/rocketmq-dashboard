@@ -1593,6 +1593,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
   'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
   'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
+  'audit.summaryUnavailable': {
+    zh: '审计摘要不可用，请稍后重试',
+    en: 'Audit summary unavailable. Please retry.',
+  },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
@@ -1699,7 +1703,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
