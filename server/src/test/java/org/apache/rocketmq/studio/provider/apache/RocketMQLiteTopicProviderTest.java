@@ -180,8 +180,9 @@ class RocketMQLiteTopicProviderTest {
         when(admin.getLiteClientInfo("broker-b:10911", PARENT, GROUP, "c1"))
                 .thenReturn(clientInfo(1, lastAccess, LiteUtil.toLmqName(PARENT, "bob")));
         when(admin.getParentTopicInfo("broker-b:10911", PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 1));
-        when(admin.getLiteGroupInfo("broker-b:10911", GROUP, null, 1)).thenReturn(lag(5));
-        when(admin.getLiteGroupInfo("broker-b:10911", GROUP, "bob", 1)).thenReturn(consumed(10, 10));
+        GetLiteGroupInfoResponseBody bobProgress = consumed(15, 10);
+        bobProgress.setTotalLagCount(5);
+        when(admin.getLiteGroupInfo("broker-b:10911", GROUP, "bob", 1)).thenReturn(bobProgress);
         when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(consumerConnection("c1", "10.0.0.9:1234"));
 
         LiteTopicSession session = provider.getSession(
@@ -208,7 +209,7 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
                 .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
-        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1))
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
                 .thenThrow(new IllegalStateException("backlog unavailable"));
 
         assertThatThrownBy(() -> provider.getSession(
@@ -236,7 +237,8 @@ class RocketMQLiteTopicProviderTest {
     void getSessionShouldRejectMissingBacklogBodyTest() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
-                .thenReturn(clientInfo(0, System.currentTimeMillis()));
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1)).thenReturn(null);
 
         assertThatThrownBy(() -> provider.getSession(
                 RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
@@ -249,7 +251,6 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
                 .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
-        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(0));
         when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
                 .thenReturn(new GetLiteGroupInfoResponseBody());
 
@@ -258,6 +259,51 @@ class RocketMQLiteTopicProviderTest {
 
         assertThat(session.getPendingMessages()).isZero();
         assertThat(session.getConsumedMessages()).isZero();
+        assertThat(session.getTotalMessages()).isZero();
+    }
+
+    @Test
+    void sessionBacklogShouldOnlyIncludeTheClientsSubscribedLiteTopicsTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c2"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "alice")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(105));
+        GetLiteGroupInfoResponseBody bob = consumed(15, 10);
+        bob.setTotalLagCount(5);
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1)).thenReturn(bob);
+        GetLiteGroupInfoResponseBody alice = consumed(120, 20);
+        alice.setTotalLagCount(100);
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "alice", 1)).thenReturn(alice);
+
+        LiteTopicSession first = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+        LiteTopicSession second = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c2"));
+
+        assertThat(first.getLiteTopics()).containsExactly("bob");
+        assertThat(first.getPendingMessages()).isEqualTo(5L);
+        assertThat(first.getConsumedMessages()).isEqualTo(10L);
+        assertThat(first.getTotalMessages()).isEqualTo(15L);
+        assertThat(second.getLiteTopics()).containsExactly("alice");
+        assertThat(second.getPendingMessages()).isEqualTo(100L);
+        assertThat(second.getConsumedMessages()).isEqualTo(20L);
+        assertThat(second.getTotalMessages()).isEqualTo(120L);
+    }
+
+    @Test
+    void emptySessionShouldNotInheritOtherClientsBacklogTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(0, System.currentTimeMillis()));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(105));
+
+        LiteTopicSession session = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+
+        assertThat(session.getLiteTopics()).isEmpty();
+        assertThat(session.getPendingMessages()).isZero();
         assertThat(session.getTotalMessages()).isZero();
     }
 
