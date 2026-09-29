@@ -45,6 +45,7 @@ import {
   listSystemAlertsPage,
   createAlertSilence,
   deleteAlertSilence,
+  exportAlertSilences,
   listAlertSilencesPage,
 } from '../../services/opsService';
 import type {
@@ -56,7 +57,7 @@ import type {
   SystemAlert,
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
@@ -174,6 +175,7 @@ const SystemAlertsPage = () => {
   const [savingSilence, setSavingSilence] = useState(false);
   const [deletingSilenceId, setDeletingSilenceId] = useState<number | null>(null);
   const silenceRequestId = useRef(0);
+  const [exportingSilences, setExportingSilences] = useState(false);
   const silencePageSize = 10;
   const [silenceForm] = Form.useForm();
   const silenceRecurrence = Form.useWatch('recurrence', silenceForm) ?? 'ONCE';
@@ -380,6 +382,20 @@ const SystemAlertsPage = () => {
     setSilencePage(1);
     setSilencesVisible(true);
     void loadSilences(1);
+  };
+
+  const exportSilences = async () => {
+    if (exportingSilences) return;
+    setExportingSilences(true);
+    try {
+      const blob = await exportAlertSilences();
+      downloadBlob(blob, 'alert-silences.csv');
+      message.success(t('sysAlerts.silenceExportSuccess'));
+    } catch {
+      message.error(t('sysAlerts.silenceExportFailed'));
+    } finally {
+      setExportingSilences(false);
+    }
   };
 
   const createSilence = async () => {
@@ -962,6 +978,16 @@ const SystemAlertsPage = () => {
             </Form.Item>
           </Form>
         )}
+        <Flex justify="flex-end" style={{ marginBottom: 8 }}>
+          <Button
+            size="small"
+            icon={<DownloadSimple size={14} />}
+            loading={exportingSilences}
+            onClick={() => void exportSilences()}
+          >
+            {t('sysAlerts.exportSilences')}
+          </Button>
+        </Flex>
         <Spin spinning={loadingSilences}>
           <Flex vertical gap={6}>
             {silences.length === 0 && (

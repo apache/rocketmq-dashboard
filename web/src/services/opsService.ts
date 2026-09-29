@@ -469,6 +469,15 @@ export async function listAlertSilencesPage(
   return { items, total: alertSilencesState.length, page, size: pageSize };
 }
 
+export async function exportAlertSilences(): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'silenceId,domain,ruleId,instanceId,labels,startsAtUtc,endsAtUtc,recurrence,timeZone,recurrenceDays,recurrenceUntilUtc,reason,createdBy\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return opsApi.exportAlertSilences();
+}
+
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {
   if (!isMockMode()) return opsApi.createAlertSilence(data);
   const silence = { ...data, id: Date.now(), createdBy: 'admin' } as AlertSilence;
