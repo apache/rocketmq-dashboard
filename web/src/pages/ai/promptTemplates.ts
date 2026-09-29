@@ -56,9 +56,15 @@ export interface SavePromptTemplateResult {
   reason?: 'empty_title' | 'empty_body' | 'storage_unavailable';
 }
 
+export interface PromptTemplateOwner {
+  userId?: number | null;
+  username?: string | null;
+}
+
 type Translate = (key: string) => string;
 
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'rocketmq-studio-ai-prompt-templates';
+const PROMPT_TEMPLATE_STORAGE_VERSION = 2;
 export const MAX_CUSTOM_PROMPT_TEMPLATES = 20;
 export const MAX_PROMPT_TEMPLATE_BODY_LENGTH = 6000;
 export const MAX_PROMPT_TEMPLATE_TITLE_LENGTH = 80;
@@ -194,6 +200,20 @@ export const builtinPromptTemplates: PromptTemplate[] = [
 
 type PromptTemplateStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+const normalizedOwner = (owner: PromptTemplateOwner): { key: string; authenticated: boolean } => {
+  if (owner.userId !== null && owner.userId !== undefined) {
+    return { key: `user-id:${owner.userId}`, authenticated: true };
+  }
+  const username = owner.username?.trim();
+  if (username) {
+    return { key: `username:${encodeURIComponent(username)}`, authenticated: true };
+  }
+  return { key: 'system', authenticated: false };
+};
+
+export const promptTemplateStorageKey = (owner: PromptTemplateOwner): string =>
+  `${PROMPT_TEMPLATE_STORAGE_KEY}:v${PROMPT_TEMPLATE_STORAGE_VERSION}:${normalizedOwner(owner).key}`;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -268,15 +288,38 @@ function getBuiltinPromptTemplates(translate?: Translate): PromptTemplate[] {
   }));
 }
 
-function readCustomPromptTemplates(storage = getStorage()): {
+function prepareOwnerStorage(owner: PromptTemplateOwner, storage: PromptTemplateStorage): boolean {
+  try {
+    const legacy = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    if (!legacy) return true;
+
+    const resolvedOwner = normalizedOwner(owner);
+    const targetKey = promptTemplateStorageKey(owner);
+    // The old key has no ownership metadata. It is safe to migrate only in the
+    // unauthenticated, single-user mode; assigning it to whichever account opens
+    // the page first would preserve the cross-account disclosure.
+    if (!resolvedOwner.authenticated && !storage.getItem(targetKey)) {
+      storage.setItem(targetKey, legacy);
+    }
+    storage.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readCustomPromptTemplates(owner: PromptTemplateOwner, storage = getStorage()): {
   templates: PromptTemplate[];
   storageAvailable: boolean;
   invalidCustomCount: number;
 } {
   if (!storage) return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
+  if (!prepareOwnerStorage(owner, storage)) {
+    return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
+  }
   let raw: string | null;
   try {
-    raw = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    raw = storage.getItem(promptTemplateStorageKey(owner));
   } catch {
     return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   }
@@ -303,11 +346,15 @@ function readCustomPromptTemplates(storage = getStorage()): {
   };
 }
 
-function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getStorage()): boolean {
+function writeCustomPromptTemplates(
+  owner: PromptTemplateOwner,
+  templates: PromptTemplate[],
+  storage = getStorage(),
+): boolean {
   if (!storage) return false;
   try {
     storage.setItem(
-      PROMPT_TEMPLATE_STORAGE_KEY,
+      promptTemplateStorageKey(owner),
       JSON.stringify(templates.slice(0, MAX_CUSTOM_PROMPT_TEMPLATES)),
     );
     return true;
@@ -317,10 +364,11 @@ function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getSt
 }
 
 export function loadPromptTemplateCatalog(
+  owner: PromptTemplateOwner,
   storage = getStorage(),
   translate?: Translate,
 ): PromptTemplateCatalog {
-  const custom = readCustomPromptTemplates(storage);
+  const custom = readCustomPromptTemplates(owner, storage);
   return {
     templates: [...custom.templates, ...getBuiltinPromptTemplates(translate)],
     customCount: custom.templates.length,
@@ -330,6 +378,7 @@ export function loadPromptTemplateCatalog(
 }
 
 export function saveCustomPromptTemplate(
+  owner: PromptTemplateOwner,
   draft: PromptTemplateDraft,
   storage = getStorage(),
   timestamp = nowMs(),
@@ -339,7 +388,7 @@ export function saveCustomPromptTemplate(
   if (!title) return { ok: false, reason: 'empty_title' };
   if (!body) return { ok: false, reason: 'empty_body' };
 
-  const current = readCustomPromptTemplates(storage);
+  const current = readCustomPromptTemplates(owner, storage);
   if (!current.storageAvailable) return { ok: false, reason: 'storage_unavailable' };
 
   const template: PromptTemplate = {
@@ -355,26 +404,30 @@ export function saveCustomPromptTemplate(
     updatedAt: timestamp,
   };
   const next = [template, ...current.templates].slice(0, MAX_CUSTOM_PROMPT_TEMPLATES);
-  if (!writeCustomPromptTemplates(next, storage)) {
+  if (!writeCustomPromptTemplates(owner, next, storage)) {
     return { ok: false, reason: 'storage_unavailable' };
   }
   return { ok: true, template };
 }
 
-export function deleteCustomPromptTemplate(id: string, storage = getStorage()): boolean {
-  const current = readCustomPromptTemplates(storage);
+export function deleteCustomPromptTemplate(
+  owner: PromptTemplateOwner,
+  id: string,
+  storage = getStorage(),
+): boolean {
+  const current = readCustomPromptTemplates(owner, storage);
   if (!current.storageAvailable) return false;
   const next = current.templates.filter((template) => template.id !== id);
   if (next.length === current.templates.length) return true;
   if (next.length === 0) {
     try {
-      storage?.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+      storage?.removeItem(promptTemplateStorageKey(owner));
       return true;
     } catch {
       return false;
     }
   }
-  return writeCustomPromptTemplates(next, storage);
+  return writeCustomPromptTemplates(owner, next, storage);
 }
 
 export function applyPromptTemplate(
