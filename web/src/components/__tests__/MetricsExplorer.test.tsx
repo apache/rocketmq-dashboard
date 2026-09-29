@@ -196,6 +196,34 @@ const createDeferred = <T,>() => {
 };
 
 describe('MetricsExplorer', () => {
+  it('loads and switches profiles when browser storage rejects profile access', async () => {
+    const user = userEvent.setup();
+    const originalGetItem = Storage.prototype.getItem;
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (key === 'rocketmq-studio.metric-profile') throw new DOMException('Blocked', 'SecurityError');
+      return originalGetItem.call(this, key);
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === 'rocketmq-studio.metric-profile') throw new DOMException('Blocked', 'SecurityError');
+      return originalSetItem.call(this, key, value);
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('指标模板加载失败')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '指标模板' }));
+    await user.click(
+      await screen.findByText('RocketMQ 4.x Exporter', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    expect(await screen.findByText('Consumer Lag Messages')).toBeInTheDocument();
+  });
+
   it('loads a metric profile and renders its Prometheus series', async () => {
     renderWithProviders(<MetricsExplorer />);
 
@@ -894,9 +922,14 @@ describe('MetricsExplorer', () => {
     expect(within(detailsDialog).getByText('42')).toBeInTheDocument();
   });
 
-  it('restores profile, range, and source from query history', async () => {
+  it('restores profile, range, and source from query history when saving the profile fails', async () => {
     const user = userEvent.setup();
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === 'rocketmq-studio.metric-profile') throw new DOMException('Blocked', 'SecurityError');
+      return originalSetItem.call(this, key, value);
+    });
 
     renderWithProviders(<MetricsExplorer />);
 
