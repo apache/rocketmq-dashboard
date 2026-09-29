@@ -118,17 +118,40 @@ describe('metrics API', () => {
 
     mock.onPost('/metrics/query/datasource').reply((config) => {
       expect(config.params).toEqual({ key: 'ds-prom-1' });
-      expect(JSON.parse(config.data)).toEqual({
+      expect(JSON.parse(config.data)).toStrictEqual({
         query: dsQuery.query,
         instanceId: 'instance-1',
-        username: undefined,
-        password: undefined,
-        bearerToken: undefined,
       });
       return [200, { code: 200, data: result }];
     });
 
     await expect(queryByDataSource(dsQuery)).resolves.toEqual(result);
+  });
+
+  it('forwards data-source credentials only when supplied for the query', async () => {
+    const query = { metric: 'up', start: 1, end: 2, step: '1m' };
+    const result = { resultType: 'matrix', series: [], warnings: [] };
+
+    mock.onPost('/metrics/query/datasource').reply((config) => {
+      expect(config.params).toStrictEqual({ key: 'ds-prom-1' });
+      expect(JSON.parse(config.data)).toStrictEqual({
+        query,
+        username: 'operator',
+        password: 'temporary-password',
+        bearerToken: 'temporary-token',
+      });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(
+      queryByDataSource({
+        key: 'ds-prom-1',
+        query,
+        username: 'operator',
+        password: 'temporary-password',
+        bearerToken: 'temporary-token',
+      }),
+    ).resolves.toStrictEqual(result);
   });
 
   it('loads version-aware metric profiles', async () => {
