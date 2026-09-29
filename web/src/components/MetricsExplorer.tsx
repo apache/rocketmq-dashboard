@@ -54,6 +54,7 @@ import { listMetricProfiles, queryByDataSource, queryMetrics } from '../api/metr
 import type { DataSource } from '../api/settings';
 import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
+import { readLocalStorage, writeLocalStorage } from '../utils/browserStorage';
 import { downloadCsv } from '../utils/download';
 import { tableScrollX } from '../utils/table';
 import {
@@ -667,7 +668,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         // A re-run after an earlier failure must clear the error banner, or the recovered
         // panels below would stay hidden behind it until the component is remounted.
         setProfileError(false);
-        const storedProfileId = localStorage.getItem(PROFILE_STORAGE_KEY);
+        const storedProfileId = readLocalStorage(PROFILE_STORAGE_KEY);
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
@@ -693,7 +694,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleProfileChange = (nextProfileId: string) => {
     const nextProfile = profiles.find((profile) => profile.id === nextProfileId);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfileId);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfileId);
     setProfileId(nextProfileId);
     void loadAll(nextProfile, selectedRange);
   };
@@ -1075,7 +1076,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       return;
     }
 
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
       restoreProtectedDataSource(nextDataSource, nextProfile, nextRange, appliedCustomPromql);
