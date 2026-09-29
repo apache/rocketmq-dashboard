@@ -57,6 +57,9 @@ func (a *App) newCommand(opts *option) (*cobra.Command, error) {
 
 	client := studio.NewClient(a.HTTP)
 	runtime := commandRuntime{client: client, store: a.Store, options: opts, confirm: a.confirm}
+	if err := cmd.RegisterFlagCompletionFunc("context", runtime.completeContextNames); err != nil {
+		return nil, err
+	}
 	catalogCommands, err := newCatalogCommands(runtime)
 	if err != nil {
 		return nil, err
