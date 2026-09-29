@@ -51,6 +51,10 @@ func (a *App) newCommand(opts *option) (*cobra.Command, error) {
 	cmd.PersistentFlags().StringVarP(&opts.output, "output", "o", output.FormatTable, "output format: table, json, or yaml")
 	cmd.PersistentFlags().BoolVarP(&opts.yes, "yes", "y", false, "skip the interactive confirmation prompt for L2/L3 operations")
 
+	if err := cmd.RegisterFlagCompletionFunc("output", valueCompletion(output.SupportedFormats())); err != nil {
+		return nil, err
+	}
+
 	client := studio.NewClient(a.HTTP)
 	runtime := commandRuntime{client: client, store: a.Store, options: opts, confirm: a.confirm}
 	catalogCommands, err := newCatalogCommands(runtime)

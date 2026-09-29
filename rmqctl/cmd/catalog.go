@@ -131,6 +131,11 @@ func bindSchemaArgumentsAtDepth(cmd *cobra.Command, toolName string, schema tool
 			var value string
 			cmd.Flags().StringVar(&value, field.Flag, "", usage)
 			binding.value = func() any { return value }
+			if len(field.Enum) > 0 {
+				if err := cmd.RegisterFlagCompletionFunc(field.Flag, valueCompletion(field.Enum)); err != nil {
+					return argumentBinder{}, err
+				}
+			}
 		case toolcatalog.IntegerField:
 			var value int64
 			cmd.Flags().Int64Var(&value, field.Flag, 0, usage)
