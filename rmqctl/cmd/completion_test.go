@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -27,6 +29,7 @@ import (
 	"testing"
 
 	toolcatalog "github.com/apache/rocketmq-dashboard/rmqctl/internal/catalog"
+	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -151,5 +154,143 @@ func TestOutputFormatCompletionTest(t *testing.T) {
 	got, directive := completeTestApp(t, nil, "--output", "j")
 	if !slices.Equal(got, []string{"json"}) || directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Fatalf("output prefix: %v / %v", got, directive)
+	}
+}
+
+func writeCompletionConfig(t *testing.T, path string, names ...string) []byte {
+	t.Helper()
+	cfg := config.EmptyConfig()
+	for _, name := range names {
+		cfg.Contexts[name] = newTestConfig("https://studio.example.invalid").Contexts["test"]
+	}
+	if err := config.NewStore().Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestContextCompletionIsLocalReadOnlyTest(t *testing.T) {
+	path := newTestConfigPath(t)
+	names := []string{"staging", "production", "prod east", "生产", "bad\tannotation", "bad\n:0", "bad\rrecord", "bad\x1bescape"}
+	original := writeCompletionConfig(t, path, names...)
+	// No current context, credentials or instance ID are needed. The fixture's
+	// environment/HTTP/stdin/confirmation traps must remain untouched.
+	for _, command := range [][]string{{"--context"}, {"topic", "list", "--context"}, {"config", "use-context"}, {"config", "use"}, {"config", "delete-context"}, {"config", "delete"}, {"config", "set-context"}} {
+		t.Run(strings.Join(command, "/"), func(t *testing.T) {
+			args := append([]string{"--config", path}, command...)
+			got, directive := completeTestApp(t, nil, append(args, "")...)
+			want := []string{"prod east", "production", "staging", "生产"}
+			if !slices.Equal(got, want) || directive != cobra.ShellCompDirectiveNoFileComp {
+				t.Fatalf("context completion %v / %v", got, directive)
+			}
+		})
+	}
+	for _, example := range []struct {
+		prefix string
+		want   []string
+	}{{"prod", []string{"prod east", "production"}}, {"生", []string{"生产"}}, {"absent", nil}} {
+		got, directive := completeTestApp(t, nil, "--config", path, "--context", example.prefix)
+		if !slices.Equal(got, example.want) || directive != cobra.ShellCompDirectiveNoFileComp {
+			t.Fatalf("prefix %q: %v / %v", example.prefix, got, directive)
+		}
+	}
+	for _, command := range []string{"use-context", "delete-context", "set-context"} {
+		got, directive := completeTestApp(t, nil, "--config", path, "config", command, "production", "")
+		if len(got) != 0 || directive != cobra.ShellCompDirectiveNoFileComp {
+			t.Fatalf("extra positional: %v / %v", got, directive)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Fatal("completion changed the config")
+	}
+}
+
+func TestContextCompletionConfigPrecedenceTest(t *testing.T) {
+	explicit := newTestConfigPath(t)
+	envPath := newTestConfigPath(t)
+	home := t.TempDir()
+	defaultPath := filepath.Join(home, ".rmqctl", "config.yaml")
+	writeCompletionConfig(t, explicit, "explicit")
+	writeCompletionConfig(t, envPath, "environment")
+	writeCompletionConfig(t, defaultPath, "default")
+	for _, example := range []struct {
+		name, explicit, envPath string
+		want                    []string
+	}{
+		{"explicit", explicit, envPath, []string{"explicit"}},
+		{"environment", "", envPath, []string{"environment"}},
+		{"default", "", "", []string{"default"}},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			setup := func(app *App) {
+				app.Store.Getenv = func(name string) string {
+					if name != "RMQCTL_CONFIG" {
+						t.Fatalf("credential environment read: %s", name)
+					}
+					return example.envPath
+				}
+				app.Store.HomeDir = func() (string, error) { return home, nil }
+			}
+			args := []string{"--context", ""}
+			if example.explicit != "" {
+				args = append([]string{"--config", example.explicit}, args...)
+			}
+			got, directive := completeTestApp(t, setup, args...)
+			if !slices.Equal(got, example.want) || directive != cobra.ShellCompDirectiveNoFileComp {
+				t.Fatalf("got %v / %v", got, directive)
+			}
+		})
+	}
+}
+
+func TestContextCompletionMissingAndInvalidConfigTest(t *testing.T) {
+	for _, example := range []struct {
+		name, content      string
+		missing, directory bool
+	}{
+		{name: "missing", missing: true}, {name: "empty", content: ""},
+		{name: "invalid-yaml", content: "contexts: ["},
+		{name: "unknown-current", content: "currentContext: missing\ncontexts: {}\n"},
+		{name: "invalid-reference", content: "contexts:\n  secret-marker:\n    server: https://studio.example.invalid\n    credential:\n      accessKeyRef: plaintext-marker\n      secretKeyRef: env:SK\n"},
+		{name: "unreadable-file", directory: true},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			path := newTestConfigPath(t)
+			if example.directory {
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			} else if !example.missing {
+				if err := os.WriteFile(path, []byte(example.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := cobra.ShellCompDirectiveNoFileComp
+			if example.name != "missing" && example.name != "empty" {
+				want |= cobra.ShellCompDirectiveError
+			}
+			got, directive := completeTestApp(t, nil, "--config", path, "--context", "")
+			if len(got) != 0 || directive != want {
+				t.Fatalf("got %v / %v, want empty / %v", got, directive, want)
+			}
+			if example.missing {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("completion created missing config: %v", err)
+				}
+			}
+		})
+	}
+	// A real path flag still allows shell filesystem completion.
+	got, directive := completeTestApp(t, nil, "--config", "")
+	if len(got) != 0 || directive != cobra.ShellCompDirectiveDefault {
+		t.Fatalf("config path completion changed: %v / %v", got, directive)
 	}
 }
