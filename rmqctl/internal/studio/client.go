@@ -32,6 +32,11 @@ import (
 
 const DefaultTimeout = 30 * time.Second
 
+// maxResponseBytes caps how much of a Studio response body is buffered in
+// memory. Studio envelopes are small JSON documents; an unbounded ReadAll
+// would let a misbehaving endpoint exhaust the CLI before validation runs.
+const maxResponseBytes = 64 << 20 // 64 MiB
+
 const (
 	toolCallPath = "/api/mcp/tools/call"
 	mcpPath      = "/api/mcp"
@@ -75,6 +80,8 @@ func (t Target) validate() error {
 
 type Client struct {
 	httpClient *http.Client
+	// maxResponseBytes bounds how much of a Studio response body is buffered.
+	maxResponseBytes int64
 }
 
 type APIError struct {
@@ -92,7 +99,7 @@ func (e *APIError) Error() string {
 // validate the dependency when it is used so offline commands can still be
 // constructed when an App has no HTTP client.
 func NewClient(httpClient *http.Client) Client {
-	return Client{httpClient: httpClient}
+	return Client{httpClient: httpClient, maxResponseBytes: maxResponseBytes}
 }
 
 func NewHTTPClient() *http.Client {
@@ -141,7 +148,11 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 		return err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(response.Body)
+	limit := c.maxResponseBytes
+	if limit <= 0 {
+		limit = maxResponseBytes
+	}
+	data, err := readBounded(response.Body, limit)
 	if err != nil {
 		return err
 	}
@@ -198,4 +209,17 @@ func responseError(statusCode int, data []byte) error {
 
 func hasJSONData(data json.RawMessage) bool {
 	return len(data) > 0 && string(data) != "null"
+}
+
+// readBounded reads at most max bytes from body. It returns an error instead
+// of buffering an unbounded stream when the limit is exceeded.
+func readBounded(body io.Reader, max int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > max {
+		return nil, fmt.Errorf("studio response exceeds %d bytes", max)
+	}
+	return data, nil
 }
