@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -67,5 +69,27 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         verify(mapper).selectList(queryCaptor.capture());
         QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
         assertThat(query.getSqlSegment()).contains("cluster_id IS NULL");
+    }
+
+    @Test
+    void recentSnapshotsStopAtTheEvaluatedSampleTimeTest() {
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        MybatisPlusMetricSnapshotRepository repository =
+                new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
+        Instant collectedAt = Instant.parse("2026-09-29T10:00:00Z");
+        Instant since = collectedAt.minusSeconds(300);
+        MetricSample scope = new MetricSample("consumer.lag.total", AlertDomain.BUSINESS,
+                "local", null, Map.of("consumerGroup", "orders"), 10D,
+                MetricAvailability.AVAILABLE, collectedAt);
+
+        repository.findRecent(scope, since);
+
+        ArgumentCaptor<Wrapper<RmqMetricSnapshot>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).selectList(queryCaptor.capture());
+        QueryWrapper<RmqMetricSnapshot> query = (QueryWrapper<RmqMetricSnapshot>) queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("collected_at >=", "collected_at <=");
+        assertThat(query.getParamNameValuePairs().values()).contains(
+                LocalDateTime.ofInstant(since, ZoneOffset.UTC),
+                LocalDateTime.ofInstant(collectedAt, ZoneOffset.UTC));
     }
 }

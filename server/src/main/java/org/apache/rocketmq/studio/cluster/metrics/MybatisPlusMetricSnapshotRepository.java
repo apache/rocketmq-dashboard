@@ -66,6 +66,7 @@ public class MybatisPlusMetricSnapshotRepository implements MetricSnapshotReposi
                         .eq(scope.clusterId() != null, "cluster_id", scope.clusterId())
                         .eq("availability", MetricAvailability.AVAILABLE.name())
                         .ge("collected_at", LocalDateTime.ofInstant(since, ZoneOffset.UTC))
+                        .le("collected_at", LocalDateTime.ofInstant(scope.collectedAt(), ZoneOffset.UTC))
                         .orderByAsc("collected_at"))
                 .stream().map(this::toSample).toList();
     }
