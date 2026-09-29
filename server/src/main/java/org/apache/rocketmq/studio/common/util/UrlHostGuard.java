@@ -32,6 +32,11 @@ import java.util.Locale;
  * connection attempt, and the same rule is applied on every path — save, test and query —
  * so a host cannot be stored once and queried later.
  *
+ * <p>URLs that embed credentials as user-info ({@code http://user:pass@host}) are rejected
+ * too: the URL is persisted and echoed back by read APIs (for example the data-source
+ * list) that every authenticated operator can call, while the dedicated credential fields
+ * stay redacted. Credentials belong in those fields, not in the URL.
+ *
  * <p>Private site-local ranges (10.x, 172.16-31.x, 192.168.x) stay allowed: on-premise
  * Prometheus servers and internal LLM gateways legitimately live on the internal network.
  * When {@code allowLoopback} is set (LLM config, where a local {@code ollama} gateway is
@@ -44,13 +49,15 @@ public final class UrlHostGuard {
     }
 
     /**
-     * Validates that {@code url} is an http(s) URL whose host passes the SSRF guard.
+     * Validates that {@code url} is an http(s) URL whose host passes the SSRF guard and
+     * which does not embed credentials as user-info.
      *
      * @param url            the caller-supplied URL
      * @param allowLoopback  whether loopback hosts ({@code localhost}, 127.x.x.x, ::1)
      *                       are acceptable — used for local LLM gateways such as ollama
-     * @throws IllegalArgumentException when the URL is missing, non-http(s), hostless or
-     *                                  points at a disallowed address
+     * @throws IllegalArgumentException when the URL is missing, non-http(s), hostless,
+     *                                  embeds user-info credentials or points at a
+     *                                  disallowed address
      */
     public static void check(String url, boolean allowLoopback) {
         if (url == null || url.isBlank()) {
@@ -73,10 +80,26 @@ public final class UrlHostGuard {
         if (uri.getHost() == null || uri.getHost().isBlank()) {
             throw new IllegalArgumentException("URL must include a host");
         }
+        if (hasUserInfo(uri)) {
+            throw new IllegalArgumentException(
+                    "URL must not embed credentials (user:password@host); use the dedicated credential fields");
+        }
         if (!isAllowedHost(uri.getHost(), allowLoopback)) {
             throw new IllegalArgumentException(
                     "URL must not point to a local, loopback or metadata address");
         }
+    }
+
+    /**
+     * Whether the URI embeds user-info ({@code user:password@host}). Such a URL carries
+     * credentials into every place the URL is stored, logged or returned, so callers that
+     * validate a parsed URI themselves should reject it the same way {@link #check} does.
+     *
+     * @param uri  the parsed URI
+     * @return {@code true} when non-blank user-info is present
+     */
+    public static boolean hasUserInfo(URI uri) {
+        return uri != null && uri.getUserInfo() != null && !uri.getUserInfo().isBlank();
     }
 
     /**
