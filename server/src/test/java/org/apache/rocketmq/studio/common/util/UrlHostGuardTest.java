@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import java.net.InetAddress;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UrlHostGuardTest {
 
@@ -62,5 +64,27 @@ class UrlHostGuardTest {
     @Test
     void isAllowedHostShouldRejectIpv6UlaLiteralEvenWhenLoopbackIsAllowed() {
         assertThat(UrlHostGuard.isAllowedHost("fd00:ec2::254", true)).isFalse();
+    }
+
+    @Test
+    void checkShouldRejectUrlsThatEmbedCredentialsAsUserInfo() {
+        // The guard runs on save, so the credential never reaches the persisted URL that
+        // read APIs return to every authenticated operator.
+        assertThatThrownBy(() -> UrlHostGuard.check("http://prometheus:secret@8.8.8.8/metrics", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not embed credentials");
+    }
+
+    @Test
+    void checkShouldRejectUserInfoEvenWhenNoPasswordIsPresent() {
+        assertThatThrownBy(() -> UrlHostGuard.check("http://token@8.8.8.8/metrics", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not embed credentials");
+    }
+
+    @Test
+    void checkShouldStillAcceptTheSameUrlWithoutUserInfo() {
+        assertThatCode(() -> UrlHostGuard.check("http://8.8.8.8/metrics", false))
+                .doesNotThrowAnyException();
     }
 }

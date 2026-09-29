@@ -378,6 +378,28 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigShouldRejectApiBaseWithEmbeddedCredentialsTest() {
+        // The API key lives in its own field; embedding it in the base URL would persist the
+        // credential inside a URL that is echoed back by configuration reads.
+        assertThatThrownBy(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("http://key:secret@gateway.openai-proxy.internal/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .enabled(true)
+                .build()))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM API base URL is invalid")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.invalid_api_base");
+                });
+    }
+
+    @Test
     void configShouldRejectMissingRequiredApiKeyTest() {
         when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .theme("dark")
