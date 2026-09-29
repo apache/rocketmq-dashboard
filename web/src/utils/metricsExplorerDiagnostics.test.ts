@@ -30,11 +30,14 @@ import {
   loadMetricsQueryHistory,
   mergeMetricsQueryHistory,
   metricSeriesLabel,
+  metricsHistoryStorageKey,
   saveMetricsQueryHistory,
   stableLabelsText,
   summarizeMetricData,
   toMetricSeriesSamples,
 } from './metricsExplorerDiagnostics';
+
+const systemOwner = { userId: null, username: null };
 
 const metric: MetricMapping = {
   semanticMetric: 'message_in_tps',
@@ -239,19 +242,43 @@ describe('metrics explorer diagnostics', () => {
 
     expect(merged).toHaveLength(METRICS_QUERY_HISTORY_LIMIT);
     expect(merged.find((entry) => entry.queriedAt === 1)).toBeUndefined();
-    expect(saveMetricsQueryHistory(merged)).toBe(true);
-    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('password');
-    expect(loadMetricsQueryHistory()[0].queriedAt).toBe(112);
-    expect(clearMetricsQueryHistory()).toBe(true);
-    expect(loadMetricsQueryHistory()).toEqual([]);
+    expect(saveMetricsQueryHistory(merged, systemOwner)).toBe(true);
+    expect(localStorage.getItem(metricsHistoryStorageKey(systemOwner))).not.toContain('password');
+    expect(loadMetricsQueryHistory(systemOwner)[0].queriedAt).toBe(112);
+    expect(clearMetricsQueryHistory(systemOwner)).toBe(true);
+    expect(loadMetricsQueryHistory(systemOwner)).toEqual([]);
+  });
+
+  it('does not show one account the other account\'s metric query history', () => {
+    localStorage.clear();
+    const alice = { userId: 1, username: 'alice' };
+    const bob = { userId: 2, username: 'bob' };
+    const aliceEntry = createHistoryEntry({ queriedAt: 1 });
+
+    expect(saveMetricsQueryHistory([aliceEntry], alice)).toBe(true);
+    expect(loadMetricsQueryHistory(bob)).toEqual([]);
+    expect(loadMetricsQueryHistory(alice)).toEqual([aliceEntry]);
+    expect(clearMetricsQueryHistory(bob)).toBe(true);
+    expect(loadMetricsQueryHistory(alice)).toEqual([aliceEntry]);
+  });
+
+  it('discards history stored without an account owner', () => {
+    localStorage.clear();
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([createHistoryEntry({ queriedAt: 1 })]),
+    );
+
+    expect(loadMetricsQueryHistory({ userId: 2, username: 'bob' })).toEqual([]);
+    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBeNull();
   });
 
   // The unavailable-storage fallbacks are covered by browserStorage.test.ts, which is where
   // the try/catch now lives, so this only asserts the malformed-payload path.
   it('ignores malformed persisted history entries', () => {
     localStorage.clear();
-    localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, '{"broken"');
+    localStorage.setItem(metricsHistoryStorageKey(systemOwner), '{"broken"');
 
-    expect(loadMetricsQueryHistory()).toEqual([]);
+    expect(loadMetricsQueryHistory(systemOwner)).toEqual([]);
   });
 });

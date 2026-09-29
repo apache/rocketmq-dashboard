@@ -66,6 +66,7 @@ import {
   loadMetricsQueryHistory,
   mergeMetricsQueryHistory,
   metricSeriesLabel,
+  metricsHistoryStorageKey,
   saveMetricsQueryHistory,
   summarizeMetricData,
   toMetricSeriesSamples,
@@ -73,8 +74,10 @@ import {
   type MetricResultSummary,
   type MetricSeriesDetailRow,
   type MetricsQueryHistoryEntry,
+  type MetricsHistoryOwner,
   type NumericMetricSample,
 } from '../utils/metricsExplorerDiagnostics';
+import useAuthStore from '../stores/authStore';
 
 const { Text, Title } = Typography;
 
@@ -486,6 +489,13 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           protectedHistory: 'This data source requires authentication again',
         };
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
+  const historyOwner = useMemo<MetricsHistoryOwner>(
+    () => ({ userId, username }),
+    [userId, username],
+  );
+  const historyKey = metricsHistoryStorageKey(historyOwner);
   const { message } = App.useApp();
   const [authForm] = Form.useForm<AuthFormValues>();
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
@@ -501,8 +511,22 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
-  const [history, setHistory] = useState<MetricsQueryHistoryEntry[]>(() =>
-    loadMetricsQueryHistory(),
+  const [historyState, setHistoryState] = useState(() => ({
+    key: historyKey,
+    entries: loadMetricsQueryHistory(historyOwner),
+  }));
+  const history =
+    historyState.key === historyKey ? historyState.entries : loadMetricsQueryHistory(historyOwner);
+  const setHistory = useCallback(
+    (update: (entries: MetricsQueryHistoryEntry[]) => MetricsQueryHistoryEntry[]) => {
+      setHistoryState((current) => ({
+        key: historyKey,
+        entries: update(
+          current.key === historyKey ? current.entries : loadMetricsQueryHistory(historyOwner),
+        ),
+      }));
+    },
+    [historyKey, historyOwner],
   );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsPanel, setDetailsPanel] = useState<DetailsPanelState | null>(null);
@@ -637,7 +661,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               }));
               setHistory((currentHistory) => {
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-                saveMetricsQueryHistory(nextHistory);
+                saveMetricsQueryHistory(nextHistory, historyOwner);
                 return nextHistory;
               });
             }
@@ -655,7 +679,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }),
       );
     },
-    [instanceId, queryErrorFallback, runQuery],
+    [historyOwner, instanceId, queryErrorFallback, runQuery, setHistory],
   );
 
   useEffect(() => {
@@ -754,7 +778,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           setCustomPanel({ loading: false, data: execution.data, query });
           setHistory((currentHistory) => {
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-            saveMetricsQueryHistory(nextHistory);
+            saveMetricsQueryHistory(nextHistory, historyOwner);
             return nextHistory;
           });
         }
@@ -767,7 +791,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }
       }
     },
-    [copy.customTitle, instanceId, queryErrorFallback, runQuery],
+    [copy.customTitle, historyOwner, instanceId, queryErrorFallback, runQuery, setHistory],
   );
 
   const activateDataSource = (
@@ -1031,8 +1055,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleClearHistory = () => {
-    clearMetricsQueryHistory();
-    setHistory([]);
+    clearMetricsQueryHistory(historyOwner);
+    setHistory(() => []);
   };
 
   const restoreProtectedDataSource = (

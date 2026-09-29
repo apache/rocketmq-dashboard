@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,12 +24,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { listDataSources } from '../../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
 import { LangProvider } from '../../i18n/LangContext';
+import useAuthStore from '../../stores/authStore';
 import { downloadCsv } from '../../utils/download';
 import {
-  METRICS_QUERY_HISTORY_STORAGE_KEY,
+  metricsHistoryStorageKey,
   type MetricsQueryHistoryEntry,
 } from '../../utils/metricsExplorerDiagnostics';
 import MetricsExplorer from '../MetricsExplorer';
+
+const METRICS_QUERY_HISTORY_STORAGE_KEY = metricsHistoryStorageKey({ userId: null, username: null });
 
 vi.mock('../../api/settings', () => ({
   listDataSources: vi.fn(),
@@ -168,6 +171,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+  useAuthStore.getState().logout();
   localStorage.clear();
   vi.mocked(listDataSources).mockResolvedValue([]);
   vi.mocked(listMetricProfiles).mockResolvedValue(profiles);
@@ -991,6 +995,29 @@ describe('MetricsExplorer', () => {
     expect(within(historyDialog).getByText('Instance A Lag')).toBeInTheDocument();
     expect(within(historyDialog).getAllByText('实例: instance-a').length).toBeGreaterThan(0);
     expect(within(historyDialog).queryByText('Instance B Lag')).not.toBeInTheDocument();
+  });
+
+  it('hides the previous account history when the account changes while mounted', async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().login('alice', 1, false);
+    const aliceKey = metricsHistoryStorageKey({ userId: 1, username: 'alice' });
+    localStorage.setItem(
+      aliceKey,
+      JSON.stringify([createHistoryEntry({ metricName: 'Alice Private Lag' })]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    expect(within(historyDialog).getByText('Alice Private Lag')).toBeInTheDocument();
+
+    act(() => {
+      useAuthStore.getState().logout();
+      useAuthStore.getState().login('bob', 2, false);
+    });
+    expect(within(historyDialog).queryByText('Alice Private Lag')).not.toBeInTheDocument();
+    expect(localStorage.getItem(aliceKey)).toContain('Alice Private Lag');
   });
 
   it('requires credentials again when restoring a protected data source history item', async () => {
