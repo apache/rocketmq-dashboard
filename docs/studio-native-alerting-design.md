@@ -198,7 +198,9 @@ FIRING -- user acknowledges --> ACKED
 PENDING/FIRING -- silence matches --> state unchanged, notification suppressed
 ```
 
-The fingerprint is `sha256(ruleId + instanceId + sorted(labels))`. A single rule therefore creates independent events for different Brokers, Topics, queues, or consumer groups.
+The fingerprint is `sha256(ruleId + instanceId + sorted(identity labels))`. Descriptive labels that change while the same incident persists — currently `cloudStatus`, the cloud control-plane instance status behind `cloud.instance.availability` — are excluded from identity but still carried on the sample and on every emitted event, so one unavailable cloud instance keeps a single incident across STOPPED → STARTING → RUNNING. A single rule therefore still creates independent events for different Brokers, Topics, queues, or consumer groups.
+
+Because existing `rmq_alert_state` rows carry fingerprints computed with `cloudStatus` included, the first collection cycle after an upgrade emits one RESOLVED + FIRING pair per active cloud-availability incident; the migration is one-shot and self-healing.
 
 Current delivery emits on `FIRING`, periodic `REMINDER` transitions controlled by the rule's `reminderInterval`, and `RESOLVED`. A separate `cooldownSeconds` policy remains future work. A value recovery always emits a `RESOLVED` event.
 
