@@ -38,7 +38,7 @@ class MybatisPlusMetricSnapshotRepositoryIntegrationTest {
 
     @Test
     void saveAllShouldPersistAndReadMetricValuesOnH2Test() {
-        Instant firstTime = Instant.parse("2026-09-29T00:00:00Z");
+        Instant firstTime = Instant.parse("2020-01-01T00:00:00Z");
         MetricSample first = new MetricSample("h2.value.column", AlertDomain.CLUSTER,
                 "h2-metric-value-column", null, Map.of(), 2.5D, MetricAvailability.AVAILABLE, firstTime);
         MetricSample second = new MetricSample("h2.value.column", AlertDomain.CLUSTER,
@@ -47,6 +47,7 @@ class MybatisPlusMetricSnapshotRepositoryIntegrationTest {
 
         repository.saveAll(List.of(first, second));
 
+        // findRecent orders snapshots by collected_at ascending.
         assertThat(repository.findRecent(first, firstTime.minusSeconds(1)))
                 .extracting(MetricSample::value)
                 .containsExactly(2.5D, 0D);
