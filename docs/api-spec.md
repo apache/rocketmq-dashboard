@@ -530,6 +530,28 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 
 **Response `data`:** `{ success: boolean, message: string }`
 
+### 4.4.1 集群 Broker 配置漂移比对与健康评估
+
+```
+GET /api/clusters/:id/broker-config-diff
+```
+
+**Path / Query Parameters:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 集群 ID |
+| `instanceId` | `string` | 否 | 所属实例标识 |
+
+**Response `data`:** `BrokerConfigDiffVO`
+- `cluster`: 集群名称
+- `complete`: 是否所有 Broker 均成功连接
+- `driftDetected`: 是否检测到配置漂移
+- `consistencyScore`: 集群配置一致性得分（`0.0` ~ `100.0`）
+- `clusterPosture`: 集群姿态分级（`SYNCHRONIZED` / `DRIFT_DETECTED` / `CRITICAL_DRIFT`）
+- `operationalSuggestions`: 针对漂移项的运维对齐建议列表
+- `differences[]`: 包含字段名、`brokerProperty`、严重等级 `severity`（`CRITICAL`/`HIGH`/`MEDIUM`）、`impactDescription`、`remediationAdvice` 以及各 Broker 的实际配置值。
+
 ### 4.5 创建 NameServer
 
 ```

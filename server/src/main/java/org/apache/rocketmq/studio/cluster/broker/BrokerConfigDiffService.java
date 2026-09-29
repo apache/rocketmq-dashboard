@@ -31,7 +31,6 @@ import java.util.Map;
 import java.util.Objects;
 
 @Service
-@RequiredArgsConstructor
 public class BrokerConfigDiffService {
 
     private static final List<ConfigField> COMPARED_FIELDS = List.of(
@@ -48,6 +47,19 @@ public class BrokerConfigDiffService {
 
     private final ClusterService clusterService;
     private final RocketMQBrokerConfigService brokerConfigService;
+    private final BrokerConfigDriftEvaluator driftEvaluator;
+
+    public BrokerConfigDiffService(ClusterService clusterService, RocketMQBrokerConfigService brokerConfigService) {
+        this(clusterService, brokerConfigService, new BrokerConfigDriftEvaluator());
+    }
+
+    public BrokerConfigDiffService(ClusterService clusterService,
+                                   RocketMQBrokerConfigService brokerConfigService,
+                                   BrokerConfigDriftEvaluator driftEvaluator) {
+        this.clusterService = clusterService;
+        this.brokerConfigService = brokerConfigService;
+        this.driftEvaluator = driftEvaluator != null ? driftEvaluator : new BrokerConfigDriftEvaluator();
+    }
 
     public BrokerConfigDiffVO compareForInstance(String instanceId) {
         ClusterVO cluster = clusterService.requireSingleCluster(instanceId);
@@ -91,13 +103,22 @@ public class BrokerConfigDiffService {
         }
 
         List<BrokerConfigDiffVO.ConfigDifferenceVO> differences = findDifferences(reachableConfigs);
+        BrokerConfigDriftEvaluator.EvaluationResult evaluation =
+                driftEvaluator.evaluate(differences, COMPARED_FIELDS.size());
+
         return BrokerConfigDiffVO.builder()
                 .cluster(normalizedClusterId)
                 .complete(reachableConfigs.size() == brokers.size())
                 .driftDetected(!differences.isEmpty())
+                .consistencyScore(evaluation.consistencyScore())
+                .clusterPosture(evaluation.clusterPosture())
+                .operationalSuggestions(evaluation.operationalSuggestions())
                 .brokerCount(brokers.size())
                 .reachableBrokerCount(reachableConfigs.size())
                 .comparedFields(COMPARED_FIELDS.stream().map(ConfigField::field).toList())
+                .brokers(statuses)
+                .differences(differences)
+                .build();
                 .brokers(statuses)
                 .differences(differences)
                 .build();

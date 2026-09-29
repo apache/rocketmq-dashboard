@@ -279,6 +279,9 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
                         .driftDetected(true)
                         .brokerCount(2)
                         .reachableBrokerCount(2)
+                        .consistencyScore(90.0)
+                        .clusterPosture("CRITICAL_DRIFT")
+                        .operationalSuggestions(List.of("Property [flushDiskType] divergence: Align flushDiskType"))
                         .comparedFields(Arrays.asList("flushDiskType", "writeQueueNums"))
                         .brokers(Arrays.asList(
                                 BrokerConfigDiffVO.BrokerStatusVO.builder()

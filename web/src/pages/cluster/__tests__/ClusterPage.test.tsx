@@ -734,6 +734,9 @@ describe('Cluster page', () => {
       driftDetected: true,
       brokerCount: 2,
       reachableBrokerCount: 2,
+      consistencyScore: 90.0,
+      clusterPosture: 'CRITICAL_DRIFT',
+      operationalSuggestions: ['Property [writeQueueNums] divergence: Align defaultTopicQueueNums'],
       comparedFields: ['flushDiskType', 'writeQueueNums'],
       brokers: [
         { name: 'rocketmq-prod-0', address: '10.101.2.11:10911', reachable: true },
