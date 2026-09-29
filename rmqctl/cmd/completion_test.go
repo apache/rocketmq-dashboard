@@ -294,3 +294,26 @@ func TestContextCompletionMissingAndInvalidConfigTest(t *testing.T) {
 		t.Fatalf("config path completion changed: %v / %v", got, directive)
 	}
 }
+
+func TestCompletionScriptsExposeShellHooksTest(t *testing.T) {
+	for _, example := range []struct{ shell, hook string }{
+		{"bash", "__start_rmqctl"}, {"zsh", "#compdef rmqctl"},
+		{"fish", "complete -c rmqctl"}, {"powershell", "Register-ArgumentCompleter"},
+	} {
+		t.Run(example.shell, func(t *testing.T) {
+			stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+			app := NewApp(stdout, stderr)
+			app.HTTP = &http.Client{Transport: completionTransport{t}}
+			app.In = completionInput{t}
+			app.Store.Getenv = func(name string) string { t.Fatalf("script generation read environment %s", name); return "" }
+			app.Store.HomeDir = func() (string, error) { t.Fatal("script generation read config"); return "", nil }
+			if code := app.Execute([]string{"completion", example.shell}); code != 0 {
+				t.Fatalf("script generation exit %d: %s", code, stderr)
+			}
+			script := stdout.String()
+			if !strings.Contains(script, example.hook) || !strings.Contains(script, "__complete") {
+				t.Fatalf("missing %s completion hook or protocol entry point", example.shell)
+			}
+		})
+	}
+}
