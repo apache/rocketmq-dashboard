@@ -389,6 +389,11 @@ export async function listAlertSilencesPage(params: AlertSilenceQuery = {}) {
   return res.data.data;
 }
 
+export async function exportAlertSilences() {
+  const res = await client.get<Blob>('/alert-silences/export', { responseType: 'blob' });
+  return res.data;
+}
+
 export async function createAlertSilence(data: CreateAlertSilence) {
   const res = await client.post<{ data: AlertSilence }>('/alert-silences', data);
   return res.data.data;
