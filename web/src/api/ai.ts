@@ -102,7 +102,9 @@ export class AiStreamError extends Error {
 }
 
 function getEventBoundary(buffer: string): { index: number; length: number } | null {
-  const match = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
+  // Each of the two line endings may independently be CRLF, LF, or CR. Do not split
+  // a single CRLF into two endings when looking for the blank line.
+  const match = /(?:\r\n|\r(?!\n)|\n){2}/.exec(buffer);
   return match ? { index: match.index, length: match[0].length } : null;
 }
 

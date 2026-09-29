@@ -247,6 +247,30 @@ describe('AI API', () => {
       expect(events).toEqual([{ type: 'text_delta', content: 'hello' }]);
     });
 
+    it.each(['\r\n\n', '\n\r\n', '\r\r\n'])(
+      'dispatches a frame with mixed SSE line endings %j',
+      async (boundary) => {
+        const frame = `event: agent\ndata: ${JSON.stringify({ type: 'text_delta', content: 'hello' })}${boundary}`;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(eventStreamResponse([frame + doneFrame()])));
+        const events: ChatSseEvent[] = [];
+
+        await openRunStream(7, body, { onEvent: (event) => events.push(event) });
+
+        expect(events).toEqual([{ type: 'text_delta', content: 'hello' }]);
+      },
+    );
+
+    it('does not treat one CRLF as a blank line between frames', async () => {
+      const stream =
+        'event: agent\r\ndata: {"type":"text_delta","content":"hello"}\r\n' +
+        'event: done\r\ndata: {}\r\n\r\n';
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(eventStreamResponse([stream])));
+
+      await expect(openRunStream(7, body, { onEvent: vi.fn() })).rejects.toMatchObject({
+        code: 'llm.stream.malformed_event',
+      } satisfies Partial<AiStreamError>);
+    });
+
     it('dispatchesMultipleAgentFramesDeliveredInOneChunkTest', async () => {
       vi.stubGlobal(
         'fetch',
