@@ -5,12 +5,12 @@ development environment, how changes are reviewed and merged, and what we expect
 pull request.
 
 RocketMQ Studio is developed in this repository (`apache/rocketmq-dashboard`) on the
-**`rocketmq-studio`** branch, which is also the repository default branch. All pull requests must
-target `rocketmq-studio`.
+**`master`** branch, which is also the repository default branch. All new pull requests must
+target `master`.
 
 | Branch | Role |
 |--------|------|
-| `rocketmq-studio` | RocketMQ Studio trunk — base your branches and pull requests on it |
+| `master` | RocketMQ Studio trunk — base your branches and pull requests on it |
 | `master_archive` | Archive of the legacy rocketmq-dashboard code that lived on the trunk before. Read-only history, not for development |
 
 Recommended background reading:
@@ -89,18 +89,18 @@ English strings to `web/src/i18n/` whenever you add UI text.
    projects decide by consensus: a new feature, a new API or a large refactor should be
    agreed on in the issue before the implementation lands. This saves you from having a
    finished pull request rejected on design grounds.
-4. **Fork, branch, commit.** Create your branch from `rocketmq-studio`:
+4. **Fork, branch, commit.** Create your branch from `master`:
 
    ```bash
    git clone git@github.com:<your-username>/rocketmq-dashboard.git
    git remote add upstream https://github.com/apache/rocketmq-dashboard.git
-   git fetch upstream rocketmq-studio
-   git checkout -b <your-topic> upstream/rocketmq-studio
+   git fetch upstream master
+   git checkout -b <your-topic> upstream/master
    ```
 
-5. **Open a pull request against `rocketmq-studio`** and link the issue with `Fixes #<issue-id>` so
+5. **Open a pull request against `master`** and link the issue with `Fixes #<issue-id>` so
    it closes automatically on merge.
-6. **Keep it current.** Rebase onto `upstream/rocketmq-studio` when the branch moves; force-push
+6. **Keep it current.** Rebase onto `upstream/master` when the branch moves; force-push
    your own fork branch as needed.
 
 Pull requests are merged with **squash merge only**, so the merged commit message becomes
