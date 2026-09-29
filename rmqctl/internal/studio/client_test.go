@@ -16,7 +16,13 @@
  */
 package studio
 
-import "testing"
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 // TestValidateServerSchemeAdaptiveHTTP verifies the adaptive scheme policy:
 // HTTPS is always accepted, plain HTTP is accepted for loopback / RFC1918
@@ -74,5 +80,84 @@ func TestIsPrivateHost(t *testing.T) {
 		if isPrivateHost(host) {
 			t.Errorf("isPrivateHost(%q) = true, want false", host)
 		}
+	}
+}
+
+func TestReadBounded(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accepts body at the limit", func(t *testing.T) {
+		t.Parallel()
+		body := strings.NewReader("12345")
+		data, err := readBounded(body, 5)
+		if err != nil {
+			t.Fatalf("readBounded() error = %v", err)
+		}
+		if string(data) != "12345" {
+			t.Fatalf("readBounded() = %q, want 12345", data)
+		}
+	})
+
+	t.Run("rejects body over the limit", func(t *testing.T) {
+		t.Parallel()
+		body := strings.NewReader("123456")
+		if _, err := readBounded(body, 5); err == nil {
+			t.Fatal("readBounded() error = nil, want size-cap error")
+		} else if !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("readBounded() error = %v, want mentions exceeds", err)
+		}
+	})
+}
+
+func TestRequestRejectsOversizedStudioResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":`))
+		_, _ = w.Write([]byte(strings.Repeat("x", 64)))
+		_, _ = w.Write([]byte(`}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.Client())
+	client.maxResponseBytes = 16
+	target := Target{
+		Server:     server.URL,
+		InstanceID: "inst",
+		Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+	}
+
+	err := client.request(context.Background(), target, http.MethodGet, "/api/mcp", nil, &map[string]any{})
+	if err == nil {
+		t.Fatal("request() error = nil, want size-cap error")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("request() error = %v, want size-cap error", err)
+	}
+}
+
+func TestRequestAcceptsNormalStudioEnvelope(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"data":{"ok":true}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.Client())
+	target := Target{
+		Server:     server.URL,
+		InstanceID: "inst",
+		Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+	}
+
+	var out map[string]any
+	if err := client.request(context.Background(), target, http.MethodGet, "/api/mcp", nil, &out); err != nil {
+		t.Fatalf("request() error = %v", err)
+	}
+	if out["ok"] != true {
+		t.Fatalf("request() out = %#v, want ok=true", out)
 	}
 }
