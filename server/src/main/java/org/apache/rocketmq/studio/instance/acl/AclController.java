@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -99,6 +101,16 @@ public class AclController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String keyword) {
         return Result.ok(aclService.pageUsers(instanceId, page, pageSize, keyword));
+    }
+
+    @GetMapping(value = "/users/export", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<byte[]> exportUsers(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String keyword) {
+        byte[] csv = aclService.exportUsersCsv(instanceId, keyword).getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"acl-users.csv\"")
+                .body(csv);
     }
 
     @GetMapping("/users/{id}/credentials")

@@ -2065,6 +2065,12 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'acl.addRule': { zh: '添加规则', en: 'Add Rule' },
   'acl.addUser': { zh: '添加用户', en: 'Add User' },
+  'acl.exportUsers': { zh: '导出用户', en: 'Export users' },
+  'acl.userExportSuccess': { zh: 'ACL 用户已导出', en: 'ACL users exported.' },
+  'acl.userExportFailed': {
+    zh: 'ACL 用户导出失败，请稍后重试',
+    en: 'Failed to export ACL users. Please try again later.',
+  },
   'acl.ruleTab': { zh: 'ACL 规则', en: 'ACL Rules' },
   'acl.userTab': { zh: '用户管理', en: 'Users' },
   'acl.principal': { zh: '主体', en: 'Principal' },
