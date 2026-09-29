@@ -324,6 +324,13 @@ function emitRunFrame(frame: string, handlers: RunStreamHandlers): boolean {
     );
   }
 
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new AiStreamError(
+      `Malformed AI stream event: ${describePayload(payload)}`,
+      'llm.stream.malformed_event',
+    );
+  }
+
   const event = parsed as ChatSseEvent;
   const type = (event as { type?: unknown }).type;
   if (typeof type !== 'string' || !LIVE_EVENT_TYPE_SET.has(type)) {

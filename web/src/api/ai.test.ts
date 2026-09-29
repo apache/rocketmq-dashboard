@@ -383,6 +383,23 @@ describe('AI API', () => {
       } satisfies Partial<AiStreamError>);
     });
 
+    it.each(['null', '[]', '42', '"text"'])(
+      'rejects a non-object agent payload as malformed: %s',
+      async (payload) => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(eventStreamResponse([`event: agent\ndata: ${payload}\n\n`])),
+        );
+        const onEvent = vi.fn();
+
+        await expect(openRunStream(7, body, { onEvent })).rejects.toMatchObject({
+          name: 'AiStreamError',
+          code: 'llm.stream.malformed_event',
+        } satisfies Partial<AiStreamError>);
+        expect(onEvent).not.toHaveBeenCalled();
+      },
+    );
+
     it('rejectsAResponseThatIsNotAnEventStreamTest', async () => {
       // A buffering gateway answers 200 with HTML and then yields nothing: without this guard the
       // UI spins forever with an empty console.
