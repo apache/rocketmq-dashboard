@@ -119,6 +119,7 @@ calls back into Studio's own MCP endpoint. The same signed, instance-scoped, ris
 therefore serves the hosted agent, a developer typing `rmqctl topic list`, and any external agent
 pointed at the output of `rmqctl mcp config`. See
 [docs/ai-agent-architecture.md](docs/ai-agent-architecture.md) for the design and its trade-offs.
+For interactive CLI use, see the [rmqctl shell completion guide](docs/rmqctl-completion.md).
 
 - **Conversations persist server-side** and are browsable from the history drawer. Reloading or
   reconnecting replays exactly what the live stream rendered, because both paths reduce to the same
