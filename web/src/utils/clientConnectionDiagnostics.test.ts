@@ -69,6 +69,30 @@ describe('client connection diagnostics', () => {
     ]);
   });
 
+  it('keeps a single producer connection as a healthy, nonempty inventory', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clientId: 'producer-one', address: '10.0.1.10:49152' }),
+    ]);
+
+    expect(diagnostics.status).toBe('healthy');
+    expect(diagnostics.summary).toMatchObject({
+      totalConnections: 1,
+      uniqueClientCount: 1,
+      uniqueAddressCount: 1,
+      resourceCount: 1,
+      singleConsumerGroupCount: 0,
+    });
+    expect(diagnostics.resources).toEqual([
+      expect.objectContaining({
+        type: 'Producer',
+        resource: 'order-events',
+        connectionCount: 1,
+        status: 'healthy',
+      }),
+    ]);
+    expect(diagnostics.issues).toEqual([]);
+  });
+
   it('reports an empty client inventory as critical', () => {
     const diagnostics = analyzeClientConnections([]);
 
