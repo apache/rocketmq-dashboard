@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import useAuthStore from '../../../stores/authStore';
 
 /**
  * The composer draft: the ONE piece of AI-page state that stays on the client.
@@ -23,16 +24,25 @@ import { useCallback, useState } from 'react';
  * Everything else moved to the server — history, transcripts, run status — and the `sessionStorage`
  * store that used to hold them is gone. Unsent text is different: it never reached anybody, so there
  * is nothing to persist it to, and losing it because the operator clicked over to a topic list and
- * back is the kind of small cruelty a console should not inflict. Hence one `useState` plus one
- * `sessionStorage` key, deliberately NOT a Zustand store: there is no second consumer, no
- * cross-component subscription and no partitioning by data mode, which is what made the old store
- * 308 lines.
+ * back is the kind of small cruelty a console should not inflict. Hence one `useState` plus a
+ * per-account `sessionStorage` key, deliberately NOT a Zustand store: there is no second consumer
+ * or cross-component draft subscription.
  *
  * `sessionStorage` (per tab) rather than `localStorage`: a draft is scratch for the conversation you
  * are having now, and a tab reopened next week should start clean.
  */
 
 export const COMPOSER_DRAFT_STORAGE_KEY = 'rocketmq-studio-ai-composer-draft';
+
+const draftStorageKey = (userId: number | null, username: string | null): string => {
+  const owner =
+    userId != null
+      ? `user-id:${userId}`
+      : username?.trim()
+        ? `username:${encodeURIComponent(username.trim())}`
+        : 'system';
+  return `${COMPOSER_DRAFT_STORAGE_KEY}:v2:${owner}`;
+};
 
 /**
  * `AiMessageDTO.message` is `@NotBlank @Size(max = 8192)`. A restored draft is clamped to that bound
@@ -41,19 +51,19 @@ export const COMPOSER_DRAFT_STORAGE_KEY = 'rocketmq-studio-ai-composer-draft';
  */
 export const MAX_COMPOSER_DRAFT_CHARS = 8192;
 
-function readDraft(): string {
+function readDraft(storageKey: string): string {
   try {
-    const stored = sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    const stored = sessionStorage.getItem(storageKey);
     return typeof stored === 'string' ? stored.slice(0, MAX_COMPOSER_DRAFT_CHARS) : '';
   } catch {
     return '';
   }
 }
 
-function writeDraft(value: string): void {
+function writeDraft(storageKey: string, value: string): void {
   try {
-    if (value) sessionStorage.setItem(COMPOSER_DRAFT_STORAGE_KEY, value);
-    else sessionStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY);
+    if (value) sessionStorage.setItem(storageKey, value);
+    else sessionStorage.removeItem(storageKey);
   } catch {
     // Storage refused (private mode, quota): the draft survives in memory for this mount and is
     // simply not carried across navigation. Not worth surfacing to the operator.
@@ -62,14 +72,29 @@ function writeDraft(value: string): void {
 
 export type ComposerDraft = [value: string, setValue: (value: string) => void];
 
-/** Draft text plus its persistence. `setValue('')` clears both the state and the storage key. */
+/** Draft text plus its persistence. `setValue('')` clears this account's draft. */
 export function useComposerDraft(): ComposerDraft {
-  const [value, setValueState] = useState<string>(readDraft);
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
+  const storageKey = draftStorageKey(userId, username);
+  const [draft, setDraft] = useState(() => ({ storageKey, value: readDraft(storageKey) }));
+
+  useEffect(() => {
+    // The old key has no owner metadata, so assigning it to the next signed-in user would
+    // preserve the cross-account disclosure. Discard it instead of migrating it.
+    try {
+      sessionStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY);
+    } catch {
+      // Storage may be unavailable; the draft still works in memory.
+    }
+  }, []);
+
+  const value = draft.storageKey === storageKey ? draft.value : readDraft(storageKey);
 
   const setValue = useCallback((next: string) => {
-    setValueState(next);
-    writeDraft(next);
-  }, []);
+    setDraft({ storageKey, value: next });
+    writeDraft(storageKey, next);
+  }, [storageKey]);
 
   return [value, setValue];
 }
