@@ -1240,6 +1240,56 @@ describe('Consumer page', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the stack capture time in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes LocalDateTime without an offset, so capturedAt arrives as a UTC wall
+    // clock; parsing it as browser-local would shift the shown capture time by the viewer's zone.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+        groupPage([
+          {
+            ...group,
+            instances: [
+              {
+                clientId: 'client-1',
+                protocol: 'Remoting',
+                address: '10.0.0.1:39210',
+                subscribedTopics: ['remote-topic'],
+                lastHeartbeat: '2026-07-23T00:00:00Z',
+                topicLag: {},
+              },
+            ],
+          },
+        ]),
+      );
+      vi.mocked(consumerService.getConsumerStack).mockResolvedValue({
+        groupName: 'remote-cg',
+        clientId: 'client-1',
+        capturedAt: '2026-07-23T00:00:00',
+        threadCount: 1,
+        threads: [
+          {
+            threadName: 'ConsumeMessageThread_1',
+            threadId: 12,
+            state: 'RUNNABLE',
+            blockedTime: 0,
+            waitedTime: 0,
+            stackTrace: ['org.apache.demo.OrderListener.consume(OrderListener.java:42)'],
+          },
+        ],
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ConsumerPage />);
+
+      await user.click(await screen.findByRole('button', { name: /详情/ }));
+      await user.click(await screen.findByRole('button', { name: /线程栈/ }));
+
+      expect(await screen.findByText('2026-07-23 08:00:00 GMT+8')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
