@@ -41,6 +41,21 @@ const LanguageAliasConsumer = () => {
   return <span data-testid="alias-lang">{lang}</span>;
 };
 
+/**
+ * Component that interpolates an arbitrary parameter value, e.g. one that
+ * contains replace() replacement patterns such as $&, $`, $' and $$.
+ */
+const RawParamConsumer = ({ value }: { value: string }) => {
+  const { t, setLang } = useLang();
+  return (
+    <div>
+      <span data-testid="raw-param">{t('dashboard.brokers', { n: value })}</span>
+      <button onClick={() => setLang('en')}>switch-en</button>
+      <button onClick={() => setLang('zh')}>switch-zh</button>
+    </div>
+  );
+};
+
 describe('LangContext', () => {
   it('defaults to zh language', () => {
     render(
@@ -118,5 +133,42 @@ describe('LangContext', () => {
       </LangProvider>,
     );
     expect(screen.getByTestId('alias-lang')).toHaveTextContent('zh');
+  });
+
+  // A value containing every special replacement pattern of
+  // String.prototype.replace: $&, $`, $' and $$.
+  const rawValue = 'a$&b$$c$`d$\'e';
+
+  it('interpolates parameter values with replacement patterns literally in zh Test', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <RawParamConsumer value={rawValue} />
+      </LangProvider>,
+    );
+    await user.click(screen.getByText('switch-zh'));
+    expect(screen.getByTestId('raw-param')).toHaveTextContent('a$&b$$c$`d$\'e Broker');
+  });
+
+  it('interpolates parameter values with replacement patterns literally in en Test', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <RawParamConsumer value={rawValue} />
+      </LangProvider>,
+    );
+    await user.click(screen.getByText('switch-en'));
+    expect(screen.getByTestId('raw-param')).toHaveTextContent('a$&b$$c$`d$\'e Brokers');
+  });
+
+  it('interpolates plain parameter values unaffected Test', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <RawParamConsumer value="broker-1" />
+      </LangProvider>,
+    );
+    await user.click(screen.getByText('switch-en'));
+    expect(screen.getByTestId('raw-param')).toHaveTextContent('broker-1 Brokers');
   });
 });
