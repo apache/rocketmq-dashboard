@@ -338,6 +338,22 @@ describe('Audit page', () => {
     expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
   });
 
+  it('renders the cleanup window and the error toasts in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    const user = userEvent.setup();
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('boom'));
+
+    renderWithProviders(<AuditPage />);
+
+    // The load failure toast and the cleanup-window suffix were hardcoded Chinese.
+    expect(
+      await screen.findByText('Failed to load audit logs, please retry later'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Cleanup/ }));
+    expect(await screen.findByText('days and older')).toBeInTheDocument();
+    expect(screen.queryByText('天之前的日志')).not.toBeInTheDocument();
+  });
+
   it('ignores stale filter-option responses after cleanup refreshes', async () => {
     const user = userEvent.setup();
     const staleOptions = deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
