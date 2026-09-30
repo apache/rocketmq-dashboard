@@ -58,7 +58,8 @@ npm run dev                          # Vite dev server with hot reload
 ## Tests
 
 ```bash
-# Backend unit + integration tests (also runs the ArchUnit architecture checks)
+# Backend unit + integration tests
+# (integration tests need MySQL 8, see below)
 cd server && mvn -B -ntp test
 
 # Frontend tests (vitest), lint and production build
@@ -133,8 +134,9 @@ The rules below are enforced by review or by the build; details and rationale li
   hosted agent uses to reach the MCP tools; it follows Go conventions (`gofmt`, `go vet`,
   `go test -race` — `make -C rmqctl ci` runs exactly what CI runs) and its tool catalog must stay
   in sync with the server's `tool-catalog` manifest, which `make -C rmqctl catalog-verify` checks.
-- **Hexagonal architecture** (domain / application / adapter) is asserted by ArchUnit tests
-  that run as part of `mvn test` — a violation fails the build.
+- **Hexagonal architecture** (domain / application / adapter) — the layering is enforced through
+  review; `archunit-junit5` is declared as a dependency but no rules are wired up yet, so keep
+  module boundaries by hand when moving code across layers.
 - **Lombok** everywhere: `@Data` / `@Builder` / `@NoArgsConstructor` / `@AllArgsConstructor`
   on POJOs, `@RequiredArgsConstructor` for constructor injection, `@Slf4j` for logging.
 - **REST layer**: write operations take a DTO with Jakarta validation and return a VO; every
