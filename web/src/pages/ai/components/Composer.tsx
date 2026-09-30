@@ -549,7 +549,7 @@ const Composer = ({
                         />
                         <span
                           style={{
-                            fontSize: 13,
+                            fontSize: 14,
                             color: token.colorTextSecondary,
                             fontVariantNumeric: 'tabular-nums',
                           }}

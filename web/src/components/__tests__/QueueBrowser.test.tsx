@@ -95,6 +95,13 @@ describe('formatTimeMs', () => {
     expect(formatTimeMs(0)).not.toBe('-');
   });
 
+  it('renders through the shared message formatter with the milliseconds kept', () => {
+    // 1790733904123 = 2026-09-30T02:05:04.123Z. The rendering is zone-independent in shape:
+    // an ISO-like date with dot-separated milliseconds. The previous toLocaleString('zh-CN')
+    // rendering produced locale slashes and dropped the fraction entirely.
+    expect(formatTimeMs(1790733904123)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+  });
+
   it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY])(
     'returns a placeholder for invalid timestamp %s',
     (value) => {
