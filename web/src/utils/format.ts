@@ -42,6 +42,76 @@ export interface FormatUtcDateTimeOptions {
 }
 
 /**
+ * Parse a message timestamp into an instant. The wire type for store/consume/trace times is epoch
+ * millis, but a defensive string form must survive too: an offset-less string is UTC (the same
+ * convention `formatUtcDateTime` applies to alert timestamps), so `Date.parse`'s treat-it-as-local
+ * reading never gets a chance to shift the instant.
+ */
+function parseMessageInstant(value: number | string | null | undefined): Date | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? new Date(value) : null;
+  const text = value.trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) {
+    const epoch = Number(text);
+    return Number.isFinite(epoch) ? new Date(epoch) : null;
+  }
+  const normalized = text.replace(' ', 'T');
+  const withZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+  const date = new Date(withZone);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export interface FormatMessageTimeOptions {
+  /**
+   * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false in dense columns
+   * and timelines whose every row would repeat the viewer's own zone.
+   */
+  zone?: boolean;
+}
+
+/**
+ * Format a message timestamp (store/consume/trace instant, epoch millis on the wire) in the
+ * viewer's timezone, keeping millisecond precision: two messages stored in the same second are
+ * routine, and reading an offset or trace timeline needs the fraction. Message pages previously
+ * formatted these instants with local getters or a hardcoded `zh-CN` locale, silently converting
+ * to the viewer's zone without labeling it and rendering the same store time differently per view.
+ */
+export function formatMessageTime(
+  value: number | string | null | undefined,
+  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  options: FormatMessageTimeOptions = {},
+): string {
+  const date = parseMessageInstant(value);
+  if (!date) return '-';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(date);
+  const text = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = text('year');
+  const month = text('month');
+  const day = text('day');
+  const hour = text('hour');
+  const minute = text('minute');
+  const second = text('second');
+  const fraction = text('fractionalSecond');
+  const zone = options.zone === false ? '' : text('timeZoneName');
+  return year && month && day && hour && minute && second
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${fraction ? `.${fraction}` : ''}${zone ? ` ${zone}` : ''}`
+    : '-';
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.

@@ -6,6 +6,7 @@ import {
   formatDateTime,
   formatUtcDateTime,
   formatDelay,
+  formatMessageTime,
   formatNumber,
   formatPercent,
   formatRelativeTime,
@@ -65,6 +66,30 @@ describe('formatBytes', () => {
       '2026-08-23 03:35:38 PDT',
     );
     expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
+  });
+
+  it('renders message instants with milliseconds and the zone labeled', () => {
+    // 2026-09-30T02:05:04.123Z — the epoch form the message APIs actually send.
+    expect(formatMessageTime(1790733904123, 'UTC')).toBe('2026-09-30 02:05:04.123 UTC');
+    expect(formatMessageTime(1790733904123, 'Asia/Shanghai')).toBe('2026-09-30 10:05:04.123 GMT+8');
+    // Dense columns drop the repeating zone suffix but keep the fraction.
+    expect(formatMessageTime(1790733904123, 'UTC', { zone: false })).toBe(
+      '2026-09-30 02:05:04.123',
+    );
+  });
+
+  it('treats a timezone-less message timestamp string as UTC', () => {
+    expect(formatMessageTime('2026-09-30 02:05:04.123', 'UTC')).toBe('2026-09-30 02:05:04.123 UTC');
+    expect(formatMessageTime('2026-09-30T02:05:04.123Z', 'UTC')).toBe(
+      '2026-09-30 02:05:04.123 UTC',
+    );
+  });
+
+  it('uses a placeholder for missing and invalid message instants', () => {
+    expect(formatMessageTime(null)).toBe('-');
+    expect(formatMessageTime(undefined)).toBe('-');
+    expect(formatMessageTime('')).toBe('-');
+    expect(formatMessageTime('not-a-date')).toBe('-');
   });
 
   it('formats recent timestamps for compact conversation history', () => {

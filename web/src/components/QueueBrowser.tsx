@@ -34,6 +34,7 @@ import {
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
+import { formatMessageTime } from '../utils/format';
 
 const { Text, Paragraph } = Typography;
 
@@ -42,11 +43,10 @@ export interface TopicOption {
   value: string;
 }
 
-export const formatTimeMs = (value: number | string) => {
-  const ts = typeof value === 'string' ? Date.parse(value) : value;
-  if (!Number.isFinite(ts)) return '-';
-  return new Date(ts).toLocaleString('zh-CN', { hour12: false });
-};
+/* Store instants render through the shared formatter (milliseconds kept, zone labeled) so the
+ * queue browser and the message explorer show one string for the same message. */
+export const formatTimeMs = (value: number | string): string =>
+  formatMessageTime(value, undefined, { zone: false });
 
 export interface PulledEntry {
   key: string;

@@ -62,6 +62,7 @@ import {
 import type { MessageQueryHistory, TraceQueryHistory } from '../../api/messageHistory';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
+import { formatMessageTime } from '../../utils/format';
 import {
   consumeMessageDirectly,
   getMessageTrace,
@@ -125,12 +126,11 @@ const formatSize = (bytes: number): string => {
   return `${bytes} B`;
 };
 
-const formatTimeMs = (value: number | string): string => {
-  if (!value) return '-';
-  const d = new Date(value);
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
-};
+/* Message instants (store/consume/trace) go through the shared formatter so every view of the
+ * same message renders one string, milliseconds included, with the zone labeled. Dense columns
+ * and the trace timeline drop the zone suffix — it would repeat the viewer's zone on every row. */
+const formatTimeMs = (value: number | string): string =>
+  formatMessageTime(value, undefined, { zone: false });
 
 const formatBody = (body: string): string => {
   try {
@@ -965,7 +965,9 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.storeHost}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.storeTime')} span={2}>
-              <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
+              <span style={{ fontFamily: 'monospace' }}>
+                {formatMessageTime(selectedMsg.storeTime)}
+              </span>
             </Descriptions.Item>
             <Descriptions.Item label="Broker">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.brokerName ?? '-'}</span>
