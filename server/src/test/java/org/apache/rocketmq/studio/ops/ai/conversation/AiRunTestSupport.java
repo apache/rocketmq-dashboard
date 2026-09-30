@@ -350,6 +350,7 @@ final class AiRunTestSupport {
         copy.setStopReason(run.getStopReason());
         copy.setErrorCode(run.getErrorCode());
         copy.setErrorMessage(run.getErrorMessage());
+        copy.setTokensPerSecond(run.getTokensPerSecond());
         return copy;
     }
 
