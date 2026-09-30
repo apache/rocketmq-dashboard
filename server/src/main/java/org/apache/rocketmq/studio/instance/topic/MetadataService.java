@@ -404,6 +404,28 @@ public class MetadataService {
                 normalizeFilter(search), page, pageSize);
     }
 
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+            String subscriptionMode, int page, int pageSize) {
+        String mode = normalizeFilter(subscriptionMode);
+        if (mode == null || "ALL".equals(mode)) {
+            return listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        }
+        SubscriptionMode selectedMode;
+        try {
+            selectedMode = SubscriptionMode.valueOf(mode);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(400, "subscriptionMode must be Push, Pop or ALL");
+        }
+        validatePagination(page, pageSize);
+        instanceId = normalizeInstanceId(instanceId);
+        if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            return metadataProvider.listConsumerGroupsPage(null, normalizeFilter(clusterId),
+                    normalizeFilter(search), selectedMode, page, pageSize);
+        }
+        return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
+                normalizeFilter(search), selectedMode, page, pageSize);
+    }
+
 
     public ConsumerGroupVO getConsumerGroup(String name) {
         return getConsumerGroup(null, name);

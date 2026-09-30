@@ -265,6 +265,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, SubscriptionMode subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
@@ -279,6 +285,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
+        // Match parseSubscriptionMode: only case-insensitive Pop is Pop; legacy/null values are Push.
+        if (subscriptionMode == SubscriptionMode.Pop) {
+            query.apply("LOWER(message_model) = {0}", "pop");
+        } else if (subscriptionMode == SubscriptionMode.Push) {
+            query.and(mode -> mode.isNull(RmqGroup::getMessageModel)
+                    .or().apply("LOWER(message_model) <> {0}", "pop"));
+        }
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
                 .map(this::toConsumerGroupVO)

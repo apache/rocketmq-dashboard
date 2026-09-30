@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -150,6 +151,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
         return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, SubscriptionMode subscriptionMode, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, subscriptionMode, page, pageSize);
     }
 
     @Override

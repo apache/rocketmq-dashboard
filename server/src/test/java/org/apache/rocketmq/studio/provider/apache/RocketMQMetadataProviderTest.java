@@ -258,6 +258,30 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldApplySubscriptionModeBeforeDatabasePagination() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        RmqGroup entity = new RmqGroup();
+        entity.setId(21L);
+        entity.setName("group-pop");
+        entity.setInstanceId("instance-a");
+        entity.setClusterId("cluster-1");
+        entity.setMessageModel("Pop");
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 1);
+        databasePage.setRecords(List.of(entity));
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+        RocketMQMetadataProvider provider = newProvider();
+
+        PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage(
+                "instance-a", "cluster-1", null, SubscriptionMode.Pop, 1, 20);
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("message_model");
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);

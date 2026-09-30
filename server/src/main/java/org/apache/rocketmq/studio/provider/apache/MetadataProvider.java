@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
@@ -69,6 +70,18 @@ public interface MetadataProvider {
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
         return listConsumerGroupsPage(clusterId, search, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, SubscriptionMode subscriptionMode, int page, int pageSize) {
+        if (subscriptionMode == null) {
+            return listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        }
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, clusterId, search).stream()
+                .filter(group -> subscriptionMode == group.getSubscriptionMode()).toList();
+        int from = (int) Math.min(Pagination.pageOffset(page, pageSize), groups.size());
+        int to = from + (int) Math.min(pageSize, groups.size() - from);
+        return PageResult.of(groups.subList(from, to), groups.size(), page, pageSize);
     }
 
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
