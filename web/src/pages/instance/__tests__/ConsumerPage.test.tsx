@@ -298,6 +298,20 @@ describe('Consumer page', () => {
     ]);
   });
 
+  it('renders the page subtitle and pagination totals in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Manage consumer-group subscriptions and progress, \d+ groups in total/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/共 \d+ 个 Group/)).not.toBeInTheDocument();
+    // Anchored: the subtitle above contains the same phrase, the pagination footer is the node
+    // whose whole text is the total.
+    expect(screen.getByText(/^\d+ groups in total$/)).toBeInTheDocument();
+  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 
@@ -1508,6 +1522,101 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /重试失败项/ })).toBeInTheDocument(),
     );
+  });
+
+  type GroupImportResult = Awaited<ReturnType<typeof consumerService.importConsumerGroups>>;
+
+  const IMPORT_HEADER =
+    '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type","Delivery Order Type"';
+
+  /**
+   * Runs the CSV import through to the backend batch call in English, so the toast assertions on
+   * the caller side can only pass if the text really comes from the translation table - a
+   * hardcoded zh literal would not match. The dialog's own chrome is still zh (not localized).
+   */
+  const driveGroupImport = async (rows: string[], result: GroupImportResult) => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([]));
+    vi.mocked(consumerService.importConsumerGroups).mockResolvedValue(result);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 4,
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY_CLUSTER',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
+    await user.upload(
+      screen.getByTestId('consumer-group-import-file'),
+      new File([[IMPORT_HEADER, ...rows].join('\n')], 'groups.csv'),
+    );
+    await user.click(await screen.findByRole('button', { name: '开始导入' }));
+    await waitFor(() => expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1));
+  };
+
+  it('reports a fully created import in the display language', async () => {
+    await driveGroupImport(['"cg-ok","Push","CLUSTERING","16","NORMAL",""'], {
+      imported: 1,
+      failed: 0,
+      groups: [{ ...group, name: 'cg-ok' }],
+      failures: [],
+    });
+
+    expect(await screen.findByText('Imported 1 groups')).toBeInTheDocument();
+  });
+
+  it('reports the skipped invalid rows of an import in the display language', async () => {
+    await driveGroupImport(
+      [
+        '"cg-ok","Push","CLUSTERING","16","NORMAL",""',
+        '"cg-bad","Push","NOT_A_TYPE","16","NORMAL",""',
+      ],
+      {
+        imported: 1,
+        failed: 0,
+        groups: [{ ...group, name: 'cg-ok' }],
+        failures: [],
+      },
+    );
+
+    expect(
+      await screen.findByText('Imported 1 groups; 1 invalid rows were skipped'),
+    ).toBeInTheDocument();
+    expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-proxy-1', [
+      expect.objectContaining({ name: 'cg-ok' }),
+    ]);
+  });
+
+  it('reports an import where every row failed in the display language', async () => {
+    await driveGroupImport(
+      [
+        '"cg-a","Push","CLUSTERING","16","NORMAL",""',
+        '"cg-b","Push","CLUSTERING","16","NORMAL",""',
+      ],
+      {
+        imported: 0,
+        failed: 2,
+        groups: [],
+        failures: [
+          { index: 0, name: 'cg-a', message: 'broker rejected group' },
+          { index: 1, name: 'cg-b', message: 'broker rejected group' },
+        ],
+      },
+    );
+
+    expect(await screen.findByText('Failed to import 2 groups')).toBeInTheDocument();
   });
 
   it('shows a spinner while the instance list is still resolving', async () => {
