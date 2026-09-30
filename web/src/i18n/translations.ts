@@ -1699,7 +1699,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2318,6 +2321,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'settings.tabCredential': { zh: '云凭据管理', en: 'Cloud Credentials' },
   'settings.tabDatasource': { zh: '数据源管理', en: 'Data Sources' },
   'settings.tabAbout': { zh: '关于', en: 'About' },
+  'settings.aboutVersion': { zh: '版本', en: 'Version' },
+  'settings.aboutBuildCommit': { zh: '构建提交', en: 'Build commit' },
+  'settings.aboutBuildTime': { zh: '构建时间', en: 'Build time' },
+  'settings.aboutSupportedVersions': { zh: 'RocketMQ 支持版本', en: 'Supported RocketMQ versions' },
+  'settings.aboutFrontendStack': { zh: '前端框架', en: 'Frontend stack' },
+  'settings.aboutBackendStack': { zh: '后端框架', en: 'Backend stack' },
+  'settings.aboutRelatedLinks': { zh: '相关链接', en: 'Related links' },
+  'settings.aboutDocs': { zh: '文档中心', en: 'Documentation' },
+  'settings.aboutCommunity': { zh: 'RocketMQ 社区', en: 'RocketMQ community' },
   'settings.dataSourceNotTested': { zh: '未检测', en: 'Not tested' },
   'settings.loadFailed': {
     zh: '设置加载失败，请稍后重试',
