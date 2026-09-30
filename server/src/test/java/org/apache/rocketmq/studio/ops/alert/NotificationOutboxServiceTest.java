@@ -294,6 +294,48 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void abbreviatesALongWebhookRejectionReasonOnCodePointBoundariesTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        RestTemplate client = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(8L);
+        row.setAlertId(9L);
+        row.setChannel("dingtalk");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        String prefix = "DingTalk rejected webhook: ";
+        // The receiver supplies this text and quotes the notification back at Studio, and the
+        // notification body carries the alert's own title and labels: an emoji reaches the cut.
+        // 999 - prefix.length() chars leave U+1F600's high surrogate exactly on the 1000th char.
+        String reason = "x".repeat(999 - prefix.length()) + "\uD83D\uDE00" + "tail";
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://example.com/hook").build());
+        server.expect(once(), requestTo("https://example.com/hook"))
+                .andRespond(withSuccess("{\"errcode\":310000,\"errmsg\":\"" + reason + "\"}",
+                        MediaType.APPLICATION_JSON));
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts, audit, client).dispatch();
+
+        server.verify();
+        // A char-based cut would keep the high surrogate on its own, so the audit entry - and the
+        // last_error the delivery page renders - would show a replacement character instead.
+        verify(audit).record("RETRY_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
+                "alertId=9, channel=dingtalk", "RETRYING",
+                prefix + "x".repeat(999 - prefix.length()) + "\uD83D\uDE00");
+    }
+
+    @Test
     void retriesDingTalkDeliveryWhenTheRobotRejectsThePayloadTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);

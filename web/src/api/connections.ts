@@ -7,7 +7,7 @@ export interface ClientConnection {
   groupOrTopic: string;
   protocol: string;
   address?: string | null;
-  language: string;
+  language?: string | null;
   version: string;
   connectedAt?: string | null;
   partial?: boolean;

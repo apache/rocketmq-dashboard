@@ -58,8 +58,8 @@ func (t Target) validate() error {
 	if err != nil || server.Hostname() == "" {
 		return fmt.Errorf("invalid Studio Server URL %q", t.Server)
 	}
-	if server.Scheme != "https" && !(server.Scheme == "http" && isLoopbackHost(server.Hostname())) {
-		return fmt.Errorf("studio server must use HTTPS (HTTP is allowed only for loopback development)")
+	if server.Scheme != "https" && !(server.Scheme == "http" && isPrivateHost(server.Hostname())) {
+		return fmt.Errorf("studio server must use HTTPS (HTTP is allowed only for loopback or private-network addresses)")
 	}
 	if server.User != nil || server.RawQuery != "" || server.Fragment != "" {
 		return fmt.Errorf("studio server URL must not contain user info, a query, or a fragment")

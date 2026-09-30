@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Flex, message, theme } from 'antd';
 import { useLang } from '../../i18n/LangContext';
@@ -127,15 +127,21 @@ const AiPage = () => {
   );
 
   // Estimated context footprint of this conversation — persisted text plus whatever the run in
-  // flight has produced so far — drawn as the composer's context-usage bar. Recomputed on every
-  // render on purpose: the run's renderTick bumps re-render this page as blocks stream in.
-  let contextTokens = 0;
-  for (const item of timeline.items) {
-    const event = item.event;
-    if (event.type === 'text' || event.type === 'user') {
-      contextTokens += estimateTokens(event.text);
+  // flight has produced so far — drawn as the composer's context-usage bar. The persisted half is
+  // memoised on the timeline rows: a streaming tick re-renders this page at display rate, and
+  // re-scanning EVERY persisted answer with the token estimator each frame is pure waste; only
+  // the live blocks of the run in flight are recomputed per render.
+  const persistedTokens = useMemo(() => {
+    let tokens = 0;
+    for (const item of timeline.items) {
+      const event = item.event;
+      if (event.type === 'text' || event.type === 'user') {
+        tokens += estimateTokens(event.text);
+      }
     }
-  }
+    return tokens;
+  }, [timeline.items]);
+  let contextTokens = persistedTokens;
   for (const block of run.blocksRef.current) {
     if (block.kind === 'text') contextTokens += estimateTokens(block.text);
   }
@@ -146,6 +152,7 @@ const AiPage = () => {
         bubbles={timeline.bubbles}
         liveBlocks={run.blocksRef.current}
         streaming={run.isStreaming}
+        pendingUserText={run.pendingUserMessage}
         toolCatalog={tools}
         liveTokensPerSecond={run.liveTokensPerSecond}
         lastRunTokensPerSecond={run.lastRunTokensPerSecond}

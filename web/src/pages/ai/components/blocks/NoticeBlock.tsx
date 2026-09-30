@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { memo } from 'react';
 import InfoBanner from '../../../../components/InfoBanner';
 import { useLang } from '../../../../i18n/LangContext';
 import type { NoticeBlock as NoticeBlockData } from '../../render/blocks';
@@ -47,4 +48,4 @@ const NoticeBlock = ({ block }: NoticeBlockProps) => {
   );
 };
 
-export default NoticeBlock;
+export default memo(NoticeBlock);

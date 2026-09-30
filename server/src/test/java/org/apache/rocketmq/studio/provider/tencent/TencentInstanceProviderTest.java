@@ -44,6 +44,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
@@ -60,6 +62,8 @@ import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -131,6 +135,7 @@ class TencentInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -172,6 +177,42 @@ class TencentInstanceProviderTest {
         assertThatThrownBy(() -> provider.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("no message id");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldCallTencentVerifyApiTest() throws Exception {
+        VerifyMessageConsumptionResponse response = new VerifyMessageConsumptionResponse();
+        response.setRequestId("tencent-request-1");
+        when(client.VerifyMessageConsumption(any())).thenReturn(response);
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyMessageConsumptionRequest> captor =
+                ArgumentCaptor.forClass(VerifyMessageConsumptionRequest.class);
+        verify(client).VerifyMessageConsumption(captor.capture());
+        VerifyMessageConsumptionRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopic()).isEqualTo("orders");
+        assertThat(request.getMsgId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroup()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("REQUEST_ACCEPTED");
+        assertThat(result.getRemark())
+                .contains("verification request", "outcome is not returned", "tencent-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyTencentResponseTest() throws Exception {
+        when(client.VerifyMessageConsumption(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tencent direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
@@ -705,6 +746,48 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("consistent");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldMapInconsistentAndUnknownConsistencyTest() throws Exception {
+        SubscriptionData inconsistent = new SubscriptionData();
+        inconsistent.setTopic("orders");
+        inconsistent.setSubString("*");
+        inconsistent.setExpressionType("TAG");
+        inconsistent.setConsistency(1L);
+        SubscriptionData unknown = new SubscriptionData();
+        unknown.setTopic("payments");
+        unknown.setSubString("tag-a");
+        unknown.setExpressionType("TAG");
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{inconsistent, unknown});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(subscriptions).hasSize(2);
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("inconsistent");
+        assertThat(subscriptions.get(1).getConsistency()).isNull();
+    }
+
+    @Test
+    void getGroupProgressShouldReportUnknownQueueOffsetsTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        // The Tencent API exposes the lag per topic and no per-queue offsets, so the row must not
+        // claim offsets of zero next to the real lag.
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getDiffTotal()).isEqualTo(42L);
+                });
     }
 
     @Test
@@ -1162,6 +1245,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceMarksFailedProduceAsErrorTest() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"Status\":3,\"Duration\":2}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-3", "orders");
+
+        assertThat(trace.getNodes()).hasSize(1);
+        assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("error");
+    }
+
+    @Test
     void getMessageTraceMarksInFlightConsumeAsProcessNotFailed() throws Exception {
         MessageTraceItem consume = new MessageTraceItem();
         consume.setStage("consume");
@@ -1180,6 +1278,7 @@ class TencentInstanceProviderTest {
         assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.pending);
     }
+
     @Test
     void queryMessagesShouldPreserveRowsFromIncompleteShortPageTest() throws Exception {
         MessageItem item = new MessageItem();
@@ -1221,4 +1320,14 @@ class TencentInstanceProviderTest {
         assertThat(captor.getAllValues().get(1).getOffset()).isEqualTo((long) items.length);
     }
 
+
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
+    }
 }

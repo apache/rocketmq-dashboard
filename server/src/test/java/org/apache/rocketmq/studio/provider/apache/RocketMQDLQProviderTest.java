@@ -25,6 +25,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -715,9 +716,17 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic");
+        assertThat(result)
                 .extracting("matched", "resent", "failed", "outcome")
                 .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("msg-1");
+            assertThat(failure.getTargetTopic()).isEqualTo("target-topic");
+            assertThat(failure.getReason()).contains("FLUSH_DISK_TIMEOUT");
+        });
+        assertThat(result.isFailuresTruncated()).isFalse();
 
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(runtimeAdminClientResolver).executeProducer(eq("instance-a"), any());
@@ -821,6 +830,69 @@ class RocketMQDLQProviderTest {
 
         verify(adminExt).viewMessage(dlqTopic, "missing-msg");
         verify(adminExt).viewMessage(dlqTopic, "found-msg");
+    }
+
+    @Test
+    void resendSelectedMessagesReportsProducerFailureDetailsTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("selected-msg");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+
+        when(adminExt.viewMessage(dlqTopic, "selected-msg")).thenReturn(deadLetter);
+        when(dlqProducer.send(any(Message.class))).thenThrow(new IllegalStateException("broker unavailable"));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of("selected-msg"), null);
+
+        assertThat(result)
+                .extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("selected-msg");
+            assertThat(failure.getTargetTopic()).isEqualTo("orders");
+            assertThat(failure.getReason()).contains("broker unavailable");
+        });
+        assertThat(result.isFailuresTruncated()).isFalse();
+    }
+
+    @Test
+    void resendMessagesCapsReportedFailureDetailsTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        List<MessageExt> deadLetters = IntStream.range(0, 101)
+                .mapToObj(index -> {
+                    MessageExt deadLetter = new MessageExt();
+                    deadLetter.setMsgId("msg-" + index);
+                    deadLetter.setTopic(dlqTopic);
+                    deadLetter.setBody(new byte[] {1});
+                    deadLetter.setStoreTimestamp(150L);
+                    return deadLetter;
+                })
+                .toList();
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 101L, 0L, 101L, deadLetters);
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
+
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
+        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(100L);
+        when(pullConsumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic");
+
+        assertThat(result.getFailed()).isEqualTo(101);
+        assertThat(result.getFailures()).hasSize(100);
+        assertThat(result.getFailures()).extracting("msgId")
+                .containsExactlyElementsOf(IntStream.range(0, 100).mapToObj(index -> "msg-" + index).toList());
+        assertThat(result.isFailuresTruncated()).isTrue();
     }
 
     @Test

@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -80,6 +81,11 @@ public interface InstanceProvider {
 
     TopicVO createTopic(String instanceId, TopicVO topic);
 
+    /** Imports an existing topic; defaults to creation, providers may override to compare configurations. */
+    default TopicVO importTopic(String instanceId, TopicVO topic) {
+        return createTopic(instanceId, topic);
+    }
+
     TopicVO updateTopic(String instanceId, TopicVO topic);
 
     void deleteTopic(String instanceId, String topicName);
@@ -122,6 +128,11 @@ public interface InstanceProvider {
     }
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);
+
+    /** Imports an existing consumer group; defaults to creation, providers may override to compare configurations. */
+    default ConsumerGroupVO importConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        return createConsumerGroup(instanceId, group);
+    }
 
     default ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
         return createConsumerGroup(instanceId, group);
@@ -194,6 +205,29 @@ public interface InstanceProvider {
     }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    /**
+     * Lookup by the client-generated unique key (UNIQ_KEY index).
+     */
+    default List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                          Long startTime, Long endTime) {
+        throw new UnsupportedOperationException("Unique-key message lookup is not supported");
+    }
+
+    /**
+     * Lists the read queues available for the topic.
+     */
+    default List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        throw new UnsupportedOperationException("Queue browsing is not supported");
+    }
+
+    /**
+     * Pulls one message from a broker queue at an exact offset.
+     */
+    default MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        throw new UnsupportedOperationException("Offset message browsing is not supported");
+    }
 
     default SendMessageVO sendMessage(SendMessageDTO request) {
         throw new UnsupportedOperationException("Message sending is not supported");

@@ -344,6 +344,8 @@ const TopicPageContent = ({
   selectInstance,
   instanceOptions,
   instancesLoading,
+  instancesFailed,
+  reloadInstances,
   instances,
 }: TopicPageContentProps) => {
   const { t } = useLang();
@@ -949,7 +951,18 @@ const TopicPageContent = ({
       title: '消费模式',
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
+      render: (m: string) => {
+        // The API sends enum values ("BROADCASTING"/"CLUSTERING" and vendor case
+        // variants), never the legacy display strings the old comparison matched.
+        const normalized = (m ?? '').trim().toUpperCase();
+        const isBroadcast = normalized.includes('BROADCAST');
+        const label = isBroadcast
+          ? t('topic.broadcast')
+          : normalized.includes('CLUSTER')
+            ? t('topic.clustering')
+            : m;
+        return <Tag color={isBroadcast ? 'orange' : 'blue'}>{label}</Tag>;
+      },
     },
     {
       title: '消费 TPS',
@@ -1524,6 +1537,8 @@ const TopicPageContent = ({
             }}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Topic 名称"
