@@ -30,7 +30,7 @@ import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -50,7 +50,10 @@ public class K8sCertService {
 
     @Autowired
     public K8sCertService(K8sCertRepository k8sCertRepository, OperationAuditService operationAuditService) {
-        this(k8sCertRepository, operationAuditService, Clock.systemDefaultZone());
+        // The service's bookkeeping and expiry comparisons all speak UTC: stored wall times are
+        // read back as UTC by the console, so a non-UTC default clock would offset the status and
+        // freshness computations against the stored values.
+        this(k8sCertRepository, operationAuditService, Clock.systemUTC());
     }
 
     K8sCertService(K8sCertRepository k8sCertRepository, OperationAuditService operationAuditService, Clock clock) {
@@ -90,8 +93,12 @@ public class K8sCertService {
         List<String> san = command.getSan();
         if (certificateSupplied) {
             X509Certificate parsed = parseCertificate(command.getCertPem());
-            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneId.systemDefault());
-            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneId.systemDefault());
+            // Certificate validity is an absolute instant; converting through the server's zone
+            // would serialize it offset-less in a wall clock the console cannot know, so it is
+            // expressed in UTC — the same convention the console applies to every other
+            // offset-less timestamp (#4949).
+            notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneOffset.UTC);
+            notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneOffset.UTC);
             issuer = parsed.getIssuerX500Principal().getName();
             san = extractSubjectAlternativeNames(parsed);
         }

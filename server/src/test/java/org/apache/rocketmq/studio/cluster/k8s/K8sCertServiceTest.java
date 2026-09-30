@@ -52,6 +52,28 @@ class K8sCertServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(
             Instant.parse("2025-07-01T00:00:00Z"), ZoneOffset.UTC);
+    private static final String TEST_CERT_PEM = """
+-----BEGIN CERTIFICATE-----
+MIIDEzCCAfugAwIBAgIUAY0NI9jM2fukjQlwIRDRMlSr2jswDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwOY2VydC10aW1lLXRlc3QwHhcNMjYwOTMwMTMzMzM1WhcN
+NDAwNjA4MTMzMzM1WjAZMRcwFQYDVQQDDA5jZXJ0LXRpbWUtdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBAJibjsFBXXgsGHEYfb+4j3Q5LvsecuZT
+GD2bGc58GNguN4OBpfTBeQKl3SyPOAXtTy7o4PpYLGp1BuWNXETwqEO2DuP4CUgL
+mK2FomnICAcYQZwso+D9yEG0VDEl63AiVgtCmdO4hTTVXl6oKzu0vIDh5UARup02
+LsQgvFnADalwHgb4vH5j5ij8th0LdVFPuj+SRkpM7n0/o+VPiQhsuOYcSHQnuliN
+EQ3rUQDmKwgOQMenlDKvAxE5UzxmPvU7fBUtoXsh3489aj1LOv0oRuozTjE8+VH4
+TfHM44zLzbLxly/Sm0SLJhTjY3t30N7SWtrz/gYj2RxiCMluJg5cVwMCAwEAAaNT
+MFEwHQYDVR0OBBYEFOMk77pVbIAXwZROwQWj9G47KxI3MB8GA1UdIwQYMBaAFOMk
+77pVbIAXwZROwQWj9G47KxI3MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEL
+BQADggEBABCMyW1UiPqYEwMhVQukJA1IrCdmONOg+8f1Y1S/QtGYi+ocjvyHIycu
+GjcFs98LAuO06J/MscXPrJ+zuAg+HGW+Pg3itj7X8WHOdOewbPApJ6W04T+ALkHn
+ViyxP4FrDKPrHDwGfowd83W7deIW+P0ZyaciZKKcNpV6ELiFPpZU0MNNqwaU7+Hn
+hHWqQHpxlWAn3LSJbnFNhhX8qeqL9CGA88bmu2LuX34LDqwMaN0BvyrNRaDNuabo
+NCYzKMX8S6CxAewOc6wcTjO+uZy5lls3v3dyf49TYiZbjzzV82XpJCcZHJEXPWAU
+l7HfeLjmvrCR4w23S6nCAbnrcLw9Ls4=
+-----END CERTIFICATE-----
+            """;
+
 
     @Mock
     private K8sCertRepository k8sCertRepository;
@@ -195,6 +217,27 @@ class K8sCertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verifyNoInteractions(k8sCertRepository);
+    }
+
+    @Test
+    void createCertShouldStoreSuppliedValidityAsUtc() {
+        // The certificate below is self-signed with notBefore 2026-09-30T13:33:35Z and
+        // notAfter 2040-06-08T13:33:35Z. Certificate validity is an absolute instant; the
+        // stored wall time must express it in UTC, not in the server's default zone — the
+        // console reads offset-less times as UTC (#4949), and a systemDefault conversion
+        // offsets the expiry by the server zone on every non-UTC host.
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("cert-utc")
+                .type("TLS")
+                .cluster("cluster-a")
+                .certPem(TEST_CERT_PEM)
+                .build();
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        K8sCertVO result = k8sCertService.createCert(command);
+
+        assertThat(result.getNotBefore()).isEqualTo(LocalDateTime.of(2026, 9, 30, 13, 33, 35));
+        assertThat(result.getNotAfter()).isEqualTo(LocalDateTime.of(2040, 6, 8, 13, 33, 35));
     }
 
     @Test
