@@ -573,8 +573,21 @@ public class RocketMQMessageProvider implements MessageProvider {
                             || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
                         throw new BusinessException(409, "Message's store broker is not in the target master set");
                     }
-                    var result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
-                            topic, message.getMsgId());
+                    org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result;
+                    try {
+                        result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
+                                topic, message.getMsgId());
+                    } catch (Exception exception) {
+                        String rootMessage = rootMessage(exception);
+                        // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online"
+                        // when the client is not connected. That is a business state the operator can act
+                        // on, not a gateway failure, so it is graded like the consumer stack endpoint does.
+                        if (rootMessage != null && rootMessage.contains("not online")) {
+                            throw new BusinessException(404, "Consumer client is not online: " + client
+                                    + " (group " + group + ")");
+                        }
+                        throw new BusinessException(502, "Failed to consume message directly: " + rootMessage);
+                    }
                     return DirectConsumeMessageResultVO.builder()
                             .consumeResult(result.getConsumeResult() == null ? "UNKNOWN" : result.getConsumeResult().name())
                             .remark(result.getRemark()).spentTimeMillis(result.getSpentTimeMills())
@@ -942,6 +955,15 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private static String field(String[] fields, int index) {
         return index < fields.length ? fields[index] : "";
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 
     private static long parseLong(String value) {

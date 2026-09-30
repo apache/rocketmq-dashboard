@@ -115,13 +115,20 @@ const isFormValidationError = (error: unknown) =>
    ═══════════════════════════════════════════ */
 type AclPageContentProps = Pick<
   ReturnType<typeof useInstanceFilter>,
-  'selectedInstanceId' | 'selectInstance' | 'instanceOptions' | 'instances'
+  | 'selectedInstanceId'
+  | 'selectInstance'
+  | 'instanceOptions'
+  | 'instances'
+  | 'instancesFailed'
+  | 'reloadInstances'
 >;
 
 const AclPageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instancesFailed,
+  reloadInstances,
   instances,
 }: AclPageContentProps) => {
   const { t } = useLang();
@@ -1122,6 +1129,8 @@ const AclPageContent = ({
                       onChange={selectInstance}
                       options={instanceOptions}
                       style={{ width: 220 }}
+                      failed={instancesFailed}
+                      onRetry={reloadInstances}
                     />
                     <Input
                       placeholder={t('acl.searchPrincipal')}

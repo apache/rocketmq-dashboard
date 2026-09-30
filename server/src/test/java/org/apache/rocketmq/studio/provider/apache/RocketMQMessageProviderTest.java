@@ -247,6 +247,35 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void directlyConsumesMessageReportsAnOfflineClientAsNotFoundTest() throws Exception {
+        // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online" when
+        // the typed client id is not connected, which is the normal state for a stale dialog.
+        MessageExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getMsgId()))
+                .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR,
+                        "The Consumer billing client-offline not online"));
+        DirectConsumeMessageDTO request = directRequest();
+        request.setClientId("client-offline");
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Consumer client is not online: client-offline")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void directlyConsumesMessageKeepsOtherBrokerFailuresAsBadGatewayTest() throws Exception {
+        MessageExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId()))
+                .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR, "broker rejected the request"));
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to consume message directly")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void queryMessagesShouldRejectInvertedTimeRangeBeforeAdminLookup() throws Exception {
         assertThatThrownBy(() -> provider.queryMessages(
                 "instance-a", "TopicA", null, null, null, 200L, 100L))

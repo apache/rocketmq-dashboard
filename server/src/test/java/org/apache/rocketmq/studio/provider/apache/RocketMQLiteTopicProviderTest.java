@@ -125,6 +125,16 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void isSupportedIsTrueWhenAnyOtherMasterAnswersTheLiteProbe() throws Exception {
+        String legacyMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(legacyMaster, BROKER_A));
+        when(admin.getBrokerLiteInfo(legacyMaster)).thenThrow(new IllegalStateException("unsupported"));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(2, 40, 1));
+
+        assertThat(provider.isSupported()).isTrue();
+    }
+
+    @Test
     void listLiteTopicsSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
         String failingMaster = "127.0.0.1:10912";
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));

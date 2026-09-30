@@ -8,7 +8,7 @@ import type {
   UpdateInstanceRequest,
   InstanceCapabilities,
 } from '../api/instance';
-import { mockInstances } from '../mock/instances';
+import { getMockInstanceCapabilities, mockInstances } from '../mock/instances';
 
 // Compile-time switch: mock or real API
 
@@ -20,23 +20,6 @@ function matchesType(instance: Instance, type?: Instance['type']) {
   if (!type) return true;
   return instance.type === type;
 }
-
-const APACHE_CAPABILITIES: InstanceCapabilities['capabilities'] = [
-  'TOPIC_MANAGEMENT',
-  'CONSUMER_GROUP_MANAGEMENT',
-  'MESSAGE_QUERY',
-  'MESSAGE_TRACE',
-  'ACL_MANAGEMENT',
-  'DLQ_MANAGEMENT',
-];
-
-const CLOUD_CAPABILITIES: InstanceCapabilities['capabilities'] = [
-  'TOPIC_MANAGEMENT',
-  'CONSUMER_GROUP_MANAGEMENT',
-  'MESSAGE_QUERY',
-  'MESSAGE_TRACE',
-  'ACL_MANAGEMENT',
-];
 
 const inflightListRequests = new Map<string, Promise<Instance[]>>();
 
@@ -87,7 +70,7 @@ export async function getInstanceCapabilities(instanceId: string): Promise<Insta
     instanceId: instance.name,
     vendor,
     accessType: instance.type,
-    capabilities: [...(vendor === 'APACHE' ? APACHE_CAPABILITIES : CLOUD_CAPABILITIES)],
+    capabilities: getMockInstanceCapabilities(instance),
   };
 }
 

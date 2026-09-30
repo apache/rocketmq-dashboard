@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -70,6 +71,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT,
                 InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -219,6 +221,23 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
+    }
+
+    @Override
+    public List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                         Long startTime, Long endTime) {
+        return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
+    }
+
+    @Override
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        return messageProvider.getQueueOffsets(instanceId, topic);
+    }
+
+    @Override
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                               int queueId, long offset) {
+        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
     @Override

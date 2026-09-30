@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { useInstanceFilter } from './useInstanceFilter';
 
@@ -28,8 +28,14 @@ vi.mock('../services/instanceService', () => instanceServiceMocks);
 
 function InstanceRouteProbe() {
   const { pathname } = useLocation();
-  const { selectedInstanceId } = useInstanceFilter();
-  return <output>{`${pathname}|${selectedInstanceId}`}</output>;
+  const { selectedInstanceId, instancesFailed, reloadInstances } = useInstanceFilter();
+  return (
+    <>
+      <output>{`${pathname}|${selectedInstanceId}`}</output>
+      <output data-testid="instances-failed">{`${instancesFailed}`}</output>
+      <button onClick={reloadInstances}>retry</button>
+    </>
+  );
 }
 
 describe('useInstanceFilter', () => {
@@ -58,6 +64,43 @@ describe('useInstanceFilter', () => {
 
     await waitFor(() => {
       expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+    });
+  });
+
+  it('reports a failed instance list and recovers from a retry', async () => {
+    instanceServiceMocks.listInstances
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([
+        {
+          id: 7,
+          name: 'instance-a',
+          remark: '',
+          type: 'DIRECT',
+          endpoint: '127.0.0.1:9876',
+          topicCount: 0,
+          consumerGroupCount: 0,
+          gmtCreate: '2026-01-01T00:00:00Z',
+          gmtModified: '2026-01-01T00:00:00Z',
+        },
+      ]);
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('true');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('false');
     });
   });
 

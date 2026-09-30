@@ -112,6 +112,9 @@ class InstanceServiceTest {
     @InjectMocks
     private InstanceService instanceService;
 
+    /** One code point, two UTF-16 chars: the case the failure-message caps have to survive. */
+    private static final String EMOJI = "\uD83D\uDE00";
+
     @org.junit.jupiter.api.BeforeEach
     void registrationGuardFixture() {
         org.mockito.Mockito.lenient().when(ownershipGuard.withInstanceRegistration(anyString(), any()))
@@ -579,6 +582,26 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.updateInstance(rejected))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO endpoint must not exceed 512 characters");
+    }
+
+    @Test
+    void createInstanceShouldBoundTheEndpointByCodePointsTest() {
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // 512 code points but 1024 UTF-16 chars. MySQL counts a varchar(512) in characters, so the
+        // value fits the column and counting chars would reject it as a 500 from the write instead.
+        String atLimit = EMOJI.repeat(InstanceService.MAX_INSTANCE_ENDPOINT_LENGTH);
+        InstanceVO accepted = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint(atLimit).build();
+
+        assertThat(instanceService.createInstance(accepted).getEndpoint()).isEqualTo(atLimit);
+
+        InstanceVO rejected = InstanceVO.builder().name("inst-b").type(InstanceType.PROXY_CLUSTER)
+                .endpoint(atLimit + EMOJI).build();
+        assertThatThrownBy(() -> instanceService.createInstance(rejected))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not exceed 512 characters");
+        verify(instanceRepository, never()).save(argThat(instance -> instance.getEndpoint() != null
+                && instance.getEndpoint().codePointCount(0, instance.getEndpoint().length()) > 512));
     }
 
     @Test
@@ -1936,6 +1959,47 @@ class InstanceServiceTest {
         assertThat(updated.getCloudInstanceId()).isEqualTo("rmq-cn-xxx");
     }
 
+    @Test
+    void deleteInstancesShouldCutFailureMessagesOnCodePointBoundariesTest() {
+        // The 500-char cap lands between the two chars of the emoji, so a char based cut
+        // publishes half of it in the batch result.
+        InstanceVO existing = InstanceVO.builder().name("inst-a").build();
+        existing.setId(1L);
+        when(instanceRepository.findByIdentifier("inst-a")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-a"))
+                .thenThrow(new IllegalStateException("x".repeat(499) + EMOJI + "tail"));
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(List.of("inst-a"));
+
+        assertThat(result.getDeleted()).isZero();
+        assertThat(result.getFailed()).singleElement().satisfies(detail -> {
+            assertThat(hasUnpairedSurrogate(detail)).isFalse();
+            assertThat(detail).isEqualTo("inst-a: " + "x".repeat(499) + EMOJI);
+        });
+    }
+
+    @Test
+    void importCloudInstancesShouldBoundFailureMessagesOnCodePointBoundariesTest() {
+        // The detail is "regions: " + the failure message capped at 500 code points, and the cap
+        // lands between the two chars of the emoji.
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L))
+                .thenThrow(new IllegalStateException("x".repeat(489) + EMOJI + "y".repeat(5)));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).singleElement().satisfies(detail -> {
+            assertThat(hasUnpairedSurrogate(detail)).isFalse();
+            assertThat(detail).isEqualTo("regions: " + "x".repeat(489) + EMOJI + "…");
+            assertThat(detail.codePointCount(0, detail.length()))
+                    .isEqualTo(InstanceService.MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH);
+        });
+    }
+
     private CloudCatalogProvider prepareAliyunCatalog() {
         CloudCredentialVO credential = new CloudCredentialVO();
         credential.setId(1L);
@@ -1958,5 +2022,20 @@ class InstanceServiceTest {
         detail.setInstanceName(instanceId + "-name");
         detail.setEndpoints(List.of(new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", endpoint)));
         return detail;
+    }
+
+    private static boolean hasUnpairedSurrogate(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (Character.isHighSurrogate(current)) {
+                if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
+                    return true;
+                }
+                index++;
+            } else if (Character.isLowSurrogate(current)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

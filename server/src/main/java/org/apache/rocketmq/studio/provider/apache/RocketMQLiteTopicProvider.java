@@ -114,8 +114,22 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
         try {
             return Boolean.TRUE.equals(adminFactory.execute(properties.getNamesrvAddr(), null, admin -> {
-                List<String> masters = masterAddresses(admin);
-                return !masters.isEmpty() && admin.getBrokerLiteInfo(masters.get(0)) != null;
+                // Probe every master and report supported when any of them answers the lite
+                // admin RPC: the iteration order of examineBrokerClusterInfo is arbitrary,
+                // so probing only the first master would disable the whole console on a
+                // mixed-version cluster (or while that one master restarts) even though
+                // the feature stays reachable through its peers.
+                for (String master : masterAddresses(admin)) {
+                    try {
+                        if (admin.getBrokerLiteInfo(master) != null) {
+                            return true;
+                        }
+                    } catch (Exception probeFailure) {
+                        log.debug("LiteTopic capability probe failed on {}: {}",
+                                master, probeFailure.getMessage());
+                    }
+                }
+                return false;
             }));
         } catch (Exception probeFailure) {
             // An older broker answers the lite RPC with an unsupported-code error; that is the
