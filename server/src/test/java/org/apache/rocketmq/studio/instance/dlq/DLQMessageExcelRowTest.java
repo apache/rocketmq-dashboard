@@ -49,6 +49,20 @@ class DLQMessageExcelRowTest {
                 .containsEntry("Reconsume Times", "3");
     }
 
+    @Test
+    void shouldPreserveBinaryBodyInBase64ColumnTest() {
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("binary-msg")
+                .storeTime(1_700_000_000_000L)
+                .bodyBase64("wyg=")
+                .build();
+
+        Map<String, String> cells = firstDataRowByColumnName(List.of(message));
+
+        assertThat(cells.get("Body")).isNull();
+        assertThat(cells).containsEntry("Body Base64", "wyg=");
+    }
+
     private static Map<String, String> firstDataRowByColumnName(List<DLQMessageVO> messages) {
         List<Map<Integer, String>> rows = readBack(messages);
         Map<Integer, String> header = rows.get(0);
