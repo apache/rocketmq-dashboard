@@ -289,6 +289,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.proxyClusterMode': { zh: 'Proxy Cluster 模式', en: 'Proxy Cluster Mode' },
   'instance.directMode': { zh: 'Direct 模式', en: 'Direct Mode' },
   'instance.addInstance': { zh: '添加实例', en: 'Add Instance' },
+  'instance.exportInstances': { zh: '导出实例', en: 'Export instances' },
+  'instance.exportSuccess': { zh: '实例清单已导出', en: 'Instance inventory exported.' },
+  'instance.exportFailed': {
+    zh: '实例清单导出失败，请稍后重试',
+    en: 'Failed to export the instance inventory. Please try again later.',
+  },
   'instance.editInstanceTitle': { zh: '编辑实例 — {name}', en: 'Edit Instance — {name}' },
   'instance.instanceName': { zh: '实例 ID', en: 'Instance ID' },
   'instance.namePlaceholder': { zh: '例：rocketmq-production', en: 'e.g. rocketmq-production' },

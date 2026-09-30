@@ -159,6 +159,60 @@ class InstanceServiceTest {
     }
 
     @Test
+    void exportInstancesCsvShouldStreamTheFilteredInventoryTest() {
+        InstanceVO apache = InstanceVO.builder()
+                .name("prod-apache")
+                .type(InstanceType.DIRECT)
+                .vendor(InstanceVendor.APACHE)
+                .endpoint("10.1.2.3:9876")
+                .remark("production")
+                .build();
+        apache.setId(1L);
+        apache.setGmtCreate(LocalDateTime.of(2026, 9, 1, 8, 0));
+        apache.setGmtModified(LocalDateTime.of(2026, 9, 2, 8, 0));
+        InstanceVO cloud = InstanceVO.builder()
+                .name("aliyun-prod")
+                .type(InstanceType.CLOUD)
+                .vendor(InstanceVendor.ALIYUN)
+                .regionId("cn-hangzhou")
+                .build();
+        cloud.setId(2L);
+        when(instanceRepository.findAll()).thenReturn(List.of(apache, cloud));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        org.mockito.Mockito.lenient().when(regionNames.resolve("cn-hangzhou"))
+                .thenReturn("Hangzhou (CN)");
+
+        String csv = instanceService.exportInstancesCsv(null, null);
+
+        assertThat(csv).startsWith("\uFEFFname,type,vendor,endpoint,regionId,regionName,remark,"
+                + "topicCount,consumerGroupCount,resourceCountsAvailable,gmtCreate,gmtModified\r\n");
+        // Counts come from the parallel count runner, so the assertion stops at the remark column.
+        assertThat(csv).contains("\"prod-apache\",\"DIRECT\",\"APACHE\",\"10.1.2.3:9876\",\"\",\"\","
+                + "\"production\",");
+        assertThat(csv).contains("\"2026-09-01T08:00\",\"2026-09-02T08:00\"");
+        assertThat(csv).contains("\"aliyun-prod\",\"CLOUD\",\"ALIYUN\",\"\",\"cn-hangzhou\","
+                + "\"Hangzhou (CN)\"");
+        // Credential references stay out of the export: they are internal wiring, not inventory.
+        assertThat(csv).doesNotContain("credential");
+    }
+
+    @Test
+    void exportInstancesCsvShouldRejectBeyondTheCapTest() {
+        List<InstanceVO> instances = new ArrayList<>();
+        for (int index = 0; index < 10_001; index++) {
+            instances.add(InstanceVO.builder().name("instance-" + index).build());
+        }
+        when(instanceRepository.findAll()).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        assertThatThrownBy(() -> instanceService.exportInstancesCsv(null, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(400))
+                .hasMessage("Instance export exceeds the maximum of 10000 records; narrow the filters");
+    }
+
+    @Test
     void listInstancesShouldResolveRegionDisplayNamesTest() {
         InstanceVO instance = InstanceVO.builder()
                 .name("cloud-1")
