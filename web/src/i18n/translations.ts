@@ -796,6 +796,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Trace topic (leave empty to use default)',
   },
   'messagePage.queryTrace': { zh: '查询轨迹', en: 'Query Trace' },
+  'messagePage.exportTrace': { zh: '导出轨迹', en: 'Export Trace' },
   'messagePage.loadingTrace': { zh: '正在加载轨迹数据…', en: 'Loading trace data…' },
   'messagePage.nodeCost': { zh: '耗时 {time}ms', en: 'Duration {time}ms' },
   'messagePage.noTraceData': { zh: '暂无轨迹数据', en: 'No trace data' },
