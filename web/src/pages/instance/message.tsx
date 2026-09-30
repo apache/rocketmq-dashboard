@@ -962,6 +962,63 @@ const MessagePageContent = ({
       ),
     },
     {
+      key: 'properties',
+      label: t('messagePage.tabProperties'),
+      children: selectedMsg && (
+        <>
+          {selectedMsg.propertiesTruncated && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t('messagePage.propertiesTruncated')}
+            />
+          )}
+          {Object.keys(selectedMsg.properties ?? {}).length === 0 ? (
+            <Text type="secondary">{t('messagePage.noProperties')}</Text>
+          ) : (
+            <Table
+              size="small"
+              pagination={false}
+              rowKey={(record) => record[0]}
+              dataSource={Object.entries(selectedMsg.properties)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([propertyKey, propertyValue]) => ({
+                  0: propertyKey,
+                  1: propertyValue,
+                }))}
+              columns={[
+                {
+                  title: t('messagePage.propertyKey'),
+                  dataIndex: 0,
+                  key: 'key',
+                  width: 240,
+                  render: (propertyKey: string) => (
+                    <Text copyable style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                      {propertyKey}
+                    </Text>
+                  ),
+                },
+                {
+                  title: t('messagePage.propertyValue'),
+                  dataIndex: 1,
+                  key: 'value',
+                  render: (propertyValue: string) => (
+                    <Paragraph
+                      copyable
+                      style={{ marginBottom: 0, fontFamily: 'monospace', fontSize: 13 }}
+                    >
+                      {propertyValue}
+                    </Paragraph>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </>
+      ),
+    },
+    {
       key: 'trace',
       label: t('messagePage.tabTrace'),
       children: (

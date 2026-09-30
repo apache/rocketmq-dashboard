@@ -775,6 +775,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.tabContent': { zh: '消息内容', en: 'Message Content' },
   'messagePage.reconsumeTimes': { zh: '重投次数', en: 'Reconsume Times' },
   'messagePage.tabTrace': { zh: '消息轨迹', en: 'Message Trace' },
+  'messagePage.tabProperties': { zh: '消息属性', en: 'Message Properties' },
+  'messagePage.noProperties': { zh: '该消息没有用户属性', en: 'This message carries no user properties.' },
+  'messagePage.propertyKey': { zh: '属性名', en: 'Property' },
+  'messagePage.propertyValue': { zh: '属性值', en: 'Value' },
+  'messagePage.propertiesTruncated': {
+    zh: '属性列表已被服务端截断（条目数或值长度超限），完整属性请通过 API 获取。',
+    en: 'The property list was truncated by the server (entry count or value length limit); fetch the message through the API for the full set.',
+  },
   'messagePage.traceMsgIdPlaceholder': {
     zh: '消息 ID（默认当前消息）',
     en: 'Message ID (defaults to current message)',

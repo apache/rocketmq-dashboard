@@ -300,6 +300,54 @@ describe('Message page query history', () => {
     expect(retryItems[0]).toHaveTextContent('2');
   });
 
+  it('shows the message properties with their truncation disclosure', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-PROPS'),
+        properties: { traceId: 'trace-7', userId: '42' },
+        propertiesTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PROPS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-PROPS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByText('消息属性'));
+
+    expect(await screen.findByText('traceId')).toBeInTheDocument();
+    expect(screen.getByText('trace-7')).toBeInTheDocument();
+    expect(screen.getByText('userId')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(
+      screen.getByText(/属性列表已被服务端截断/, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  it('states when a message carries no user properties', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-PLAIN')]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PLAIN');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-PLAIN')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByText('消息属性'));
+
+    expect(await screen.findByText('该消息没有用户属性')).toBeInTheDocument();
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,

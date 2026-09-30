@@ -15,6 +15,8 @@ export interface MessageRecord {
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  /** The provider caps the property payload (entry count and value length). */
+  propertiesTruncated?: boolean;
   size: number;
 }
 
