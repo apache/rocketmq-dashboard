@@ -26,6 +26,9 @@ import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageClientExt;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -59,6 +62,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -172,6 +176,84 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void directlyConsumesClientDecodedMessageByItsPhysicalOffsetIdTest() throws Exception {
+        // Synthetic broker/address IDs extend the existing public prepareDirectConsumption fixture.
+        String offsetId = "AC1E0A6400002A9F0000000000000001";
+        String uniqueId = "C0A8016400002A9F0000000000000002";
+        MessageExt stored = prepareDirectConsumption(offsetId);
+        MessageClientExt decoded = clientDecodedMessage(stored, uniqueId);
+        assertThat(decoded.getMsgId()).isEqualTo(uniqueId);
+        assertThat(decoded.getOffsetMsgId()).isEqualTo(offsetId);
+        when(adminExt.viewMessage("orders", offsetId)).thenReturn(decoded);
+        ConsumeMessageDirectlyResult brokerResult = new ConsumeMessageDirectlyResult();
+        brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", offsetId))
+                .thenReturn(brokerResult);
+        DirectConsumeMessageDTO request = directRequest();
+        request.setMsgId(offsetId);
+
+        assertThat(provider.consumeMessageDirectly(request).getConsumeResult()).isEqualTo("CR_SUCCESS");
+
+        verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", offsetId);
+        verify(adminExt, never()).consumeMessageDirectly("billing", "client-a", "orders", uniqueId);
+    }
+
+    @Test
+    void directlyConsumesClientDecodedMessageWithoutUniqueIdTest() throws Exception {
+        String offsetId = "AC1E0A6400002A9F0000000000000001";
+        MessageClientExt decoded = clientDecodedMessage(prepareDirectConsumption(offsetId), null);
+        assertThat(decoded.getMsgId()).isEqualTo(offsetId);
+        when(adminExt.viewMessage("orders", offsetId)).thenReturn(decoded);
+        ConsumeMessageDirectlyResult brokerResult = new ConsumeMessageDirectlyResult();
+        brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", offsetId)).thenReturn(brokerResult);
+        DirectConsumeMessageDTO request = directRequest();
+        request.setMsgId(offsetId);
+
+        assertThat(provider.consumeMessageDirectly(request).getConsumeResult()).isEqualTo("CR_SUCCESS");
+
+        verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", offsetId);
+    }
+
+    @Test
+    void directConsumptionNeverUsesUniqueIdAsPhysicalLocationTest() throws Exception {
+        MessageExt stored = prepareDirectConsumption();
+        MessageClientExt decoded = clientDecodedMessage(stored, stored.getMsgId());
+        when(adminExt.viewMessage("orders", "msg-1")).thenReturn(decoded);
+        for (String physicalId : java.util.Arrays.asList(null, "not-an-offset-id",
+                "C0A8016400002A9F0000000000000001")) {
+            decoded.setOffsetMsgId(physicalId);
+            assertDirectConflict();
+        }
+        verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
+    }
+
+    private static MessageClientExt clientDecodedMessage(MessageExt stored, String uniqueId) throws Exception {
+        stored.setBody("order-created".getBytes(StandardCharsets.UTF_8));
+        stored.setBornHost(new InetSocketAddress("192.168.1.100", 12345));
+        stored.setCommitLogOffset(1L);
+        if (uniqueId != null) {
+            MessageAccessor.putProperty(stored, MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, uniqueId);
+        }
+        MessageExt decoded = MessageDecoder.clientDecode(ByteBuffer.wrap(MessageDecoder.encode(stored, false)), true);
+        assertThat(decoded).isInstanceOf(MessageClientExt.class);
+        return (MessageClientExt) decoded;
+    }
+
+    @Test
+    void directConsumptionRejectsForeignInputOffsetBeforeLookupTest() throws Exception {
+        prepareDirectConsumption(null);
+        DirectConsumeMessageDTO request = directRequest();
+        request.setMsgId("C0A8016400002A9F0000000000000001");
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(request))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(409));
+
+        verify(adminExt, never()).viewMessage(anyString(), anyString());
+        verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void directConsumptionRejectsInvalidActualMessageWithoutRemoteWriteTest() throws Exception {
         MessageExt message = prepareDirectConsumption();
         for (java.net.SocketAddress address : java.util.Arrays.asList(null,
@@ -207,6 +289,10 @@ class RocketMQMessageProviderTest {
     }
 
     private MessageExt prepareDirectConsumption() throws Exception {
+        return prepareDirectConsumption("msg-1");
+    }
+
+    private MessageExt prepareDirectConsumption(String requestedId) throws Exception {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
@@ -232,7 +318,9 @@ class RocketMQMessageProviderTest {
         message.setTopic("orders");
         message.setMsgId(offsetId);
         message.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
-        when(adminExt.viewMessage("orders", "msg-1")).thenReturn(message);
+        if (requestedId != null) {
+            when(adminExt.viewMessage("orders", requestedId)).thenReturn(message);
+        }
         return message;
     }
 

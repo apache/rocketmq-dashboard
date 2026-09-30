@@ -22,6 +22,7 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -567,7 +568,10 @@ public class RocketMQMessageProvider implements MessageProvider {
                     if (message == null || !topic.equals(message.getTopic())) {
                         throw new BusinessException(409, "Message's actual topic does not match the authorized resource");
                     }
-                    requireDirectMessageTarget(target, message.getMsgId(), true);
+                    // Client decoding exposes the producer UNIQ_KEY through getMsgId(), not the broker offset ID.
+                    String physicalMessageId = message instanceof MessageClientExt clientMessage
+                            ? clientMessage.getOffsetMsgId() : message.getMsgId();
+                    requireDirectMessageTarget(target, physicalMessageId, true);
                     if (!(message.getStoreHost() instanceof java.net.InetSocketAddress host)
                             || host.getAddress() == null
                             || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
@@ -576,7 +580,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result;
                     try {
                         result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
-                                topic, message.getMsgId());
+                                topic, physicalMessageId);
                     } catch (Exception exception) {
                         String rootMessage = rootMessage(exception);
                         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online"
