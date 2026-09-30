@@ -778,7 +778,7 @@ class MetadataServiceTest {
     void listConsumerGroupsPageShouldPaginateFromOneBasedIndexes() {
         ConsumerGroupVO third = new ConsumerGroupVO();
         third.setName("cg-c");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", 2, 2))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, "order", null, 2, 2))
                 .thenReturn(PageResult.of(List.of(third), 3, 2, 2));
 
         PageResult<ConsumerGroupVO> result =
@@ -788,7 +788,7 @@ class MetadataServiceTest {
         assertThat(result.getTotal()).isEqualTo(3);
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getSize()).isEqualTo(2);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", 2, 2);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, "order", null, 2, 2);
         verify(apacheProvider, org.mockito.Mockito.never()).listConsumerGroups("instance-a", "order");
     }
 
@@ -797,7 +797,7 @@ class MetadataServiceTest {
         ConsumerGroupVO clusterAGroup = new ConsumerGroupVO();
         clusterAGroup.setName("group-a");
         clusterAGroup.setClusterId("cluster-a");
-        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20))
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", null, null, 1, 20))
                 .thenReturn(PageResult.of(List.of(clusterAGroup), 1, 1, 20));
 
         PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
@@ -805,7 +805,54 @@ class MetadataServiceTest {
 
         assertThat(result.getItems()).containsExactly(clusterAGroup);
         assertThat(result.getTotal()).isEqualTo(1);
-        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, 1, 20);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", null, null, 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassSubscriptionModeToTheProviderTest() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("group-push");
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20))
+                .thenReturn(PageResult.of(List.of(pushGroup), 1, 1, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, " Push ", 1, 20);
+
+        assertThat(result.getItems()).containsExactly(pushGroup);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, null, "Push", 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldTreatAllAsNoSubscriptionModeTest() {
+        when(apacheProvider.listConsumerGroupsPage("instance-a", null, null, null, 1, 20))
+                .thenReturn(PageResult.empty(1, 20));
+
+        metadataService.listConsumerGroupsPage("instance-a", null, null, "ALL", 1, 20);
+
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", null, null, null, 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldFilterModeOverTheFullLegacyInventoryTest() {
+        ConsumerGroupVO pushGroup = new ConsumerGroupVO();
+        pushGroup.setName("group-push");
+        pushGroup.setSubscriptionMode(SubscriptionMode.Push);
+        ConsumerGroupVO popGroup = new ConsumerGroupVO();
+        popGroup.setName("group-pop");
+        popGroup.setSubscriptionMode(SubscriptionMode.Pop);
+        when(metadataProvider.listConsumerGroups("cluster-1", "order"))
+                .thenReturn(List.of(pushGroup, popGroup));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                null, "cluster-1", "order", "Push", 2, 1);
+
+        // Only one Push row exists, so page 2 with size 1 is past the filtered total.
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+        org.mockito.Mockito.verify(metadataProvider, org.mockito.Mockito.never())
+                .listConsumerGroupsPage(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                        org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test

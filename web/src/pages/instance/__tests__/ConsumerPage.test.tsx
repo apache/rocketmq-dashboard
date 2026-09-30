@@ -312,6 +312,27 @@ describe('Consumer page', () => {
     });
   });
 
+  it('applies the subscription-mode filter on the server', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+
+    const modeSelect = screen.getAllByRole('combobox')[1];
+    fireEvent.mouseDown(modeSelect.parentElement!);
+    await user.click(await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }));
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        subscriptionMode: 'Pop',
+      }),
+    );
+  });
+
   it('clears selected consumer groups when the search scope changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);

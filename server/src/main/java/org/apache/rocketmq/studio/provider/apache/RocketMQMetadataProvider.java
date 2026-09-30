@@ -265,8 +265,18 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     @Override
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        // message_model stores the subscription mode ("Push"/"Pop"); blank and "ALL" mean no
+        // restriction, so the count and the page both describe the filtered result set.
+        boolean modeRestricted = StringUtils.hasText(subscriptionMode)
+                && !"ALL".equals(subscriptionMode);
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
                 .and(instanceId != null, scope -> {
                     scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
@@ -278,6 +288,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
+                .eq(modeRestricted, RmqGroup::getMessageModel, subscriptionMode)
                 .orderByAsc(RmqGroup::getName, RmqGroup::getId);
         Page<RmqGroup> result = groupMapper.selectPage(new Page<>(page, pageSize), query);
         List<ConsumerGroupVO> groups = result.getRecords().stream()
