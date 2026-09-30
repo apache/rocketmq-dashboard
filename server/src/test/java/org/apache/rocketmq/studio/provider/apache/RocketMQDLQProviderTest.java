@@ -122,6 +122,32 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listDLQGroupsShouldQueryTopicStatsConcurrentlyTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-b",
+                MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-c"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(3);
+        when(adminExt.examineTopicStats(anyString())).thenAnswer(invocation -> {
+            // Only passes when all three stats calls are in flight at the same time; a serial
+            // implementation would trip the await timeout, the mock would throw, and the rows
+            // would surface as UNAVAILABLE instead of EMPTY.
+            barrier.await(5, TimeUnit.SECONDS);
+            return new TopicStatsTable();
+        });
+
+        List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+        assertThat(groups).hasSize(3);
+        assertThat(groups).allSatisfy(group -> {
+            assertThat(group.isStatsAvailable()).isTrue();
+            assertThat(group.getStatus()).isEqualTo("EMPTY");
+        });
+    }
+
+    @Test
     void marksStatsUnavailableWhenTopicStatsCannotBeRead() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         TopicList topicList = new TopicList();

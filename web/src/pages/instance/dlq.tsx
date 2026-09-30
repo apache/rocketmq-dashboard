@@ -188,6 +188,14 @@ const DLQPage = () => {
     setLoading(true);
   }
 
+  // The search input updates per keystroke; the query runs against a debounced copy so typing
+  // "order-create" fires one request instead of twelve. The instance page uses the same shape.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
   useEffect(() => {
     const requestId = ++groupRequestIdRef.current;
 
@@ -202,7 +210,7 @@ const DLQPage = () => {
     // Clear `loading` inside the same callback as the data updates so rows and
     // the cleared spinner commit in one batched render — otherwise rows can be
     // visible for a render while the spin overlay still blocks pointer events.
-    void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
+    void listDLQGroups(selectedInstanceId, debouncedSearch || undefined, page, pageSize)
       .then((result) => {
         if (groupRequestIdRef.current === requestId) {
           setGroups(result.items);
@@ -223,7 +231,7 @@ const DLQPage = () => {
           setLoading(false);
         }
       });
-  }, [refreshKey, selectedInstanceId, search, page, pageSize]);
+  }, [refreshKey, selectedInstanceId, debouncedSearch, page, pageSize]);
 
   useEffect(
     () => () => {

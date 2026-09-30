@@ -68,6 +68,12 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Real {@link DLQProvider} backed by the RocketMQ admin API. Lists dead-letter groups by scanning
@@ -82,6 +88,26 @@ public class RocketMQDLQProvider implements DLQProvider {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int DLQ_STATS_THREADS = 8;
+    private static final long DLQ_STATS_TIMEOUT_SECONDS = 10;
+
+    /**
+     * Stats fan-out for one DLQ page. A page of 20 groups used to wait for 20 serial
+     * {@code examineTopicStats} RPCs; with the bounded pool the latency is that of the slowest
+     * single call, and a broker that never answers degrades only its own row (UNAVAILABLE)
+     * instead of the whole page.
+     */
+    private final ExecutorService dlqStatsExecutor = Executors.newFixedThreadPool(
+            DLQ_STATS_THREADS, runnable -> {
+                Thread thread = new Thread(runnable, "dlq-group-stats");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    @jakarta.annotation.PreDestroy
+    void shutdownDlqStatsExecutor() {
+        dlqStatsExecutor.shutdownNow();
+    }
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
@@ -125,11 +151,41 @@ public class RocketMQDLQProvider implements DLQProvider {
         long offset = Pagination.pageOffset(page, pageSize);
         int from = (int) Math.min(offset, dlqTopics.size());
         int to = (int) Math.min(offset + pageSize, dlqTopics.size());
-        List<DLQGroupVO> groups = dlqTopics.subList(from, to).stream()
-                .map(topic -> buildDLQGroup(adminExt,
-                        topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length()), topic))
-                .toList();
+        List<String> pageTopics = dlqTopics.subList(from, to);
+        List<Future<DLQGroupVO>> stats = new ArrayList<>(pageTopics.size());
+        for (String topic : pageTopics) {
+            String groupName = topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length());
+            stats.add(dlqStatsExecutor.submit(() -> buildDLQGroup(adminExt, groupName, topic)));
+        }
+        List<DLQGroupVO> groups = new ArrayList<>(pageTopics.size());
+        for (int i = 0; i < stats.size(); i++) {
+            try {
+                groups.add(stats.get(i).get(DLQ_STATS_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+            } catch (TimeoutException e) {
+                stats.get(i).cancel(true);
+                groups.add(unavailableGroup(pageTopics.get(i)));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                stats.forEach(future -> future.cancel(true));
+                throw new IllegalStateException("DLQ group stats were interrupted", e);
+            } catch (ExecutionException e) {
+                // buildDLQGroup catches per-topic failures itself; this guards the unexpected.
+                groups.add(unavailableGroup(pageTopics.get(i)));
+            }
+        }
         return PageResult.of(groups, dlqTopics.size(), page, pageSize);
+    }
+
+    private DLQGroupVO unavailableGroup(String dlqTopic) {
+        return DLQGroupVO.builder()
+                .groupName(dlqTopic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length()))
+                .dlqTopic(dlqTopic)
+                .messageCount(0L)
+                .lastEnqueueTime(null)
+                .retryCount(0)
+                .status("UNAVAILABLE")
+                .statsAvailable(false)
+                .build();
     }
 
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
