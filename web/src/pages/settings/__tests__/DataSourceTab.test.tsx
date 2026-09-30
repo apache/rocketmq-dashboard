@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
@@ -375,6 +375,49 @@ describe('DataSourceTab', () => {
         name: 'Thanos primary',
       }),
     );
+  });
+
+  it('ignores stale modal completion after reopening the modal for another data source Test', async () => {
+    const updateA = deferred<DataSource>();
+    vi.mocked(updateDataSource).mockReturnValue(updateA.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+    await screen.findByText('Prometheus prod');
+
+    // Start saving the edit of source A; the update request stays pending.
+    const editButtons = screen.getAllByRole('button', { name: /edit/i });
+    await user.click(editButtons[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByDisplayValue('Prometheus prod')).toBeInTheDocument();
+    // fireEvent keeps both clicks in the same tick so the cancel lands while
+    // handleSubmit is still awaiting form validation, before antd blocks
+    // closing the confirming modal through confirmLoading.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(updateDataSource).toHaveBeenCalledTimes(1));
+
+    // The modal was cancelled. jsdom never finishes antd's zoom motion, so the
+    // dialog element stays in the DOM and the leaving state is observed
+    // through the motion class instead.
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
+
+    // Open the edit modal for source B instead; it must come back fully.
+    await user.click(editButtons[1]);
+    await waitFor(() => expect(dialog).not.toHaveClass('ant-zoom-leave'));
+    expect(within(dialog).getByDisplayValue('Thanos DR')).toBeInTheDocument();
+
+    // A's save completes: the list refreshes, but B's modal and form must stay
+    // exactly as the user left them.
+    updateA.resolve(sources[0]);
+    await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalledTimes(2));
+
+    expect(dialog).not.toHaveClass('ant-zoom-leave');
+    expect(within(dialog).getByDisplayValue('Thanos DR')).toBeInTheDocument();
+    expect(within(dialog).queryByDisplayValue('Prometheus prod')).not.toBeInTheDocument();
   });
 
   it('creates and tests a Grafana Mimir data source', async () => {

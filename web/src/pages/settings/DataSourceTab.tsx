@@ -134,6 +134,9 @@ export const DataSourceTab = () => {
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
+  // Identifies the current modal session: bumped on every open/close so that a
+  // save started in an older session can detect it became stale.
+  const modalSessionRef = useRef(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -227,6 +230,7 @@ export const DataSourceTab = () => {
   };
 
   const openCreateModal = () => {
+    modalSessionRef.current += 1;
     setEditingDataSource(null);
     dsForm.resetFields();
     dsForm.setFieldValue('auth', 'None');
@@ -234,12 +238,23 @@ export const DataSourceTab = () => {
   };
 
   const openEditModal = (dataSource: DataSource) => {
+    modalSessionRef.current += 1;
     setEditingDataSource(dataSource);
     dsForm.setFieldsValue(dataSource);
     setModalOpen(true);
   };
 
+  // All close paths go through here so that any save still in flight for the
+  // closed session is recognized as stale and cannot touch the next session.
+  const closeModal = () => {
+    modalSessionRef.current += 1;
+    setModalOpen(false);
+    setEditingDataSource(null);
+    dsForm.resetFields();
+  };
+
   const handleSubmit = async () => {
+    const session = modalSessionRef.current;
     try {
       // Credentials are supplied per metrics query and are only used here by the
       // connection test. Saving metadata must not require re-entering them.
@@ -260,8 +275,13 @@ export const DataSourceTab = () => {
       message.success(
         t(editingDataSource ? 'settings.dataSourceUpdated' : 'settings.dataSourceAdded'),
       );
-      setModalOpen(false);
-      dsForm.resetFields();
+      // The save succeeded and the list is refreshed, but if another modal
+      // session started meanwhile (cancelled and reopened), leave that
+      // session's open modal and its form untouched.
+      if (session !== modalSessionRef.current) {
+        return;
+      }
+      closeModal();
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return; // validation failure; antd already shows field-level errors
@@ -465,11 +485,7 @@ export const DataSourceTab = () => {
       <Modal
         title={t(editingDataSource ? 'settings.editDataSource' : 'settings.addDataSource')}
         open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setEditingDataSource(null);
-          dsForm.resetFields();
-        }}
+        onCancel={closeModal}
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
         destroyOnHidden
