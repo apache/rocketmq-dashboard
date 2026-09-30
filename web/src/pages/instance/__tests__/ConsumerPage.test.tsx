@@ -298,6 +298,17 @@ describe('Consumer page', () => {
     ]);
   });
 
+  it('renders the page subtitle and pagination totals in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Manage consumer-group subscriptions and progress, \d+ groups in total/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/共 \d+ 个 Group/)).not.toBeInTheDocument();
+  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 

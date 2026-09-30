@@ -843,14 +843,18 @@ const ConsumerPageContent = ({
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdGroups.length} 个 Group，${invalidCount} 行无效已跳过`);
+        message.warning(
+          t('consumer.importDoneSkipped', { created: createdGroups.length, invalid: invalidCount }),
+        );
       } else {
-        message.success(`已导入 ${createdGroups.length} 个 Group`);
+        message.success(t('consumer.importDone', { created: createdGroups.length }));
       }
     } else if (createdGroups.length > 0) {
-      message.warning(`已导入 ${createdGroups.length} 个 Group，${failedCount} 个失败`);
+      message.warning(
+        t('consumer.importDoneFailed', { created: createdGroups.length, failed: failedCount }),
+      );
     } else {
-      message.error(`${failedCount} 个 Group 导入失败`);
+      message.error(t('consumer.importFailed', { failed: failedCount }));
     }
   };
 
@@ -1431,7 +1435,7 @@ const ConsumerPageContent = ({
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
-        subtitle={`管理消费者组订阅关系与消费进度，共 ${totalGroups} 个 Group`}
+        subtitle={t('consumer.pageSubtitle', { count: totalGroups })}
       />
 
       {/* ─── Filter Bar ─── */}
@@ -1574,7 +1578,7 @@ const ConsumerPageContent = ({
             pageSize,
             total: totalGroups,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个 Group`,
+            showTotal: (total) => t('consumer.totalGroups', { count: total }),
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
               setSelectedRowKeys([]);

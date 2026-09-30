@@ -1699,7 +1699,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2225,6 +2228,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'topicCompare.export': { zh: '导出结果', en: 'Export results' },
 
   // ─── Consumer Page ───
+  'consumer.pageSubtitle': {
+    zh: '管理消费者组订阅关系与消费进度，共 {count} 个 Group',
+    en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
+  },
+  'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
+  'consumer.importDoneSkipped': {
+    zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
+    en: 'Imported {created} groups; {invalid} invalid rows were skipped',
+  },
+  'consumer.importDoneFailed': {
+    zh: '已导入 {created} 个 Group，{failed} 个失败',
+    en: 'Imported {created} groups; {failed} failed',
+  },
+  'consumer.importFailed': {
+    zh: '{failed} 个 Group 导入失败',
+    en: 'Failed to import {failed} groups',
+  },
   'consumer.name': { zh: 'Group 名称', en: 'Group Name' },
   'consumer.subType': { zh: '订阅组类型', en: 'Sub Type' },
   'consumer.subMode': { zh: '订阅模式', en: 'Sub Mode' },
