@@ -512,6 +512,23 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listMessagesFailsWhenTheOnlyDlqQueueStallsTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 200L)).thenReturn(10L);
+        // The pull does not advance the offset, so the only queue is abandoned mid-scan. An empty
+        // list would be indistinguishable from "no dead letters in range" while messages exist.
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32)))
+                .thenReturn(new PullResult(PullStatus.FOUND, 10, 0, 10, List.of()));
+
+        assertThatThrownBy(() -> provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic);
+    }
+
+    @Test
     void resendMessagesThrowsNotFoundWhenDlqTopicMissingTest() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
