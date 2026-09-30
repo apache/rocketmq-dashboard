@@ -27,9 +27,10 @@ vi.mock('../../../api/aiConversations', () => ({
 import { listConversations, type PageResult } from '../../../api/aiConversations';
 
 /**
- * Server-paged history: the two behaviours a rewrite most easily loses are the requestId guard (a
- * slow response for an older query overwriting a newer one) and the "any filter change jumps back to
- * page 1" rule, because page 7 of a different search does not exist.
+ * Server-paged history: the behaviours a rewrite most easily loses are the requestId guard (a
+ * slow response for an older query overwriting a newer one) and the "any filter change jumps back
+ * to page 1" rule, because page 7 of a different search does not exist. Also covered: clamping the
+ * page when a shrinking server total leaves it past the last page.
  */
 
 const listMock = vi.mocked(listConversations);
@@ -80,7 +81,8 @@ describe('useConversationList', () => {
   });
 
   it('forwardsPagingSearchAndTheArchivedFilterTest', async () => {
-    listMock.mockResolvedValue(resultPage([], 0, 1));
+    // total must cover page 3, otherwise the hook clamps the page back to the last valid one.
+    listMock.mockResolvedValue(resultPage([], 45, 3));
 
     const { result } = renderHook(() => useConversationList(10));
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -102,7 +104,8 @@ describe('useConversationList', () => {
   });
 
   it('jumpsBackToTheFirstPageWhenAFilterChangesTest', async () => {
-    listMock.mockResolvedValue(resultPage([], 0, 1));
+    // total must cover pages 4 and 5, otherwise the hook clamps the page back to page 1.
+    listMock.mockResolvedValue(resultPage([], 100, 1));
 
     const { result } = renderHook(() => useConversationList());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -163,6 +166,59 @@ describe('useConversationList', () => {
       search: undefined,
       archived: false,
     });
+  });
+
+  it('clampsThePageWhenTheServerTotalShrinksTest', async () => {
+    const firstPage = Array.from({ length: 15 }, (_, i) => listItem(i + 1, `会话 ${i + 1}`));
+    listMock
+      .mockResolvedValueOnce(resultPage(firstPage, 16, 1))
+      .mockResolvedValueOnce(resultPage([], 1, 2)) // page 2 no longer exists after the shrink
+      .mockResolvedValueOnce(resultPage([listItem(1, '仅剩一条')], 1, 1));
+
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => expect(result.current.items).toHaveLength(15));
+
+    await act(async () => {
+      result.current.setPage(2);
+    });
+
+    // The out-of-range page is discarded and the last valid page is re-queried.
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(3));
+    expect(listMock).toHaveBeenLastCalledWith({
+      page: 1,
+      size: 15,
+      search: undefined,
+      archived: false,
+    });
+    expect(result.current.page).toBe(1);
+    expect(result.current.total).toBe(1);
+    expect(result.current.items.map((row) => row.id)).toEqual([1]);
+  });
+
+  it('fallsBackToTheFirstPageWhenTheListBecomesEmptyTest', async () => {
+    const firstPage = Array.from({ length: 15 }, (_, i) => listItem(i + 1, `会话 ${i + 1}`));
+    listMock
+      .mockResolvedValueOnce(resultPage(firstPage, 16, 1))
+      .mockResolvedValueOnce(resultPage([], 0, 2))
+      .mockResolvedValueOnce(resultPage([], 0, 1));
+
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => expect(result.current.items).toHaveLength(15));
+
+    await act(async () => {
+      result.current.setPage(2);
+    });
+
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(3));
+    expect(listMock).toHaveBeenLastCalledWith({
+      page: 1,
+      size: 15,
+      search: undefined,
+      archived: false,
+    });
+    expect(result.current.page).toBe(1);
+    expect(result.current.total).toBe(0);
+    expect(result.current.items).toEqual([]);
   });
 
   it('reportsTheServerMessageAndEmptiesTheListOnFailureTest', async () => {
