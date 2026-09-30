@@ -59,6 +59,16 @@ async function fetchInstances(query: InstanceQuery, mockMode: boolean): Promise<
   return instanceApi.listInstances(query);
 }
 
+export async function exportInstances(query: InstanceQuery = {}): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'name,type,vendor,endpoint,regionId,regionName,remark,topicCount,consumerGroupCount,'
+      + 'resourceCountsAvailable,gmtCreate,gmtModified\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return instanceApi.exportInstances(query);
+}
+
 export async function getInstanceCapabilities(instanceId: string): Promise<InstanceCapabilities> {
   if (!isMockMode()) {
     return instanceApi.getInstanceCapabilities(instanceId);
