@@ -59,7 +59,9 @@ func (a *App) newVersionCommand(opts *option) *cobra.Command {
 			}
 			for _, l := range lines {
 				if l.value != "" {
-					fmt.Fprintf(a.Out, "%s: %s\n", l.label, l.value)
+					if _, err := fmt.Fprintf(a.Out, "%s: %s\n", l.label, l.value); err != nil {
+						return fmt.Errorf("write version output: %w", err)
+					}
 				}
 			}
 			return nil
