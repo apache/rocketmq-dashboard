@@ -262,6 +262,37 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aFailingWorkspacePreparationShouldFinalizeTheRunInsteadOfStrandingItTest() {
+        // prepare() throws for configuration problems (a bound instance whose credential is gone,
+        // an unusable rmqctl-server-url). The run row is already inserted by then; if the exception
+        // simply propagates, the row stays QUEUED, every later message is refused 409 "busy", and
+        // only the scheduled orphan sweep (up to a day) reaps it. The row must reach a terminal
+        // state now, and the caller must still hear the reason.
+        when(workspace.prepare(anyLong(), any()))
+                .thenThrow(new BusinessException(404, "Instance not found: localtest"));
+
+        assertThatThrownBy(() -> service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(404));
+
+        // The stranded-QUEUED regression: exactly one insert, updated straight to a terminal row.
+        assertThat(runInserts).hasSize(1);
+        assertThat(runInserts.get(0).getStatus()).isEqualTo(RunStatus.QUEUED.name());
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(registry.isLive(RUN_ID)).isFalse();
+
+        // Recovery half of the contract: the failed row is terminal, so the conversation is
+        // immediately usable again — a second message admits a new run instead of hitting the
+        // 409 the stranded-QUEUED row produced for up to a day.
+        org.mockito.Mockito.reset(workspace);
+        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.of(preparation()));
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("second try"));
+        assertThat(runInserts).hasSize(2);
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
     void aBlankOrOversizedMessageShouldBeRefusedBeforeARowIsWrittenTest() {
         assertThatThrownBy(() -> service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("   ")))
                 .isInstanceOfSatisfying(BusinessException.class,

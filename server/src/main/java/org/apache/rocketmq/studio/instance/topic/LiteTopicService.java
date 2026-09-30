@@ -17,7 +17,9 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
 import org.apache.rocketmq.studio.model.LiteTopicSummary;
@@ -42,6 +44,7 @@ import java.util.List;
 public class LiteTopicService {
 
     private final LiteTopicProvider liteTopicProvider;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
         return liteTopicProvider.listLiteTopics(pattern, namespace).stream()
@@ -56,14 +59,25 @@ public class LiteTopicService {
         return toSessionVO(liteTopicProvider.getSession(sessionId));
     }
 
-    public void extendTTL(String topicPattern, Long newTTL) {
+    public void extendTTL(String instanceId, String topicPattern, Long newTTL) {
+        String identifier = ResourceOwnershipGuard.requireText(instanceId, "instanceId");
         if (topicPattern == null || topicPattern.isBlank()) {
             throw new BusinessException(400, "topicPattern is required");
         }
         if (newTTL == null || newTTL <= 0) {
             throw new BusinessException(400, "newTTL must be positive");
         }
-        liteTopicProvider.extendTTL(topicPattern.trim(), newTTL);
+        var instance = ownershipGuard.requireInstance(identifier);
+        var resource = ownershipGuard.topicResource(topicPattern);
+        // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
+        if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
+            ownershipGuard.check(instance, resource, true);
+            ownershipGuard.requireSupportedProvider(instance);
+        }
+        if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
+            throw new BusinessException(409, "TTL can only be updated on a registered Lite parent topic");
+        }
+        liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
     }
 
     public LiteTopicQuotaVO getQuota(String namespace) {

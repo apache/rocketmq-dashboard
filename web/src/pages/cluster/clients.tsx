@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Alert,
   Button,
@@ -45,6 +45,7 @@ import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeClientConnections,
@@ -61,6 +62,20 @@ const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
 const typeConfig: Record<string, { color: string; label: string }> = {
   Producer: { color: 'blue', label: 'Producer' },
   Consumer: { color: 'green', label: 'Consumer' },
+};
+
+/**
+ * One clipped line inside a diagnostics-table cell. The project-wide
+ * `.ant-table-cell { white-space: nowrap }` keeps long values (trace-producer resource names,
+ * client ids, risk descriptions) from wrapping, so without an explicit ellipsis they spill over
+ * the neighbouring column; each line clips itself and carries its full text in a `title`.
+ */
+const diagnosticCellLine: CSSProperties = {
+  display: 'block',
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const protocolConfig: Record<string, { color: string; label: string }> = {
@@ -128,28 +143,13 @@ const countBy = (values: string[]) =>
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-function getLoadErrorMessage(error: unknown): string {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return DEFAULT_LOAD_ERROR;
-}
-
 const displayMetadata = (value: string | null | undefined) => value || '-';
+
+/**
+ * Bucket key for a connection whose broker-reported `LanguageCode` has no `ClientLanguage`
+ * counterpart, so the API sends `language: null`. The visible label is localized on render.
+ */
+const UNKNOWN_LANGUAGE = 'unknown';
 
 /* ═══════════════════════════════════════════
    ClientsPage
@@ -221,7 +221,7 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
+        setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
@@ -253,7 +253,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(getLoadErrorMessage(error));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
         }
       })
       .finally(() => {
@@ -300,7 +300,9 @@ const ClientsPage = () => {
       consumers: instances.filter((connection) => connection.type === 'Consumer').length,
       protocols: countBy(instances.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map((connection) => `${connection.language} ${connection.version}`),
+        instances.map(
+          (connection) => `${connection.language ?? UNKNOWN_LANGUAGE} ${connection.version}`,
+        ),
       ),
     };
   }, [clusterConnections]);
@@ -363,7 +365,7 @@ const ClientsPage = () => {
         matches('clusterName', connection.clusterName) &&
         matches('type', connection.type) &&
         matches('protocol', connection.protocol) &&
-        matches('language', connection.language),
+        matches('language', connection.language ?? ''),
     );
   }, [columnFilters, filtered]);
 
@@ -379,6 +381,15 @@ const ClientsPage = () => {
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
      ═══════════════════════════════════════════ */
+  const renderLanguageTag = (language?: string | null) => {
+    const config = languageConfig[language ?? ''];
+    return (
+      <Tag color={config?.color ?? 'default'}>
+        {config?.label ?? (language || t('common.unknown'))}
+      </Tag>
+    );
+  };
+
   const columns: ColumnsType<ClientConnection> = [
     {
       title: t('clients.cluster'),
@@ -476,10 +487,7 @@ const ClientsPage = () => {
       })),
       filteredValue: columnFilters.language ?? null,
       onFilter: (value, record) => record.language === value,
-      render: (lang: string) => {
-        const cfg = languageConfig[lang] ?? { color: 'default', label: lang };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
+      render: (lang?: string | null) => renderLanguageTag(lang),
     },
     {
       title: t('common.version'),
@@ -531,11 +539,20 @@ const ClientsPage = () => {
       title: t('clients.groupOrTopic'),
       key: 'resource',
       width: 220,
+      // Unbounded resource names (_INNER_TRACE_PRODUCER-…-CONSUME-1) must clip inside the
+      // cell: the project-wide `.ant-table-cell { white-space: nowrap }` otherwise lets them
+      // spill over the neighbouring column. Each line ellipsises on its own with a native
+      // title tooltip, the ConversationListModal title-column idiom.
+      ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <Space direction="vertical" size={2}>
-          <Text strong>{record.resource}</Text>
-          <Text type="secondary">{record.type}</Text>
-        </Space>
+        <div style={{ minWidth: 0 }}>
+          <Text strong style={diagnosticCellLine} title={record.resource}>
+            {record.resource}
+          </Text>
+          <Text type="secondary" style={diagnosticCellLine}>
+            {record.type}
+          </Text>
+        </div>
       ),
     },
     {
@@ -610,11 +627,18 @@ const ClientsPage = () => {
       title: t('clients.diagnosticIssue'),
       key: 'issue',
       width: 260,
+      // The description is a full sentence; clipped to one line with the full text on hover,
+      // never wrapped (project table rule) and never spilling into the Client ID column.
+      ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <Space direction="vertical" size={2}>
-          <Text strong>{record.title}</Text>
-          <Text type="secondary">{record.description}</Text>
-        </Space>
+        <div style={{ minWidth: 0 }}>
+          <Text strong style={diagnosticCellLine} title={record.title}>
+            {record.title}
+          </Text>
+          <Text type="secondary" style={diagnosticCellLine} title={record.description}>
+            {record.description}
+          </Text>
+        </div>
       ),
     },
     {
@@ -622,9 +646,12 @@ const ClientsPage = () => {
       dataIndex: 'clientId',
       key: 'clientId',
       width: 180,
+      ellipsis: { showTitle: false },
       render: (clientId?: string) =>
         clientId ? (
-          <Text style={{ fontFamily: 'monospace' }}>{clientId}</Text>
+          <Text style={{ ...diagnosticCellLine, fontFamily: 'monospace' }} title={clientId}>
+            {clientId}
+          </Text>
         ) : (
           <Text type="secondary">-</Text>
         ),
@@ -634,6 +661,7 @@ const ClientsPage = () => {
       dataIndex: 'resource',
       key: 'resource',
       width: 160,
+      ellipsis: true,
       render: (resource?: string) => resource || '-',
     },
     {
@@ -805,7 +833,11 @@ const ClientsPage = () => {
               connectionStats.languageVersions.map(({ label, count }) => {
                 const [language, ...versionParts] = label.split(' ');
                 const version = versionParts.join(' ');
-                const config = languageConfig[language] ?? { color: 'default', label: language };
+                const config =
+                  languageConfig[language] ??
+                  (language === UNKNOWN_LANGUAGE
+                    ? { color: 'default', label: t('common.unknown') }
+                    : { color: 'default', label: language });
                 return (
                   <Tag key={label} color={config.color}>
                     {config.label} {version}: {count}
@@ -973,9 +1005,7 @@ const ClientsPage = () => {
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.language')}>
-              <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>
-                {languageConfig[selectedConnection.language]?.label ?? selectedConnection.language}
-              </Tag>
+              {renderLanguageTag(selectedConnection.language)}
             </Descriptions.Item>
             <Descriptions.Item label={t('common.version')}>
               {selectedConnection.version}

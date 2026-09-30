@@ -2,26 +2,47 @@
 
 **English** | [中文](README_zh.md)
 
-> Cross-cluster · Cross-architecture · Cross-cloud unified RocketMQ management platform
+> Cross-cluster · Cross-architecture unified RocketMQ management platform
 
-RocketMQ Studio is a unified management platform for RocketMQ, supporting multi-cluster, multi-architecture, and multi-cloud environments. It provides instance management, cluster operations, Topic / Consumer Group CRUD, ACL permission control, message query and tracing, dead letter queue handling, monitoring alerts, audit logs, and an AI assistant.
+RocketMQ Studio is a unified management platform for RocketMQ, supporting multi-cluster and multi-architecture environments. It provides instance management, cluster operations, Topic / Consumer Group CRUD, ACL permission control, message query and tracing, dead letter queue handling, monitoring alerts, audit logs, and an AI assistant.
+
+## Start with AI
+
+You can use an AI coding agent (Claude Code, Qoder, Cursor, etc.) to set up and launch
+Studio. Open the agent at the repository root and paste the prompt below:
+
+```text
+Set up and run RocketMQ Studio locally from this repository:
+1. Check that Docker and Docker Compose are installed. If not, tell me how to install them and stop.
+2. Create the shared network: `docker network create rocketmq_net` (ignore the error if it already exists).
+3. Build and start Studio: `docker compose -f deploy/docker-compose.yml up -d --build`.
+4. Wait for the backend to become healthy, then open http://127.0.0.1:6789 and confirm the page loads.
+Report the running containers and any errors. Do not modify source code or create commits.
+```
+
+To also start the optional bundled RocketMQ demo cluster, insert
+`docker compose -f deploy/rocketmq/docker-compose.yml up -d` before step 3 and wait until its
+`ps` output is healthy.
 
 ## Quick Start
 
+Run from the repository root:
+
 ```bash
-(docker network create rocketmq_net 2>/dev/null || true) && docker compose -f deploy/rocketmq/docker-compose.yml up -d && docker compose -f deploy/docker-compose.yml up -d --build
+# 1. Create the shared Docker network (the compose files attach to it as external)
+docker network create rocketmq_net
+
+# 2. Build and start RocketMQ Studio (mysql + rocketmq-server + rocketmq-web)
+docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-Visit **http://127.0.0.1:6789** after startup.
+Then visit **http://127.0.0.1:6789**.
 
-Run from the repository root. The leading `docker network create` is required
-because both compose files declare `rocketmq_net` as `external` and neither
-creates it. The first compose file starts the bundled RocketMQ topology
-(nameserver, broker-0/broker-1, proxy, producer/consumer load rig,
-prometheus); the second builds and starts the Studio stack (mysql,
-rocketmq-server, rocketmq-web). Check the topology is healthy with
-`docker compose -f deploy/rocketmq/docker-compose.yml ps` before starting
-Studio.
+This starts only Studio and its own MySQL database — enough to open the console, log in, and explore
+the UI. No RocketMQ cluster is bundled here; register an instance pointing at your own RocketMQ to
+manage real resources, or start the optional demo cluster in
+[Bundled RocketMQ Cluster](#bundled-rocketmq-cluster-optional) below.
+
 The default schema creates only Studio tables. It does not seed instances, topics, consumer groups, or ACL
 records. Development-only sample data can be imported explicitly from `deploy/mysql/`; it is not part of the
 default deployment. Import `upgrade-demo-instance.sql` first and then `upgrade-demo-acl.sql`; both scripts
@@ -29,8 +50,6 @@ target the current numeric-ID schema and are idempotent. They are sample-data lo
 and should never be imported into a production database.
 
 **Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
-
-**RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
 
 To enable login protection for a shared environment, copy `deploy/.env.example` to
 `deploy/.env`, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and configure
@@ -41,6 +60,21 @@ Administrators manage accounts (create users, enable/disable, reset passwords) o
 user-management page; browsers authenticate with an `HttpOnly` session cookie, and API clients can
 request a bearer token explicitly. Disabling login protection only skips API interception for local
 development.
+
+## Bundled RocketMQ Cluster (Optional)
+
+The Quick Start above runs only Studio and its database. To try it against a ready-made RocketMQ,
+start the bundled demo cluster — nameserver, two brokers, proxy, a producer/consumer load generator,
+and Prometheus — on the same `rocketmq_net` network:
+
+```bash
+docker compose -f deploy/rocketmq/docker-compose.yml up -d
+```
+
+Confirm it is healthy with `docker compose -f deploy/rocketmq/docker-compose.yml ps`. Studio reaches
+the cluster at `nameserver:9876` over the shared network (the backend default).
+
+**RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
 
 ## Screenshots
 

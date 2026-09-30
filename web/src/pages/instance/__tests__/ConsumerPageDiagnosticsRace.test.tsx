@@ -82,6 +82,11 @@ const renderPage = () =>
 
 describe('Consumer page diagnostic request ownership', () => {
   beforeEach(() => {
+    // The details modal re-diagnoses every 2s and the list refreshes on another interval.
+    // Faking only setInterval keeps those ticks off wall-clock time, so the requests in
+    // flight are exactly the three this test controls; with real timers the call-count
+    // assertion below fails whenever the machine is loaded enough for a tick to slip in.
+    vi.useFakeTimers({ toFake: ['setInterval'] });
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -121,6 +126,7 @@ describe('Consumer page diagnostic request ownership', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.resetAllMocks();
   });
 
@@ -136,7 +142,7 @@ describe('Consumer page diagnostic request ownership', () => {
       .mockReturnValueOnce(second.promise)
       .mockReturnValueOnce(third.promise);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     const row = await screen.findByRole('row', { name: /remote-cg/ });

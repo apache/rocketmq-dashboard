@@ -54,13 +54,14 @@ tools:
           items:
             type: object
             required:
-              - id
               - principal
               - resource
             additionalProperties: false
             properties:
               id:
-                type: string
+                type:
+                  - string
+                  - 'null'
               principal:
                 type: string
               resource:
@@ -111,13 +112,14 @@ tools:
     outputSchema:
       type: object
       required:
-        - id
         - principal
         - resource
       additionalProperties: false
       properties:
         id:
-          type: string
+          type:
+            - string
+            - 'null'
         principal:
           type: string
         resource:

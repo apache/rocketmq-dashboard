@@ -24,6 +24,8 @@ import lombok.Data;
 
 @Data
 public class LiteTopicTTLUpdateDTO {
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
     @NotBlank(message = "topicPattern is required")
     private String topicPattern;
     @NotNull(message = "newTTL is required")

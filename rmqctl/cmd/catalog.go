@@ -249,7 +249,7 @@ func runTool(
 	if tool.RiskLevel != "L1" {
 		return output.ToolCallSummary(out, result)
 	}
-	return renderTable(out, tool, result)
+	return renderTable(out, cmd.ErrOrStderr(), tool, result)
 }
 
 // nowMillis returns the current Unix epoch milliseconds. It is a variable so

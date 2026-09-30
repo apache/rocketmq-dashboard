@@ -35,6 +35,7 @@ import {
   Flex,
   Progress,
   Statistic,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -68,8 +69,10 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -88,15 +91,7 @@ const { RangePicker } = DatePicker;
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
+type DirectConsumeCapabilityStatus = 'loading' | 'supported' | 'unsupported' | 'unavailable';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const },
@@ -188,18 +183,6 @@ const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQu
     return { ...commonParams, ...(key ? { key } : {}) };
   }
   return commonParams;
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
 };
 
 const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
@@ -331,10 +314,13 @@ type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
+  instancesFailed: boolean;
+  reloadInstances: () => void;
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -344,6 +330,8 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      instancesFailed={instancesFailed}
+      reloadInstances={reloadInstances}
     />
   );
 };
@@ -355,6 +343,8 @@ const MessagePageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instancesFailed,
+  reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
@@ -420,6 +410,10 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const [directConsumeCapability, setDirectConsumeCapability] = useState<{
+    instanceId: string;
+    status: DirectConsumeCapabilityStatus;
+  } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
@@ -435,6 +429,49 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    const instanceId = selectedInstanceId;
+    if (!instanceId) return;
+
+    let active = true;
+    void getInstanceCapabilities(instanceId)
+      .then((result) => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({
+            instanceId,
+            status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
+              ? 'supported'
+              : 'unsupported',
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({ instanceId, status: 'unavailable' });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const directConsumeCapabilityStatus =
+    directConsumeCapability !== null && directConsumeCapability.instanceId === selectedInstanceId
+      ? directConsumeCapability.status
+      : 'loading';
+  const directConsumeSupported = directConsumeCapabilityStatus === 'supported';
+  const directConsumeDisabledReason = !selectedInstanceId
+    ? t('message.directConsumeSelectInstance')
+    : directConsumeCapabilityStatus === 'unavailable'
+      ? t('message.directConsumeCapabilityUnavailable')
+      : directConsumeCapabilityStatus === 'unsupported'
+        ? t('message.directConsumeUnsupported')
+        : directConsumeCapabilityStatus === 'loading'
+          ? t('message.directConsumeCapabilityLoading')
+          : undefined;
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
@@ -524,7 +561,7 @@ const MessagePageContent = ({
       message.success(t('messagePage.queryCompleted', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, t('messagePage.queryFailed')));
+        setQueryError(describeThrownMessage(error) || t('messagePage.queryFailed'));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -612,7 +649,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -671,7 +708,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -688,6 +725,7 @@ const MessagePageContent = ({
   };
 
   const openDirectConsume = () => {
+    if (!directConsumeSupported) return;
     setDirectConsumeGroup('');
     setDirectConsumeClientId('');
     setDirectConsumeOpen(true);
@@ -721,14 +759,14 @@ const MessagePageContent = ({
       );
       setDirectConsumeOpen(false);
     } catch (error) {
-      message.error(getErrorMessage(error, t('messagePage.directConsumeFailed')));
+      message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
     } finally {
       setDirectConsumeSubmitting(false);
     }
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob([record.body], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
     message.success(t('messagePage.downloadSuccess'));
   };
@@ -942,8 +980,24 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             {t('topic.messageBody')}
           </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t('messagePage.bodyTruncatedWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          {selectedMsg.bodyEncoding === 'BASE64' && (
+            <Alert
+              showIcon
+              type="info"
+              message={t('messagePage.bodyBinaryWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Paragraph
-            copyable
+            copyable={{ text: selectedMsg.body }}
             style={{
               background: '#f5f5f5',
               padding: '12px 16px',
@@ -1068,6 +1122,8 @@ const MessagePageContent = ({
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
+              failed={instancesFailed}
+              onRetry={reloadInstances}
             />
             <Segmented
               options={QUERY_OPTIONS.map(({ value }) => ({
@@ -1264,14 +1320,18 @@ const MessagePageContent = ({
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>{t('common.close')}</Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!selectedInstanceId || !selectedMsg}
-              onClick={openDirectConsume}
-            >
-              {t('messagePage.directConsume')}
-            </Button>
+            <Tooltip title={directConsumeDisabledReason}>
+              <span>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  disabled={!directConsumeSupported || !selectedInstanceId || !selectedMsg}
+                  onClick={openDirectConsume}
+                >
+                  {t('messagePage.directConsume')}
+                </Button>
+              </span>
+            </Tooltip>
           </Flex>
         }
       >
@@ -1280,7 +1340,7 @@ const MessagePageContent = ({
 
       <Modal
         title={t('messagePage.directConsumeTitle')}
-        open={directConsumeOpen}
+        open={directConsumeOpen && directConsumeSupported}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}
