@@ -375,6 +375,7 @@ const MessagePageContent = ({
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
   const [keyInput, setKeyInput] = useState('');
+  const [keyTag, setKeyTag] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [messageTotal, setMessageTotal] = useState(0);
@@ -470,7 +471,13 @@ const MessagePageContent = ({
     queryMode === 'topic'
       ? { topic: selectedTopic, startTime: dateRange[0].valueOf(), endTime: dateRange[1].valueOf() }
       : queryMode === 'key'
-        ? { topic: selectedTopic, key: keyInput || undefined }
+        ? {
+            topic: selectedTopic,
+            key: keyInput || undefined,
+            tag: keyTag.trim() || undefined,
+            startTime: dateRange[0].valueOf(),
+            endTime: dateRange[1].valueOf(),
+          }
         : { topic: selectedTopic, msgId: msgIdInput || undefined };
   const queryValidationError = getQueryValidationError(queryMode, currentQueryParams, t);
   const queryDisabledReason = !selectedInstanceId
@@ -496,6 +503,7 @@ const MessagePageContent = ({
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
     setKeyInput('');
+    setKeyTag('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
     clearQueryResults();
@@ -569,8 +577,13 @@ const MessagePageContent = ({
     handleQueryModeChange(mode);
     setSelectedTopic(record.topic);
     setKeyInput(record.messageKey || '');
+    setKeyTag(record.tag || '');
     setMsgIdInput(record.msgId || '');
-    if (mode === 'topic' && record.startTime !== undefined && record.endTime !== undefined) {
+    if (
+      (mode === 'topic' || mode === 'key') &&
+      record.startTime !== undefined &&
+      record.endTime !== undefined
+    ) {
       setDateRange([dayjs(record.startTime), dayjs(record.endTime)]);
     }
     setHistoryDrawerOpen(false);
@@ -586,7 +599,13 @@ const MessagePageContent = ({
             ...(record.endTime !== undefined ? { endTime: record.endTime } : {}),
           }
         : mode === 'key'
-          ? { topic: record.topic, key: record.messageKey || undefined }
+          ? {
+              topic: record.topic,
+              key: record.messageKey || undefined,
+              ...(record.tag ? { tag: record.tag } : {}),
+              ...(record.startTime !== undefined ? { startTime: record.startTime } : {}),
+              ...(record.endTime !== undefined ? { endTime: record.endTime } : {}),
+            }
           : { topic: record.topic, msgId: record.msgId || undefined };
     await executeQuery(mode, params);
   };
@@ -1184,6 +1203,23 @@ const MessagePageContent = ({
                     style={{ width: 240 }}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
+                  />
+                  <Input
+                    placeholder={t('messagePage.keyTagPlaceholder')}
+                    style={{ width: 160 }}
+                    value={keyTag}
+                    onChange={(e) => setKeyTag(e.target.value)}
+                    allowClear
+                  />
+                  <RangePicker
+                    showTime
+                    style={{ width: 400 }}
+                    value={dateRange}
+                    onChange={(vals) => {
+                      if (vals && vals[0] && vals[1]) {
+                        setDateRange([vals[0], vals[1]]);
+                      }
+                    }}
                   />
                 </>
               )}

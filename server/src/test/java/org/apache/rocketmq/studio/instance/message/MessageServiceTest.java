@@ -147,6 +147,50 @@ class MessageServiceTest {
     }
 
     @Test
+    void rejectsReversedKeyQueryWindowBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "ORDER-1",
+                200L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void rejectsNegativeKeyQueryTimestampsBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "ORDER-1",
+                -1L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("message query timestamps must not be negative");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void acceptsMessageIdLookupWithoutATimeWindow() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        QueryHistoryService history = mock(QueryHistoryService.class);
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", "MSG-1", null, null, null, null))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        service.queryMessages("instance-a", "TopicA", "MSG-1", null, null, null, null);
+
+        verify(provider).queryMessagesDetailed("instance-a", "TopicA", "MSG-1", null, null, null, null);
+    }
+
+    @Test
     void recordsProviderNeutralMessageQueryHistory() {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProvider provider = mock(InstanceProvider.class);

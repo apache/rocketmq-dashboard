@@ -530,6 +530,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.queryMode.queue': { zh: '按队列浏览', en: 'Browse by Queue' },
   'messagePage.topicPlaceholder': { zh: '选择 Topic', en: 'Select a topic' },
   'messagePage.inputKeyPlaceholder': { zh: '输入 Message Key', en: 'Enter message key' },
+  'messagePage.keyTagPlaceholder': { zh: 'Tag（可选）', en: 'Tag (optional)' },
   'messagePage.inputMsgIdPlaceholder': { zh: '输入 Message ID', en: 'Enter message ID' },
   'messagePage.query': { zh: '查询', en: 'Query' },
   'messagePage.serverHistory': { zh: '服务端历史', en: 'Server History' },
