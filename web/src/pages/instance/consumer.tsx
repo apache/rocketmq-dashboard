@@ -68,7 +68,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { formatDateTime, formatDelay } from '../../utils/format';
+import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -2232,7 +2232,7 @@ const ConsumerPageContent = ({
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="采集时间">
-              {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
+              {selectedStack?.capturedAt ? formatUtcDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
           </Descriptions>
