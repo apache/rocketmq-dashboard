@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -124,6 +125,19 @@ public interface InstanceProvider {
     default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
             String search, int page, int pageSize) {
         return listConsumerGroupsPage(instanceId, search, page, pageSize);
+    }
+
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, SubscriptionMode subscriptionMode, int page, int pageSize) {
+        if (subscriptionMode == null) {
+            return listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        }
+        List<ConsumerGroupVO> groups = listConsumerGroups(instanceId, search).stream()
+                .filter(group -> clusterId == null || clusterId.equals(group.getClusterId()))
+                .filter(group -> subscriptionMode == group.getSubscriptionMode()).toList();
+        int from = (int) Math.min(Pagination.pageOffset(page, pageSize), groups.size());
+        int to = from + (int) Math.min(pageSize, groups.size() - from);
+        return PageResult.of(groups.subList(from, to), groups.size(), page, pageSize);
     }
 
     ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group);

@@ -121,7 +121,7 @@ export async function listConsumerGroupPage(
   if (isMockMode()) {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 20;
-    const groups = filterConsumerGroups(params);
+    const groups = visibleConsumerGroups(filterConsumerGroups(params), params);
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {
       items: groups.slice(from, from + pageSize).map(copyConsumerGroup),

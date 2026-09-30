@@ -325,6 +325,31 @@ describe('Consumer page', () => {
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
   });
 
+  it('sends subscription mode to the paged API and resets to the first page', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group], { total: 2 }))
+      .mockResolvedValueOnce(groupPage([{ ...group, subscriptionMode: 'Pop' }], { total: 1 }));
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+    const modeSelect = screen.getAllByRole('combobox')[1];
+    fireEvent.mouseDown(modeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Pop', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith({
+        instanceId: 'instance-1',
+        search: undefined,
+        subscriptionMode: 'Pop',
+        page: 1,
+        pageSize: 20,
+      }),
+    );
+  });
+
   afterEach(async () => {
     await act(async () => {
       cleanup();

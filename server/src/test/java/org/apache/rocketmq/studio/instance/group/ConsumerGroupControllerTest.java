@@ -105,6 +105,24 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void listConsumerGroupsPageShouldPassSubscriptionModeWhenProvided() throws Exception {
+        when(metadataService.listConsumerGroupsPage("instance-a", "cluster-a", "orders", "Pop", 2, 20))
+                .thenReturn(PageResult.of(List.of(), 1, 2, 20));
+
+        mockMvc.perform(get("/api/groups/page")
+                        .param("instanceId", "instance-a")
+                        .param("clusterId", "cluster-a")
+                        .param("search", "orders")
+                        .param("subscriptionMode", "Pop")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        verify(metadataService).listConsumerGroupsPage("instance-a", "cluster-a", "orders", "Pop", 2, 20);
+    }
+
+    @Test
     void exportConsumerGroupsShouldPassViewFiltersAndSelectedNames() throws Exception {
         when(metadataService.exportConsumerGroups("instance-a", "orders", "Pop",
                 List.of("cg-a", "cg-b"))).thenReturn("\"Name\"\n\"cg-a\"");

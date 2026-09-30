@@ -809,6 +809,32 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldPassSubscriptionModeToProvider() {
+        ConsumerGroupVO popGroup = new ConsumerGroupVO();
+        popGroup.setName("group-pop");
+        popGroup.setSubscriptionMode(SubscriptionMode.Pop);
+        when(apacheProvider.listConsumerGroupsPage("instance-a", "cluster-a", "orders",
+                SubscriptionMode.Pop, 2, 20))
+                .thenReturn(PageResult.of(List.of(popGroup), 1, 2, 20));
+
+        PageResult<ConsumerGroupVO> result = metadataService.listConsumerGroupsPage(
+                "instance-a", "cluster-a", "orders", "Pop", 2, 20);
+
+        assertThat(result.getItems()).containsExactly(popGroup);
+        assertThat(result.getTotal()).isEqualTo(1);
+        verify(apacheProvider).listConsumerGroupsPage("instance-a", "cluster-a", "orders",
+                SubscriptionMode.Pop, 2, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldRejectUnknownSubscriptionMode() {
+        assertThatThrownBy(() -> metadataService.listConsumerGroupsPage(
+                "instance-a", null, null, "Pull", 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("subscriptionMode must be Push, Pop or ALL");
+    }
+
+    @Test
     void listConsumerGroupsPageShouldReturnEmptyItemsWhenPageStartsPastFilteredTotal() {
         when(metadataProvider.listConsumerGroupsPage("cluster-1", "order", 2, 1))
                 .thenReturn(PageResult.empty(2, 1));
