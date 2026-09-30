@@ -219,6 +219,109 @@ class AclServiceTest {
         verifyNoInteractions(instanceResolver, tencentAclService);
     }
 
+    private InstanceVO tencentInstance() {
+        return InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+    }
+
+    // Cloud ACL mutations used to bypass the audit trail entirely: the Tencent paths returned
+    // straight from the provider while every Apache path recorded CREATE/UPDATE/DELETE_* — an
+    // operator could change access control on a cloud instance without leaving any record.
+    @Test
+    void createRuleShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+        when(tencentAclService.createRule("tencent-instance", aclRuleInput()))
+                .thenReturn(AclRuleVO.builder().principal("role-a").resource("*").build());
+
+        aclService.createRule(aclRuleInput(), "tencent-instance");
+
+        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"),
+                eq("tencent-instance"), eq("principal=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateRuleShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+        AclRuleVO input = aclRuleInput();
+        input.setId(1L);
+        when(tencentAclService.updateRule("tencent-instance", input))
+                .thenReturn(AclRuleVO.builder().principal("role-a").resource("*").build());
+
+        aclService.updateRule(input, "tencent-instance");
+
+        verify(operationAuditService).record(eq("UPDATE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"),
+                eq("tencent-instance"), eq("principal=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteRuleShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+
+        aclService.deleteRule("role-a", "tencent-instance");
+
+        verify(tencentAclService).deleteRule("tencent-instance", "role-a");
+        verify(operationAuditService).record(eq("DELETE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"),
+                eq("tencent-instance"), eq(null), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createUserShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+        AclUserVO input = AclUserVO.builder().username("role-a").build();
+        when(tencentAclService.createUser("tencent-instance", input))
+                .thenReturn(AclUserVO.builder().username("role-a").build());
+
+        aclService.createUser(input, "tencent-instance");
+
+        verify(operationAuditService).record(eq("CREATE_ACL_USER"), eq("ACL_USER"), eq("role-a"),
+                eq("tencent-instance"), eq("username=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateUserShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setUsername("role-a");
+        when(tencentAclService.updateUser(eq("tencent-instance"), any(AclUserVO.class)))
+                .thenReturn(AclUserVO.builder().username("role-a").build());
+
+        aclService.updateUser(input, "tencent-instance");
+
+        verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("role-a"),
+                eq("tencent-instance"), eq("username=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteUserShouldAuditTencentCloudMutation() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+
+        aclService.deleteUser("role-a", "tencent-instance");
+
+        verify(tencentAclService).deleteUser("tencent-instance", "role-a");
+        verify(operationAuditService).record(eq("DELETE_ACL_USER"), eq("ACL_USER"), eq("role-a"),
+                eq("tencent-instance"), eq(null), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void tencentRuleFailureRecordsNoSuccessAudit() {
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(tencentInstance()));
+        when(tencentAclService.createRule("tencent-instance", aclRuleInput()))
+                .thenThrow(new BusinessException(502, "cloud unavailable"));
+
+        assertThatThrownBy(() -> aclService.createRule(aclRuleInput(), "tencent-instance"))
+                .isInstanceOf(BusinessException.class);
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private AclRuleVO aclRuleInput() {
+        return AclRuleVO.builder().principal("role-a").resource("*").resourceType("TOPIC")
+                .decision("ALLOW").build();
+    }
+
     @Test
     void listRulesShouldReturnEmptyPageWhenTencentPageOffsetExceedsIntegerRange() {
         InstanceVO instance = InstanceVO.builder()
