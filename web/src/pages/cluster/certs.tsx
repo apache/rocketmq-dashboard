@@ -40,6 +40,7 @@ import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clust
 import { describeThrownMessage } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -54,6 +55,7 @@ interface CreateCertFormValues {
 }
 
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [certSearch, setCertSearch] = useState('');
@@ -217,6 +219,7 @@ const K8sCertsPage = () => {
           valid: { color: 'green', label: '有效' },
           expiring: { color: 'orange', label: '即将过期' },
           expired: { color: 'red', label: '已过期' },
+          not_yet_valid: { color: 'blue', label: t('cert.statusNotYetValid') },
         };
         const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;
         return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : '-';

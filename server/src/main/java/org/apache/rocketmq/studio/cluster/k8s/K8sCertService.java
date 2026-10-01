@@ -202,6 +202,8 @@ public class K8sCertService {
         refreshed.setDaysRemaining(daysRemaining);
         if (!notAfter.isAfter(now)) {
             refreshed.setStatus(CertStatus.expired);
+        } else if (refreshed.getNotBefore() != null && refreshed.getNotBefore().isAfter(now)) {
+            refreshed.setStatus(CertStatus.not_yet_valid);
         } else if (daysRemaining <= EXPIRING_THRESHOLD_DAYS) {
             refreshed.setStatus(CertStatus.expiring);
         } else {

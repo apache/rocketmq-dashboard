@@ -142,6 +142,39 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void listCertsShouldNotCallFutureDatedCertificateValid() {
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        sampleCert.setNotBefore(now.plusDays(1));
+        sampleCert.setNotAfter(now.plusYears(1));
+        when(k8sCertRepository.findAll()).thenReturn(List.of(sampleCert));
+
+        K8sCertVO result = k8sCertService.listCerts().getFirst();
+
+        assertThat(result.getStatus().name()).isEqualTo("not_yet_valid");
+        assertThat(result.getDaysRemaining()).isEqualTo(365);
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.valid);
+    }
+
+    @Test
+    void listCertsShouldRespectValidityStartAndExpiryPrecedenceTest() {
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        sampleCert.setNotBefore(now);
+        sampleCert.setNotAfter(now.plusDays(30));
+        K8sCertVO unknownStart = copyWithExpiry(2L, now.plusDays(31), CertStatus.expired, -1);
+        unknownStart.setNotBefore(null);
+        K8sCertVO futureNearExpiry = copyWithExpiry(3L, now.plusDays(2), CertStatus.valid, 2);
+        futureNearExpiry.setNotBefore(now.plusDays(1));
+        K8sCertVO expiredFuture = copyWithExpiry(4L, now.minusDays(1), CertStatus.valid, 0);
+        expiredFuture.setNotBefore(now.plusDays(1));
+        when(k8sCertRepository.findAll())
+                .thenReturn(List.of(sampleCert, unknownStart, futureNearExpiry, expiredFuture));
+
+        assertThat(k8sCertService.listCerts()).extracting(K8sCertVO::getStatus)
+                .containsExactly(CertStatus.expiring, CertStatus.valid,
+                        CertStatus.not_yet_valid, CertStatus.expired);
+    }
+
+    @Test
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("new-tls-cert")
