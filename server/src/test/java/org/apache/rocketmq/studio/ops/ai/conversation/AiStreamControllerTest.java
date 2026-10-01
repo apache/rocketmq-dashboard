@@ -277,6 +277,23 @@ class AiStreamControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void sendMessageShouldRejectAMissingBodyInsideTheStreamTest() throws Exception {
+        when(runService.refusalStream(eq(400), eq(AiRunService.REFUSED_INVALID_CODE),
+                eq("message is required"), isNull()))
+                .thenReturn(new AiRunTestSupport.RecordingSseEmitter(CLI_TIMEOUT_MILLIS));
+
+        mockMvc.perform(post("/api/ai/conversations/{id}/messages", CONVERSATION_ID)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(header().string(ACCEL_BUFFERING_HEADER, "no"));
+
+        verify(runService).refusalStream(400, AiRunService.REFUSED_INVALID_CODE, "message is required", null);
+        verify(runService, never()).sendMessage(any(), any());
+    }
+
+    @Test
     void sendMessageShouldRejectABlankMessageInsideTheStreamTest() throws Exception {
         // The endpoint takes a BindingResult next to the @Valid body, so a rejected body is answered in
         // the same shape as every other refusal instead of as an HTTP status: an @ExceptionHandler cannot

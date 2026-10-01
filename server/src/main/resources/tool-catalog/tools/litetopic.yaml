@@ -1,0 +1,183 @@
+version: 2.0.0
+tools:
+  - name: rmq.litetopic.list
+    cli:
+      resource: litetopic
+      verb: list
+    description: "List LiteTopic pattern aggregates served by the configured default cluster's broker lite admin API (studio.rocketmq.namesrv-addr): per pattern the topic count, consumer count, total backlog, average TTL, TTL status, last active time and session ids. Optional pattern prefix and namespace filters. Absent statistics mean the broker could not report them, not zero. Fails with 501 when the cluster does not support LiteTopic."
+    riskLevel: L1
+    permission: litetopic:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        pattern:
+          type: string
+          description: LiteTopic pattern/prefix filter, e.g. "chat/sess-".
+          minLength: 1
+        namespace:
+          type: string
+          description: Namespace filter.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - items
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required:
+              - topicPattern
+            additionalProperties: false
+            properties:
+              topicPattern:
+                type: string
+                minLength: 1
+              namespace:
+                type: string
+              topicCount:
+                type: integer
+              consumerCount:
+                type: integer
+              totalBacklog:
+                type: integer
+              averageTTL:
+                type: integer
+              ttlStatus:
+                type: string
+              lastActiveTime:
+                type: integer
+                description: Epoch milliseconds.
+              sessionIds:
+                type: array
+                items:
+                  type: string
+    viewHint: table
+    deprecated: false
+  - name: rmq.litetopic.session
+    cli:
+      resource: litetopic
+      verb: session
+    description: "Describe one LiteTopic session on the configured default cluster: owning client, parent topic, consumer group, create/last-active time, TTL and remaining TTL, message and Pop progress counters, and the session's individual lite topics. Fails with 501 when the cluster does not support LiteTopic."
+    riskLevel: L1
+    permission: litetopic:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - sessionId
+      additionalProperties: false
+      properties:
+        sessionId:
+          type: string
+          description: Session id as listed by rmq.litetopic.list.
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - sessionId
+      additionalProperties: false
+      properties:
+        sessionId:
+          type: string
+          minLength: 1
+        clientId:
+          type: string
+        clientAddress:
+          type: string
+        parentTopic:
+          type: string
+        consumerGroup:
+          type: string
+        createTime:
+          type: integer
+          description: Epoch milliseconds.
+        lastActiveTime:
+          type: integer
+          description: Epoch milliseconds.
+        ttl:
+          type: integer
+        ttlRemaining:
+          type: integer
+        status:
+          type: string
+        totalMessages:
+          type: integer
+        consumedMessages:
+          type: integer
+        pendingMessages:
+          type: integer
+        popProgress:
+          type: integer
+        liteTopicCreationCount:
+          type: integer
+        liteTopics:
+          type: array
+          items:
+            type: object
+            required:
+              - topicName
+            additionalProperties: false
+            properties:
+              topicName:
+                type: string
+                minLength: 1
+              status:
+                type: string
+              ttlRemaining:
+                type: integer
+    viewHint: object
+    deprecated: false
+  - name: rmq.litetopic.quota
+    cli:
+      resource: litetopic
+      verb: quota
+    description: "Read the LiteTopic quota watermark of the configured default cluster: current/max topic, session and creation-rate counts, usage rates, default/max TTL, remaining quota and consumer density, optionally filtered by namespace. Every field is optional — brokers may report only part of the watermark. Fails with 501 when the cluster does not support LiteTopic."
+    riskLevel: L1
+    permission: litetopic:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+          description: Namespace filter.
+          minLength: 1
+    outputSchema:
+      type: object
+      required: []
+      additionalProperties: false
+      properties:
+        currentTopicCount:
+          type: integer
+        maxTopicCount:
+          type: integer
+        currentSessionCount:
+          type: integer
+        maxSessionCount:
+          type: integer
+        currentCreationRate:
+          type: integer
+        maxCreationRate:
+          type: integer
+        usageRate:
+          type: number
+        sessionUsageRate:
+          type: number
+        defaultTTL:
+          type: integer
+        maxTTL:
+          type: integer
+        remainingQuota:
+          type: integer
+        consumerDensity:
+          type: number
+    viewHint: object
+    deprecated: false

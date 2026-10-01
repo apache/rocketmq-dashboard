@@ -109,7 +109,7 @@ const MainLayout = () => {
     try {
       await requestLogout();
     } catch {
-      message.warning('服务端退出失败，已清除本地登录状态');
+      message.warning(t('user.logoutFailed'));
     } finally {
       clearAuth();
       navigate('/login', { replace: true });
@@ -271,7 +271,7 @@ const MainLayout = () => {
       '/ops/audit': t('nav.audit'),
       '/ai': t('nav.ai'),
       '/settings': t('nav.settings'),
-      '/studio/users': '用户管理',
+      '/studio/users': t('userMgmt.title'),
     }),
     [t],
   );
@@ -331,7 +331,9 @@ const MainLayout = () => {
     onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
-      ...(admin ? [{ key: 'users', icon: <UserGear size={14} />, label: '用户管理' }] : []),
+      ...(admin
+        ? [{ key: 'users', icon: <UserGear size={14} />, label: t('userMgmt.title') }]
+        : []),
       {
         key: 'dataMode',
         icon: (
@@ -796,7 +798,7 @@ const MainLayout = () => {
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="未找到匹配页面"
+              description={t('layout.noMatchingPage')}
               style={{ padding: '24px 0' }}
             />
           )}
@@ -816,15 +818,15 @@ const MainLayout = () => {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>↑</kbd>
             <kbd style={kbdStyle}>↓</kbd>
-            切换
+            {t('layout.shortcutNavigate')}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>↵</kbd>
-            打开
+            {t('common.open')}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <kbd style={kbdStyle}>ESC</kbd>
-            关闭
+            {t('common.close')}
           </span>
         </div>
       </Modal>
