@@ -167,6 +167,9 @@ public class NotificationOutboxService {
             if ("email".equals(channel)) sendEmail(settings, alert, content);
             else sendWebhook(settings, alert, channel, content);
         } catch (Exception error) {
+            // BusinessException has no cause slot, so the log line is the only place the original
+            // stack trace survives; the response carries just the flattened message.
+            log.warn("test notification failed on channel {}: {}", channel, error.getMessage(), error);
             throw new BusinessException(502, "Test notification failed: " + error.getMessage());
         }
     }

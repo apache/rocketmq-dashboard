@@ -764,7 +764,7 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
-    void testMessageFailureCarriesTheConfigurationReasonTest() {
+    void messageFailureCarriesTheConfigurationReasonTest() {
         NotificationOutboxService service = new NotificationOutboxService(
                 mock(RmqAlertNotificationOutboxMapper.class), mock(SettingsRepository.class),
                 mock(AlertSilenceService.class), mock(AlertRepository.class),
