@@ -344,6 +344,14 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Replacing the hash and revoking the account's sessions are one logical change: a failure
+     * between the two writes would leave the account on its new password while its existing
+     * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements
+     * therefore run in one transaction, the same guarantee {@link #setUserEnabled} gives its own
+     * update-and-revoke pair.
+     */
+    @Transactional
     public void changePassword(Long userId, String currentPassword, String newPassword,
                                boolean requireCurrentPassword) {
         requireDatabaseBacked();
@@ -374,8 +382,16 @@ public class AuthService {
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
         ensureBootstrapUsers();
-        RmqStudioUser user = findUserByUsername(request.getUsername())
-                .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
+        Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
+        if (found.isEmpty()) {
+            // Burn one dummy derivation so the response timing matches the wrong-password path
+            // on an existing account. Without this, an attacker could distinguish "user not
+            // found" (fast) from "user found but wrong password" (slow PBKDF2) and enumerate
+            // valid usernames by measuring response time.
+            passwordHasher.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            throw new BusinessException(401, "Invalid username or password");
+        }
+        RmqStudioUser user = found.get();
         if (!Boolean.TRUE.equals(user.getEnabled())) {
             // Answer exactly like a wrong password on an enabled account: burn one dummy
             // derivation so the response timing matches, and never touch this account's

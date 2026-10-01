@@ -14,7 +14,7 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 ```text
 从当前仓库在本地拉起并运行 RocketMQ Studio：
 1. 确认已安装 Docker 与 Docker Compose；若未安装，告诉我安装方式并停止。
-2. 创建共享网络：`docker network create rocketmq_net`（若已存在，忽略报错）。
+2. 若共享网络不存在则创建：`docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`。
 3. 构建并启动 Studio：`docker compose -f deploy/docker-compose.yml up -d --build`。
 4. 等待后端健康检查通过后，打开 http://127.0.0.1:6789 确认页面正常加载。
 最后报告运行中的容器与任何错误。不要修改源码，也不要提交任何改动。
@@ -29,7 +29,7 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 
 ```bash
 # 1. 创建共享 Docker 网络（compose 文件以 external 方式引用它）
-docker network create rocketmq_net
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 
 # 2. 构建并启动 RocketMQ Studio（mysql + rocketmq-server + rocketmq-web）
 docker compose -f deploy/docker-compose.yml up -d --build
