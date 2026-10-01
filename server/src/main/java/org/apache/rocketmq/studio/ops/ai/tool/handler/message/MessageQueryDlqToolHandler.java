@@ -85,6 +85,8 @@ public class MessageQueryDlqToolHandler implements ToolHandler<MessageQueryDlqIn
                 result.getTotal(),
                 result.getItems().stream()
                         .map(MessageQueryDlqOutput.DlqMessageItem::from)
-                        .toList());
+                        .toList(),
+                result.isTruncated(),
+                result.getFailedQueueCount());
     }
 }

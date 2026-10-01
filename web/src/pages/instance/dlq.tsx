@@ -164,6 +164,8 @@ const DLQPage = () => {
     setDetailLoading(false);
     setDetailResending(false);
     setDetailError(null);
+    setDetailTruncated(false);
+    setDetailFailedQueueCount(0);
     setRetryModalOpen(false);
     setRetryGroup(null);
     setRetryTargetTopic('');
@@ -382,11 +384,14 @@ const DLQPage = () => {
     setDetailOpen(true);
     setDetailPage(1);
     // The drawer now belongs to another group: its rows, and the total the export and the
-    // pagination are driven by, must not survive from the group that was open before.
+    // pagination are driven by, must not survive from the group that was open before. The scan
+    // boundary goes with them, so a stale truncation banner cannot caption the new group.
     setDetailMessages([]);
     setDetailTotal(0);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
+    setDetailTruncated(false);
+    setDetailFailedQueueCount(0);
     void loadDetailMessages(group, 1, detailPageSize);
   };
 
@@ -414,6 +419,10 @@ const DLQPage = () => {
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
         setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
+        // No rows were loaded, so the scan boundary of the previous load no longer captions
+        // anything: leaving it up would pair a truncation warning with the failure alert.
+        setDetailTruncated(false);
+        setDetailFailedQueueCount(0);
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -952,13 +961,13 @@ const DLQPage = () => {
             )}
 
             {detailTruncated && (
-              <Alert
-                showIcon
-                type="warning"
-                style={{ marginBottom: 16 }}
-                message={`明细已按服务端扫描上限截断：共列出 ${detailTotal} 条，组内死信可能更多${
-                  detailFailedQueueCount > 0 ? `，另有 ${detailFailedQueueCount} 个队列无法扫描` : ''
-                }。如需完整内容请缩小「导出时间范围」。`}
+              <InfoBanner
+                description={t(
+                  detailFailedQueueCount > 0
+                    ? 'dlq.detailTruncatedWithFailedQueues'
+                    : 'dlq.detailTruncated',
+                  { total: detailTotal, failed: detailFailedQueueCount },
+                )}
               />
             )}
 
