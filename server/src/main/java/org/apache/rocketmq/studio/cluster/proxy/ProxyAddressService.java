@@ -345,7 +345,10 @@ public class ProxyAddressService {
             ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
             HttpStatusCode status = response.getStatusCode();
             if (!status.is2xxSuccessful()) {
-                throw new BusinessException(502, "Proxy returned " + status);
+                String errorMessage = "Proxy returned " + status;
+                recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId,
+                        Result.FAILED, errorMessage);
+                throw new BusinessException(502, errorMessage);
             }
             recordAudit(Operation.RELOAD_PROXY_CONFIG, ResourceType.PROXY, normalized, normalizedClusterId);
             log.info("Proxy {} accepted config reload", normalized);

@@ -94,6 +94,8 @@ const ProducerPage = () => {
 
   const producerGroupRequestIdRef = useRef(0);
   const selectedTopic = Form.useWatch('selectedTopic', form);
+  // Instance whose scope the form was last cleared for; see the topic-list effect below.
+  const lastResetInstanceRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,7 +152,14 @@ const ProducerPage = () => {
       };
     }
 
-    form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
+    // The topic list belongs to the instance, so the picked topic and producer group are
+    // dropped when the instance changes. The effect also re-runs when the display
+    // language changes (it feeds a localized error message), and clearing the form there
+    // too silently discarded the scope the operator had just selected.
+    if (lastResetInstanceRef.current !== selectedInstanceId) {
+      lastResetInstanceRef.current = selectedInstanceId;
+      form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
+    }
 
     void fetchTopicList(selectedInstanceId)
       .then((topics) => {

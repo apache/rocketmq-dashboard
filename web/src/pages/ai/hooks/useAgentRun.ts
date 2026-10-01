@@ -251,12 +251,12 @@ export function useAgentRun(
   const finishStream = useCallback(
     async (requestId: number, controller: AbortController, streamFailure: unknown | null) => {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
+      // A newer stream (or a navigation) owns the guard and UI now.
+      if (requestId !== streamRequestIdRef.current) return;
       // Released before the refetch is awaited on purpose: a reload that hangs must not leave the
       // composer unable to send. A send that overtakes this finally block bumps the request id, and
       // the guard after the await below then keeps this run's cleanup off the newer one's state.
       chatInFlightRef.current = false;
-      // A newer stream (or a navigation) owns the UI now; touching state here would clobber it.
-      if (requestId !== streamRequestIdRef.current) return;
 
       setIsStreaming(false);
       // The stream is over, so there is nothing left to wait for whichever way it ended: clearing
@@ -390,6 +390,8 @@ export function useAgentRun(
     // window with nothing to address. The button stays disabled until then (`canStop`).
     if (targetRunId === null) return;
 
+    const requestId = streamRequestIdRef.current;
+    const generation = generationRef.current;
     setStopRequested(true);
     try {
       // The response is the run row, which the stream reports authoritatively anyway; the point of
@@ -398,6 +400,9 @@ export function useAgentRun(
       // Deliberately NOT aborting the fetch: the open stream is what delivers the terminal
       // `run_status` frame and `done`, and aborting would leave the button in `stopping` forever.
     } catch (stopError) {
+      // Navigation or a newer stream invalidated this Stop request. Its failure belongs to the old
+      // run and must not paint an error onto the conversation that owns the hook now.
+      if (requestId !== streamRequestIdRef.current || generation !== generationRef.current) return;
       setStopRequested(false);
       setError(describeThrownMessage(stopError));
       optionsRef.current.onError?.(stopError);
