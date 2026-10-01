@@ -22,7 +22,7 @@ import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listDataSources } from '../../api/settings';
-import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
+import { listMetricProfiles, queryByDataSource, queryMetrics, type MetricData } from '../../api/metrics';
 import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
@@ -83,7 +83,10 @@ const profiles = [
   },
 ];
 
-const metricData = {
+// Typed against the API contract: createDeferred<typeof metricData> below locks in this
+// type, and an untyped literal would narrow `labels` to its two concrete keys, rejecting
+// the custom-query fixtures that add a `query` label.
+const metricData: MetricData = {
   resultType: 'matrix',
   series: [
     {
