@@ -208,7 +208,7 @@ export const buildMessagePropertiesFromRows = (
         'DUPLICATE_PROPERTY_KEY',
         'error',
         '属性名重复',
-        `重复属性会覆盖前面的值：${[...duplicates].sort().join(', ')}`,
+        `重复属性仅保留第一个值：${[...duplicates].sort().join(', ')}`,
         'properties',
         [...duplicates].sort(),
       ),

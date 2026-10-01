@@ -361,6 +361,22 @@ class AiRunExecutorTest {
     }
 
     @Test
+    void anErrorFromTheWorkerShouldNotBeRecordedAsACompletedRunTest() {
+        provider.emit(new AgentEvent.TextDelta("half an answer"));
+        provider.error = new StackOverflowError("nested tool output");
+
+        startAndRun();
+
+        // The run must not read as a finished answer just because the failure was an Error: the
+        // executor has to write the same terminal state it writes for a RuntimeException.
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(runRow().getErrorCode()).isEqualTo(AiRunExecutor.ERROR_CODE_INTERNAL);
+        assertThat(runRow().getFinishedAt()).isNotNull();
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
     void finalisationShouldPersistInTheFixedOrderTest() {
         // A provider failure, so the terminal event is the one the EXECUTOR writes: the projector only
         // produces a terminal for a successful result frame, and this is the path that used to leave the

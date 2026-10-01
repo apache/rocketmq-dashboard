@@ -46,4 +46,17 @@ class AlertFingerprintTest {
         assertThat(AlertFingerprint.of(7L, "local", embeddedLabel))
                 .isNotEqualTo(AlertFingerprint.of(7L, "local", separateLabels));
     }
+
+    @Test
+    void cloudStatusDoesNotChangeTheIdentityOfACloudInstanceTest() {
+        String stopped = AlertFingerprint.of(7L, "cloud-local",
+                Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", "STOPPED"));
+
+        assertThat(stopped).isEqualTo(AlertFingerprint.of(7L, "cloud-local",
+                Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", "STARTING")))
+                .isEqualTo(AlertFingerprint.of(7L, "cloud-local",
+                        Map.of("cloudInstanceId", "rmq-cloud")));
+        assertThat(stopped).isNotEqualTo(AlertFingerprint.of(7L, "cloud-local",
+                Map.of("cloudInstanceId", "another-cloud")));
+    }
 }

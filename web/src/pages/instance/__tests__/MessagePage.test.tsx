@@ -23,6 +23,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
+import * as downloadUtils from '../../../utils/download';
 
 const messageServiceMocks = vi.hoisted(() => ({
   consumeMessageDirectly: vi.fn(),
@@ -35,6 +36,9 @@ const topicServiceMocks = vi.hoisted(() => ({
 }));
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
+}));
+const instanceServiceMocks = vi.hoisted(() => ({
+  getInstanceCapabilities: vi.fn(),
 }));
 
 vi.mock('../../../services/messageService', () => ({
@@ -51,6 +55,7 @@ vi.mock('../../../services/messageService', () => ({
 vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
+  getInstanceCapabilities: instanceServiceMocks.getInstanceCapabilities,
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => topicServiceMocks);
@@ -120,6 +125,12 @@ describe('Message page query history', () => {
       selectedInstanceId: 1,
       selectInstance: vi.fn(),
       instanceOptions: [{ value: 1, label: 'Instance A' }],
+    });
+    instanceServiceMocks.getInstanceCapabilities.mockReset().mockResolvedValue({
+      instanceId: '1',
+      vendor: 'APACHE',
+      accessType: 'DIRECT',
+      capabilities: ['DIRECT_MESSAGE_CONSUME'],
     });
   });
 
@@ -276,6 +287,71 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['UnsafeInteger', '{"orderId":9007199254740993}'],
+    ['Int64Max', '{"orderId":9223372036854775807}'],
+    ['SafeInteger', '{\n  "orderId": 9007199254740991\n}'],
+    ['QuotedId', '{\n  "orderId": "9223372036854775807"\n}'],
+    ['JsonWhitespace', '{\r\n\t"message": "你好",  "enabled": true\r\n}\r\n'],
+    ['PlainText', '订单状态: ready\r\n  next line\r\n'],
+  ])('preservesOriginal%sBodyWhenDownloadingTest', async (_name, body) => {
+    const user = userEvent.setup();
+    const download = vi.spyOn(downloadUtils, 'downloadBlob').mockImplementation(() => {});
+    const msgId = 'MID-DOWNLOAD';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage(msgId), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: new RegExp(msgId) });
+    await user.click(within(row).getByRole('button', { name: /下载/ }));
+
+    expect(download).toHaveBeenCalledTimes(1);
+    const [blob, filename] = download.mock.calls[0];
+    expect(filename).toBe(`${msgId}.json`);
+    expect(blob.type).toBe('application/json');
+    await expect(blob.text()).resolves.toBe(body);
+  });
+
+  it('copiesOriginalBodyFromMessageDetailsTest', async () => {
+    const user = userEvent.setup();
+    const body = '{ "orderId":9223372036854775807 }\r\n';
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage('MID-COPY'), body }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-COPY/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const bodyParagraph = within(dialog).getByText(/"orderId":/);
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    let copiedText: string | undefined;
+    const execCommand = vi.fn(() => {
+      copiedText = document.getSelection()?.toString();
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
+    try {
+      await user.click(within(bodyParagraph).getByRole('button'));
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(copiedText).toBe(body);
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, 'execCommand', originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, 'execCommand');
+      }
+    }
+  });
+
   it('shows the redelivery count on the message detail panel', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -298,6 +374,33 @@ describe('Message page query history', () => {
       .map((label) => label.closest('.ant-descriptions-item'));
     expect(retryItems).toHaveLength(1);
     expect(retryItems[0]).toHaveTextContent('2');
+  });
+
+  it('shows message properties and warns when the server shortened them', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-PROPERTIES'),
+        properties: { traceId: 'trace-123', route: 'priority' },
+        propertiesTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PROPERTIES');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const properties = screen.getByRole('region', { name: '消息属性' });
+    expect(within(properties).getByText('traceId')).toBeInTheDocument();
+    expect(within(properties).getByText('trace-123')).toBeInTheDocument();
+    expect(within(properties).getByText('priority')).toBeInTheDocument();
+    expect(
+      within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
+    ).toBeInTheDocument();
   });
 
   it('loads topic options only for the selected instance', async () => {
@@ -405,6 +508,56 @@ describe('Message page query history', () => {
     expect(locationItems[2]).toHaveTextContent('0');
   });
 
+  it('warns on the detail panel when the body was truncated or is not text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-BODY-FLAGS'),
+        body: 'AAEC',
+        bodyEncoding: 'BASE64',
+        bodyTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-FLAGS');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-FLAGS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not warn on the detail panel when the body is complete UTF-8 text', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BODY-PLAIN'), bodyEncoding: 'UTF-8', bodyTruncated: false },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BODY-PLAIN');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BODY-PLAIN')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
+  });
+
   it('renders trace diagnostics in English when the UI language is English', async () => {
     localStorage.setItem('rocketmq-studio-language', 'en');
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-TRACE-EN')]);
@@ -462,6 +615,45 @@ describe('Message page query history', () => {
     ).toBeInTheDocument();
   });
 
+  it('loads the trace payload when the Verify tab is opened directly from Content', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-VERIFY')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-VERIFY');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-VERIFY')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+
+    // Switch straight to Verify without visiting Trace: the consumer-status table must load.
+    await user.click(screen.getByRole('tab', { name: '验证' }));
+    expect(await screen.findByText('cg-billing')).toBeInTheDocument();
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -486,5 +678,26 @@ describe('Message page query history', () => {
     expect(locationItems[0]).toHaveTextContent('-');
     expect(locationItems[1]).toHaveTextContent('-');
     expect(locationItems[2]).toHaveTextContent('-');
+  });
+
+  it('renders a message larger than a megabyte with the matching unit', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BIG-SIZE'), size: 5 * 1024 ** 3 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BIG-SIZE');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-BIG-SIZE/ });
+    expect(within(row).getByText('5.0 GB')).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
 });

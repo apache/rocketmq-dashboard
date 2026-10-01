@@ -23,7 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { listDataSources } from '../../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
-import { LangProvider } from '../../i18n/LangContext';
+import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
@@ -186,6 +186,15 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const LanguageSwitch = () => {
+  const { setLang } = useLang();
+  return (
+    <button type="button" onClick={() => setLang('en')}>
+      switch-language
+    </button>
+  );
+};
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -372,6 +381,36 @@ describe('MetricsExplorer', () => {
     expect(chart.querySelectorAll('polyline')).toHaveLength(10);
   });
 
+  it('keeps series that differ only in a later label distinguishable', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Both series share their first three sorted labels, so the compact legend
+    // text is identical and only the dropped `pod` label tells them apart.
+    const collidingSeries = ['a', 'b'].map((pod, index) => ({
+      labels: { cluster: 'prod', job: 'rmq', namespace: 'ns', pod },
+      values: [
+        { timestamp: 1_799_996_400, value: String(40 + index * 10) },
+        { timestamp: 1_800_000_000, value: String(42 + index * 10) },
+      ],
+      histograms: [],
+    }));
+    vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: collidingSeries });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('52 messages/s')).toBeInTheDocument();
+
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    expect(chart.querySelectorAll('polyline')).toHaveLength(2);
+    // The visible legend stays compact, so both entries still read the same.
+    expect(screen.getAllByText('cluster=prod / job=rmq / namespace=ns')).toHaveLength(2);
+    // Their child identities are no longer shared.
+    expect(consoleError.mock.calls.filter((call) => String(call[0]).includes('same key'))).toEqual(
+      [],
+    );
+
+    consoleError.mockRestore();
+  });
+
   it('runs a custom PromQL expression from the query box', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
@@ -426,6 +465,76 @@ describe('MetricsExplorer', () => {
     );
   });
 
+  it('keeps the pending custom query when the display language changes', async () => {
+    const user = userEvent.setup();
+    const customQuery = createDeferred<typeof metricData>();
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      query.metric === 'sum(rocketmq_topic_number)'
+        ? customQuery.promise
+        : Promise.resolve(metricData),
+    );
+
+    render(
+      <App>
+        <LangProvider>
+          <LanguageSwitch />
+          <MetricsExplorer />
+        </LangProvider>
+      </App>,
+    );
+    await screen.findByText('42 messages/s');
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(1),
+    );
+
+    // The display language is not part of the query context: switching it must neither
+    // refetch the profile panels nor abandon the custom query that is still running.
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    expect(listMetricProfiles).toHaveBeenCalledTimes(1);
+    expect(
+      vi
+        .mocked(queryMetrics)
+        .mock.calls.filter(
+          (call) =>
+            call[0].metric === 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+        ),
+    ).toHaveLength(1);
+
+    customQuery.resolve({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    });
+
+    // Before the fix the language change discarded this result and nothing restarted the
+    // custom flow, so the panel stayed on its spinner until the page was reloaded.
+    expect(await screen.findByText('cluster=prod / query=custom')).toBeInTheDocument();
+
+    // antd suppresses clicks while a Button is loading, so a second submission proves the
+    // custom panel released the stuck loading state.
+    await user.click(screen.getByRole('button', { name: 'Run' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(2),
+    );
+  });
+
   it('refreshes profile panels and the custom query independently', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
@@ -470,6 +579,72 @@ describe('MetricsExplorer', () => {
 
     await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
 
+    expect(await screen.findByText('77 messages/s')).toBeInTheDocument();
+    expect(screen.getByText('cluster=prod / query=custom')).toBeInTheDocument();
+  });
+
+  it('re-runs the committed custom query when the range changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(queryMetrics).toHaveBeenCalledWith({
+        metric: 'sum(rocketmq_topic_number)',
+        start: 1_799_996_400,
+        end: 1_800_000_000,
+        step: '30s',
+      }),
+    );
+
+    // The range control governs the whole explorer: the profile panels re-query through
+    // loadAll, so the custom panel has to follow the new window as well instead of
+    // keeping the samples its previous window produced.
+    const refreshedProfileData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [{ timestamp: 1_800_000_000, value: '77' }],
+        },
+      ],
+    };
+    const refreshedCustomData = {
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    };
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      Promise.resolve(
+        query.metric === 'sum(rocketmq_topic_number)' ? refreshedCustomData : refreshedProfileData,
+      ),
+    );
+
+    await user.click(screen.getByText('6h'));
+
+    const customCalls = () =>
+      vi
+        .mocked(queryMetrics)
+        .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)');
+    await waitFor(() => expect(customCalls()).toHaveLength(2));
+    const rerun = customCalls()[customCalls().length - 1];
+    expect(rerun[0]).toEqual({
+      metric: 'sum(rocketmq_topic_number)',
+      start: 1_799_978_400,
+      end: 1_800_000_000,
+      step: '2m',
+    });
+
+    // The custom panel re-runs beside the profile panels, so the added call must leave the
+    // other flow's request generation alone: both still publish their own result. (The
+    // cross-flow freeze of issue #3304, fixed by #3299, was the opposite behaviour.)
     expect(await screen.findByText('77 messages/s')).toBeInTheDocument();
     expect(screen.getByText('cluster=prod / query=custom')).toBeInTheDocument();
   });
@@ -603,6 +778,40 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('直方图')).toBeInTheDocument();
     expect(screen.getByText(/broker-a.*\(scalar\)/)).toBeInTheDocument();
     expect(screen.getByText(/broker-a.*\(直方图\)/)).toBeInTheDocument();
+  });
+
+  it('gives a mixed series and the following pure series distinct colors', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          histograms: [
+            { timestamp: 1_800_000_001, histogram: { count: '99', sum: '999', buckets: [] } },
+          ],
+        },
+        {
+          labels: { cluster: 'prod', node_id: 'broker-b' },
+          values: [
+            { timestamp: 1_799_996_400, value: '30' },
+            { timestamp: 1_800_000_000, value: '31' },
+          ],
+          histograms: [],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    // The mixed broker-a line is split into a scalar and a histogram trend; the broker-b
+    // line follows. Every drawn polyline must keep its own stroke so legend swatches
+    // stay matchable.
+    const strokes = Array.from(
+      screen.getByRole('img', { name: 'Message In TPS time series' }).querySelectorAll('polyline'),
+    ).map((line) => line.getAttribute('stroke'));
+    expect(strokes.length).toBe(3);
+    expect(new Set(strokes).size).toBe(strokes.length);
   });
 
   it('queries the selected data source through the datasource endpoint', async () => {
@@ -962,6 +1171,102 @@ describe('MetricsExplorer', () => {
     const selectContainer = sourceSelect.closest('.ant-select') as HTMLElement;
     expect(within(selectContainer).getByText('默认数据源')).toBeInTheDocument();
     expect(within(selectContainer).queryByText('Protected Prometheus')).not.toBeInTheDocument();
+  });
+
+  it('leaves the picked profile and range alone when a protected history restore is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    // The explorer starts on the 5.x profile over the default 1h window; the history entry
+    // restores the 4.x profile over 6h.
+    const profileSelect = await screen.findByRole('combobox', { name: '指标模板' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog)
+      .getByText('Consumer Lag Messages')
+      .closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    // The credentials prompt is all that stands between the operator and the restore, so
+    // cancelling it must not apply half of the entry: the profile, the window and the
+    // persisted profile are still the ones the operator had picked.
+    const profileContainer = profileSelect.closest('.ant-select') as HTMLElement;
+    expect(within(profileContainer).getByText('RocketMQ 5.x Native')).toBeInTheDocument();
+    expect(within(profileContainer).queryByText('RocketMQ 4.x Exporter')).not.toBeInTheDocument();
+    expect(localStorage.getItem('rocketmq-studio.metric-profile')).toBeNull();
+    expect(
+      screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected')?.textContent,
+    ).toBe('1h');
+  });
+
+  it('keeps the custom expression draft when a protected custom restore is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          id: 'history-custom-protected',
+          profileId: '__custom__',
+          profileName: 'Custom query',
+          metricId: 'custom',
+          metricName: 'Custom query',
+          promql: 'sum(rocketmq_topic_number)',
+          dataSourceKey: 'ds-basic',
+          dataSourceName: 'Protected Prometheus',
+        }),
+      ]),
+    );
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    // An unsaved expression the operator is still working on: the entry below overwrites the
+    // same box, so cancelling its credentials prompt has to give the draft back.
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number) + 1');
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog).getByText('Custom query').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+    await user.click(screen.getByRole('button', { name: /取\s*消/ }));
+
+    expect(screen.getByLabelText('自定义查询')).toHaveValue('sum(rocketmq_topic_number) + 1');
   });
 
   it('filters query history from other instances and shows the current instance context', async () => {

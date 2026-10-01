@@ -192,4 +192,33 @@ describe('K8sCertsPage', () => {
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
   });
+
+  it('surfaces the server rejection reason when the certificate list cannot be loaded', async () => {
+    const failure: Error & { response?: { data?: { message?: unknown } } } = new Error(
+      'Request failed with status code 500',
+    );
+    failure.response = { data: { message: 'k8s cluster unreachable' } };
+    vi.mocked(listK8sCerts).mockRejectedValue(failure);
+
+    renderPage();
+
+    expect(await screen.findByText('k8s cluster unreachable')).toBeInTheDocument();
+    expect(screen.queryByText('Request failed with status code 500')).not.toBeInTheDocument();
+  });
+
+  it('accepts a rejection reason carried by a bare object', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValue({ message: 'certificate store offline' });
+
+    renderPage();
+
+    expect(await screen.findByText('certificate store offline')).toBeInTheDocument();
+  });
+
+  it('keeps the generic fallback when the rejection carries nothing usable', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValue({});
+
+    renderPage();
+
+    expect(await screen.findByText('请求失败，请稍后重试')).toBeInTheDocument();
+  });
 });

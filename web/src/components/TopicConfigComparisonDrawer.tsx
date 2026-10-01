@@ -126,6 +126,7 @@ const TopicConfigComparisonDrawer = ({
       return;
     }
     const requestId = ++requestIdRef.current;
+    setResult(null);
     setLoading(true);
     try {
       const [sourceTopics, targetTopics] = await Promise.all([
@@ -144,10 +145,18 @@ const TopicConfigComparisonDrawer = ({
     }
   };
 
+  // Any change of the compared pair invalidates a comparison that is still loading, so a
+  // response for the previous pair can never be rendered under the new selection.
+  const invalidateComparison = () => {
+    requestIdRef.current += 1;
+    setResult(null);
+    setLoading(false);
+  };
+
   const swapInstances = () => {
     setSourceInstanceId(targetInstanceId);
     setTargetInstanceId(sourceInstanceId);
-    setResult(null);
+    invalidateComparison();
   };
 
   const exportComparison = () => {
@@ -205,7 +214,7 @@ const TopicConfigComparisonDrawer = ({
               style={{ width: '100%', marginTop: 4 }}
               onChange={(value) => {
                 setSourceInstanceId(value);
-                setResult(null);
+                invalidateComparison();
               }}
             />
           </label>
@@ -223,7 +232,7 @@ const TopicConfigComparisonDrawer = ({
               style={{ width: '100%', marginTop: 4 }}
               onChange={(value) => {
                 setTargetInstanceId(value);
-                setResult(null);
+                invalidateComparison();
               }}
             />
           </label>
