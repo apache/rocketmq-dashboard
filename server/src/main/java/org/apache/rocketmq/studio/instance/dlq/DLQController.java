@@ -83,7 +83,7 @@ public class DLQController {
     }
 
     @GetMapping("/{groupName}/messages")
-    public Result<PageResult<DLQMessageVO>> listDLQMessages(@PathVariable String groupName,
+    public Result<DLQMessagePageVO> listDLQMessages(@PathVariable String groupName,
             @RequestParam String instanceId,
             @RequestParam(required = false) Long startTime,
             @RequestParam(required = false) Long endTime,

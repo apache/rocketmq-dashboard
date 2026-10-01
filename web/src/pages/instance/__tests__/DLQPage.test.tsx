@@ -23,6 +23,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
+import translations from '../../../i18n/translations';
 import * as messageService from '../../../services/messageService';
 import * as instanceService from '../../../services/instanceService';
 import DLQPage, { formatDateTime } from '../dlq';
@@ -93,6 +94,13 @@ const pageOf = (items: DLQGroup[]): DLQGroupPage => ({
   page: 1,
   size: 20,
 });
+
+const truncatedDetailWarning = (total: number, failedQueues: number) =>
+  translations[
+    failedQueues > 0 ? 'dlq.detailTruncatedWithFailedQueues' : 'dlq.detailTruncated'
+  ].zh
+    .replace('{total}', String(total))
+    .replace('{failed}', String(failedQueues));
 
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
@@ -270,6 +278,83 @@ describe('DLQ page', () => {
     expect(messageService.listDLQMessages).toHaveBeenCalledWith(
       expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
     );
+  });
+
+  it('shows a truncation warning when the detail list hits the server scan cap', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'dlq-capped',
+          topic: 'orders',
+          queueId: 0,
+          offset: 7,
+          storeTime: 1_700_000_000_000,
+          keys: 'key-cap',
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+          propertiesTruncated: false,
+        },
+      ],
+      total: 5000,
+      page: 1,
+      size: 20,
+      truncated: true,
+      failedQueueCount: 2,
+    } satisfies DLQMessagePage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    // The group row advertises more dead letters than the drawer lists: the drawer must say so
+    // instead of presenting the capped window as the whole DLQ.
+    expect(await screen.findByText(truncatedDetailWarning(5000, 2))).toBeInTheDocument();
+  });
+
+  it('drops the truncation warning when the next detail load fails', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'order-dead-letter-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 11,
+            storeTime: 1_700_000_000_000,
+            keys: 'order-1',
+            body: 'dead',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 5000,
+        page: 1,
+        size: 20,
+        truncated: true,
+        failedQueueCount: 0,
+      } satisfies DLQMessagePage)
+      .mockRejectedValueOnce(new Error('broker unavailable'));
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    expect(await screen.findByText(truncatedDetailWarning(5000, 0))).toBeInTheDocument();
+
+    const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
+    if (!paymentRow) throw new Error('second DLQ group row not found');
+    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+
+    // The banner described the previous group's capped scan; it must not sit next to the error
+    // alert of a load that returned no rows at all.
+    expect(await screen.findByText('broker unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(truncatedDetailWarning(5000, 0))).not.toBeInTheDocument();
   });
 
   it('drops the previous group messages when the next detail load fails', async () => {

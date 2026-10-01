@@ -356,7 +356,7 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
     @Test
     void listDLQMessagesShouldReturnPageTest() throws Exception {
         when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
-                .thenReturn(PageResult.of(List.of(
+                .thenReturn(DLQMessagePageVO.of(PageResult.of(List.of(
                         DLQMessageVO.builder()
                                 .msgId("msg-1")
                                 .topic("%DLQ%test-group")
@@ -365,16 +365,30 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                                 .storeTime(150L)
                                 .keys("key-a")
                                 .body("hello dlq")
-                                .build()), 1, 1, 20));
+                                .build()), 1, 1, 20), false, 0));
 
         mockMvc.perform(get("/api/dlq/test-group/messages")
                         .param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.items[0].msgId").value("msg-1"))
-                .andExpect(jsonPath("$.data.total").value(1));
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.truncated").value(false))
+                .andExpect(jsonPath("$.data.failedQueueCount").value(0));
 
         verify(dlqService).listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20));
+    }
+
+    @Test
+    void listDLQMessagesShouldExposeTheScanBoundaryTest() throws Exception {
+        when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
+                .thenReturn(DLQMessagePageVO.of(PageResult.of(List.of(), 5_000, 1, 20), true, 2));
+
+        mockMvc.perform(get("/api/dlq/test-group/messages")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.truncated").value(true))
+                .andExpect(jsonPath("$.data.failedQueueCount").value(2));
     }
 
     @Test

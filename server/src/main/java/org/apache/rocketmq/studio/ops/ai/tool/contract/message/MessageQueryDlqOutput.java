@@ -22,6 +22,11 @@ import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
 
 import java.util.List;
 
+/**
+ * Result of {@code rmq.message.query_dlq}. {@code truncated} and {@code failedQueueCount} are
+ * populated only for the message-detail mode: the group listing does not scan dead letters, so
+ * they stay null there and {@code NON_NULL} drops them instead of advertising a false boundary.
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record MessageQueryDlqOutput(
         String instanceId,
@@ -29,7 +34,9 @@ public record MessageQueryDlqOutput(
         Integer page,
         Integer pageSize,
         Long total,
-        List<?> items) {
+        List<?> items,
+        Boolean truncated,
+        Integer failedQueueCount) {
 
     public static MessageQueryDlqOutput ofGroups(
             String instanceId,
@@ -37,7 +44,7 @@ public record MessageQueryDlqOutput(
             Integer pageSize,
             Long total,
             List<DlqGroupItem> items) {
-        return new MessageQueryDlqOutput(instanceId, null, page, pageSize, total, items);
+        return new MessageQueryDlqOutput(instanceId, null, page, pageSize, total, items, null, null);
     }
 
     public static MessageQueryDlqOutput ofMessages(
@@ -46,8 +53,11 @@ public record MessageQueryDlqOutput(
             Integer page,
             Integer pageSize,
             Long total,
-            List<DlqMessageItem> items) {
-        return new MessageQueryDlqOutput(instanceId, group, page, pageSize, total, items);
+            List<DlqMessageItem> items,
+            boolean truncated,
+            int failedQueueCount) {
+        return new MessageQueryDlqOutput(instanceId, group, page, pageSize, total, items,
+                truncated, failedQueueCount);
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
