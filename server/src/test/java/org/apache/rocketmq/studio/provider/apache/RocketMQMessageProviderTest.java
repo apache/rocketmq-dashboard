@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -244,6 +245,35 @@ class RocketMQMessageProviderTest {
         request.setConsumerGroup("billing");
         request.setClientId("client-a");
         return request;
+    }
+
+    @Test
+    void directlyConsumesMessageReportsAnOfflineClientAsNotFoundTest() throws Exception {
+        // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online" when
+        // the typed client id is not connected, which is the normal state for a stale dialog.
+        MessageExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getMsgId()))
+                .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR,
+                        "The Consumer billing client-offline not online"));
+        DirectConsumeMessageDTO request = directRequest();
+        request.setClientId("client-offline");
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Consumer client is not online: client-offline")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void directlyConsumesMessageKeepsOtherBrokerFailuresAsBadGatewayTest() throws Exception {
+        MessageExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId()))
+                .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR, "broker rejected the request"));
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to consume message directly")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -993,6 +1023,71 @@ class RocketMQMessageProviderTest {
         verify(adminExt).queryMessage(topicCaptor.capture(), keyCaptor.capture(), anyInt(), anyLong(), anyLong());
         assertThat(topicCaptor.getValue()).isEqualTo("CUSTOM_TRACE");
         assertThat(keyCaptor.getValue()).isEqualTo("shared-key");
+    }
+
+    @Test
+    void getMessageTraceByKeyKeepsOnlyContextsWhoseKeysContainTheQueryToken() throws Exception {
+        // One trace message batches every context for the source topic. The index lists each
+        // space-separated business key, so a lookup for order-A hits contexts for order-B and
+        // order-A-suffix too. Only whole key tokens may be returned.
+        String pubA = traceContext("Pub", "1000", "cn", "producer-a", "orders", "msg-a",
+                "tag", "order-A", "127.0.0.1:10911", "10", "5", "0", "offset-msg-a", "true");
+        String pubMulti = traceContext("Pub", "1001", "cn", "producer-a2", "orders", "msg-a2",
+                "tag", "extra order-A", "127.0.0.1:10911", "10", "5", "0", "offset-msg-a2", "true");
+        String pubB = traceContext("Pub", "1002", "cn", "producer-b", "orders", "msg-b",
+                "tag", "order-B", "127.0.0.1:10911", "10", "5", "0", "offset-msg-b", "true");
+        String subA = traceContext("SubAfter", "req-a", "msg-a", "5", "true", "order-A",
+                "0", "3000", "consumer-a");
+        String subB = traceContext("SubAfter", "req-b", "msg-b", "5", "false", "order-B",
+                "0", "3001", "consumer-b");
+        String subSuffix = traceContext("SubAfter", "req-suffix", "msg-prefix", "5", "false",
+                "order-A-suffix", "0", "3002", "consumer-prefix");
+        String txA = traceContext("EndTransaction", "1003", "cn", "tx-a", "orders", "msg-a",
+                "tag", "extra order-A", "127.0.0.1:10911", "0", "tx-1", "COMMIT_MESSAGE", "false");
+        String txB = traceContext("EndTransaction", "1004", "cn", "tx-b", "orders", "msg-b",
+                "tag", "order-B", "127.0.0.1:10911", "0", "tx-2", "ROLLBACK_MESSAGE", "false");
+        String recall = traceContext("Recall", "2500", "cn", "producer-recall", "orders", "msg-recall", "false");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pubA, pubMulti, pubB, subA, subB, subSuffix, txA, txB, recall)
+                .getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO byKey = provider.getMessageTraceByKey("instance-a", "order-A", "orders", null);
+
+        assertThat(byKey.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly(
+                        "producer=producer-a, storeHost=127.0.0.1:10911",
+                        "producer=producer-a2, storeHost=127.0.0.1:10911",
+                        "group=consumer-a, contextCode=0",
+                        "group=tx-a, transactionState=COMMIT_MESSAGE");
+        assertThat(byKey.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-a");
+
+        TraceRecordVO bySuffix = provider.getMessageTraceByKey(
+                "instance-a", "order-A-suffix", "orders", null);
+
+        assertThat(bySuffix.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly("group=consumer-prefix, contextCode=0");
+        assertThat(bySuffix.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-prefix");
+
+        // Message-id filtering stays exact and is not replaced by the key token check.
+        TraceRecordVO byMsgB = provider.getMessageTrace("instance-a", "msg-b", "orders");
+
+        assertThat(byMsgB.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly(
+                        "producer=producer-b, storeHost=127.0.0.1:10911",
+                        "group=consumer-b, contextCode=0",
+                        "group=tx-b, transactionState=ROLLBACK_MESSAGE");
+        assertThat(byMsgB.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-b");
+
+        TraceRecordVO byRecall = provider.getMessageTrace("instance-a", "msg-recall", "orders");
+
+        assertThat(byRecall.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("recall");
+        assertThat(byRecall.getNodes().get(0).getDescription()).contains("producer-recall");
+        assertThat(byRecall.getConsumerStatus()).isEmpty();
     }
 
     @Test
