@@ -64,7 +64,7 @@ class AliyunCatalogServiceTest {
     void listRegionsShouldSkipNullSdkRecords() {
         ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListRegionsResponseBody.builder()
+                .body(ListRegionsResponseBody.builder().success(true)
                         .data(Arrays.asList(null, ListRegionsResponseBody.Data.builder()
                                 .regionId("cn-hangzhou")
                                 .supportRocketmqV5(true)
@@ -83,7 +83,7 @@ class AliyunCatalogServiceTest {
     void listRegionsShouldKeepOnlyRocketmqV5RegionsTest() {
         ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListRegionsResponseBody.builder()
+                .body(ListRegionsResponseBody.builder().success(true)
                         .data(List.of(
                                 ListRegionsResponseBody.Data.builder()
                                         .regionId("cn-shanghai").regionName("shanghai")
@@ -191,7 +191,7 @@ class AliyunCatalogServiceTest {
     void getCloudInstanceShouldMapEndpointsTest() {
         GetInstanceResponse response = GetInstanceResponse.create().toBuilder()
                 .statusCode(200)
-                .body(GetInstanceResponseBody.builder()
+                .body(GetInstanceResponseBody.builder().success(true)
                         .data(GetInstanceResponseBody.Data.builder()
                                 .instanceId("rmq-cn-001")
                                 .instanceName("prod")
@@ -227,13 +227,54 @@ class AliyunCatalogServiceTest {
 
     @Test
     void getCloudInstanceShouldNormalizeLookupIdentifiersTest() {
-        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(null);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(
+                GetInstanceResponse.create().toBuilder().body(GetInstanceResponseBody.builder().build()).build());
 
         assertThatThrownBy(() -> service.getCloudInstance(
                 CREDENTIAL_ID, "  cn-hangzhou  ", "  rmq-missing  "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Aliyun instance not found: rmq-missing");
         verify(clientFactory).call(eq(CREDENTIAL_ID), eq(REGION), any());
+    }
+
+    @Test
+    void listRegionsShouldRejectUnsuccessfulBusinessResponseTest() {
+        ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListRegionsResponseBody.builder().success(false)
+                        .code("OperationDenied").message("denied").build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(AliyunCatalogService.DEFAULT_REGION), any()))
+                .thenReturn(response);
+
+        assertThatThrownBy(() -> service.listRegions(CREDENTIAL_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void listCloudInstancesShouldRejectUnsuccessfulBusinessResponseTest() {
+        ListInstancesResponse response = ListInstancesResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListInstancesResponseBody.builder().success(false)
+                        .code("OperationDenied").message("denied").build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void getCloudInstanceShouldRejectUnsuccessfulBusinessResponseTest() {
+        GetInstanceResponse response = GetInstanceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetInstanceResponseBody.builder().success(false)
+                        .code("OperationDenied").message("denied").build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.getCloudInstance(CREDENTIAL_ID, REGION, "rmq-cn-001"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
     }
 
     private static List<ListInstancesResponseBody.List> instanceRows(int count, int idOffset) {
@@ -263,7 +304,7 @@ class AliyunCatalogServiceTest {
     private static ListInstancesResponse instancesResponse(List<ListInstancesResponseBody.List> rows, long totalCount) {
         return ListInstancesResponse.create().toBuilder()
                 .statusCode(200)
-                .body(ListInstancesResponseBody.builder()
+                .body(ListInstancesResponseBody.builder().success(true)
                         .data(ListInstancesResponseBody.Data.builder()
                                 .list(rows)
                                 .pageNumber(1L)
@@ -273,4 +314,51 @@ class AliyunCatalogServiceTest {
                         .build())
                 .build();
     }
+    @Test
+    void listCloudInstancesShouldTolerateOmittedSuccessFlagTest() {
+        ListInstancesResponse fixture = instancesResponse(List.of(instanceRow("rmq-a", "A")));
+        ListInstancesResponse response = ListInstancesResponse.create().toBuilder()
+                .body(ListInstancesResponseBody.builder().data(fixture.getBody().getData()).build()).build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+        assertThat(service.listCloudInstances(CREDENTIAL_ID, REGION, null)).singleElement()
+                .extracting(CloudInstanceOptionVO::getInstanceId).isEqualTo("rmq-a");
+    }
+
+    @Test
+    void listRegionsShouldTolerateOmittedSuccessFlagTest() {
+        ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
+                .body(ListRegionsResponseBody.builder().data(List.of(ListRegionsResponseBody.Data.builder()
+                        .regionId(REGION).supportRocketmqV5(true).build())).build()).build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(AliyunCatalogService.DEFAULT_REGION), any()))
+                .thenReturn(response);
+        assertThat(service.listRegions(CREDENTIAL_ID)).singleElement()
+                .extracting(CloudRegionVO::getRegionId).isEqualTo(REGION);
+    }
+
+    @Test
+    void getCloudInstanceShouldTolerateOmittedSuccessFlagTest() {
+        GetInstanceResponse response = GetInstanceResponse.create().toBuilder()
+                .body(GetInstanceResponseBody.builder().data(GetInstanceResponseBody.Data.builder()
+                        .instanceId("rmq-a").instanceName("A").regionId(REGION).build()).build()).build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(response);
+        assertThat(service.getCloudInstance(CREDENTIAL_ID, REGION, "rmq-a").getInstanceId()).isEqualTo("rmq-a");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void catalogReadsShouldRejectMissingBodiesConsistentlyTest(boolean nullResponse) {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(nullResponse ? null
+                : ListRegionsResponse.create().toBuilder().build());
+        assertThatThrownBy(() -> service.listRegions(CREDENTIAL_ID))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(nullResponse ? null
+                : ListInstancesResponse.create().toBuilder().build());
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any())).thenReturn(nullResponse ? null
+                : GetInstanceResponse.create().toBuilder().build());
+        assertThatThrownBy(() -> service.getCloudInstance(CREDENTIAL_ID, REGION, "rmq-a"))
+                .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(502);
+    }
+
 }
