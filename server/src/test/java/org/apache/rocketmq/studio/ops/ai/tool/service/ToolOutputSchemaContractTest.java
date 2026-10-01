@@ -126,6 +126,29 @@ class ToolOutputSchemaContractTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void validatesTencentAclRuleProjectionAgainstCatalogTest() {
+        AclRuleItem tencentRule = AclRuleItem.from(AclRuleVO.builder()
+                .principal("role-reader")
+                .resource("*")
+                .resourceType("Cluster")
+                .resourcePattern("LITERAL")
+                .actions(List.of("PUB", "SUB"))
+                .decision("ALLOW")
+                .scope("cluster")
+                .aclVersion("v2")
+                .build());
+
+        assertThat(tencentRule.id()).isEqualTo("role-reader");
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.acl.list"),
+                new PageOutput<>(1, 20, 1L, List.of(tencentRule))))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateOutput(
+                catalog.getDefinition("rmq.acl.get"), tencentRule))
+                .doesNotThrowAnyException();
+    }
+
     private static Map<String, List<Object>> samples() {
         Map<String, List<Object>> samples = new LinkedHashMap<>();
 
@@ -144,11 +167,16 @@ class ToolOutputSchemaContractTest {
                 .aclVersion("v2")
                 .gmtCreate(LocalDateTime.of(2026, 8, 22, 8, 0))
                 .build();
-        // Tencent roles have no database row: id stays null and the role name (principal)
-        // is the identifier, so tool outputs must tolerate a missing id
-        AclRuleItem tencentAclRule = new AclRuleItem(
-                null, "alice", "orders", "TOPIC", "LITERAL",
-                List.of("PUB"), "ALLOW", INSTANCE, "v2", null);
+        AclRuleItem tencentAclRule = AclRuleItem.from(AclRuleVO.builder()
+                .principal("alice")
+                .resource("orders")
+                .resourceType("TOPIC")
+                .resourcePattern("LITERAL")
+                .actions(List.of("PUB"))
+                .decision("ALLOW")
+                .scope(INSTANCE)
+                .aclVersion("v2")
+                .build());
         samples.put("rmq.acl.get", List.of(aclRule, tencentAclRule));
         samples.put("rmq.acl.list", List.of(new PageOutput<>(1, 20, 2L, List.of(aclRule, tencentAclRule))));
         samples.put("rmq.acl.create", List.of(planned(), executed(aclRuleVO)));
@@ -156,7 +184,11 @@ class ToolOutputSchemaContractTest {
         samples.put("rmq.acl.delete", List.of(planned(), executedVoid()));
 
         AclUserItem user = new AclUserItem("1", "alice", true, List.of(INSTANCE));
-        AclUserItem tencentUser = new AclUserItem(null, "alice", false, List.of("cloud-instance"));
+        AclUserItem tencentUser = AclUserItem.from(AclUserVO.builder()
+                .username("alice")
+                .admin(false)
+                .clusters(List.of("cloud-instance"))
+                .build());
         samples.put("rmq.user.get", List.of(user, tencentUser));
         samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user, tencentUser))));
         samples.put("rmq.user.create", List.of(planned(), executed(user), executed(tencentUser)));

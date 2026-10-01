@@ -36,7 +36,7 @@ public record AclRuleItem(
 
     public static AclRuleItem from(AclRuleVO rule) {
         return new AclRuleItem(
-                rule.getId() == null ? null : rule.getId().toString(),
+                rule.getId() == null ? rule.getPrincipal() : rule.getId().toString(),
                 rule.getPrincipal(),
                 rule.getResource(),
                 rule.getResourceType(),
