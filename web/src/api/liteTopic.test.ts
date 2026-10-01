@@ -38,7 +38,7 @@ const sampleItem: LiteTopicItem = {
   consumerCount: 3,
   totalBacklog: 1200,
   averageTTL: 3600,
-  ttlStatus: 'active',
+  ttlStatus: 'ACTIVE',
   lastActiveTime: Date.now(),
   sessionIds: ['sess-1', 'sess-2'],
 };
@@ -66,7 +66,7 @@ const sampleSession: LiteTopicSession = {
   lastActiveTime: Date.now(),
   ttl: 3600,
   ttlRemaining: 1800,
-  status: 'active',
+  status: 'ACTIVE',
   totalMessages: 5000,
   consumedMessages: 4800,
   pendingMessages: 200,
