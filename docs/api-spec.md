@@ -422,14 +422,22 @@ GET /api/instances/{instanceId}/capabilities
 ### 4.1 获取集群列表
 
 ```
-GET /api/clusters
+GET /api/clusters?instanceId={instanceId}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置发现集群 |
 
 **Response `data`:** `ClusterInfo[]`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | `string` | 集群 ID |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 | `name` | `string` | 集群名称 |
 | `nsClusterName` | `string` | NameServer 集群名 |
 | `type` | `string` | 集群类型，枚举: `V5_PROXY_CLUSTER` |
@@ -491,8 +499,14 @@ GET /api/clusters
 ### 4.2 获取集群详情
 
 ```
-GET /api/clusters/:id
+GET /api/clusters/:id?instanceId={instanceId}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置读取集群 |
 
 **Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
 
@@ -506,7 +520,8 @@ POST /api/clusters/config/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 集群 ID |
+| `id` | `string` | 是 | 集群 ID（运行时集群名，非数据库主键） |
+| `instanceId` | `string` | 否 | 目标实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置下发 |
 | `flushDiskType` | `string` | 否 | `ASYNC_FLUSH` / `SYNC_FLUSH` |
 | `autoCreateTopicEnable` | `boolean` | 否 | 自动创建 Topic |
 | `autoCreateSubscriptionGroup` | `boolean` | 否 | 自动创建订阅组 |
@@ -518,7 +533,14 @@ POST /api/clusters/config/update
 
 未提供的可选字段保持原配置不变。
 
-**Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `ClusterInfo` | 目标集群（同 4.1 的单条记录） |
+| `status` | `string` | 更新结果：`SUCCESS`（全部成功）/ `PARTIAL`（部分成功）/ `FAILED`（全部失败） |
+| `successfulBrokers` | `string[]` | 更新成功的 Broker 名称 |
+| `failedBrokers` | `object[]` | 更新失败的 Broker 及原因 |
 
 ### 4.4 重启 Broker
 
@@ -533,7 +555,7 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 | `clusterId` | `string` | 集群 ID |
 | `name` | `string` | Broker 名称 |
 
-**Response `data`:** `{ success: boolean, message: string }`
+**Response `data`:** `{ message: string }`（重启指令已下发；失败直接返回错误响应，无 `success` 字段）
 
 ### 4.5 创建 NameServer
 
@@ -547,6 +569,7 @@ POST /api/nameservers/create
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址，如 `10.0.1.1:9876` |
+| `version` | `string` | 否 | 期望的版本号 |
 
 **Response `data`:** `NameServerInfo`
 
@@ -562,9 +585,9 @@ POST /api/nameservers/update
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `version` | `string` | 否 | 期望的版本号 |
 
-**Response `data`:** `NameServerInfo`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.7 重启 NameServer
 
@@ -576,9 +599,10 @@ POST /api/nameservers/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.8 升级 NameServer
 
@@ -590,9 +614,11 @@ POST /api/nameservers/upgrade
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
+| `targetVersion` | `string` | 是 | 目标版本号 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.9 删除 NameServer
 
@@ -604,9 +630,10 @@ POST /api/nameservers/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 ### 4.10 检查 NameServer 配置漂移
 
@@ -779,7 +806,7 @@ POST /api/proxies/config/reload
 | `clusterId` | `string` | 是 | Proxy 所属集群 ID |
 | `addr` | `string` | 是 | Proxy 地址，`host:port` |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** 空（失败直接返回错误响应）
 
 校验地址格式、并确认该地址属于 `clusterId` 登记的 Proxy 列表后，Studio 向 `http://{addr}/admin/reloadConfig` 发起 POST，触发 Proxy 侧配置热更新。成功返回 `{"success": true}`；失败一律以异常返回，不会出现 `success: false`。成功与失败都会记录 `RELOAD_PROXY_CONFIG` 审计。
 
