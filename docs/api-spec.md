@@ -373,8 +373,8 @@ POST /api/instances/update
 |------|------|------|------|
 | `instanceId` | `string` | 是 | 实例标识：全局唯一的实例名（数字主键作为兼容回退） |
 | `name` | `string` | 否 | 实例名称（传入时不可与现有名称不同，实例 ID 创建后不可变更） |
-| `type` | `string` | 否 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例 |
-| `endpoint` | `string` | 否 | 接入地址 |
+| `type` | `string` | 否 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例（仅非云实例可改） |
+| `endpoint` | `string` | 否 | 接入地址（仅非云实例可改） |
 | `remark` | `string` | 否 | 备注 |
 | `adminCredentialRef` | `string` | 否 | 管理凭证引用（仅非云实例可改） |
 
