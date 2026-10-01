@@ -54,6 +54,7 @@ import {
   listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
+  revokeAllStudioUserSessions,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
@@ -138,6 +139,7 @@ const UserManagementPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
+  const [revokingAllSessions, setRevokingAllSessions] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
@@ -338,6 +340,26 @@ const UserManagementPage = () => {
     );
 
   const openCreateUserModal = () => setCreateOpen(true);
+
+  // The endpoint spares this operator's own sessions, so the incident responder stays
+  // logged in; everyone else has to sign in again.
+  const handleRevokeAllSessions = async () => {
+    if (revokingAllSessions) return;
+    setRevokingAllSessions(true);
+    try {
+      const revokedCount = await revokeAllStudioUserSessions();
+      message.success(t('userMgmt.revokedAllCount', { count: revokedCount }));
+      if (sessionDrawerUser) {
+        setSessionDrawerUser(null);
+      }
+      await loadUsers();
+    } catch {
+      message.error(t('userMgmt.revokeAllFailed'));
+    } finally {
+      setRevokingAllSessions(false);
+    }
+  };
+
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
     setUserExporting(true);
@@ -572,7 +594,24 @@ const UserManagementPage = () => {
         </Button>
       </Card>
       {admin && sessionOverview && (
-        <Card title={t('userMgmt.sessionOverview')} style={{ marginBottom: 16 }}>
+        <Card
+          title={t('userMgmt.sessionOverview')}
+          extra={
+            <Popconfirm
+              title={t('userMgmt.revokeAllConfirmTitle')}
+              description={t('userMgmt.revokeAllConfirmDescription')}
+              okText={t('userMgmt.revokeAllSessions')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleRevokeAllSessions()}
+            >
+              <Button danger icon={<SignOut size={14} />} loading={revokingAllSessions}>
+                {t('userMgmt.revokeAllSessions')}
+              </Button>
+            </Popconfirm>
+          }
+          style={{ marginBottom: 16 }}
+        >
           <Flex gap={32} wrap>
             <Statistic
               title={t('userMgmt.activeSessions')}

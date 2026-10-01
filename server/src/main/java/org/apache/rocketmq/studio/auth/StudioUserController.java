@@ -97,4 +97,11 @@ public class StudioUserController {
                 .revokedSessionCount(revokedSessionCount)
                 .build());
     }
+
+    @PostMapping("/sessions/revoke-all")
+    public Result<StudioGlobalSessionRevokeVO> revokeAllSessions() {
+        return Result.ok(StudioGlobalSessionRevokeVO.builder()
+                .revokedSessionCount(authService.revokeAllSessions())
+                .build());
+    }
 }
