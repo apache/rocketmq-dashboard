@@ -763,6 +763,27 @@ class MetadataServiceTest {
     }
 
     @Test
+    void cloudSendSuccessRowCarriesTheMsgIdLikeTheApacheRowTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .tag("TagA")
+                .key("order-1")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenReturn(SendMessageVO.builder().msgId("msg-cloud").build());
+
+        metadataService.sendMessage(request);
+
+        // The Apache admin client records "tag=..., key=..., msgId=..." on success; the cloud row
+        // can only do that when the detail is built from the send result, not before it runs.
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("orders"), eq("cloud-instance"),
+                eq("tag=TagA, key=order-1, msgId=msg-cloud"), eq(OperationAuditConstants.Result.SUCCESS),
+                isNull());
+    }
+
+    @Test
     void failedCloudSendShouldBeAuditedWithItsReasonTest() {
         SendMessageDTO request = SendMessageDTO.builder()
                 .instanceId("cloud-instance")
