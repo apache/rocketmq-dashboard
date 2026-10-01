@@ -53,7 +53,7 @@ class AgentStreamSessionReplayOrderTest {
     private static final long RUN_ID = 42L;
 
     @Test
-    void aFramePublishedDuringTheDrainShouldNotOvertakeTheBufferedFrames() throws Exception {
+    void aFramePublishedDuringTheDrainShouldNotOvertakeTheBufferedFramesTest() throws Exception {
         StepwiseMapper mapper = new StepwiseMapper();
         RecordingEmitter emitter = new RecordingEmitter();
         AgentStreamSession session = new AgentStreamSession(RUN_ID, emitter, mapper, detached -> {
