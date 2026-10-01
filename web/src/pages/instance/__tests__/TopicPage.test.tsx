@@ -1117,7 +1117,7 @@ describe('TopicPage', () => {
 
     await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
     expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
-    expect(within(dialog).getByText('重复属性会覆盖前面的值：traceId')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复属性仅保留第一个值：traceId')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
