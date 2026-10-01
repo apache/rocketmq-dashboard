@@ -49,6 +49,7 @@ public class AlertService {
 
     private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
+    private static final int MAX_BULK_ACKNOWLEDGE = 10_000;
     // Native Studio metric names that have a rocketmq-exporter equivalent, mapped to the semantic
     // metric whose profile-specific prometheus name MetricProfileService resolves at export time
     // (so a 4.x deployment exports rocketmq_message_accumulation, not a hardcoded 5.x name).
@@ -606,6 +607,71 @@ public class AlertService {
         recordAudit("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
                 "deleted=" + deleted);
         return deleted;
+    }
+
+    /**
+     * Acknowledges every unacknowledged alert matching the query's filters — across pages, not
+     * just the loaded one. Each acknowledged FIRING/REMINDER event also ACKs its active alert
+     * state (same rule as the single-alert path), so reminders stop for the whole batch.
+     */
+    @Transactional
+    public int acknowledgeAlerts(SystemAlertQuery query) {
+        List<SystemAlertVO> candidates =
+                alertRepository.findUnacknowledgedAlerts(query, MAX_BULK_ACKNOWLEDGE + 1);
+        if (candidates.size() > MAX_BULK_ACKNOWLEDGE) {
+            throw new BusinessException(400, "Bulk acknowledge exceeds the maximum of "
+                    + MAX_BULK_ACKNOWLEDGE + " alerts; narrow the filters");
+        }
+        String acknowledgedBy = AuthenticatedUserContext.currentUsernameOrSystem();
+        LocalDateTime acknowledgedAt = LocalDateTime.now(ZoneOffset.UTC);
+        int acknowledged = 0;
+        for (SystemAlertVO alert : candidates) {
+            alert.setAcknowledged(true);
+            alert.setAcknowledgedBy(acknowledgedBy);
+            alert.setAcknowledgedAt(acknowledgedAt);
+            if (!alertRepository.acknowledgeAlert(alert)) {
+                continue;
+            }
+            acknowledged++;
+            // FIRING and REMINDER events belong to the same firing episode; acknowledging either
+            // must ACK the active state or reminders keep firing (same rule as acknowledgeAlert).
+            String transition = alert.getTransition();
+            if (alert.getRuleId() != null && hasText(alert.getFingerprint()) && alert.getTime() != null
+                    && ("FIRING".equalsIgnoreCase(transition) || "REMINDER".equalsIgnoreCase(transition))) {
+                alertStateRepository.acknowledge(new AlertStateKey(alert.getRuleId(), alert.getFingerprint()),
+                        alert.getTime().toInstant(ZoneOffset.UTC));
+            }
+        }
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
+                "acknowledged=" + acknowledged + ", filters=" + describeAlertFilters(query));
+        return acknowledged;
+    }
+
+    private String describeAlertFilters(SystemAlertQuery query) {
+        StringBuilder description = new StringBuilder("[");
+        if (hasText(query.level())) {
+            description.append("level=").append(query.level()).append(' ');
+        }
+        if (query.domain() != null) {
+            description.append("domain=").append(query.domain()).append(' ');
+        }
+        if (hasText(query.instanceId())) {
+            description.append("instance=").append(query.instanceId()).append(' ');
+        }
+        if (hasText(query.transition())) {
+            description.append("transition=").append(query.transition()).append(' ');
+        }
+        if (hasText(query.labelKey())) {
+            description.append("label=").append(query.labelKey()).append('=').append(query.labelValue())
+                    .append(' ');
+        }
+        if (query.from() != null || query.to() != null) {
+            description.append("time=[").append(query.from()).append("..").append(query.to()).append("] ");
+        }
+        if (query.notificationSuppressed() != null) {
+            description.append("suppressed=").append(query.notificationSuppressed()).append(' ');
+        }
+        return description.append(']').toString();
     }
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {

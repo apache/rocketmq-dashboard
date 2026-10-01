@@ -414,6 +414,23 @@ export async function acknowledgeAlert(id: number): Promise<void> {
   return opsApi.acknowledgeAlert(id);
 }
 
+export async function acknowledgeAllAlerts(
+  params: Omit<SystemAlertQuery, 'page' | 'pageSize'>,
+): Promise<number> {
+  if (isMockMode()) {
+    let acknowledged = 0;
+    for (const alert of mockSystemAlerts) {
+      if (!alert.acknowledged) {
+        alert.acknowledged = true;
+        acknowledged++;
+      }
+    }
+    return acknowledged;
+  }
+  const result = await opsApi.acknowledgeAllAlerts(params);
+  return result.acknowledged;
+}
+
 export async function clearAcknowledgedAlerts(): Promise<number> {
   if (isMockMode()) {
     const acknowledged = mockSystemAlerts.filter((alert) => alert.acknowledged).length;

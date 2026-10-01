@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -251,5 +253,20 @@ class SystemAlertControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.cleared").value(3));
 
         verify(alertService).clearAcknowledged();
+    }
+
+    @Test
+    void acknowledgeAllShouldPassTheFeedFiltersAndReturnTheCountTest() throws Exception {
+        when(alertService.acknowledgeAlerts(any(SystemAlertQuery.class))).thenReturn(7);
+
+        mockMvc.perform(post("/api/system-alerts/acknowledge-all")
+                        .param("level", "error")
+                        .param("instanceId", "local"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.acknowledged").value(7));
+
+        verify(alertService).acknowledgeAlerts(argThat(query -> "error".equals(query.level())
+                && "local".equals(query.instanceId())));
     }
 }
