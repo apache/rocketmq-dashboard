@@ -32,6 +32,22 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   );
 }
 
+/**
+ * Format an epoch-millisecond value or a timestamp string as 'YYYY-MM-DD HH:mm:ss.SSS'.
+ *
+ * Message store times and trace node timestamps arrive either as epoch milliseconds (Apache
+ * brokers) or as formatted strings (cloud providers), so both are accepted. Zero is a real
+ * timestamp rather than a missing one, and only an unusable value yields the placeholder - a
+ * malformed timestamp has to read as absent instead of rendering as NaN-NaN-NaN.
+ */
+export function formatTimeMs(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '-';
+  const timestamp = typeof value === 'string' ? Date.parse(value) : value;
+  if (!Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
+}
+
 export interface FormatUtcDateTimeOptions {
   /**
    * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
