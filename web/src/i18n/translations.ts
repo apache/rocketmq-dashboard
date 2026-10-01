@@ -1704,7 +1704,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -1985,6 +1988,15 @@ const translations: Record<string, Record<Lang, string>> = {
   },
 
   // ─── Home Page ───
+  'home.currentVersion': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Current version {time} build({commit})',
+  },
+  'homeDashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load the dashboard' },
+  'homeDashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not load the cluster overview. Check the network connection and retry.',
+  },
   'home.banner': {
     zh: 'RocketMQ Studio — 多实例统一的消息运维管控平台',
     en: 'RocketMQ Studio — unified operations console for your RocketMQ instances',

@@ -161,6 +161,22 @@ beforeEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('renders the load-failure alert in the display language', async () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    vi.mocked(dashboardService.getDashboard).mockRejectedValue(new Error('boom'));
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Failed to load the dashboard')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Could not load the cluster overview. Check the network connection and retry.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.queryByText('仪表盘加载失败')).not.toBeInTheDocument();
+  });
+
   it('renders unavailable Proxy topology counts as N/A instead of zero', async () => {
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(unavailableTopologyDashboard());
     renderWithProviders(<DashboardPage />);
