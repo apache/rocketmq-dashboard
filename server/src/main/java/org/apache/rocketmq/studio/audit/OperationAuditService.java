@@ -36,6 +36,17 @@ public class OperationAuditService {
 
     public void record(String operation, String resourceType, String resourceName,
                        String clusterId, String detail, String result, String errorMessage) {
+        record(AuthenticatedUserContext.currentUsernameOrSystem(), operation, resourceType,
+                resourceName, clusterId, detail, result, errorMessage);
+    }
+
+    /**
+     * Records with an explicit operator for events that happen outside an authenticated
+     * request thread — most notably login attempts, where the attempted username is the
+     * security-relevant actor and the request context is not populated yet.
+     */
+    public void record(String operator, String operation, String resourceType, String resourceName,
+                       String clusterId, String detail, String result, String errorMessage) {
         RmqOperationAudit audit = new RmqOperationAudit();
         audit.setOperation(operation);
         audit.setResourceType(resourceType);
@@ -44,7 +55,7 @@ public class OperationAuditService {
         audit.setDetail(detail);
         audit.setResult(result);
         audit.setErrorMessage(errorMessage);
-        audit.setOperator(AuthenticatedUserContext.currentUsernameOrSystem());
+        audit.setOperator(operator);
         LocalDateTime now = LocalDateTime.now();
         audit.setGmtCreate(now);
         audit.setGmtModified(now);
