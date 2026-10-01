@@ -1752,7 +1752,7 @@ GET /api/dlq/{groupName}/messages?instanceId={instanceId}&startTime={ms}&endTime
 | `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
 | `reconsumeTimes` | `number` | 已重试次数 |
 | `keys` | `string` | 消息 Key，可能为 `null` |
-| `body` | `string` | 按 UTF-8 解码的消息体；消息没有 body 时为 `null` |
+| `body` | `string` | 严格按 UTF-8 解码的消息体；原始字节不是有效 UTF-8 或消息没有 body 时为 `null` |
 | `bodyBase64` | `string` | 原始字节的 Base64，供二进制消息无损导出；消息没有 body 时为 `null` |
 | `properties` | `Record<string, string>` | 用户属性。已剔除 Broker 系统属性，按 key 排序，最多 `64` 条，单值超过 `1024` 码点时截断并追加 `...` |
 | `propertiesTruncated` | `boolean` | 属性条数或单值长度是否触发了上述截断 |
@@ -1814,7 +1814,7 @@ GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTim
 | `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
 | `msgIds` | `string[]` | 否 | 只导出选中的消息，最多 `100` 条；省略则导出整个时间窗口 |
 
-**Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body`，其中 `Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
+**Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body` / `Body Base64`；原始字节不是有效 UTF-8 时 `Body` 为空，`Body Base64` 保存原始字节，其他情况下该列为空。`Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
 
 `msgIds` 是重复同名参数（`msgIds=a&msgIds=b`），不是 `msgIds[]=a`：Spring 的 `@RequestParam List<String>` 不绑定方括号形式，写成方括号会静默退化为导出整个时间窗口。
 

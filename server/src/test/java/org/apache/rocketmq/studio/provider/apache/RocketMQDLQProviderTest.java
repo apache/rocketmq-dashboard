@@ -1007,6 +1007,27 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void exportMessagesDoesNotPresentInvalidUtf8AsText() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        byte[] body = {(byte) 0xC3, (byte) 0x28};
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("binary-msg");
+        deadLetter.setStoreTimestamp(150L);
+        deadLetter.setBody(body);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32)))
+                .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter)));
+
+        DLQMessageVO exported = provider.exportMessages("instance-a", "group-a", 100L, 200L, 1000)
+                .getMessages().get(0);
+
+        assertThat(exported.getBody()).isNull();
+        assertThat(exported.getBodyBase64()).isEqualTo(Base64.getEncoder().encodeToString(body));
+    }
+
+    @Test
     void exportMessagesHonorsMaxCountCap() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
