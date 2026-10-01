@@ -1309,7 +1309,8 @@ POST /api/acl/rules/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `number` | 是 | 规则 ID |
+| `id` | `string` | 是 | 规则 ID；Apache 实例下为数字字符串，腾讯云实例下为规则主体（principal）名称 |
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；腾讯云实例下用于路由到对应的 ACL 后端 |
 
 **Response `data`:** `null`
 
@@ -2080,6 +2081,8 @@ GET /api/system-alerts?level={level}
 | `instanceId` | `string` | 关联实例 ID |
 | `currentValue` | `number` | 触发时的指标值 |
 | `notificationSuppressed` | `boolean` | 通知是否被抑制 |
+| `suppressionCauseAlertId` | `number` | 触发抑制的根因告警 ID |
+| `suppressionReason` | `string` | 抑制原因说明 |
 | `labels` | `Record<string, string>` | 附加标签 |
 
 ### 12.2 确认告警
