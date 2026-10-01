@@ -167,6 +167,7 @@ const ClusterPage = () => {
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
+  const configWriteInFlightRef = useRef(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
@@ -701,7 +702,6 @@ const ClusterPage = () => {
     setSelectedCluster(cluster);
     setConfigPreview(null);
     setConfigPreviewLoading(false);
-    setConfigSubmitting(false);
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -730,6 +730,7 @@ const ClusterPage = () => {
   };
 
   const handleConfigPreview = async () => {
+    if (configWriteInFlightRef.current) return;
     const requestId = configPreviewRequest.begin();
     let values: ClusterConfigFormValues;
     try {
@@ -737,7 +738,7 @@ const ClusterPage = () => {
     } catch {
       return;
     }
-    if (!configPreviewRequest.isCurrent(requestId)) return;
+    if (configWriteInFlightRef.current || !configPreviewRequest.isCurrent(requestId)) return;
     const request = buildConfigUpdateRequest(values);
     if (!request) return;
 
@@ -759,6 +760,7 @@ const ClusterPage = () => {
   };
 
   const handleConfigSubmit = async () => {
+    if (configWriteInFlightRef.current) return;
     let values: ClusterConfigFormValues;
     try {
       values = await configForm.validateFields();
@@ -766,8 +768,14 @@ const ClusterPage = () => {
       return;
     }
     const request = buildConfigUpdateRequest(values);
-    if (!request) return;
+    if (!request || configWriteInFlightRef.current) return;
 
+    // A write can change only some Brokers. Discard previews only when a write
+    // actually starts, and block new previews until its outcome has been handled.
+    configWriteInFlightRef.current = true;
+    configPreviewRequest.invalidate();
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
     setConfigSubmitting(true);
     try {
       const result = await updateClusterConfig(request);
@@ -789,6 +797,8 @@ const ClusterPage = () => {
     } catch {
       message.error(t('cluster.configUpdateFailed', { brokers: '' }));
     } finally {
+      configPreviewRequest.invalidate();
+      configWriteInFlightRef.current = false;
       setConfigSubmitting(false);
     }
   };
@@ -1406,6 +1416,7 @@ const ClusterPage = () => {
                 size="small"
                 icon={<EyeOutlined />}
                 loading={configPreviewLoading}
+                disabled={configSubmitting}
                 onClick={() => void handleConfigPreview()}
               >
                 {t('cluster.configPreview')}
