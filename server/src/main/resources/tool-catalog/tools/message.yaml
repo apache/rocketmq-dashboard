@@ -316,6 +316,10 @@ tools:
           type: integer
         total:
           type: integer
+        truncated:
+          type: boolean
+        failedQueueCount:
+          type: integer
         items:
           type: array
           items:

@@ -372,9 +372,23 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.items[0].msgId").value("msg-1"))
-                .andExpect(jsonPath("$.data.total").value(1));
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.truncated").value(false))
+                .andExpect(jsonPath("$.data.failedQueueCount").value(0));
 
         verify(dlqService).listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20));
+    }
+
+    @Test
+    void listDLQMessagesShouldExposeTheScanBoundaryTest() throws Exception {
+        when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
+                .thenReturn(DLQMessagePageVO.of(PageResult.of(List.of(), 5_000, 1, 20), true, 2));
+
+        mockMvc.perform(get("/api/dlq/test-group/messages")
+                        .param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.truncated").value(true))
+                .andExpect(jsonPath("$.data.failedQueueCount").value(2));
     }
 
     @Test
