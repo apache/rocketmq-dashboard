@@ -226,6 +226,35 @@ class AiConversationServiceTest {
         assertThat(AiConversationService.capTitle("y".repeat(600))).hasSize(512);
     }
 
+    @Test
+    void deriveTitleShouldCutOnCodePointBoundariesTest() {
+        // The emoji below is one supplementary character carried as two UTF-16 units. At the
+        // budget the old UTF-16 cut kept only its high surrogate, corrupting the stored title; it
+        // must now stay whole or drop whole.
+        String emoji = String.valueOf(Character.toChars(0x1F600));
+        assertThat(AiConversationService.deriveTitle("x".repeat(39) + emoji))
+                .isEqualTo("x".repeat(39) + emoji);
+        assertThat(AiConversationService.deriveTitle("x".repeat(40) + emoji))
+                .isEqualTo("x".repeat(40));
+        assertThat(AiConversationService.deriveTitle("x".repeat(39) + emoji + "tail"))
+                .isEqualTo("x".repeat(39) + emoji);
+    }
+
+    @Test
+    void capTitleShouldCutOnCodePointBoundariesTest() {
+        String emoji = String.valueOf(Character.toChars(0x1F600));
+        // 512 code points of emoji-bearing text; the old 512-UTF-16-unit cut split the last emoji.
+        String mixed = ("y".repeat(15) + emoji).repeat(32);
+        assertThat(AiConversationService.capTitle(mixed + emoji + "z".repeat(600)))
+                .isEqualTo(mixed);
+        // 511 ASCII characters plus one emoji is exactly the 512-code-point budget; appending one
+        // more emoji must drop it whole instead of leaving half a surrogate pair behind.
+        assertThat(AiConversationService.capTitle("y".repeat(511) + emoji + emoji))
+                .isEqualTo("y".repeat(511) + emoji);
+        assertThat(AiConversationService.capTitle(null)).isNull();
+        assertThat(AiConversationService.capTitle("short")).isEqualTo("short");
+    }
+
     // --- timeline --------------------------------------------------------------
 
     @Test
