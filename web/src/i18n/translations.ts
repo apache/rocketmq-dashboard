@@ -826,6 +826,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.consumerGroupPlaceholder': { zh: '目标消费者组', en: 'Target consumer group' },
   'messagePage.clientIdPlaceholder': { zh: '在线客户端 ID', en: 'Online client ID' },
 
+  // ─── Instance selector (shared) ───
+  'instanceSelect.placeholder': { zh: '选择实例', en: 'Select an instance' },
+  'instanceSelect.notFound': { zh: '暂无匹配实例', en: 'No matching instances' },
+
   // ─── Message Query History ───
   'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
   'messageHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
@@ -1704,7 +1708,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
