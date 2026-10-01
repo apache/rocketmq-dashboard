@@ -117,38 +117,39 @@
 | 73 | POST | `/api/settings/datasources/update` | 更新数据源 |
 | 74 | POST | `/api/settings/datasources/delete` | 删除数据源 |
 | 75 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 76 | POST | `/api/ai/conversations` | 创建 AI 会话 |
-| 77 | GET | `/api/ai/conversations` | AI 会话列表（分页） |
-| 78 | GET | `/api/ai/conversations/:id` | AI 会话详情 |
-| 79 | PATCH | `/api/ai/conversations/:id` | 重命名 / 归档 AI 会话 |
-| 80 | DELETE | `/api/ai/conversations/:id` | 删除 AI 会话 |
-| 81 | GET | `/api/ai/conversations/:id/events` | AI 会话时间线（游标分页） |
-| 82 | POST | `/api/ai/conversations/:id/messages` | 发送消息并流式返回（SSE） |
-| 83 | GET | `/api/ai/runs/:runId/stream` | 重连进行中的 AI 任务（SSE） |
-| 84 | POST | `/api/ai/runs/:runId/stop` | 停止 AI 任务 |
-| 85 | GET | `/api/ai/agent-capabilities` | Agent 运行时能力探测 |
-| 86 | GET | `/api/ai/conversations/:id/rmqctl-config` | 外部 Agent 的 rmqctl MCP 配置片段 |
-| 87 | GET | `/api/ai/tools` | 可用工具列表 |
-| 88 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 89 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 90 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 91 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 92 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 93 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 94 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 95 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 98 | GET | `/api/topics/page` | Topic 分页列表 |
-| 99 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
-| 100 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
-| 101 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
-| 102 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
-| 103 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
-| 104 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
-| 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
-| 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
-| 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 76 | POST | `/api/settings/general/test-notification` | 测试通知渠道 |
+| 77 | POST | `/api/ai/conversations` | 创建 AI 会话 |
+| 78 | GET | `/api/ai/conversations` | AI 会话列表（分页） |
+| 79 | GET | `/api/ai/conversations/:id` | AI 会话详情 |
+| 80 | PATCH | `/api/ai/conversations/:id` | 重命名 / 归档 AI 会话 |
+| 81 | DELETE | `/api/ai/conversations/:id` | 删除 AI 会话 |
+| 82 | GET | `/api/ai/conversations/:id/events` | AI 会话时间线（游标分页） |
+| 83 | POST | `/api/ai/conversations/:id/messages` | 发送消息并流式返回（SSE） |
+| 84 | GET | `/api/ai/runs/:runId/stream` | 重连进行中的 AI 任务（SSE） |
+| 85 | POST | `/api/ai/runs/:runId/stop` | 停止 AI 任务 |
+| 86 | GET | `/api/ai/agent-capabilities` | Agent 运行时能力探测 |
+| 87 | GET | `/api/ai/conversations/:id/rmqctl-config` | 外部 Agent 的 rmqctl MCP 配置片段 |
+| 88 | GET | `/api/ai/tools` | 可用工具列表 |
+| 89 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 90 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 91 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 92 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 93 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 94 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 95 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 96 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 97 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 98 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 99 | GET | `/api/topics/page` | Topic 分页列表 |
+| 100 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
+| 101 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
+| 102 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
+| 103 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
+| 104 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
+| 105 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
+| 106 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
+| 107 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
+| 108 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
 
 ## 通用响应格式
 
