@@ -300,4 +300,19 @@ describe('Composer', () => {
     expect(props.onOpenPromptTemplates).toHaveBeenCalledTimes(1);
     expect(props.onEnhanceChange).toHaveBeenCalledWith(true);
   });
+
+  // The 14px minimum is a project-wide review rule; the context-usage percent label regressed to
+  // 13px once (#4941). The bar only renders once usage reaches 1% of the window, so the fixture
+  // pushes the conversation past that threshold to make the label inspectable.
+  it('rendersTheContextPercentLabelAtThe14pxMinimumTest', () => {
+    const { container } = renderComposer({ contextTokens: 64000 });
+
+    expect(screen.getByTestId('ai-context-bar')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+
+    const tooSmall = Array.from(container.querySelectorAll<HTMLElement>('[style]')).filter(
+      (element) => element.style.fontSize === '13px',
+    );
+    expect(tooSmall).toHaveLength(0);
+  });
 });
