@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.CliBinaryProbe;
 import org.springframework.util.StringUtils;
 
@@ -194,8 +195,9 @@ public abstract class CliAgentProvider implements AgentProvider {
         if (value == null) {
             return "";
         }
-        String trimmed = value.trim();
-        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500) + "...";
+        // The prompt is raw user text and the CLI is free to quote it back on failure, so the
+        // failure text this bounds can carry an emoji: cut on a code point boundary, not on a char.
+        return TextBounds.truncate(value.trim(), 500, "...");
     }
 
     private static final class OutputLimitException extends IOException {

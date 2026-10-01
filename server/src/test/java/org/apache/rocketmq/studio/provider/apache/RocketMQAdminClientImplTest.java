@@ -64,6 +64,7 @@ import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -1124,6 +1125,69 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).selectOne(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PARTITON_ORDER", "PARTITION_ORDER", "MESSAGES_ORDER", "FIFO", "Orderly"})
+    void createConsumerGroupPropagatesAnOrderedDeliveryOrderTypeToTheBrokerTest(String deliveryOrderType) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setCluster("cluster-1");
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        when(runtimeAdminClientResolver.execute(eq("open-source-local"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-ordered");
+        group.setInstanceId("open-source-local");
+        group.setDeliveryOrderType(deliveryOrderType);
+
+        adminClient.createConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> config = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), config.capture());
+        assertThat(config.getValue().isConsumeMessageOrderly()).isTrue();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"Concurrently", "concurrently", "   "})
+    void createConsumerGroupKeepsAnUnorderedDeliveryOrderTypeConcurrentTest(String deliveryOrderType) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setCluster("cluster-1");
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        when(runtimeAdminClientResolver.execute(eq("open-source-local"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-concurrent");
+        group.setInstanceId("open-source-local");
+        group.setDeliveryOrderType(deliveryOrderType);
+
+        adminClient.createConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> config = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), config.capture());
+        assertThat(config.getValue().isConsumeMessageOrderly()).isFalse();
     }
 
     @ParameterizedTest

@@ -25,9 +25,12 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Long-lived pool of {@link DefaultMQPullConsumer} and {@link DefaultMQProducer} clients, keyed by
@@ -35,7 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * rules of {@link MqAdminExtFactory}: clients are created lazily, reused across requests, and shut
  * down only on application shutdown or explicit endpoint release. Per-request client creation is
  * forbidden because each {@code start()} registers with NameServer/brokers and tears down
- * connections and threads again on {@code shutdown()}.
+ * connections and threads again on {@code shutdown()}. Retired clients leave the cache immediately
+ * and shut down after their admitted actions finish.
  */
 @Slf4j
 @Component
@@ -50,7 +54,8 @@ public class MqClientPool {
     private record ClientKey(String namesrvAddr, String authenticationIdentity, Kind kind) {
     }
 
-    private final Map<ClientKey, Object> cache = new ConcurrentHashMap<>();
+    private final Map<ClientKey, ClientLease<Object>> cache = new ConcurrentHashMap<>();
+    private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock(true);
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -79,15 +84,39 @@ public class MqClientPool {
         if (closed) {
             throw new BusinessException(503, "RocketMQ client pool is shutting down");
         }
-        @SuppressWarnings("unchecked")
-        C client = (C) cache.computeIfAbsent(cacheKey, key -> {
-            // Re-check under the cache lock so a request that passed the initial closed check
-            // cannot create a fresh connection while the pool is shutting down.
+        ClientLease<Object> lease;
+        while (true) {
             if (closed) {
                 throw new BusinessException(503, "RocketMQ client pool is shutting down");
             }
-            return creator.create(key.namesrvAddr(), rpcHook);
-        });
+            lease = cache.computeIfAbsent(cacheKey, key -> {
+                // Re-check before client creation; admission re-checks again after creation.
+                if (closed) {
+                    throw new BusinessException(503, "RocketMQ client pool is shutting down");
+                }
+                return new ClientLease<Object>(
+                        creator.create(key.namesrvAddr(), rpcHook), this::safeShutdown);
+            });
+            boolean acquired;
+            Lock admissionLock = lifecycleLock.readLock();
+            admissionLock.lock();
+            try {
+                if (closed) {
+                    cache.remove(cacheKey, lease);
+                    lease.retire();
+                    throw new BusinessException(503, "RocketMQ client pool is shutting down");
+                }
+                acquired = lease.acquire();
+            } finally {
+                admissionLock.unlock();
+            }
+            if (acquired) {
+                break;
+            }
+            cache.remove(cacheKey, lease);
+        }
+        @SuppressWarnings("unchecked")
+        C client = (C) lease.client();
         try {
             return action.apply(client);
         } catch (BusinessException ex) {
@@ -95,6 +124,8 @@ public class MqClientPool {
         } catch (Exception ex) {
             log.warn("RocketMQ client action failed against namesrv {}: {}", cacheKey.namesrvAddr(), ex.getMessage());
             throw new BusinessException(502, "RocketMQ client call failed: " + rootMessage(ex));
+        } finally {
+            lease.release();
         }
     }
 
@@ -108,7 +139,7 @@ public class MqClientPool {
             if (!entry.getKey().namesrvAddr().equals(normalized)) {
                 return false;
             }
-            safeShutdown(entry.getValue());
+            entry.getValue().retire();
             return true;
         });
         log.info("Released pooled RocketMQ clients for namesrv {}", normalized);
@@ -122,9 +153,9 @@ public class MqClientPool {
         }
         for (Kind kind : Kind.values()) {
             ClientKey key = new ClientKey(normalized, identity(authenticationIdentity), kind);
-            Object client = cache.remove(key);
-            if (client != null) {
-                safeShutdown(client);
+            ClientLease<Object> lease = cache.remove(key);
+            if (lease != null) {
+                lease.retire();
             }
         }
         log.info("Released pooled RocketMQ clients for namesrv {} and identity {}", normalized,
@@ -211,9 +242,17 @@ public class MqClientPool {
 
     @PreDestroy
     public void shutdown() {
-        closed = true;
-        cache.values().forEach(this::safeShutdown);
-        cache.clear();
+        List<ClientLease<Object>> leases;
+        Lock shutdownLock = lifecycleLock.writeLock();
+        shutdownLock.lock();
+        try {
+            closed = true;
+            leases = List.copyOf(cache.values());
+            cache.clear();
+        } finally {
+            shutdownLock.unlock();
+        }
+        leases.forEach(ClientLease::retire);
         log.info("Shut down all pooled RocketMQ clients");
     }
 }

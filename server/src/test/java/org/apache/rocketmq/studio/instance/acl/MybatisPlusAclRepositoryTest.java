@@ -256,6 +256,48 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void saveUserShouldReportADuplicateUsernameAsAConflict() {
+        when(userMapper.insert(any(RmqAclUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("uk_username"));
+
+        AclUserVO user = AclUserVO.builder()
+                .username("svc-a")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .build();
+
+        // `rmq_acl_user` carries `uk_username`: a second user with the same name is the operator's
+        // mistake, and the console has to read it as one (409) rather than as a server failure.
+        assertThatThrownBy(() -> repository.saveUser(user))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user already exists: svc-a")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+    }
+
+    @Test
+    void replaceUserShouldReportARenameOntoAnExistingUsernameAsAConflict() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId(1L);
+        existing.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById(1L)).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("uk_username"));
+
+        AclUserVO replacement = AclUserVO.builder()
+                .id(1L)
+                .username("taken")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .build();
+
+        // The edit form renames a user, so the same unique key is reachable from the update path.
+        assertThatThrownBy(() -> repository.replaceUser(replacement))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user already exists: taken")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+    }
+
+    @Test
     void replaceRuleShouldExplicitlyClearActionsWhenListIsEmpty() {
         RmqAclRule existing = new RmqAclRule();
         existing.setId(1L);

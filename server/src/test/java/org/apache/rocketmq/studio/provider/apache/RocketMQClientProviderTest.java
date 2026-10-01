@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -113,6 +115,30 @@ class RocketMQClientProviderTest {
         assertThat(connections).hasSize(1);
         assertThat(connections.get(0).getVersion())
                 .isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(500));
+    }
+
+    @Test
+    void connectionScanShouldReportEveryStudioClientLanguageTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        List<LanguageCode> languageCodes = List.of(
+                LanguageCode.JAVA, LanguageCode.GO, LanguageCode.PYTHON, LanguageCode.RUST,
+                LanguageCode.CPP, LanguageCode.DOTNET, LanguageCode.PHP, LanguageCode.NODE_JS);
+        List<ProducerInfo> producers = IntStream.range(0, languageCodes.size())
+                .mapToObj(index -> new ProducerInfo("client-" + index, "10.0.0.2" + index + ":49152",
+                        languageCodes.get(index), 500, 1000L))
+                .toList();
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-language", producers);
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(new ProducerTableInfo(data));
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).hasSize(languageCodes.size());
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getLanguage)
+                .containsExactlyInAnyOrder(ClientLanguage.values());
     }
 
     @Test
