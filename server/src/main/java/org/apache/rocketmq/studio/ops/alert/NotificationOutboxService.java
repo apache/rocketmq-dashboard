@@ -70,6 +70,12 @@ public class NotificationOutboxService {
     private static final int MAX_HEARTBEAT_THREADS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /** The test message must name the channel it exercises, not always DingTalk. */
+    private static final Map<String, String> TEST_MESSAGE_DESCRIPTIONS = Map.of(
+            "dingtalk", "DingTalk notification configuration is working.",
+            "email", "Email notification configuration is working.",
+            "sms", "SMS notification configuration is working.");
+
     private final RmqAlertNotificationOutboxMapper mapper;
     private final SettingsRepository settingsRepository;
     private final AlertSilenceService silenceService;
@@ -157,8 +163,8 @@ public class NotificationOutboxService {
         }
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.info)
-                .title("RocketMQ Studio test notification").description("DingTalk notification configuration is working.")
-                .build();
+                .title("RocketMQ Studio test notification")
+                .description(TEST_MESSAGE_DESCRIPTIONS.get(channel)).build();
         try {
             String content = AlertNotificationTemplate.render(null, alert, null);
             if ("email".equals(channel)) sendEmail(settings, alert, content);
