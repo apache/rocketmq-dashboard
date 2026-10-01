@@ -31,6 +31,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
  */
 @RequiredArgsConstructor
 @Repository
+@Slf4j
 public class MybatisPlusAlertRepository implements AlertRepository {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -320,7 +322,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         vo.setNotificationSuppressed(Boolean.TRUE.equals(entity.getNotificationSuppressed()));
         vo.setSuppressionCauseAlertId(entity.getSuppressionCauseAlertId());
         vo.setSuppressionReason(entity.getSuppressionReason());
-        vo.setLabels(readLabels(entity.getLabelsJson()));
+        vo.setLabels(readLabels(entity.getId(), entity.getLabelsJson()));
         return vo;
     }
 
@@ -399,7 +401,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         }
     }
 
-    private static Map<String, String> readLabels(String labelsJson) {
+    private static Map<String, String> readLabels(Long alertId, String labelsJson) {
         if (!StringUtils.hasText(labelsJson)) {
             return Map.of();
         }
@@ -409,6 +411,10 @@ public class MybatisPlusAlertRepository implements AlertRepository {
             // An unreadable labels column must not cost the caller the whole query:
             // one corrupt row would otherwise 500 every system-alert page read and
             // abort each business-rule evaluation that inspects cluster incidents.
+            // The warn keeps the row identifiable — degraded labels are otherwise
+            // indistinguishable from a row that legitimately has none.
+            log.warn("Degrading unreadable labels of system alert {} to empty labels: {}",
+                    alertId, error.toString());
             return Map.of();
         }
     }

@@ -149,7 +149,7 @@ class MybatisPlusAlertRepositoryTest {
     }
 
     @Test
-    void pageAlertsShouldTolerateACorruptLabelsRowInsteadOfFailingTheQuery() {
+    void pageAlertsShouldTolerateACorruptLabelsRowInsteadOfFailingTheQueryTest() {
         RmqSystemAlert healthy = new RmqSystemAlert();
         healthy.setId(1L);
         healthy.setLevel("warning");
