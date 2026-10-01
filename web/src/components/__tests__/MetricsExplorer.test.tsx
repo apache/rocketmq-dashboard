@@ -23,6 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { listDataSources } from '../../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
+import type { MetricData } from '../../api/metrics';
 import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
@@ -467,7 +468,7 @@ describe('MetricsExplorer', () => {
 
   it('keeps the pending custom query when the display language changes', async () => {
     const user = userEvent.setup();
-    const customQuery = createDeferred<typeof metricData>();
+    const customQuery = createDeferred<MetricData>();
     vi.mocked(queryMetrics).mockImplementation((query) =>
       query.metric === 'sum(rocketmq_topic_number)'
         ? customQuery.promise
