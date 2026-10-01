@@ -39,4 +39,13 @@ public final class Pagination {
         }
         return (safePage - 1) * size;
     }
+
+    /**
+     * Whether a short provider page contradicts its known total. Counts are provider rows
+     * before local filtering. Unknown totals retain the caller's short-page fallback.
+     */
+    public static boolean isIncompletePage(long offset, int returned, int pageSize, Long totalCount) {
+        return totalCount != null && totalCount >= 0 && offset < totalCount
+                && returned < pageSize && returned < totalCount - offset;
+    }
 }
