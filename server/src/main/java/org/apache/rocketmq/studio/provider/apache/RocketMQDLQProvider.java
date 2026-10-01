@@ -273,8 +273,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                         continue;
                     }
                     MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
-                    if (deadLetter != null) {
+                    // Offset-based broker lookup ignores the requested topic; check the returned message.
+                    if (deadLetter != null && dlqTopic.equals(deadLetter.getTopic())) {
                         resolved.add(deadLetter);
+                    } else if (deadLetter != null) {
+                        log.warn("Ignoring selected message {} from topic {} instead of {}",
+                                msgId, deadLetter.getTopic(), dlqTopic);
                     }
                 } catch (Exception e) {
                     log.warn("Failed to resolve selected dead letter {} from {}: {}",

@@ -435,6 +435,42 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendSelectedMessagesSkipsMessagesOutsideTheRequestedDlq() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String normalId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
+        String otherGroupId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12346L);
+        String validId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12347L);
+        MessageExt normalMessage = new MessageExt();
+        normalMessage.setMsgId(normalId);
+        normalMessage.setTopic("orders");
+        normalMessage.setBody(new byte[] {1});
+        MessageExt otherGroupMessage = new MessageExt();
+        otherGroupMessage.setMsgId(otherGroupId);
+        otherGroupMessage.setTopic(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-b");
+        otherGroupMessage.setBody(new byte[] {1});
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setMsgId(validId);
+        deadLetter.setBody(new byte[] {1});
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithBrokerAddresses("172.30.10.100:10911"));
+        when(adminExt.viewMessage(dlqTopic, normalId)).thenReturn(normalMessage);
+        when(adminExt.viewMessage(dlqTopic, otherGroupId)).thenReturn(otherGroupMessage);
+        when(adminExt.viewMessage(dlqTopic, validId)).thenReturn(deadLetter);
+        stubExistingTarget("target-topic");
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(normalId, otherGroupId, validId), "target-topic");
+
+        assertThat(result)
+                .extracting("matched", "resent", "failed", "outcome", "scanIncomplete")
+                .containsExactly(1, 1, 0, "PARTIAL", true);
+        verify(dlqProducer, times(1)).send(any(Message.class));
+    }
+
+    @Test
     void resendSelectedMessagesPassesNonOffsetIdsThroughToViewMessage() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         when(adminExt.viewMessage(dlqTopic, "uniq-key-1"))
