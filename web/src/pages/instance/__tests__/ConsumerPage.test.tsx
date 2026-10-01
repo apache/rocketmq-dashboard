@@ -229,9 +229,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
@@ -736,6 +736,36 @@ describe('Consumer page', () => {
     expect(cells.filter((cell) => cell === '-')).toHaveLength(2);
   });
 
+  it('renders the filter modes the API returns as localized labels', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: 'tagA',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+      {
+        topic: 'sql-topic',
+        expression: 'a > 1',
+        type: 'SQL92',
+        filterMode: 'SQL',
+        consistency: 'consistent',
+      },
+    ]);
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('Tag 过滤')).toBeInTheDocument();
+    expect(screen.getByText('SQL92 过滤')).toBeInTheDocument();
+    // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+    // (SubscriptionFilterModes), so the raw codes must not leak into the table.
+    expect(screen.queryByText('TAG')).not.toBeInTheDocument();
+    expect(screen.queryByText('SQL')).not.toBeInTheDocument();
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,
@@ -766,9 +796,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: 'tagA',
-        type: 'NORMAL',
-        filterMode: 'Tag 过滤',
-        consistency: '不一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'inconsistent',
       },
     ]);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
@@ -808,16 +838,16 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
       {
         topic: '%RETRY%remote-cg',
         expression: '*',
-        type: 'RETRY',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1232,15 +1262,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1248,15 +1278,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1284,15 +1314,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1300,15 +1330,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1386,8 +1416,8 @@ describe('Consumer page', () => {
       {
         topic: 'unknown-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
+        type: 'TAG',
+        filterMode: 'TAG',
         consistency: 'UNKNOWN',
       },
     ]);
