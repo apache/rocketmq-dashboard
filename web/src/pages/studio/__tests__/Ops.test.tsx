@@ -17,13 +17,27 @@
 
 import type { ReactElement } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import { LangProvider } from '../../../i18n/LangContext';
+import { LangProvider, useLang } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { addNameSvrAddr, deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
+import {
+  addNameSvrAddr,
+  deleteNameSvrAddr,
+  queryOpsHomePage,
+  updateIsVIPChannel,
+} from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
+
+const LanguageSwitch = () => {
+  const { setLang } = useLang();
+  return (
+    <button type="button" onClick={() => setLang('en')}>
+      switch-language
+    </button>
+  );
+};
 
 vi.mock('../../../api/ops', () => ({
   addNameSvrAddr: vi.fn(),
@@ -84,6 +98,33 @@ describe('OpsPage', () => {
     expect(screen.getAllByRole('switch')[0]).toBeChecked();
     expect(screen.getAllByRole('switch')[1]).not.toBeChecked();
   });
+
+  it('keeps the unsaved NameServer selection when the display language changes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <LanguageSwitch />
+        <OpsPage />
+      </>,
+    );
+
+    expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    await user.click(
+      await screen.findByText('127.0.0.2:9876', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+    // Let every effect triggered by the language change settle before asserting.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The selection the user made but did not save must survive the refetch.
+    expect(
+      await screen.findByText('127.0.0.2:9876', { selector: '.ant-select-selection-item' }),
+    ).toBeInTheDocument();
+  }, 20_000);
 
   it('prevents overlapping NameServer mutations', async () => {
     vi.mocked(addNameSvrAddr).mockImplementation(() => new Promise(() => {}));

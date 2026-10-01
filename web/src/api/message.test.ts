@@ -21,6 +21,7 @@ import client from './client';
 import {
   consumeMessageDirectly,
   getMessageTrace,
+  getMessageTraceByKey,
   queryMessagePage,
   queryMessages,
 } from './message';
@@ -171,6 +172,58 @@ describe('message API', () => {
     const mapped = await getMessageTrace('msg-2', 'instance-1');
     expect(mapped.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'process', 'wait']);
     expect(mapped.consumerStatus).toEqual([]);
+  });
+
+  it('maps backend trace node statuses on the key lookup too', async () => {
+    const trace = {
+      nodes: [
+        {
+          title: 'Produce',
+          timestamp: 1784246400000,
+          status: 'failed',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Consume',
+          timestamp: 1784246400000,
+          status: 'finish',
+          costTime: 1,
+          description: 'x',
+        },
+        {
+          title: 'Unknown',
+          timestamp: 1784246400000,
+          status: 'something-else',
+          costTime: 1,
+          description: 'x',
+        },
+      ],
+      consumerStatus: [],
+    };
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'order-1', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: trace });
+
+    const mapped = await getMessageTraceByKey('order-1', 'instance-1');
+    expect(mapped?.nodes.map((node) => node.status)).toEqual(['error', 'finish', 'wait']);
+  });
+
+  it('keeps the key lookup null and node-default contracts', async () => {
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'missing', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: null });
+
+    await expect(getMessageTraceByKey('missing', 'instance-1')).resolves.toBeNull();
+
+    mock
+      .onGet('/messages/trace-by-key', { params: { key: 'no-nodes', instanceId: 'instance-1' } })
+      .reply(200, { code: 200, data: { consumerStatus: [] } });
+
+    await expect(getMessageTraceByKey('no-nodes', 'instance-1')).resolves.toEqual({
+      consumerStatus: [],
+      nodes: [],
+    });
   });
 
   it('encodes message IDs before requesting trace records', async () => {

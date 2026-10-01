@@ -37,13 +37,13 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
+import { describeThrownMessage } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 
-const getErrorMessage = (error: unknown): string =>
-  error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';
+const DEFAULT_REQUEST_ERROR = '请求失败，请稍后重试';
 
 interface CreateCertFormValues {
   k8sId: string;
@@ -70,7 +70,7 @@ const K8sCertsPage = () => {
         if (active) setCerts(data);
       })
       .catch((error: unknown) => {
-        if (active) message.error(getErrorMessage(error));
+        if (active) message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -112,7 +112,7 @@ const K8sCertsPage = () => {
       setCreateModalOpen(false);
       createForm.resetFields();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error));
+      message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
     } finally {
       setCreating(false);
     }
@@ -125,7 +125,7 @@ const K8sCertsPage = () => {
       setCerts((previous) => previous.filter((item) => item.id !== cert.id));
       message.success(`证书「${cert.k8sId}」已删除`);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error));
+      message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
     } finally {
       setDeletingId(null);
     }
