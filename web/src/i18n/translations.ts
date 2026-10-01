@@ -1264,6 +1264,13 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'settings.sessionTimeoutRequired': { zh: '请输入会话超时时长', en: 'Enter a session timeout.' },
   'settings.sessionTimeoutUnit': { zh: '会话超时单位', en: 'Session timeout unit' },
+  'settings.sessionIdleTimeout': { zh: '会话空闲超时', en: 'Session idle timeout' },
+  'settings.sessionIdleTimeoutHelp': {
+    zh: '令牌连续未使用的时长超过该值后会话即失效；0 表示仅按绝对超时判定，低于 10 分钟按 10 分钟生效。',
+    en: 'A session whose token stays unused longer than this is revoked; 0 keeps only the absolute timeout, and values below 10 minutes apply as 10.',
+  },
+  'settings.sessionIdleTimeoutRequired': { zh: '请输入会话空闲超时时长', en: 'Enter a session idle timeout.' },
+  'settings.sessionIdleTimeoutUnit': { zh: '会话空闲超时单位', en: 'Session idle timeout unit' },
   'settings.minutes': { zh: '分钟', en: 'minutes' },
   'settings.saveSettings': { zh: '保存设置', en: 'Save settings' },
   'settings.loginRequiredHelp': {

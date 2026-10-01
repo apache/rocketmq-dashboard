@@ -24,6 +24,8 @@ export interface GeneralSettings {
   desktopNotify: boolean;
   notifySound: boolean;
   sessionTimeout: number;
+  /** Minutes a session token may stay unused before it is treated as expired; 0 disables the idle deadline. */
+  sessionIdleTimeout?: number;
   requireLogin: boolean;
   llmProvider: string;
   apiKeyConfigured: boolean;
