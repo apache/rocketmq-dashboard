@@ -70,10 +70,12 @@ function renderPage() {
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 describe('ProxyPage', () => {
@@ -327,5 +329,35 @@ describe('ProxyPage', () => {
     await act(async () => older.resolve(proxyHome));
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+  });
+
+  it('keeps the latest Proxy list when an older health probe fails last', async () => {
+    const olderProbe = createDeferred<Awaited<ReturnType<typeof getProxyTopology>>>();
+    const latestHome = {
+      proxyAddrList: ['127.0.0.2:8081'],
+      currentProxyAddr: '127.0.0.2:8081',
+    };
+    vi.mocked(queryProxyHomePage)
+      .mockResolvedValueOnce(proxyHome)
+      .mockResolvedValueOnce(proxyHome)
+      .mockResolvedValueOnce(latestHome);
+    vi.mocked(getProxyTopology)
+      .mockResolvedValueOnce([])
+      .mockReturnValueOnce(olderProbe.promise)
+      .mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    const refresh = screen.getByRole('button', { name: '刷新' });
+    await user.click(refresh);
+    await waitFor(() => expect(getProxyTopology).toHaveBeenCalledTimes(2));
+    await user.click(refresh);
+    expect(await screen.findByText('127.0.0.2:8081')).toBeInTheDocument();
+
+    await act(async () => olderProbe.reject(new Error('health probe unavailable')));
+    expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
+    expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+    expect(localStorage.getItem('proxyAddr')).toBe('127.0.0.2:8081');
   });
 });
