@@ -126,7 +126,7 @@ Studio 只负责**托管**一个通用 Agent CLI（Claude Code 或 Qoder，另�
 ## 技术栈
 
 - **前端** — React 18 + TypeScript + Vite + Ant Design + Tailwind CSS
-- **后端** — Java 21 + Spring Boot 4.1 + Spring AI MCP 2.0 + MyBatis-Plus + 六边形架构（ArchUnit 约束）
+- **后端** — Java 21 + Spring Boot 4.1 + Spring AI MCP 2.0 + MyBatis-Plus + 六边形架构（分层由评审把关）
 - **命令行** — Go 1.27（[`rmqctl`](rmqctl/)），既是托管 Agent 使用的 MCP 桥接，也是面向同一套工具面的独立签名客户端
 - **部署** — Docker 多阶段构建（JDK 运行阶段 + 把 `rmqctl` 编译进镜像的 Go 阶段），Nginx 反向代理，支持 Docker Compose 本地运行或 `deploy.sh` 远程部署
 
@@ -135,7 +135,7 @@ Studio 只负责**托管**一个通用 Agent CLI（Claude Code 或 Qoder，另�
 - **分支说明** — `rocketmq-studio` 是开发主干，请基于它切分支、提 PR；`master_archive` 是原 dashboard 的历史归档，不用于开发；完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - **代码风格** — 前端通过 ESLint + Prettier 统一格式，Husky pre-commit hook 自动检查
 - **Commit 格式** — 遵循 Conventional Commits（`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`）
-- **架构测试** — 后端 `mvn test` 自动运行 ArchUnit 六边形架构约束检查
+- **架构测试** — 六边形分层（domain / application / adapter）目前由评审把关；`archunit-junit5` 依赖已声明但尚未接入规则，`mvn test` 暂不运行架构检查
 - **国际化** — 新增前端文案需同时提供中英文翻译（`web/src/i18n/`）
 - **表格宽度** — 表格默认不出横向滚动条（仅窗口/容器被人为缩窄时才出现）；列宽用 `web/src/utils/table.ts` 的 `tableScrollX(columns)` 按声明列宽自动累加算出 `scroll.x`，禁止写死魔术数字；弹窗内表格列多或内容长时，按当前 Tab 动态调整弹窗 `width`（如 Group 详情弹窗：概览 800、消费进度 1080）使容器宽 ≥ 表宽；长文本列（如长 Topic 名）用列 `ellipsis: true` + `title` 悬停显示全名截断，允许显示不全、不换行
 - **操作列宽度** — 带按钮的操作列宽度必须按「按钮行实测宽度 + 单元格 padding + 右侧留白」确定，禁止凭感觉改小：`ant-flex` 是块级容器会撑满单元格，列宽不足时按钮贴表格右边缘甚至溢出产生横向滚动条；改动前先量按钮行实际宽度（浏览器 DevTools），并同步更新对应守护测试（如 `TopicPage.test.tsx` 「keeps the action column wide enough」）
