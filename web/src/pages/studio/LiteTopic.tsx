@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatUtcDateTime } from '../../utils/format';
 import {
   Table,
   Button,
@@ -69,10 +70,13 @@ const formatDuration = (ms: number | undefined | null): string => {
   return `${(ms / 3600000).toFixed(1)}h`;
 };
 
+/* LiteTopic instants (create / last-active) are epoch millis. Render them through the shared
+ * UTC-based formatter like the other timestamp surfaces: the viewer's zone, labeled, instead of
+ * Date.toLocaleString's locale-dependent, unlabeled browser-local string. */
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '-' : formatUtcDateTime(date);
 };
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
