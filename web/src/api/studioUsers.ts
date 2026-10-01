@@ -72,6 +72,9 @@ export interface StudioUserSessionDetail {
   idleSeconds?: number | null;
   expiringSoon: boolean;
   stale: boolean;
+  /** Client address the session was issued to; absent for rows created before attribution. */
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 export async function listStudioUsers(query: StudioUserQuery = {}) {
