@@ -54,6 +54,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import MessageProperties from '../../components/MessageProperties';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -1016,6 +1017,10 @@ const MessagePageContent = ({
           >
             {formatBody(selectedMsg.body)}
           </Paragraph>
+          <MessageProperties
+            properties={selectedMsg.properties}
+            propertiesTruncated={selectedMsg.propertiesTruncated}
+          />
         </>
       ),
     },

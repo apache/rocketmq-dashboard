@@ -15,17 +15,33 @@
  * limitations under the License.
  */
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
+import { formatTimeMs, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
   pullMessageAtOffset: vi.fn(),
 }));
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -86,6 +102,19 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
       </output>
       <output aria-label="loading">{String(state.loading)}</output>
       <output aria-label="pulling">{state.pulling.size > 0 ? 'true' : 'false'}</output>
+    </div>
+  );
+}
+
+function QueueBrowserResultsProbe() {
+  const state = useQueueBrowser('instance-a');
+  const firstQueue = state.queues[0];
+  return (
+    <div>
+      <button type="button" onClick={() => state.setTopic('topic-a')}>topic-a</button>
+      <button type="button" onClick={() => void state.loadQueues()}>load</button>
+      <button type="button" onClick={() => firstQueue && void state.handlePull(firstQueue)}>pull</button>
+      <QueueBrowserResults state={state} />
     </div>
   );
 }
@@ -271,5 +300,25 @@ describe('QueueBrowser request ownership', () => {
     });
 
     expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+  });
+
+  it('shows the properties of a pulled queue message', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockResolvedValue({
+      ...messageRecord('message-with-properties'),
+      properties: { traceId: 'queue-trace-123' },
+      propertiesTruncated: true,
+    });
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    const properties = await screen.findByRole('region', { name: '消息属性' });
+    expect(within(properties).getByText('queue-trace-123')).toBeInTheDocument();
+    expect(within(properties).getByText('属性过多或单值过长，服务端已截断展示')).toBeInTheDocument();
   });
 });
