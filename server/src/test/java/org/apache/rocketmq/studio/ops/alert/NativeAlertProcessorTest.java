@@ -177,6 +177,76 @@ class NativeAlertProcessorTest {
     }
 
     @Test
+    void cloudAvailabilityStatusChangesKeepOneIncidentTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(7L).domain(AlertDomain.CLUSTER)
+                .name("Cloud instance unavailable").metric("cloud.instance.availability")
+                .operator("UNAVAILABLE").enabled(true).instanceId("cloud-local")
+                .consecutiveSamples(1).build();
+        when(service.listRules(AlertDomain.CLUSTER)).thenReturn(List.of(rule));
+        Map<AlertStateKey, AlertRuleState> saved = new HashMap<>();
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.find(any(AlertStateKey.class)))
+                .thenAnswer(invocation -> Optional.ofNullable(saved.get(invocation.getArgument(0))));
+        when(states.save(any(AlertStateKey.class), any(AlertRuleState.class)))
+                .thenAnswer(invocation -> {
+                    saved.put(invocation.getArgument(0), invocation.getArgument(1));
+                    return true;
+                });
+        AlertRepository alerts = mock(AlertRepository.class);
+        NativeAlertProcessor processor = processor(service, states, alerts);
+        Instant collectedAt = Instant.parse("2026-09-29T00:00:00Z");
+
+        processor.process(List.of(cloudAvailabilitySample("STOPPED", collectedAt)));
+        processor.process(List.of(cloudAvailabilitySample("STARTING", collectedAt.plusSeconds(60))));
+
+        assertThat(saved).hasSize(1);
+        verify(alerts, times(1)).saveAlert(any(SystemAlertVO.class));
+
+        processor.process(List.of(new MetricSample("cloud.instance.availability", AlertDomain.CLUSTER,
+                "cloud-local", null, Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", "RUNNING"),
+                1D, MetricAvailability.AVAILABLE, collectedAt.plusSeconds(120))));
+
+        assertThat(saved.values()).singleElement().extracting(AlertRuleState::status)
+                .isEqualTo(AlertStateStatus.RESOLVED);
+        verify(alerts, times(2)).saveAlert(any(SystemAlertVO.class));
+    }
+
+    @Test
+    void cloudStatusChangeDoesNotResolveTheExistingIncidentTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(7L).domain(AlertDomain.CLUSTER)
+                .name("Cloud instance unavailable").metric("cloud.instance.availability")
+                .operator("UNAVAILABLE").enabled(true).instanceId("cloud-local")
+                .consecutiveSamples(1).build();
+        when(service.listRules(AlertDomain.CLUSTER)).thenReturn(List.of(rule));
+        AlertStateKey key = new AlertStateKey(7L, AlertFingerprint.of(7L, "cloud-local",
+                Map.of("cloudInstanceId", "rmq-cloud")));
+        Instant firedAt = Instant.parse("2026-09-29T00:00:00Z");
+        AlertRuleState firing = new AlertRuleState(AlertStateStatus.FIRING, 1, null,
+                firedAt, firedAt, firedAt, null);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), any()))
+                .thenReturn(List.of(new ActiveAlertState(key, firing, "cloud-local",
+                        Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", "STOPPED"))));
+
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                mock(NativeAlertEvaluationService.class), new AlertStateMachine(), states,
+                mock(AlertRepository.class), mock(NotificationOutboxService.class), suppression(), mockTxManager());
+        processor.processSuccessfulCollection(new MetricCollectionScope(AlertDomain.CLUSTER, "cloud-local",
+                java.util.Set.of("cloud.instance.availability")),
+                List.of(cloudAvailabilitySample("STARTING", firedAt.plusSeconds(60))));
+
+        verify(states, never()).save(eq(key), any(AlertRuleState.class));
+    }
+
+    private static MetricSample cloudAvailabilitySample(String status, Instant collectedAt) {
+        return new MetricSample("cloud.instance.availability", AlertDomain.CLUSTER, "cloud-local", null,
+                Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", status), null,
+                MetricAvailability.UNAVAILABLE, collectedAt);
+    }
+
+    @Test
     void loadsRulesOncePerDomainForABatchOfSamplesTest() {
         AlertService service = mock(AlertService.class);
         when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of());
