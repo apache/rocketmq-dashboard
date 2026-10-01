@@ -177,4 +177,33 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
 
         verify(authService).revokeSessionsForUser(7L);
     }
+
+    @Test
+    void updateRolePassesTheAdminFlagAndReturnsTheUser() throws Exception {
+        RmqStudioUser promoted = new RmqStudioUser();
+        promoted.setId(7L);
+        promoted.setUsername("operator");
+        promoted.setAdmin(true);
+        promoted.setEnabled(true);
+        when(authService.setUserAdmin(7L, true)).thenReturn(promoted);
+
+        mockMvc.perform(post("/api/studio-users/7/role")
+                        .contentType("application/json")
+                        .content("{\"admin\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(7))
+                .andExpect(jsonPath("$.data.admin").value(true));
+
+        verify(authService).setUserAdmin(7L, true);
+    }
+
+    @Test
+    void updateRoleRejectsAMissingAdminFlag() throws Exception {
+        mockMvc.perform(post("/api/studio-users/7/role")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(authService, org.mockito.Mockito.never()).setUserAdmin(7L, true);
+    }
 }

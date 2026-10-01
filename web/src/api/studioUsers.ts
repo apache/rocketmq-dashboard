@@ -124,6 +124,12 @@ export async function setStudioUserEnabled(userId: number, enabled: boolean) {
   return response.data.data;
 }
 
+export async function setStudioUserRole(userId: number, admin: boolean) {
+  const rolePath = `/studio-users/${userId}/role`;
+  const response = await client.post<{ data: StudioUser }>(rolePath, { admin });
+  return response.data.data;
+}
+
 export async function resetStudioUserPassword(userId: number, newPassword: string) {
   await client.post(`/studio-users/${userId}/password`, { newPassword });
 }

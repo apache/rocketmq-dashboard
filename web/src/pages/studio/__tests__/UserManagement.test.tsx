@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
@@ -27,6 +27,7 @@ import {
   listStudioUsers,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  setStudioUserRole,
   type StudioUser,
   type StudioUserSessionDetail,
 } from '../../../api/studioUsers';
@@ -46,6 +47,7 @@ vi.mock('../../../api/studioUsers', () => ({
   resetStudioUserPassword: vi.fn(),
   revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
+  setStudioUserRole: vi.fn(),
 }));
 
 vi.mock('../../../stores/authStore', () => ({
@@ -372,13 +374,16 @@ describe('UserManagementPage', () => {
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
 
     // Revocation and status updates share one in-flight guard, so the row is blocked meanwhile.
-    const toggle = screen.getByRole('switch');
+    // The row exposes two switches (role and status); the status one carries 启用/停用 copy.
+    const toggle = screen.getAllByRole('switch').find((element) =>
+      element.textContent?.includes('启用'),
+    )!;
     expect(toggle).toBeDisabled();
     fireEvent.click(toggle);
     expect(setStudioUserEnabled).not.toHaveBeenCalled();
 
     await act(async () => resolveRevoke());
-    await waitFor(() => expect(screen.getByRole('switch')).not.toBeDisabled());
+    await waitFor(() => expect(toggle).not.toBeDisabled());
     expect(setStudioUserEnabled).not.toHaveBeenCalled();
   });
 
@@ -392,13 +397,57 @@ describe('UserManagementPage', () => {
     );
     renderPage();
 
-    const toggle = await screen.findByRole('switch');
+    const toggle = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('启用'))!);
     fireEvent.click(toggle);
     fireEvent.click(toggle);
 
     expect(setStudioUserEnabled).toHaveBeenCalledTimes(1);
     expect(setStudioUserEnabled).toHaveBeenCalledWith(7, false);
     await act(async () => resolveUpdate());
+  });
+
+  it('grants the administrator role after a confirmation', async () => {
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(setStudioUserRole).mockResolvedValue({ ...studioUserPage.items[0], admin: true });
+    vi.mocked(listStudioUsers).mockResolvedValue(studioUserPage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    // The role switch carries the 管理员/普通用户 copy in the Role column.
+    const roleSwitch = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('普通用户'))!);
+    await user.click(roleSwitch);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(setStudioUserRole).toHaveBeenCalledWith(7, true));
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+  });
+
+  it('revokes the administrator role after a danger confirmation', async () => {
+    vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const adminRow = { ...studioUserPage.items[0], admin: true };
+    vi.mocked(listStudioUsers).mockResolvedValue({ ...studioUserPage, items: [adminRow] });
+    vi.mocked(setStudioUserRole).mockResolvedValue({ ...adminRow, admin: false });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    const roleSwitch = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('管理员'))!);
+    await user.click(roleSwitch);
+
+    await waitFor(() => expect(setStudioUserRole).toHaveBeenCalledWith(7, false));
   });
 
   it('renders the page in English when the stored language preference is en', async () => {

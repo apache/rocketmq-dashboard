@@ -55,6 +55,7 @@ import {
   resetStudioUserPassword,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  setStudioUserRole,
   type StudioUser,
   type StudioUserSessionDetail,
   type StudioUserSessionOverview,
@@ -293,6 +294,30 @@ const UserManagementPage = () => {
       t('userMgmt.updateStatusFailed'),
     );
 
+  const setRole = (record: StudioUser, admin: boolean) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await setStudioUserRole(record.id, admin);
+        message.success(admin ? t('userMgmt.roleGranted') : t('userMgmt.roleRevoked'));
+        await loadUsers();
+      },
+      t('userMgmt.updateRoleFailed'),
+    );
+
+  const confirmRoleChange = (record: StudioUser, admin: boolean) => {
+    Modal.confirm({
+      title: admin
+        ? t('userMgmt.grantRoleConfirmTitle', { username: record.username })
+        : t('userMgmt.revokeRoleConfirmTitle', { username: record.username }),
+      content: t('userMgmt.roleChangeConfirmBody'),
+      okText: admin ? t('userMgmt.roleAdmin') : t('userMgmt.roleUser'),
+      cancelText: t('common.cancel'),
+      okButtonProps: admin ? undefined : { danger: true },
+      onOk: () => setRole(record, admin),
+    });
+  };
+
   const updatePassword = async () => {
     if (!passwordTarget) return;
     const values = await passwordForm.validateFields();
@@ -412,8 +437,18 @@ const UserManagementPage = () => {
       title: t('userMgmt.role'),
       dataIndex: 'admin',
       width: 88,
-      render: (value: boolean) =>
-        value ? (
+      // The role is fixed at creation unless an administrator changes it here; readers keep
+      // the read-only tag so the mutation surface stays admin-only like every other action.
+      render: (value: boolean, record: StudioUser) =>
+        admin ? (
+          <Switch
+            checked={value}
+            loading={mutatingUserIds.has(record.id)}
+            checkedChildren={t('userMgmt.roleAdmin')}
+            unCheckedChildren={t('userMgmt.roleUser')}
+            onChange={(next: boolean) => confirmRoleChange(record, next)}
+          />
+        ) : value ? (
           <Tag color="blue">{t('userMgmt.roleAdmin')}</Tag>
         ) : (
           <Tag>{t('userMgmt.roleUser')}</Tag>

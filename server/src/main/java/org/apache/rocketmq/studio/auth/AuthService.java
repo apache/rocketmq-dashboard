@@ -345,6 +345,40 @@ public class AuthService {
     }
 
     /**
+     * Grants or revokes the administrator role for an existing user. Revoking from the last
+     * enabled administrator is refused with the same row-locking guard as disabling, so two
+     * concurrent revokes cannot strip every administrator at once. Any role change revokes the
+     * user's sessions: the authenticated session snapshots the admin flag, and forcing a
+     * re-login is the only way the new role takes effect immediately.
+     */
+    @Transactional
+    public RmqStudioUser setUserAdmin(Long userId, boolean admin) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        if (Boolean.valueOf(admin).equals(user.getAdmin())) {
+            return user;
+        }
+        if (!admin && Boolean.TRUE.equals(user.getAdmin())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillAdmin = enabledAdmins.stream()
+                    .anyMatch(candidate -> userId.equals(candidate.getId()));
+            if (targetStillAdmin && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot lose the role");
+            }
+        }
+        RmqStudioUser update = new RmqStudioUser();
+        update.setId(user.getId());
+        update.setAdmin(admin);
+        userMapper.updateById(update);
+        revokeUserSessions(user.getId());
+        user.setAdmin(admin);
+        return user;
+    }
+
+    /**
      * Replacing the hash and revoking the account's sessions are one logical change: a failure
      * between the two writes would leave the account on its new password while its existing
      * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements
