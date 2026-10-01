@@ -40,6 +40,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponse;
+import com.aliyun.sdk.service.rocketmq20220801.models.VerifyConsumeMessageResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -53,6 +56,8 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -114,6 +119,7 @@ class AliyunInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -161,6 +167,76 @@ class AliyunInstanceProviderTest {
         assertThatThrownBy(() -> provider.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("send denied");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldCallAliyunVerifyApiTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(true)
+                        .message("accepted")
+                        .requestId("aliyun-request-1")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyConsumeMessageRequest> captor =
+                ArgumentCaptor.forClass(VerifyConsumeMessageRequest.class);
+        verify(asyncClient).verifyConsumeMessage(captor.capture());
+        VerifyConsumeMessageRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopicName()).isEqualTo("orders");
+        assertThat(request.getMessageId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroupId()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("CR_SUCCESS");
+        assertThat(result.getRemark()).contains("accepted", "aliyun-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldPreserveAliyunBusinessFailureTest() {
+        stubInstance();
+        stubCallThrough();
+        VerifyConsumeMessageResponse response = VerifyConsumeMessageResponse.create().toBuilder()
+                .statusCode(200)
+                .body(VerifyConsumeMessageResponseBody.builder()
+                        .success(true)
+                        .data(false)
+                        .message("client offline")
+                        .requestId("aliyun-request-2")
+                        .build())
+                .build();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        assertThat(result.getConsumeResult()).isEqualTo("CR_FAILED");
+        assertThat(result.getRemark()).contains("client offline", "aliyun-request-2");
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyAliyunResponseTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.verifyConsumeMessage(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Aliyun direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
@@ -297,6 +373,38 @@ class AliyunInstanceProviderTest {
         assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
         assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+        assertThat(groups.get(0).getSubscribedTopics()).isEmpty();
+    }
+
+    @Test
+    void listConsumerGroupsShouldPreserveLiteConsumerTopicTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.List.of(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_lite")
+                                        .messageModel("LITE_SELECTIVE")
+                                        .topicName("lite-session-a")
+                                        .status("RUNNING")
+                                        .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getName()).isEqualTo("GID_lite");
+            assertThat(group.getSubscribedTopics()).containsExactly("lite-session-a");
+        });
     }
 
     @Test
@@ -540,8 +648,10 @@ class AliyunInstanceProviderTest {
         assertThat(first.getBornHost()).isEqualTo("10.0.0.1");
         assertThat(first.getProperties()).containsEntry("a", "b");
         MessageRecordVO second = records.get(1);
+        // "{}" is not Base64, so the API handed back literal text; the shared contract has no
+        // "TEXT" label and UTF-8 is the one that describes a plain string body.
         assertThat(second.getBody()).isEqualTo("{}");
-        assertThat(second.getBodyEncoding()).isEqualTo("TEXT");
+        assertThat(second.getBodyEncoding()).isEqualTo("UTF-8");
 
         List<MessageRecordVO> filtered = provider.queryMessages(STUDIO_INSTANCE_ID, "topic-a", null,
                 "tagB", null, null, null);
@@ -647,6 +757,36 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldKeepPartitionOrderedGroupsOrderlyTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        // exactly what the console form submits when the subscription data type is FIFO
+        group.setDeliveryOrderType("PARTITON_ORDER");
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        CreateConsumerGroupRequest request = captor.getValue();
+        assertThat(request.getDeliveryOrderType()).isEqualTo("Orderly");
+        // ordered groups reject DefaultRetryPolicy, so the retry policy has to travel with the type
+        assertThat(request.getConsumeRetryPolicy().getRetryPolicy()).isEqualTo("FixedRetryPolicy");
+        assertThat(request.getConsumeRetryPolicy().getFixedIntervalRetryTime()).isEqualTo(10);
+        assertThat(request.getConsumeRetryPolicy().getMaxRetryTimes()).isEqualTo(5);
+        assertThat(created.getDeliveryOrderType()).isEqualTo("Orderly");
+    }
+
+    @Test
     void resetOffsetShouldUseSpecifiedTimeTest() {
         stubInstance();
         stubCallThrough();
@@ -715,14 +855,17 @@ class AliyunInstanceProviderTest {
         assertThat(trace.getNodes()).hasSize(3);
         TraceNodeVO producer = trace.getNodes().get(0);
         assertThat(producer.getTitle()).isEqualTo("Producer");
-        assertThat(producer.getStatus()).isEqualTo("SEND_OK");
+        assertThat(producer.getStatus()).isEqualTo("finish");
         assertThat(producer.getCostTime()).isEqualTo(12L);
         assertThat(producer.getTimestamp())
                 .isEqualTo(AliyunConverters.parseTimeMillis("2023-03-22 12:17:08"));
         assertThat(trace.getNodes().get(1).getTitle()).isEqualTo("Broker store");
+        // GetTrace carries no status for broker operations; the node must still stay inside the
+        // wait / process / finish / error vocabulary instead of reporting null.
+        assertThat(trace.getNodes().get(1).getStatus()).isEqualTo("wait");
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
-        assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+        assertThat(consumer.getStatus()).isEqualTo("finish");
         assertThat(trace.getConsumerStatus()).singleElement().satisfies(status -> {
             assertThat(status.getGroup()).isEqualTo("GID_test");
             assertThat(status.getDeliveryStatus().name()).isEqualTo("success");
@@ -854,6 +997,16 @@ class AliyunInstanceProviderTest {
             Function<AsyncClient, CompletableFuture<Object>> action = invocation.getArgument(2);
             return action.apply(asyncClient).join();
         });
+    }
+
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
     }
 
     private static ListTopicsResponse topicsResponse(ListTopicsResponseBody.List... rows) {
@@ -1036,6 +1189,27 @@ class AliyunInstanceProviderTest {
                 AliyunInstanceProvider.normalizeDeliveryOrderType(null));
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"));
+    }
+
+    /**
+     * The consumer group form never submits FIFO/ORDERLY. It submits the RocketMQ order-type
+     * spellings - PARTITON_ORDER for partition ordered and MESSAGES_ORDER for globally ordered -
+     * and the CSV importer additionally accepts PARTITION_ORDER. An unrecognised spelling used to
+     * fall through to Concurrently, so an ordered group created on an Aliyun instance came back
+     * concurrent with no error anywhere.
+     */
+    @Test
+    void normalizeDeliveryOrderTypeShouldMapConsoleOrderTypesToOrderlyTest() {
+        for (String value : List.of("PARTITON_ORDER", "MESSAGES_ORDER", "PARTITION_ORDER",
+                "partiton_order", " PARTITON_ORDER ")) {
+            assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType(value))
+                    .as("value " + value)
+                    .isEqualTo("Orderly");
+        }
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"))
+                .isEqualTo("Concurrently");
+        assertThat(AliyunInstanceProvider.normalizeDeliveryOrderType("   "))
+                .isEqualTo("Concurrently");
     }
 
     @Test

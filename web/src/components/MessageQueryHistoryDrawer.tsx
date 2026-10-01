@@ -41,6 +41,10 @@ const MessageQueryHistoryDrawer = ({
   const { t } = useLang();
   const [tab, setTab] = useState<'messages' | 'traces'>('messages');
   const [search, setSearch] = useState('');
+  // Draft value for the controlled search input. The drawer unmounts its content when
+  // closed (destroyOnHidden), so an uncontrolled input would come back empty while the
+  // applied search state keeps filtering the tables; the draft stays in sync instead.
+  const [searchDraft, setSearchDraft] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,6 +102,17 @@ const MessageQueryHistoryDrawer = ({
       requestId.current += 1;
     };
   }, [load]);
+
+  // The drawer content is destroyed while closed; restore the visible search draft from
+  // the applied filter when the drawer opens so the input matches the filtered tables.
+  // Render-time adjustment (same pattern as the alerts domain switch), not an effect.
+  const [renderedOpen, setRenderedOpen] = useState(open);
+  if (open !== renderedOpen) {
+    setRenderedOpen(open);
+    if (open) {
+      setSearchDraft(search);
+    }
+  }
 
   const messageColumns: ColumnsType<MessageQueryHistory> = [
     {
@@ -159,9 +174,12 @@ const MessageQueryHistoryDrawer = ({
       <Input.Search
         allowClear
         placeholder={t('messageHistory.searchPlaceholder')}
+        value={searchDraft}
+        onChange={(event) => setSearchDraft(event.target.value)}
         onSearch={(value) => {
           setPage(1);
           setSearch(value.trim());
+          setSearchDraft(value.trim());
         }}
         style={{ marginBottom: 12, width: 420 }}
       />
