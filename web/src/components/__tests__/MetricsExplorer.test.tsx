@@ -23,7 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { listDataSources } from '../../api/settings';
 import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
-import { LangProvider } from '../../i18n/LangContext';
+import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
@@ -186,6 +186,15 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const LanguageSwitch = () => {
+  const { setLang } = useLang();
+  return (
+    <button type="button" onClick={() => setLang('en')}>
+      switch-language
+    </button>
+  );
+};
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -447,6 +456,76 @@ describe('MetricsExplorer', () => {
       </App>,
     );
 
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(2),
+    );
+  });
+
+  it('keeps the pending custom query when the display language changes', async () => {
+    const user = userEvent.setup();
+    const customQuery = createDeferred<typeof metricData>();
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      query.metric === 'sum(rocketmq_topic_number)'
+        ? customQuery.promise
+        : Promise.resolve(metricData),
+    );
+
+    render(
+      <App>
+        <LangProvider>
+          <LanguageSwitch />
+          <MetricsExplorer />
+        </LangProvider>
+      </App>,
+    );
+    await screen.findByText('42 messages/s');
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(1),
+    );
+
+    // The display language is not part of the query context: switching it must neither
+    // refetch the profile panels nor abandon the custom query that is still running.
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    expect(listMetricProfiles).toHaveBeenCalledTimes(1);
+    expect(
+      vi
+        .mocked(queryMetrics)
+        .mock.calls.filter(
+          (call) =>
+            call[0].metric === 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+        ),
+    ).toHaveLength(1);
+
+    customQuery.resolve({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    });
+
+    // Before the fix the language change discarded this result and nothing restarted the
+    // custom flow, so the panel stayed on its spinner until the page was reloaded.
+    expect(await screen.findByText('cluster=prod / query=custom')).toBeInTheDocument();
+
+    // antd suppresses clicks while a Button is loading, so a second submission proves the
+    // custom panel released the stuck loading state.
+    await user.click(screen.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
       expect(
         vi
