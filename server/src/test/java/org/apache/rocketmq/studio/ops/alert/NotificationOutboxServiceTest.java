@@ -48,6 +48,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.ExpectedCount.once;
@@ -488,12 +489,16 @@ class NotificationOutboxServiceTest {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         NotificationDeliveryPageVO delivery = NotificationDeliveryPageVO.builder().id(8L).alertId(9L)
                 .channel("dingtalk").status(NotificationOutboxStatus.DELIVERED).attemptCount(0).build();
-        when(mapper.countPage("dingtalk", "DELIVERED", "Local")).thenReturn(1L);
-        when(mapper.findPage("dingtalk", "DELIVERED", "Local", 20, 0)).thenReturn(List.of(delivery));
+        LocalDateTime from = LocalDateTime.of(2026, 9, 1, 14, 0);
+        LocalDateTime to = from.plusHours(1);
+        when(mapper.countPage("dingtalk", "DELIVERED", "Local", "webhook", from, to)).thenReturn(1L);
+        when(mapper.findPage("dingtalk", "DELIVERED", "Local", "webhook", from, to, 20, 0))
+                .thenReturn(List.of(delivery));
 
         PageResult<NotificationDeliveryPageVO> result = new NotificationOutboxService(mapper,
                 mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
-                mock(OperationAuditService.class)).listDeliveries(" DingTalk ", "delivered", "Local", 1, 20);
+                mock(OperationAuditService.class)).listDeliveries(" DingTalk ", "delivered", "Local",
+                "  webhook  ", from, to, 1, 20);
 
         assertThat(result.getTotal()).isEqualTo(1);
         assertThat(result.getItems()).containsExactly(delivery);
@@ -505,16 +510,30 @@ class NotificationOutboxServiceTest {
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
-            when(mapper.countPage("dingtalk", "PENDING", "Local")).thenReturn(0L);
+            when(mapper.countPage("dingtalk", "PENDING", "Local", null, null, null)).thenReturn(0L);
 
             new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
                     mock(AlertRepository.class), mock(OperationAuditService.class))
-                    .listDeliveries(" DINGTALK ", "pending", "Local", 1, 20);
+                    .listDeliveries(" DINGTALK ", "pending", "Local", null, null, null, 1, 20);
 
-            verify(mapper).countPage("dingtalk", "PENDING", "Local");
+            verify(mapper).countPage("dingtalk", "PENDING", "Local", null, null, null);
         } finally {
             Locale.setDefault(previous);
         }
+    }
+
+    @Test
+    void rejectsInvertedDeliveryTimeRangeBeforeQueryingTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        LocalDateTime from = LocalDateTime.of(2026, 9, 1, 15, 0);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).listDeliveries(null, null, null, null,
+                from, from.minusHours(1), 1, 20))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Delivery start time must not be after end time");
+        verifyNoInteractions(mapper);
     }
 
     @Test
@@ -570,6 +589,23 @@ class NotificationOutboxServiceTest {
 
         assertThat(result.getSucceededIds()).containsExactly(8L);
         assertThat(result.getFailures()).containsKey(9L);
+    }
+
+    @Test
+    void bulkRetryRejectsNullIdsBeforeRetryingAnyDeliveryTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        NotificationOutboxService service = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        service.retryFailedDeliveries(Arrays.asList(8L, null)))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Notification delivery IDs must not contain null")
+                .satisfies(error -> assertThat(
+                        ((org.apache.rocketmq.studio.common.exception.BusinessException) error).getCode())
+                        .isEqualTo(400));
+        org.mockito.Mockito.verifyNoInteractions(mapper);
     }
 
     @Test
@@ -841,5 +877,28 @@ class NotificationOutboxServiceTest {
         verify(mapper).update(any(), any());
         verify(audit, never()).record(any(), any(), any(), any(), any(), any(), any());
         verify(heartbeatFuture).cancel(false);
+    }
+
+    @Test
+    void messageNamesTheChannelItExercisesTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        RestTemplate client = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .smsWebhook("https://example.com/sms").build());
+        server.expect(once(), requestTo("https://example.com/sms"))
+                .andExpect(method(org.springframework.http.HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers
+                        .containsString("SMS notification configuration is working.")))
+                .andExpect(content().string(org.hamcrest.Matchers
+                        .not(org.hamcrest.Matchers.containsString("DingTalk"))))
+                .andRespond(withSuccess("{\"code\":200}", MediaType.APPLICATION_JSON));
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class),
+                mock(AlertRepository.class), mock(OperationAuditService.class),
+                client).sendTestMessage("sms");
+
+        server.verify();
     }
 }

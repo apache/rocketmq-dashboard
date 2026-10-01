@@ -1639,11 +1639,28 @@ class InstanceServiceTest {
         assertThat(result.getFailedCount()).isEqualTo(1);
         assertThat(result.isFailureDetailsTruncated()).isFalse();
         assertThat(result.getFailed()).containsExactly("cn-broken: regional outage");
+        verify(catalog).listCloudInstances(1L, "cn-broken", null);
         verify(catalog).listCloudInstances(1L, "cn-working", null);
         verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
         verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
                 argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
-                eq("SUCCESS"), eq(null));
+                eq("PARTIAL"), eq(null));
+    }
+
+    @Test
+    void importCloudInstancesShouldAuditAFullyFailedImportAsFailedTest() {
+        CloudCatalogProvider catalog = prepareAliyunCatalog();
+        when(catalog.listRegions(1L)).thenThrow(new BusinessException(502, "invalid credential"));
+
+        CloudImportResultVO result = instanceService.importCloudInstances(InstanceVendor.ALIYUN, 1L);
+
+        assertThat(result.getImported()).isZero();
+        assertThat(result.getFailedCount()).isEqualTo(1);
+        assertThat(result.getFailed()).containsExactly("regions: invalid credential");
+
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+                argThat(detail -> detail.contains("imported=0") && detail.contains("failed=1")),
+                eq("FAILED"), eq(null));
     }
 
     @Test

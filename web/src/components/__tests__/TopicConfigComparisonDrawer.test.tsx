@@ -216,6 +216,23 @@ describe('TopicConfigComparisonDrawer', () => {
     expect(screen.queryByText('配置一致')).not.toBeInTheDocument();
   });
 
+  it('clears a previous comparison when refreshing the same pair fails', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    const compareButton = screen.getByRole('button', { name: '开始对比' });
+
+    await user.click(compareButton);
+    expect(await screen.findByText('matching-topic')).toBeInTheDocument();
+
+    topicServiceMocks.listAllTopics.mockRejectedValue(new Error('offline'));
+    await user.click(compareButton);
+    await waitFor(() => expect(topicServiceMocks.listAllTopics).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(compareButton).not.toHaveClass('ant-btn-loading'));
+
+    expect(screen.queryByText('matching-topic')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /导出结果/ })).not.toBeInTheDocument();
+  });
+
   it('discards a comparison that resolves after the instance pair changed', async () => {
     const archiveInstance: Instance = { ...instances[1], id: 3, name: 'archive' };
     const pending = new Map<string, (value: Topic[]) => void>();
