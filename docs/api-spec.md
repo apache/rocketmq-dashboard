@@ -941,12 +941,13 @@ POST /api/topics/create
 |------|------|------|------|
 | `name` | `string` | 是 | Topic 名称 |
 | `namespace` | `string` | 否 | 命名空间 |
-| `type` | `string` | 是 | 类型 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `writeQueues` | `number` | 是 | 写队列数 |
-| `readQueues` | `number` | 是 | 读队列数 |
+| `type` | `string` | 否 | 类型 |
+| `clusterId` | `string` | 否 | 所属集群 |
+| `writeQueues` | `number` | 否 | 写队列数（≥0） |
+| `readQueues` | `number` | 否 | 读队列数（≥0） |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 
 **Response `data`:** `Topic`
 
@@ -962,12 +963,13 @@ POST /api/topics/update
 |------|------|------|------|
 | `name` | `string` | 是 | Topic 名称（不可修改） |
 | `namespace` | `string` | 否 | 命名空间 |
-| `type` | `string` | 是 | 类型 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `writeQueues` | `number` | 是 | 写队列数 |
-| `readQueues` | `number` | 是 | 读队列数 |
+| `type` | `string` | 否 | 类型 |
+| `clusterId` | `string` | 否 | 所属集群 |
+| `writeQueues` | `number` | 否 | 写队列数（≥0） |
+| `readQueues` | `number` | 否 | 读队列数（≥0） |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 
 **Response `data`:** `Topic`
 
@@ -982,6 +984,7 @@ POST /api/topics/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | Topic 名称 |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 
 **Response `data`:** `null`
 
@@ -1027,11 +1030,11 @@ POST /api/topics/send
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `instanceId` | `string` | 否 | 所属实例 ID（缺失时由服务端解析） |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
-| `body` | `string` | 是 | 消息体内容 |
+| `body` | `string` | 否 | 消息体内容 |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
 | `messageGroup` | `string` | 否 | 分片键（FIFO Topic 必填） |
 | `deliveryTimestamp` | `number` | 否 | 延迟投递时间（Unix 毫秒时间戳，延迟 Topic 使用） |
@@ -1049,6 +1052,7 @@ POST /api/topics/send
 ```json
 // Request
 {
+  "instanceId": "open-source-local",
   "topic": "order-create",
   "tag": "order",
   "key": "ORDER-20260708-001",
@@ -1177,7 +1181,7 @@ POST /api/groups/create
 | `deliveryOrderType` | `string` | 否 | 顺序类型 |
 | `retryMaxTimes` | `number` | 否 | 最大重试次数（≥0） |
 | `delaySeconds` | `number` | 否 | 延迟秒数（≥0） |
-| `instanceId` | `string` | 否 | 所属实例 ID |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 
 **Response `data`:** `ConsumerGroup`
 
@@ -1192,6 +1196,7 @@ POST /api/groups/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
 
 **Response `data`:** `null`
 
@@ -1222,8 +1227,8 @@ POST /api/groups/import
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `instanceId` | `string` | 是 | 所属实例 ID |
-| `groups` | `CreateConsumerGroupDTO[]` | 是 | 要导入的消费组配置数组 |
+| `instanceId` | `string` | 是 | 所属实例 ID（全局唯一字符串） |
+| `groups` | `CreateConsumerGroupDTO[]` | 是 | 要导入的消费组配置数组（最多 100 个） |
 
 **Response `data`:**
 
