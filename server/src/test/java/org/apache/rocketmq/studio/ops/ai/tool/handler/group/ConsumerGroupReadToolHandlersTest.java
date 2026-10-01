@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -170,6 +171,39 @@ class ConsumerGroupReadToolHandlersTest {
         assertThat(output.health().status()).isEqualTo("UNKNOWN");
         assertThat(output.health().reasons()).contains("Consumer connection information is unavailable.");
         assertThat(output.onlineInstances()).isEqualTo(-1);
+    }
+
+    @Test
+    void detailMarksHealthUnknownWhenTheConsumerLagIsUnavailableTest() {
+        group.setOnlineInstances(1);
+        group.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a")).thenReturn(List.of());
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+
+        assertThat(output.health().status()).isEqualTo("UNKNOWN");
+        assertThat(output.health().reasons()).contains("Consumer lag information is unavailable.");
+        assertThat(output.totalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
+    void detailKeepsTheConnectionWarningWhenTheConsumerLagIsUnavailableTest() {
+        group.setOnlineInstances(0);
+        group.setTotalLag(ConsumerLagResolver.UNKNOWN);
+        when(metadataService.consumerGroupRuntimeView("instance-a", "group-a")).thenReturn(group);
+        when(metadataService.consumerGroupConfigurations("instance-a", "group-a")).thenReturn(List.of(group));
+        when(metadataService.getGroupSubscriptions("instance-a", "group-a")).thenReturn(List.of());
+        when(metadataService.getGroupProgress("instance-a", "group-a")).thenReturn(List.of());
+
+        GroupDetailOutput output = new GroupDetailToolHandler(metadataService)
+                .execute(new GroupDetailInput("instance-a", "group-a", null), context());
+
+        assertThat(output.health().status()).isEqualTo("WARNING");
+        assertThat(output.health().reasons()).contains("The group has no online consumer.");
     }
 
     @Test
