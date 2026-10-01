@@ -592,6 +592,23 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void bulkRetryRejectsNullIdsBeforeRetryingAnyDeliveryTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        NotificationOutboxService service = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        service.retryFailedDeliveries(Arrays.asList(8L, null)))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessage("Notification delivery IDs must not contain null")
+                .satisfies(error -> assertThat(
+                        ((org.apache.rocketmq.studio.common.exception.BusinessException) error).getCode())
+                        .isEqualTo(400));
+        org.mockito.Mockito.verifyNoInteractions(mapper);
+    }
+
+    @Test
     void renewsClaimWhileEmailDeliveryIsStillInFlightTest() throws Exception {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);
