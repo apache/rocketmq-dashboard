@@ -1611,7 +1611,7 @@ GET /api/dlq/{groupName}/messages?instanceId={instanceId}&startTime={ms}&endTime
 | `properties` | `Record<string, string>` | 用户属性。已剔除 Broker 系统属性，按 key 排序，最多 `64` 条，单值超过 `1024` 码点时截断并追加 `...` |
 | `propertiesTruncated` | `boolean` | 属性条数或单值长度是否触发了上述截断 |
 
-> **时间窗口**：`startTime` / `endTime` 必须同时提供或同时省略（`DLQService.validateTimeRange`）。省略时服务端使用 `[endTime - 1 小时, endTime]`，`endTime` 再省略则取服务端当前时间。两者都为正数且 `endTime` 必须严格大于 `startTime`，否则返回 `400`。
+> **时间窗口**：`startTime` / `endTime` 必须同时提供或同时省略（`DLQService.validateTimeRange`）。消息按存储时间在闭区间 `[startTime, endTime]` 内筛选，包括与 `endTime` 同一毫秒的所有消息。省略时服务端使用 `[endTime - 1 小时, endTime]`，`endTime` 再省略则取服务端当前时间。两者都为正数且 `endTime` 必须严格大于 `startTime`，否则返回 `400`。
 >
 > **扫描上限**：单次扫描最多读取 `5000` 条死信消息（`RocketMQDLQProvider.RESEND_HARD_CAP`），命中该上限或部分队列扫描失败时结果不完整，导出接口通过响应头告知调用方。
 >
