@@ -37,6 +37,7 @@ import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
 import {
   acknowledgeAlert,
+  acknowledgeAllAlerts,
   clearAcknowledgedAlerts,
   getCollectorStatus,
   listAlertDeliveries,
@@ -160,6 +161,7 @@ const SystemAlertsPage = () => {
   const pageSize = 20;
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
+  const [ackingAll, setAckingAll] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deliveries, setDeliveries] = useState<Record<number, NotificationDelivery[]>>({});
   const [loadingDeliveries, setLoadingDeliveries] = useState<Set<number>>(() => new Set());
@@ -269,6 +271,28 @@ const SystemAlertsPage = () => {
     } finally {
       setClearing(false);
     }
+  };
+
+  const handleAckAll = async () => {
+    Modal.confirm({
+      title: t('sysAlerts.acknowledgeAllConfirmTitle'),
+      content: t('sysAlerts.acknowledgeAllConfirmBody'),
+      okText: t('sysAlerts.acknowledgeAll'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setAckingAll(true);
+        try {
+          const result = await acknowledgeAllAlerts(currentQuery());
+          if (page === 1) setRefreshNonce((value) => value + 1);
+          else setPage(1);
+          message.success(t('sysAlerts.acknowledgeAllSuccess', { n: result }));
+        } catch {
+          message.error(t('sysAlerts.acknowledgeAllFailed'));
+        } finally {
+          setAckingAll(false);
+        }
+      },
+    });
   };
 
   const exportAlerts = async () => {
@@ -479,6 +503,14 @@ const SystemAlertsPage = () => {
               {t('sysAlerts.exportCsv')}
             </Button>
             <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
+            <Button
+              icon={<CheckCircle size={14} />}
+              onClick={handleAckAll}
+              disabled={unackCount === 0}
+              loading={ackingAll}
+            >
+              {t('sysAlerts.acknowledgeAll')}
+            </Button>
             <Button
               icon={<Trash size={14} />}
               onClick={handleClearAcked}

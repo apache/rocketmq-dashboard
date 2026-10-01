@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ import { formatUtcDateTime } from '../../../utils/format';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
+  acknowledgeAllAlerts,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
@@ -28,6 +29,7 @@ import SystemAlertsPage from '../systemAlerts';
 
 vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
+  acknowledgeAllAlerts: vi.fn(),
   clearAcknowledgedAlerts: vi.fn(),
   listSystemAlertsPage: vi.fn(),
   getCollectorStatus: vi.fn().mockResolvedValue({ collectionInterval: 'PT30S' }),
@@ -453,6 +455,53 @@ describe('SystemAlertsPage', () => {
       expect(acknowledgeButtons[0]).toHaveClass('ant-btn-loading');
       expect(acknowledgeButtons[1]).toHaveClass('ant-btn-loading');
     });
+  });
+
+  it('acknowledges the whole filtered result set after confirmation', async () => {
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(acknowledgeAllAlerts).mockResolvedValue(7);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker unavailable');
+    await user.click(screen.getByRole('button', { name: /全部确认/ }));
+
+    await waitFor(() => {
+      expect(acknowledgeAllAlerts).toHaveBeenCalledTimes(1);
+      expect(acknowledgeAllAlerts).toHaveBeenCalledWith(
+        expect.not.objectContaining({ page: expect.anything() }),
+      );
+      expect(screen.getByText('已确认 7 条告警')).toBeInTheDocument();
+    });
+    expect(confirmSpy).toHaveBeenCalled();
+  });
+
+  it('disables bulk acknowledgement when every loaded alert is acknowledged', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          level: 'error',
+          title: 'Broker unavailable',
+          description: 'broker a',
+          time: '2026-08-10 01:00',
+          acknowledged: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker unavailable');
+    expect(screen.getByRole('button', { name: /全部确认/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /全部确认/ }));
+    expect(acknowledgeAllAlerts).not.toHaveBeenCalled();
   });
 
   it('shows maintenance windows and creates a scoped silence', async () => {

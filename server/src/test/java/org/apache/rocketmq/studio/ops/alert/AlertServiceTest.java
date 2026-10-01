@@ -29,11 +29,13 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricProfileVO;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -49,6 +51,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -1372,6 +1375,55 @@ class AlertServiceTest {
         verify(alertRepository).acknowledgeAlert(result);
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void acknowledgeAlertsShouldAcknowledgeEveryMatchingAlertAndStopRemindersTest() {
+        SystemAlertVO firing = SystemAlertVO.builder().id(1L).ruleId(7L).fingerprint("fingerprint-a")
+                .time(LocalDateTime.of(2026, 8, 22, 12, 0))
+                .transition("FIRING").acknowledged(false).build();
+        SystemAlertVO resolved = SystemAlertVO.builder().id(2L).ruleId(8L).fingerprint("fingerprint-b")
+                .time(LocalDateTime.of(2026, 8, 22, 12, 5))
+                .transition("RESOLVED").acknowledged(false).build();
+        SystemAlertQuery query = new SystemAlertQuery("error", null, "local", null, null, null,
+                null, null, 1, 1, null);
+        when(alertRepository.findUnacknowledgedAlerts(query, 10_001))
+                .thenReturn(List.of(firing, resolved));
+        when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
+
+        int acknowledged = alertService.acknowledgeAlerts(query);
+
+        assertThat(acknowledged).isEqualTo(2);
+        ArgumentCaptor<SystemAlertVO> captured = ArgumentCaptor.forClass(SystemAlertVO.class);
+        verify(alertRepository, times(2)).acknowledgeAlert(captured.capture());
+        assertThat(captured.getAllValues()).allSatisfy(alert -> {
+            assertThat(alert.isAcknowledged()).isTrue();
+            assertThat(alert.getAcknowledgedBy()).isEqualTo("system");
+            assertThat(alert.getAcknowledgedAt()).isNotNull();
+        });
+        // Only the FIRING episode ACKs its active state; the RESOLVED one must not.
+        verify(alertStateRepository).acknowledge(new AlertStateKey(7L, "fingerprint-a"),
+                LocalDateTime.of(2026, 8, 22, 12, 0).toInstant(ZoneOffset.UTC));
+        verify(alertStateRepository, never()).acknowledge(eq(new AlertStateKey(8L, "fingerprint-b")), any());
+        verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERTS"), eq("SYSTEM_ALERT"), eq(null),
+                eq(null), argThat(detail -> detail.startsWith("acknowledged=2, filters=")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void acknowledgeAlertsShouldRejectResultSetsBeyondTheCapTest() {
+        SystemAlertQuery query = new SystemAlertQuery(null, null, null, null, null, null,
+                null, null, 1, 1, null);
+        List<SystemAlertVO> tooMany = new ArrayList<>();
+        for (long index = 0; index <= 10_000; index++) {
+            tooMany.add(SystemAlertVO.builder().id(index).build());
+        }
+        when(alertRepository.findUnacknowledgedAlerts(query, 10_001)).thenReturn(tooMany);
+
+        assertThatThrownBy(() -> alertService.acknowledgeAlerts(query))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Bulk acknowledge exceeds the maximum of 10000 alerts; narrow the filters");
+        verify(alertRepository, never()).acknowledgeAlert(any(SystemAlertVO.class));
     }
 
     @Test
