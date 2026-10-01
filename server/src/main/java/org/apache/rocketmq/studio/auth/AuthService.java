@@ -77,6 +77,8 @@ public class AuthService {
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
     private static final int MAX_USERNAME_LENGTH = 128;
+    private static final int MAX_CLIENT_IP_LENGTH = 64;
+    private static final int MAX_USER_AGENT_LENGTH = 255;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
     private static final String STALE_CUTOFF_PARAM = "staleCutoff";
@@ -136,10 +138,21 @@ public class AuthService {
     }
 
     public LoginVO login(LoginDTO request) {
+        return login(request, null, null);
+    }
+
+    /**
+     * Logs in and attributes the issued session to the requesting client. The address and
+     * user agent are observability metadata for the session drawer — best-effort behind
+     * reverse proxies (the first X-Forwarded-For hop) and never used for authorization.
+     */
+    public LoginVO login(LoginDTO request, String clientIp, String userAgent) {
         validateLogin(request);
         loginRateLimiter.checkAllowed(request.getUsername());
         try {
-            LoginVO login = databaseBacked() ? loginDatabaseUser(request) : loginConfiguredUser(request);
+            LoginVO login = databaseBacked()
+                    ? loginDatabaseUser(request, clientIp, userAgent)
+                    : loginConfiguredUser(request);
             loginRateLimiter.recordSuccess(request.getUsername());
             return login;
         } catch (BusinessException exception) {
@@ -280,7 +293,8 @@ public class AuthService {
         getUser(userId);
         LocalDateTime current = now();
         return sessionMapper.selectList(activeSessionQuery(current)
-                        .select("id", "user_id", "last_seen_at", "expires_at", "gmt_create")
+                        .select("id", "user_id", "last_seen_at", "expires_at", "gmt_create",
+                                "client_ip", "user_agent")
                         .eq("user_id", userId)
                         .orderByDesc("last_seen_at")
                         .orderByAsc("id"))
@@ -380,7 +394,7 @@ public class AuthService {
         }
     }
 
-    private LoginVO loginDatabaseUser(LoginDTO request) {
+    private LoginVO loginDatabaseUser(LoginDTO request, String clientIp, String userAgent) {
         ensureBootstrapUsers();
         Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
         if (found.isEmpty()) {
@@ -411,6 +425,8 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        session.setClientIp(truncate(clientIp, MAX_CLIENT_IP_LENGTH));
+        session.setUserAgent(truncate(userAgent, MAX_USER_AGENT_LENGTH));
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -553,6 +569,8 @@ public class AuthService {
                         && !expiresAt.isAfter(current.plus(SESSION_EXPIRING_SOON_WINDOW)))
                 .stale(lastSeenAt != null
                         && lastSeenAt.isBefore(current.minus(STALE_SESSION_THRESHOLD)))
+                .clientIp(session.getClientIp())
+                .userAgent(session.getUserAgent())
                 .build();
     }
 
@@ -635,6 +653,14 @@ public class AuthService {
 
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(clock.millis()), ZoneOffset.UTC);
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
     }
 
     private String newBearerToken() {

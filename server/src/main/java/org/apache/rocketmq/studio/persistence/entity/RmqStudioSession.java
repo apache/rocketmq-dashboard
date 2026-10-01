@@ -34,6 +34,12 @@ public class RmqStudioSession {
 
     private LocalDateTime lastSeenAt;
 
+    /** Client address the session was issued to; first X-Forwarded-For hop behind a proxy. */
+    private String clientIp;
+
+    /** User-Agent of the client the session was issued to, truncated to the column length. */
+    private String userAgent;
+
     private LocalDateTime gmtCreate;
 
     private LocalDateTime gmtModified;

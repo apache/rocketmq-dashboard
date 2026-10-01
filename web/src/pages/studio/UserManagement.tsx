@@ -31,6 +31,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -399,6 +400,20 @@ const UserManagementPage = () => {
       width: 160,
       ellipsis: true,
       render: dateTime,
+    },
+    {
+      title: t('userMgmt.clientOrigin'),
+      dataIndex: 'clientIp',
+      width: 160,
+      ellipsis: true,
+      render: (value: string | null | undefined, record) =>
+        value ? (
+          <Tooltip title={record.userAgent ?? value} placement="topLeft">
+            <span>{value}</span>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
     },
   ];
   // Declared widths total 1116px, which stays inside the usable content width of a normal
