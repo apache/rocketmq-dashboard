@@ -54,6 +54,19 @@ jobs:
   backend-test:
     name: Backend Tests (Java 21)
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: studio123
+          MYSQL_DATABASE: rocketmq
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     defaults:
       run:
         working-directory: server
@@ -67,6 +80,11 @@ jobs:
           distribution: dragonwell
           java-version: "21"
           cache: maven
+
+      - name: Initialize test schema
+        env:
+          MYSQL_PWD: studio123
+        run: docker exec -e MYSQL_PWD -i "${{ job.services.mysql.id }}" mysql -uroot rocketmq < src/main/resources/db/schema.sql
 
       - name: Run backend tests
         run: mvn -B -ntp test
