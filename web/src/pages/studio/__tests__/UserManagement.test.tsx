@@ -25,6 +25,7 @@ import {
   listAllStudioUsers as downloadStudioUsers,
   listStudioUserSessions,
   listStudioUsers,
+  revokeAllStudioUserSessions,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
@@ -44,6 +45,7 @@ vi.mock('../../../api/studioUsers', () => ({
   listStudioUserSessions: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
+  revokeAllStudioUserSessions: vi.fn(),
   revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
 }));
@@ -292,6 +294,27 @@ describe('UserManagementPage', () => {
 
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('revokes every other session after confirming the global action', async () => {
+    vi.mocked(revokeAllStudioUserSessions).mockResolvedValue(6);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '注销全部会话' }));
+    await screen.findByText('注销其他全部用户的活跃会话？');
+    expect(
+      screen.getByText('所有用户（你自己除外）都会被退出登录并需要重新登录。此操作用于疑似凭据泄露时的事件响应。'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.ant-popover')).toBeTruthy());
+    const popover = document.querySelector('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: /注\s*销/ }));
+
+    await waitFor(() => expect(revokeAllStudioUserSessions).toHaveBeenCalledTimes(1));
+    // The table and the overview both reload with the post-revocation state.
+    expect(listStudioUsers).toHaveBeenCalledTimes(2);
+    await screen.findByText('已注销 6 个活跃会话（不含你自己的）');
   });
 
   it('renders session timestamps as UTC values in the viewer timezone', async () => {

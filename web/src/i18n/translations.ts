@@ -2866,6 +2866,23 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
   'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.revokeAllSessions': { zh: '注销全部会话', en: 'Revoke all sessions' },
+  'userMgmt.revokeAllConfirmTitle': {
+    zh: '注销其他全部用户的活跃会话？',
+    en: 'Revoke all other active sessions?',
+  },
+  'userMgmt.revokeAllConfirmDescription': {
+    zh: '所有用户（你自己除外）都会被退出登录并需要重新登录。此操作用于疑似凭据泄露时的事件响应。',
+    en: 'Every user except you is signed out and must log in again. Use this to respond to a suspected credential leak.',
+  },
+  'userMgmt.revokedAllCount': {
+    zh: '已注销 {count} 个活跃会话（不含你自己的）',
+    en: 'Revoked {count} active sessions (your own were kept)',
+  },
+  'userMgmt.revokeAllFailed': {
+    zh: '注销全部会话失败',
+    en: 'Failed to revoke all sessions',
+  },
   'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
   'userMgmt.exportFailed': {
     zh: '导出用户列表失败，请稍后重试',
