@@ -422,14 +422,22 @@ GET /api/instances/{instanceId}/capabilities
 ### 4.1 获取集群列表
 
 ```
-GET /api/clusters
+GET /api/clusters?instanceId={instanceId}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置发现集群 |
 
 **Response `data`:** `ClusterInfo[]`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | `string` | 集群 ID |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 | `name` | `string` | 集群名称 |
 | `nsClusterName` | `string` | NameServer 集群名 |
 | `type` | `string` | 集群类型，枚举: `V5_PROXY_CLUSTER` |
@@ -491,8 +499,14 @@ GET /api/clusters
 ### 4.2 获取集群详情
 
 ```
-GET /api/clusters/:id
+GET /api/clusters/:id?instanceId={instanceId}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置读取集群 |
 
 **Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
 
@@ -506,7 +520,8 @@ POST /api/clusters/config/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 集群 ID |
+| `id` | `string` | 是 | 集群 ID（运行时集群名，非数据库主键） |
+| `instanceId` | `string` | 否 | 目标实例 ID（全局唯一字符串）；缺省时按服务端默认 NameServer 配置下发 |
 | `flushDiskType` | `string` | 否 | `ASYNC_FLUSH` / `SYNC_FLUSH` |
 | `autoCreateTopicEnable` | `boolean` | 否 | 自动创建 Topic |
 | `autoCreateSubscriptionGroup` | `boolean` | 否 | 自动创建订阅组 |
