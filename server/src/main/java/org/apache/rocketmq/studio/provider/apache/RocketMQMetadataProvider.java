@@ -77,6 +77,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Real MetadataProvider implementation.
@@ -290,6 +291,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private static final int ONLINE_ENRICHMENT_THREADS = 8;
     private static final long ONLINE_ENRICHMENT_TIMEOUT_SECONDS = 3;
 
+    private record GroupLiveSnapshot(List<ConsumerInstanceVO> instances, int onlineInstances,
+            boolean consumeStatsAvailable, long totalLag, int delaySeconds,
+            boolean consumptionTimestampAvailable) {
+        private static GroupLiveSnapshot empty() {
+            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+        }
+    }
+
     private final ExecutorService onlineEnrichmentExecutor = Executors.newFixedThreadPool(
             ONLINE_ENRICHMENT_THREADS, runnable -> {
                 Thread thread = new Thread(runnable, "group-online-enrichment");
@@ -326,52 +335,71 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return;
         }
         List<Future<?>> futures = new ArrayList<>(groups.size());
+        List<AtomicReference<GroupLiveSnapshot>> snapshots = new ArrayList<>(groups.size());
         for (ConsumerGroupVO vo : groups) {
-            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, vo)));
+            String groupName = vo.getName();
+            AtomicReference<GroupLiveSnapshot> snapshot = new AtomicReference<>(GroupLiveSnapshot.empty());
+            snapshots.add(snapshot);
+            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, groupName, snapshot)));
         }
         // One absolute deadline for the whole batch (the InstanceResourceCountRunner
         // precedent): a hanging broker must not multiply the wait by the number of
         // groups, so each future only gets the time the batch has left.
         long startedNanos = System.nanoTime();
         long timeoutNanos = TimeUnit.SECONDS.toNanos(ONLINE_ENRICHMENT_TIMEOUT_SECONDS);
-        for (Future<?> future : futures) {
-            long remainingNanos = timeoutNanos - (System.nanoTime() - startedNanos);
-            try {
-                if (remainingNanos <= 0) {
-                    throw new TimeoutException("enrichment batch deadline reached");
+        try {
+            for (Future<?> future : futures) {
+                long remainingNanos = timeoutNanos - (System.nanoTime() - startedNanos);
+                try {
+                    if (remainingNanos <= 0) {
+                        throw new TimeoutException("enrichment batch deadline reached");
+                    }
+                    future.get(remainingNanos, TimeUnit.NANOSECONDS);
+                } catch (TimeoutException e) {
+                    future.cancel(true);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (ExecutionException e) {
+                    // leave the stats at the last completed phase
                 }
-                future.get(remainingNanos, TimeUnit.NANOSECONDS);
-            } catch (TimeoutException e) {
-                future.cancel(true);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            } catch (ExecutionException e) {
-                // leave the stats at zero
+            }
+        } finally {
+            // A canceled broker call may continue, but it can only update its private snapshot.
+            for (int index = 0; index < groups.size(); index++) {
+                GroupLiveSnapshot liveStats = snapshots.get(index).get();
+                ConsumerGroupVO vo = groups.get(index);
+                vo.setInstances(liveStats.instances());
+                vo.setOnlineInstances(liveStats.onlineInstances());
+                vo.setConsumeStatsAvailable(liveStats.consumeStatsAvailable());
+                vo.setTotalLag(liveStats.totalLag());
+                vo.setDelaySeconds(liveStats.delaySeconds());
+                vo.setConsumptionTimestampAvailable(liveStats.consumptionTimestampAvailable());
             }
         }
     }
 
-    private void enrichGroupLiveStats(String instanceId, ConsumerGroupVO vo) {
+    private void enrichGroupLiveStats(String instanceId, String groupName,
+            AtomicReference<GroupLiveSnapshot> snapshot) {
         // The detail modal reuses the listed group as-is, so the online instance list has to be
         // filled here too; both fields come from the same connection set to stay consistent.
         ProxyConsumerResolver.ConsumerConnectionResolution connection =
-                resolveConsumerConnection(instanceId, vo.getName());
+                resolveConsumerConnection(instanceId, groupName);
         List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(connection.connection());
-        vo.setInstances(instances);
-        vo.setOnlineInstances(connection.available() ? instances.size() : -1);
+        int onlineInstances = connection.available() ? instances.size() : -1;
+        snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, false, 0L, 0, false));
         try {
             ConsumeStats stats;
             if (StringUtils.hasText(instanceId)) {
                 stats = runtimeAdminClientResolver.execute(instanceId,
-                        admin -> admin.examineConsumeStats(vo.getName()));
+                        admin -> admin.examineConsumeStats(groupName));
             } else {
-                stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
+                stats = adminExecute(admin -> admin.examineConsumeStats(groupName));
             }
             if (stats == null) {
                 return;
             }
-            vo.setConsumeStatsAvailable(true);
+            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true, 0L, 0, false));
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
@@ -392,12 +420,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     newestConsumedTimestamp = lastTimestamp;
                 }
             }
-            vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
+            int delaySeconds = 0;
+            boolean timestampAvailable = false;
             if (newestConsumedTimestamp > 0) {
-                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
-                vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
-                vo.setConsumptionTimestampAvailable(true);
+                long elapsedSeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                delaySeconds = (int) Math.max(elapsedSeconds, 0);
+                timestampAvailable = true;
             }
+            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true,
+                    lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag, delaySeconds, timestampAvailable));
         } catch (Exception e) {
             // No consume stats (e.g. POP-only group without an offset table): keep zeros.
         }
