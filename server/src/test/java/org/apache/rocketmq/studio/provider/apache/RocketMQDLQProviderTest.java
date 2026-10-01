@@ -412,6 +412,68 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listMessagesShouldFlagTheScanCapRatherThanPresentAWindowAsTheWholeDlqTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        long begin = 1_699_999_000_000L;
+        long end = 1_700_100_000_000L;
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        // The queue holds 5000 messages; the hard cap equals that, so the scan stops at the cap
+        // before the offset reaches the end boundary. The second probe is the exclusive end offset
+        // (searchOffset(queue, end + 1)), not `end`.
+        when(pullConsumer.searchOffset(eq(queue), anyLong()))
+                .thenAnswer(invocation -> invocation.getArgument(1, Long.class) > end ? 5_000L : 0L);
+        List<MessageExt> batch = IntStream.range(0, 32).mapToObj(index -> {
+            MessageExt deadLetter = new MessageExt();
+            deadLetter.setMsgId("dlq-cap-" + index);
+            deadLetter.setTopic("orders");
+            deadLetter.setStoreTimestamp(1_700_000_000_000L);
+            deadLetter.setBody(("payload-" + index).getBytes(StandardCharsets.UTF_8));
+            return deadLetter;
+        }).toList();
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt()))
+                .thenAnswer(invocation -> {
+                    long offset = invocation.getArgument(2, Long.class);
+                    return new PullResult(PullStatus.FOUND, offset + 32, offset, offset + 32, batch);
+                });
+
+        DLQMessagePageVO page = provider.listMessages("instance-a", "group-a", begin, end, 1, 20);
+
+        assertThat(page.getItems()).hasSize(20);
+        assertThat(page.getTotal()).isEqualTo(5_000);
+        assertThat(page.isTruncated()).isTrue();
+        assertThat(page.getFailedQueueCount()).isZero();
+    }
+
+    @Test
+    void listMessagesShouldCountTheQueuesThatCouldNotBeScannedTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue healthy = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageQueue broken = new MessageQueue(dlqTopic, "broker-a", 1);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(healthy, broken));
+        // Each queue spans one offset: the scan walks [searchOffset(begin), searchOffset(end + 1)).
+        when(pullConsumer.searchOffset(eq(healthy), anyLong())).thenReturn(0L, 1L);
+        when(pullConsumer.searchOffset(eq(broken), anyLong())).thenReturn(0L, 1L);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-msg-from-healthy-queue");
+        deadLetter.setTopic("orders");
+        deadLetter.setStoreTimestamp(1_700_000_000_000L);
+        deadLetter.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        when(pullConsumer.pull(eq(healthy), eq("*"), anyLong(), anyInt()))
+                .thenReturn(new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter)));
+        when(pullConsumer.pull(eq(broken), eq("*"), anyLong(), anyInt()))
+                .thenThrow(new IllegalStateException("queue offline"));
+
+        DLQMessagePageVO page = provider.listMessages(
+                "instance-a", "group-a", 1_699_999_000_000L, 1_700_100_000_000L, 1, 20);
+
+        assertThat(page.getItems()).hasSize(1);
+        // One unscannable queue is disclosed, not fatal: only all queues failing is a 502.
+        assertThat(page.getFailedQueueCount()).isEqualTo(1);
+        assertThat(page.isTruncated()).isFalse();
+    }
+
+    @Test
     void resendSelectedMessagesResolvesInTopologyMsgIdNormally() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         String msgId = MessageDecoder.createMessageId(new InetSocketAddress("172.30.10.100", 10911), 12345L);
