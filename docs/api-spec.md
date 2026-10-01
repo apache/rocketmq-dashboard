@@ -1053,7 +1053,7 @@ POST /api/topics/send
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
-| `body` | `string` | 是 | 消息体内容 |
+| `body` | `string` | 否 | 消息体内容 |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
 | `messageGroup` | `string` | 否 | 分片键（FIFO Topic 必填） |
 | `deliveryTimestamp` | `number` | 否 | 延迟投递时间（Unix 毫秒时间戳，延迟 Topic 使用） |
@@ -1071,6 +1071,7 @@ POST /api/topics/send
 ```json
 // Request
 {
+  "instanceId": "open-source-local",
   "topic": "order-create",
   "tag": "order",
   "key": "ORDER-20260708-001",
@@ -1193,9 +1194,9 @@ POST /api/groups/create
 | `instanceId` | `string` | 是 | 所属实例 ID，缺失返回 `400 instanceId is required` |
 | `name` | `string` | 是 | 消费组名称 |
 | `namespace` | `string` | 否 | 命名空间 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `subscriptionMode` | `string` | 是 | `Push` / `Pop` |
-| `consumeType` | `string` | 是 | `CLUSTERING` / `BROADCASTING` |
+| `clusterId` | `string` | 否 | 所属集群 |
+| `subscriptionMode` | `string` | 否 | `Push` / `Pop` |
+| `consumeType` | `string` | 否 | `CLUSTERING` / `BROADCASTING` |
 | `subscriptionDataType` | `string` | 否 | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
 | `deliveryOrderType` | `string` | 否 | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
 | `retryMaxTimes` | `number` | 否 | 最大重试次数，须 ≥ 0 |
@@ -1228,7 +1229,6 @@ POST /api/groups/reset-offset
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `instanceId` | `string` | 是 | 所属实例 ID |
 | `name` | `string` | 是 | 消费组名称 |
 | `instanceId` | `string` | 是 | 实例 ID |
 | `timestamp` | `number` | 是 | 重置到的时间（Unix 毫秒时间戳，必须为正数） |
