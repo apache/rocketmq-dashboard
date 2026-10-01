@@ -613,7 +613,13 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
             message.putUserProperty(ORIGIN_MESSAGE_ID_PROPERTY, deadLetter.getMsgId());
             message.putUserProperty(ORIGIN_TOPIC_PROPERTY, deadLetter.getTopic());
-            SendResult sendResult = producer.send(message);
+            // FIFO group metadata alone does not influence the ordinary producer's queue selection.
+            // Keep one destination queue per group, matching the grouped message-send path.
+            String messageGroup = message.getProperty(MessageConst.PROPERTY_SHARDING_KEY);
+            SendResult sendResult = StringUtils.hasText(messageGroup)
+                    ? producer.send(message, (queues, msg, group) ->
+                            queues.get(Math.floorMod(group.hashCode(), queues.size())), messageGroup)
+                    : producer.send(message);
             if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
                 log.warn("DLQ resend was not accepted: msgId={} topic={} sendStatus={}",
                         deadLetter.getMsgId(), destination,

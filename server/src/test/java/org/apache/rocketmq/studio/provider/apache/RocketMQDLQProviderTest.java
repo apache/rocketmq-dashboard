@@ -20,7 +20,9 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.impl.producer.TopicPublishInfo;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
@@ -49,6 +51,8 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -56,6 +60,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -813,6 +818,154 @@ class RocketMQDLQProviderTest {
                 .containsEntry("studio_dlq_origin_topic", dlqTopic);
         assertThat(resent.getProperties())
                 .doesNotContainEntry(MessageConst.PROPERTY_REAL_TOPIC, "system-topic-should-not-copy");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void resendMessagesKeepsEachFifoGroupOnOneQueueTest(boolean selected) throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        String destination = selected ? "orders" : "replay-orders";
+        List<String> groups = List.of("order-b", "polygenelubricants", "order-b", "polygenelubricants");
+        List<MessageExt> deadLetters = IntStream.range(0, groups.size()).mapToObj(index -> {
+            MessageExt deadLetter = new MessageExt();
+            deadLetter.setMsgId("fifo-" + index);
+            deadLetter.setTopic(dlqTopic);
+            deadLetter.setBody(new byte[] {(byte) index});
+            deadLetter.setStoreTimestamp(150L);
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_SHARDING_KEY, groups.get(index));
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+            return deadLetter;
+        }).toList();
+        List<MessageQueue> queues = List.of(new MessageQueue(destination, "broker-a", 0),
+                new MessageQueue(destination, "broker-a", 1), new MessageQueue(destination, "broker-a", 2));
+        TopicPublishInfo publishInfo = new TopicPublishInfo();
+        publishInfo.setMessageQueueList(queues);
+        List<MessageQueue> sentQueues = new ArrayList<>();
+        List<Message> sentMessages = new ArrayList<>();
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        // Exercise the SDK's ordinary round-robin choice if replay takes the ungrouped path.
+        lenient().when(dlqProducer.send(any(Message.class))).thenAnswer(call -> {
+            sentMessages.add(call.getArgument(0));
+            sentQueues.add(publishInfo.selectOneMessageQueue());
+            return success;
+        });
+        lenient().when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), any()))
+                .thenAnswer(call -> {
+                    Message message = call.getArgument(0);
+                    MessageQueueSelector selector = call.getArgument(1);
+                    Object group = call.getArgument(2);
+                    assertThat(group).isEqualTo(message.getProperty(MessageConst.PROPERTY_SHARDING_KEY));
+                    sentMessages.add(message);
+                    sentQueues.add(selector.select(queues, message, group));
+                    return success;
+                });
+        DLQResendResultVO result;
+        if (selected) {
+            for (MessageExt deadLetter : deadLetters) {
+                when(adminExt.viewMessage(dlqTopic, deadLetter.getMsgId())).thenReturn(deadLetter);
+            }
+            result = provider.resendMessages("instance-a", "group-a",
+                    deadLetters.stream().map(MessageExt::getMsgId).toList(), null);
+        } else {
+            MessageQueue sourceQueue = new MessageQueue(dlqTopic, "broker-a", 0);
+            when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(sourceQueue));
+            when(pullConsumer.searchOffset(sourceQueue, 100L)).thenReturn(0L);
+            when(pullConsumer.searchOffset(sourceQueue, 201L)).thenReturn(4L);
+            when(pullConsumer.pull(sourceQueue, "*", 0L, 32))
+                    .thenReturn(new PullResult(PullStatus.FOUND, 4L, 0L, 4L, deadLetters));
+            stubExistingTarget(destination);
+            result = provider.resendMessages("instance-a", "group-a", 100L, 200L, destination);
+        }
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(4, 4, 0, "SUCCESS");
+        assertThat(sentMessages).extracting(message -> message.getProperty(MessageConst.PROPERTY_SHARDING_KEY))
+                .containsExactlyElementsOf(groups);
+        assertThat(sentQueues).hasSize(4);
+        assertThat(sentQueues.get(0)).isEqualTo(sentQueues.get(2));
+        assertThat(sentQueues.get(1)).isEqualTo(sentQueues.get(3));
+        assertThat(sentQueues.get(0)).isNotEqualTo(sentQueues.get(1));
+        for (int index = 0; index < groups.size(); index++) {
+            assertThat(sentQueues.get(index))
+                    .isEqualTo(queues.get(Math.floorMod(groups.get(index).hashCode(), queues.size())));
+            assertThat(sentMessages.get(index).getTopic()).isEqualTo(destination);
+            assertThat(sentMessages.get(index).getBody()).containsExactly((byte) index);
+        }
+        verify(dlqProducer, never()).send(any(Message.class));
+    }
+
+    @Test
+    void resendMessagesWithoutFifoGroupKeepOrdinarySendTest() throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("plain-msg", null);
+        SendResult success = new SendResult();
+        success.setSendStatus(SendStatus.SEND_OK);
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+        when(dlqProducer.send(any(Message.class))).thenReturn(success);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        assertThat(result).extracting("resent", "failed", "outcome").containsExactly(1, 0, "SUCCESS");
+        verify(dlqProducer).send(any(Message.class));
+        verify(dlqProducer, never()).send(any(Message.class), any(MessageQueueSelector.class), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " "})
+    void resendMessagesKeepsRejectingBlankGroupPropertiesTest(String group) throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("blank-group", group);
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        // The SDK's user-property validation already rejects these values before either send path.
+        assertThat(result).extracting("resent", "failed", "outcome").containsExactly(0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason()).contains("property can not be null or blank"));
+        verifyNoInteractions(dlqProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedFifoResendDoesNotFallBackToOrdinarySendTest(boolean throwsException) throws Exception {
+        MessageExt deadLetter = fifoDeadLetter("failed-fifo", "order-42");
+        when(adminExt.viewMessage(deadLetter.getTopic(), deadLetter.getMsgId())).thenReturn(deadLetter);
+        if (throwsException) {
+            when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), eq("order-42")))
+                    .thenThrow(new IllegalStateException("broker unavailable"));
+        } else {
+            SendResult rejected = new SendResult();
+            rejected.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
+            when(dlqProducer.send(any(Message.class), any(MessageQueueSelector.class), eq("order-42")))
+                    .thenReturn(rejected);
+        }
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of(deadLetter.getMsgId()), null);
+
+        assertThat(result).extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 0, 1, "FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("failed-fifo");
+            assertThat(failure.getTargetTopic()).isEqualTo("orders");
+            assertThat(failure.getReason())
+                    .contains(throwsException ? "broker unavailable" : "FLUSH_DISK_TIMEOUT");
+        });
+        verify(dlqProducer, never()).send(any(Message.class));
+    }
+
+    private static MessageExt fifoDeadLetter(String messageId, String group) {
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId(messageId);
+        deadLetter.setTopic(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a");
+        deadLetter.setBody(new byte[] {1});
+        MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders");
+        if (group != null) {
+            MessageAccessor.putProperty(deadLetter, MessageConst.PROPERTY_SHARDING_KEY, group);
+        }
+        return deadLetter;
     }
 
     @Test
