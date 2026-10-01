@@ -68,6 +68,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.export': { zh: '导出', en: 'Export' },
   'common.detail': { zh: '详情', en: 'Detail' },
   'common.close': { zh: '关闭', en: 'Close' },
+  'common.open': { zh: '打开', en: 'Open' },
   'common.noData': { zh: '暂无数据', en: 'No Data' },
   'common.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
   'common.liveRefresh': { zh: '实时刷新', en: 'Live Refresh' },
@@ -75,9 +76,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
   'common.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'common.unknown': { zh: '未知', en: 'Unknown' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.noMatchingPage': { zh: '未找到匹配页面', en: 'No matching pages' },
+  'layout.shortcutNavigate': { zh: '切换', en: 'Navigate' },
   'layout.goHome': { zh: '返回首页', en: 'Go to home' },
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
@@ -559,6 +563,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '查询结果达到服务端扫描上限，当前总数可能不完整。',
     en: 'The query reached the server-side scan limit; the total count may be incomplete.',
   },
+  'messagePage.bodyTruncatedWarning': {
+    zh: '消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。',
+    en: 'The body exceeds the server display limit and was truncated, so what is shown and downloaded here is incomplete.',
+  },
+  'messagePage.bodyBinaryWarning': {
+    zh: '消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。',
+    en: 'The body is not UTF-8 text and the server returned it BASE64-encoded; below is the encoded form.',
+  },
   'messagePage.queryFailed': {
     zh: '消息查询失败，请稍后重试',
     en: 'Failed to query messages, please try again later',
@@ -836,6 +848,22 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
+  'dlq.resendPartialSummary': {
+    zh: '重投部分完成：成功 {resent}，失败 {failed}',
+    en: 'Resend partially completed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.resendFailedSummary': {
+    zh: '重投失败：成功 {resent}，失败 {failed}',
+    en: 'Resend failed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
+  'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
+  'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },
+  'dlq.failureReason': { zh: '失败原因', en: 'Failure reason' },
+  'dlq.failureDetailsTruncated': {
+    zh: '失败明细较多，仅显示前 100 条。',
+    en: 'Only the first 100 failure details are shown.',
+  },
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
@@ -885,6 +913,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Configure business-flow alert rules for consumer lag, DLQ, and notification channels',
   },
   'alerts.totalRules': { zh: '规则总数', en: 'Total Rules' },
+  'alerts.totalRulesWithCount': { zh: '共 {count} 条规则', en: '{count} rules total' },
   'alerts.enabled': { zh: '已启用', en: 'Enabled' },
   'alerts.disabled': { zh: '已禁用', en: 'Disabled' },
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },
@@ -1164,6 +1193,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.allChannels': { zh: '全部通道', en: 'All channels' },
   'deliveries.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'deliveries.allInstances': { zh: '全部实例', en: 'All instances' },
+  'deliveries.search': { zh: '搜索告警标题或失败原因', en: 'Search alert title or error' },
+  'deliveries.timeRange': { zh: '投递时间范围', en: 'Delivery time range' },
+  'deliveries.startTime': { zh: '投递开始时间', en: 'Delivery start time' },
+  'deliveries.endTime': { zh: '投递结束时间', en: 'Delivery end time' },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
@@ -1560,6 +1593,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
+  'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
+  'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
+  'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
+  'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
@@ -2721,6 +2759,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
   'user.logout': { zh: '退出登录', en: 'Logout' },
+  'user.logoutFailed': {
+    zh: '服务端退出失败，已清除本地登录状态',
+    en: 'Signing out on the server failed. The local session has been cleared.',
+  },
 
   // ─── User Management ───
   'userMgmt.title': { zh: '用户管理', en: 'User Management' },
@@ -3045,6 +3087,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.detail': { zh: '消息详情', en: 'Message Detail' },
   'message.body': { zh: '消息主体', en: 'Message Body' },
   'message.properties': { zh: '消息属性', en: 'Message Properties' },
+  'message.propertiesTruncated': {
+    zh: '属性过多或单值过长，服务端已截断展示',
+    en: 'Some properties were shortened by the server',
+  },
   'message.info': { zh: '消息信息', en: 'Message Info' },
   'message.tracking': { zh: '消息追踪', en: 'Message Tracking' },
   'message.showAll': { zh: '显示全部内容', en: 'Show All Content' },
@@ -3073,6 +3119,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.directConsumeSelectInstance': {
+    zh: '请先选择实例',
+    en: 'Select an instance first',
+  },
+  'message.directConsumeCapabilityLoading': {
+    zh: '正在确认当前实例是否支持直接消费',
+    en: 'Checking whether this instance supports direct consumption',
+  },
+  'message.directConsumeUnsupported': {
+    zh: '当前实例不支持直接消费',
+    en: 'This instance does not support direct consumption',
+  },
+  'message.directConsumeCapabilityUnavailable': {
+    zh: '无法获取实例能力，直接消费暂不可用',
+    en: 'Instance capabilities are unavailable; direct consumption is disabled',
+  },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {

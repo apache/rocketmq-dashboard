@@ -62,6 +62,7 @@ var errorMatchers = []errorMatcher{
 	matchCLIError,
 	matchAPIError,
 	matchContextDeadline,
+	matchContextCanceled,
 	matchNetError,
 }
 
@@ -92,6 +93,20 @@ func matchContextDeadline(err error) (*types.CLIError, bool) {
 		types.CodeTimeout,
 		err.Error(),
 		"Increase --timeout or check Studio Server availability."), true
+}
+
+// matchContextCanceled reports a canceled context as a user interrupt, not a server problem:
+// Ctrl-C (signal.NotifyContext) cancels the command context while a request is in flight, and a
+// wrapped *url.Error carrying context.Canceled would otherwise fall through to the net.Error
+// matcher and surface as UNAVAILABLE, sending the operator to debug a healthy server.
+func matchContextCanceled(err error) (*types.CLIError, bool) {
+	if !errors.Is(err, context.Canceled) {
+		return nil, false
+	}
+	return types.NewCLIError(
+		types.CodeCanceled,
+		"command was interrupted before it finished",
+		"The command was canceled (for example with Ctrl-C); rerun it if that was unintended."), true
 }
 
 func matchNetError(err error) (*types.CLIError, bool) {
