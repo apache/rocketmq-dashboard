@@ -512,6 +512,35 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void unknownUserLoginBurnsDummyHashToPreventTimingSideChannelTest() {
+        PasswordHasher hasherSpy = mock(PasswordHasher.class);
+        SettingsRepository repository = mock(SettingsRepository.class);
+        when(repository.loadGeneralSettings())
+                .thenReturn(GeneralSettingsVO.builder().sessionTimeout(30).build());
+        authService = new AuthService(new AuthProperties(), repository,
+                Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC), userMapper,
+                sessionMapper, hasherSpy);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("no-such-user");
+        request.setPassword("any-password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+        // The dummy PBKDF2 derivation must run even when the user is not found, so the
+        // response timing is indistinguishable from a wrong-password attempt on a real
+        // account. Without this, an attacker could enumerate valid usernames by measuring
+        // the response time difference between "user not found" and "wrong password".
+        verify(hasherSpy, times(1)).matches(anyString(), argThat(hash ->
+                hash != null && hash.startsWith("pbkdf2$210000$")));
+    }
+
+    @Test
     void enabledAccountsWithWrongPasswordsGetTheUniformInvalidCredentialsResponse() {
         when(userMapper.selectCount(isNull())).thenReturn(1L);
         when(userMapper.selectOne(any(Wrapper.class)))

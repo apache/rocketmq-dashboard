@@ -25,6 +25,8 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Optional;
@@ -377,6 +379,51 @@ class MessageServiceTest {
         assertThat(page.getItems()).hasSize(50);
         assertThat(page.getTotal()).isEqualTo(200);
         assertThat(page.isResultMayBeTruncated()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pageQueryKeepsStableOrderAcrossChangingProviderResultsTest(boolean registeredProvider) {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO newest = MessageRecordVO.builder().msgId("newest").storeTime(3000L).build();
+        MessageRecordVO sameTimeA = MessageRecordVO.builder().msgId("a").storeTime(2000L).build();
+        MessageRecordVO sameTimeB = MessageRecordVO.builder().msgId("b").storeTime(2000L).build();
+        MessageRecordVO missingId = MessageRecordVO.builder().storeTime(2000L).build();
+        MessageRecordVO oldest = MessageRecordVO.builder().msgId("oldest").storeTime(1000L).build();
+        MessageQueryResult firstResult = MessageQueryResult.truncated(
+                List.of(oldest, sameTimeA, missingId, newest, sameTimeB));
+        MessageQueryResult secondResult = MessageQueryResult.truncated(
+                List.of(sameTimeB, newest, oldest, missingId, sameTimeA));
+        when(registry.byInstanceId("instance-a")).thenReturn(
+                registeredProvider ? Optional.of(provider) : Optional.empty());
+        if (registeredProvider) {
+            when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        } else {
+            when(fallback.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        }
+
+        MessageQueryPageVO firstPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 1, 2);
+        MessageQueryPageVO secondPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 2, 2);
+        MessageQueryPageVO thirdPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 3, 2);
+
+        assertThat(firstPage.getItems()).containsExactly(newest, sameTimeB);
+        assertThat(secondPage.getItems()).containsExactly(sameTimeA, missingId);
+        assertThat(thirdPage.getItems()).containsExactly(oldest);
+        assertThat(List.of(firstPage, secondPage, thirdPage)).allSatisfy(page -> {
+            assertThat(page.getTotal()).isEqualTo(5);
+            assertThat(page.isResultMayBeTruncated()).isTrue();
+        });
+        assertThat(firstResult.messages()).containsExactly(oldest, sameTimeA, missingId, newest, sameTimeB);
+        assertThat(secondResult.messages()).containsExactly(sameTimeB, newest, oldest, missingId, sameTimeA);
     }
 
     @Test
