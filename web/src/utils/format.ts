@@ -153,13 +153,15 @@ export function formatBytes(bytes: number, decimals = 1): string {
     value /= k;
     i += 1;
   }
-  // The unit is chosen from the unrounded value, so a value just below a boundary used to render
-  // as 1024.0 KB - a mantissa of 1024 that the loop above exists to avoid.
-  while (i < units.length - 1 && Number(value.toFixed(digits)) >= k) {
+  // A byte count has no meaningful fraction, so the base unit renders whole; every scaled unit keeps
+  // the requested precision. The promotion loop has to use the same width it renders with, or a
+  // value just below a boundary would round up to 1024 B instead of being promoted to 1.0 KB.
+  const precision = () => (i === 0 ? 0 : digits);
+  while (i < units.length - 1 && Number(value.toFixed(precision())) >= k) {
     value /= k;
     i += 1;
   }
-  return `${value.toFixed(digits)} ${units[i]}`;
+  return `${value.toFixed(precision())} ${units[i]}`;
 }
 
 /**
