@@ -38,6 +38,7 @@ import java.util.Map;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -176,5 +177,13 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.revokedSessionCount").value(3));
 
         verify(authService).revokeSessionsForUser(7L);
+    }
+
+    @Test
+    void deleteRemovesTheUserAccount() throws Exception {
+        mockMvc.perform(delete("/api/studio-users/7"))
+                .andExpect(status().isOk());
+
+        verify(authService).deleteUser(7L);
     }
 }

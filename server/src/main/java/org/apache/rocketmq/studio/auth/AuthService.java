@@ -345,6 +345,36 @@ public class AuthService {
     }
 
     /**
+     * Deletes a studio account and its sessions. The operator's own account cannot be deleted
+     * (the session would turn into a confusing mid-request failure — disable it instead), and
+     * the last enabled administrator is protected by the same row-locking guard the disable
+     * path uses. Sessions are removed in the same transaction: the table has no foreign key,
+     * so rows would otherwise linger as unreachable tokens.
+     */
+    @Transactional
+    public void deleteUser(Long userId) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        String currentUserId = AuthenticatedUserContext.currentUserId();
+        if (currentUserId != null && currentUserId.equals(String.valueOf(userId))) {
+            throw new BusinessException(400, "The current account cannot delete itself; disable it instead");
+        }
+        if (Boolean.TRUE.equals(user.getAdmin()) && Boolean.TRUE.equals(user.getEnabled())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillEnabled = enabledAdmins.stream()
+                    .anyMatch(admin -> userId.equals(admin.getId()));
+            if (targetStillEnabled && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot be deleted");
+            }
+        }
+        sessionMapper.delete(new QueryWrapper<RmqStudioSession>().eq("user_id", userId));
+        userMapper.deleteById(userId);
+    }
+
+    /**
      * Replacing the hash and revoking the account's sessions are one logical change: a failure
      * between the two writes would leave the account on its new password while its existing
      * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements

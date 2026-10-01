@@ -41,6 +41,7 @@ import {
   ListBullets,
   Plus,
   SignOut,
+  Trash,
 } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
@@ -48,6 +49,7 @@ import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
+  deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
   listStudioUserSessions,
@@ -336,6 +338,20 @@ const UserManagementPage = () => {
       t('userMgmt.revokeFailed'),
     );
 
+  const deleteUser = (record: StudioUser) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await deleteStudioUser(record.id);
+        message.success(t('userMgmt.deleted', { username: record.username }));
+        if (sessionDrawerUser?.id === record.id) {
+          setSessionDrawerUser(null);
+        }
+        await loadUsers();
+      },
+      t('userMgmt.deleteFailed'),
+    );
+
   const openCreateUserModal = () => setCreateOpen(true);
   const handleExportUsers = useCallback(async () => {
     if (!admin) return;
@@ -502,6 +518,25 @@ const UserManagementPage = () => {
             unCheckedChildren={t('userMgmt.disable')}
             onChange={(enabled) => void setEnabled(record, enabled)}
           />
+          <Popconfirm
+            title={t('userMgmt.deleteConfirm', { username: record.username })}
+            description={t('userMgmt.deleteDescription')}
+            okText={t('common.delete')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            disabled={record.id === userId}
+            onConfirm={() => void deleteUser(record)}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<Trash size={14} />}
+              disabled={record.id === userId}
+              loading={mutatingUserIds.has(record.id)}
+            >
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },

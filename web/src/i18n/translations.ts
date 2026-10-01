@@ -2866,6 +2866,16 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
   'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.deleteConfirm': {
+    zh: '删除用户 {username}？',
+    en: 'Delete user {username}?',
+  },
+  'userMgmt.deleteDescription': {
+    zh: '该账号及其全部会话将被永久删除，此操作不可恢复。',
+    en: 'The account and all of its sessions are removed permanently; this cannot be undone.',
+  },
+  'userMgmt.deleted': { zh: '已删除用户 {username}', en: 'Deleted user {username}' },
+  'userMgmt.deleteFailed': { zh: '删除用户失败', en: 'Failed to delete user' },
   'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
   'userMgmt.exportFailed': {
     zh: '导出用户列表失败，请稍后重试',

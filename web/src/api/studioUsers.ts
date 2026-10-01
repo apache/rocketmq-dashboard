@@ -134,3 +134,7 @@ export async function revokeStudioUserSessions(userId: number) {
   );
   return response.data.data;
 }
+
+export async function deleteStudioUser(userId: number) {
+  await client.delete(`/studio-users/${userId}`);
+}
