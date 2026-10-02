@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
@@ -218,6 +218,48 @@ describe('K8sCertsPage', () => {
 
     await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+  });
+
+  it('keeps each row delete independent while several deletes are in flight', async () => {
+    const resolvers: Array<() => void> = [];
+    vi.mocked(deleteK8sCert).mockImplementation(
+      () => new Promise<void>((resolve) => { resolvers.push(resolve); }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    const rowA = screen.getByText('rocketmq-prod-tls').closest('tr')!;
+    const rowB = screen.getByText('rocketmq-staging-tls').closest('tr')!;
+
+    const confirmPopover = async (k8sId: string) => {
+      const popover = await waitFor(() => {
+        const nodes = Array.from(document.querySelectorAll('.ant-popover'));
+        const match = nodes.find((node) => node.textContent?.includes(k8sId));
+        expect(match).toBeTruthy();
+        return match as HTMLElement;
+      });
+      await user.click(within(popover).getByRole('button', { name: /删\s*除/ }));
+    };
+
+    await user.click(within(rowA).getByRole('button', { name: /删\s*除/ }));
+    await confirmPopover('rocketmq-prod-tls');
+    await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledTimes(1));
+    expect(within(rowA).getByRole('button', { name: /删\s*除/ })).toHaveClass('ant-btn-loading');
+
+    // A second delete while the first is pending must not steal its spinner (the old
+    // single-id slot re-enabled row A's button here).
+    await user.click(within(rowB).getByRole('button', { name: /删\s*除/ }));
+    await confirmPopover('rocketmq-staging-tls');
+    await waitFor(() => expect(deleteK8sCert).toHaveBeenCalledTimes(2));
+    expect(within(rowA).getByRole('button', { name: /删\s*除/ })).toHaveClass('ant-btn-loading');
+    expect(within(rowB).getByRole('button', { name: /删\s*除/ })).toHaveClass('ant-btn-loading');
+
+    await act(async () => {
+      resolvers.forEach((resolve) => resolve());
+    });
+    await waitFor(() => expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('rocketmq-staging-tls')).not.toBeInTheDocument());
   });
 
   it('surfaces the server rejection reason when the certificate list cannot be loaded', async () => {

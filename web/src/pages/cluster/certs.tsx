@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -60,7 +60,10 @@ const K8sCertsPage = () => {
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  // Per-row in-flight deletes: a single id slot would let a second delete steal the
+  // first row's spinner and un-guard its button while the request is still running.
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(() => new Set());
+  const deletingIdsRef = useRef(new Set<number>());
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
   useEffect(() => {
@@ -119,7 +122,9 @@ const K8sCertsPage = () => {
   };
 
   const handleDelete = async (cert: K8sCertInfo) => {
-    setDeletingId(cert.id);
+    if (deletingIdsRef.current.has(cert.id)) return;
+    deletingIdsRef.current.add(cert.id);
+    setDeletingIds(new Set(deletingIdsRef.current));
     try {
       await deleteK8sCert(cert.id);
       setCerts((previous) => previous.filter((item) => item.id !== cert.id));
@@ -127,7 +132,8 @@ const K8sCertsPage = () => {
     } catch (error: unknown) {
       message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
     } finally {
-      setDeletingId(null);
+      deletingIdsRef.current.delete(cert.id);
+      setDeletingIds(new Set(deletingIdsRef.current));
     }
   };
 
@@ -239,7 +245,7 @@ const K8sCertsPage = () => {
             size="small"
             icon={<DeleteOutlined />}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            loading={deletingId === cert.id}
+            loading={deletingIds.has(cert.id)}
           >
             删除
           </Button>
