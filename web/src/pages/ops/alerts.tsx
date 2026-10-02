@@ -148,6 +148,16 @@ const previewValueForMetric = (metric?: string, threshold?: string | number | nu
   return Number.isFinite(value) ? String(value + 10) : '120';
 };
 
+/**
+ * The backend stamps `lastTriggered` with `ZoneOffset.UTC` and serializes it without an offset
+ * suffix, so `new Date(value)` would read the value as browser-local time. Anchor an offset-less
+ * value to UTC before comparing it with the current time — the same contract `formatUtcDateTime`
+ * documents for rendering the same column.
+ */
+const utcTimestamp = (value: string): number => {
+  const trimmed = value.trim();
+  return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed) ? trimmed : `${trimmed}Z`).getTime();
+};
 interface AlertsPageProps {
   domain?: AlertRuleDomain;
 }
@@ -416,7 +426,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
+    (r) => r.lastTriggered && utcTimestamp(r.lastTriggered) > dayAgo,
   ).length;
 
   const openCreateModal = () => {
