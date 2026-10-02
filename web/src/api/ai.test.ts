@@ -200,6 +200,59 @@ describe('AI API', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
+    it('rejectsWhenTheBodyEndsBeforeTheTerminalDoneFrameTest', async () => {
+      // A proxy timeout or a dropped connection closes the body without the server's `event: done`.
+      // `reader.read()` reports a clean end of stream, so the missing terminal frame is the only
+      // evidence that the answer was truncated: resolving here drops the rest of the run silently.
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            eventStreamResponse([agentFrame({ type: 'text_delta', content: 'partial' })]),
+          ),
+      );
+      const events: ChatSseEvent[] = [];
+
+      await expect(
+        openRunStream(7, body, { onEvent: (event) => events.push(event) }),
+      ).rejects.toMatchObject({
+        name: 'AiStreamError',
+        code: 'llm.stream.premature_eof',
+        message: 'AI stream ended before the terminal done frame',
+      } satisfies Partial<AiStreamError>);
+
+      // The frames that did arrive are kept; only the termination is reported as broken.
+      expect(events).toEqual([{ type: 'text_delta', content: 'partial' }]);
+    });
+
+    it('rejectsWhenAnAttachedStreamEndsBeforeTheTerminalDoneFrameTest', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            eventStreamResponse([agentFrame({ type: 'text_delta', content: 'partial' })]),
+          ),
+      );
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).rejects.toMatchObject({
+        name: 'AiStreamError',
+        code: 'llm.stream.premature_eof',
+      } satisfies Partial<AiStreamError>);
+    });
+
+    it('acceptsADoneFrameThatArrivesWithoutATrailingBlankLineTest', async () => {
+      // The final flush path: the server's last frame is the terminal one and the body closes right
+      // after it, so the missing terminal-frame check must not turn a complete run into a failure.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(eventStreamResponse(['event: done\ndata: {}'])),
+      );
+
+      await expect(openRunStream(7, body, { onEvent: vi.fn() })).resolves.toBeUndefined();
+    });
+
     it('noLongerTreatsTheDoneSentinelAsTerminalTest', async () => {
       // `data: [DONE]` has no `event:` line, so it arrives as the legacy `message` name — which the
       // run stream rejects instead of silently ending on.
