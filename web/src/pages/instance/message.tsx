@@ -86,9 +86,11 @@ import {
   type TraceDiagnosticIssue,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
+import { BoundedPromiseCache } from '../../utils/boundedPromiseCache';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
+const TRACE_CACHE_MAX_ENTRIES = 32;
 
 /* ─── Constants ─── */
 
@@ -408,7 +410,9 @@ const MessagePageContent = ({
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
   const committedQueryRef = useRef<{ mode: QueryMode; params: MessageQuery } | null>(null);
   const traceGenerationRef = useRef(0);
-  const traceCacheRef = useRef(new Map<string, Promise<TraceRecord | null>>());
+  const traceCacheRef = useRef(
+    new BoundedPromiseCache<string, TraceRecord | null>(TRACE_CACHE_MAX_ENTRIES),
+  );
   const traceDiagnostics = useMemo(() => analyzeMessageTrace(traceData), [traceData]);
 
   useEffect(
