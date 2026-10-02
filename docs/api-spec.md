@@ -1659,6 +1659,12 @@ POST /api/messages/direct-consume
 
 ## 9. 死信队列 Dead Letter Queue
 
+DLQ 消息列表、JSON 导出和 Excel 导出在扫描时共享每次请求 **10 MiB 原始消息体**的累积上限。
+超过上限会返回 `413` 和提示 `DLQ read exceeds the 10 MiB message body limit; narrow the time range`，
+不会返回截断的消息体或部分成功的下载。请缩小时间窗口，或在 JSON 导出中减小 `maxCount`。
+Excel 的 `msgIds` 过滤在扫描后执行，因此扫描本身仍受此上限约束。原有条数上限和重发行为不变。
+此限制不包含消息属性、客户端已解码的单个拉取批次或并发请求；它不是整个 JVM 的内存上限。
+
 ### 9.1 获取 DLQ 列表
 
 ```

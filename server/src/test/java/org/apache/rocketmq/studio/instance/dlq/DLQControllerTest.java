@@ -24,8 +24,11 @@ import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -552,4 +555,34 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(dlqService);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"messages", "export", "export-excel"})
+    void dlqReadShouldReturnPayloadTooLargeWhenBodyBudgetIsExceededTest(String operation) throws Exception {
+        BusinessException tooLarge = new BusinessException(413,
+                "DLQ read exceeds the 10 MiB message body limit; narrow the time range");
+        String path;
+        if ("messages".equals(operation)) {
+            path = "/api/dlq/test-group/messages";
+            when(dlqService.listMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), eq(1), eq(20)))
+                    .thenThrow(tooLarge);
+        } else if ("export".equals(operation)) {
+            path = "/api/dlq/export";
+            when(dlqService.exportMessages(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                    .thenThrow(tooLarge);
+        } else {
+            path = "/api/dlq/export-excel";
+            when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(), isNull()))
+                    .thenThrow(tooLarge);
+        }
+
+        mockMvc.perform(get(path)
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+                .andExpect(jsonPath("$.code").value(413))
+                .andExpect(jsonPath("$.message").value(tooLarge.getMessage()));
+    }
+
 }
