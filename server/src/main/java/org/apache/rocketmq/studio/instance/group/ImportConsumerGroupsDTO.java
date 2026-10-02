@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.instance.group;
 
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
@@ -30,7 +29,6 @@ public class ImportConsumerGroupsDTO {
     @NotBlank(message = "instanceId is required")
     private String instanceId;
 
-    @Valid
     @NotEmpty(message = "groups is required")
     @Size(max = 100, message = "At most 100 consumer groups are allowed per import")
     private List<CreateConsumerGroupDTO> groups;

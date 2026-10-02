@@ -237,6 +237,37 @@ class TopicControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void importTopicsShouldReturnPerRowFailureInsteadOfRejectingWholeBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "1",
+                "topics", List.of(
+                        Map.of("name", "valid-topic", "writeQueues", 8, "readQueues", 8),
+                        Map.of("name", "", "writeQueues", 8, "readQueues", 8)));
+        when(instanceService.normalizeIdentifier("1")).thenReturn("open-source-local");
+        when(metadataService.importTopics(eq("open-source-local"), any()))
+                .thenReturn(ImportTopicsResultVO.builder()
+                        .imported(1)
+                        .failed(1)
+                        .topics(List.of(new TopicVO()))
+                        .failures(List.of(ImportTopicsResultVO.Failure.builder()
+                                .index(1)
+                                .name("")
+                                .message("name is required")
+                                .build()))
+                        .build());
+
+        mockMvc.perform(post("/api/topics/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.failed").value(1))
+                .andExpect(jsonPath("$.data.failures[0].index").value(1));
+
+        verify(metadataService).importTopics(eq("open-source-local"), any());
+    }
+
+    @Test
     void createTopicShouldRejectMissingName() throws Exception {
         mockMvc.perform(post("/api/topics/create")
                         .contentType(MediaType.APPLICATION_JSON)

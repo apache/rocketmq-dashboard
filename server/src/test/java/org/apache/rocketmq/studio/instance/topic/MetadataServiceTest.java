@@ -487,6 +487,26 @@ class MetadataServiceTest {
     }
 
     @Test
+    void importTopicsShouldCollectRowValidationFailureAndContinue() {
+        CreateTopicDTO invalid = topicImportRequest("", "other-instance");
+        when(apacheProvider.importTopic(eq("instance-a"), any(TopicVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        ImportTopicsResultVO result = metadataService.importTopics("instance-a",
+                List.of(topicImportRequest("topic-ok", "other-instance"), invalid));
+
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getTopics()).extracting(TopicVO::getName).containsExactly("topic-ok");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getIndex()).isEqualTo(1);
+            assertThat(failure.getName()).isEmpty();
+            assertThat(failure.getMessage()).isEqualTo("name is required");
+        });
+        verify(apacheProvider).importTopic(eq("instance-a"), any(TopicVO.class));
+    }
+
+    @Test
     void missingInstanceRejectsAllPublicWritesBeforeProviderTest() {
         TopicVO topic = topic("orders", null, TopicType.NORMAL);
         ConsumerGroupVO group = new ConsumerGroupVO();
@@ -948,6 +968,26 @@ class MetadataServiceTest {
         verify(apacheProvider, never()).createConsumerGroup(anyString(), any());
         assertThat(captor.getAllValues()).extracting(ConsumerGroupVO::getInstanceId)
                 .containsExactly("instance-a", "instance-a");
+    }
+
+    @Test
+    void importConsumerGroupsShouldCollectRowValidationFailureAndContinue() {
+        CreateConsumerGroupDTO invalid = importRequest("", "other-instance");
+        when(apacheProvider.importConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        ImportConsumerGroupsResultVO result = metadataService.importConsumerGroups("instance-a",
+                List.of(importRequest("cg-ok", "other-instance"), invalid));
+
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getGroups()).extracting(ConsumerGroupVO::getName).containsExactly("cg-ok");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getIndex()).isEqualTo(1);
+            assertThat(failure.getName()).isEmpty();
+            assertThat(failure.getMessage()).isEqualTo("name is required");
+        });
+        verify(apacheProvider).importConsumerGroup(eq("instance-a"), any(ConsumerGroupVO.class));
     }
 
     @Test

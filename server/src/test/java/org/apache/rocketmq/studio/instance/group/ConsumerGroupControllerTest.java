@@ -192,6 +192,37 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void importConsumerGroupsShouldReturnPerRowFailureInsteadOfRejectingWholeBatch() throws Exception {
+        Map<String, Object> body = Map.of(
+                "instanceId", "7",
+                "groups", List.of(
+                        Map.of("name", "valid-group", "retryMaxTimes", 8),
+                        Map.of("name", "", "retryMaxTimes", 8)));
+        when(instanceService.normalizeIdentifier("7")).thenReturn("rocketmq1");
+        when(metadataService.importConsumerGroups(eq("rocketmq1"), any()))
+                .thenReturn(ImportConsumerGroupsResultVO.builder()
+                        .imported(1)
+                        .failed(1)
+                        .groups(List.of(new ConsumerGroupVO()))
+                        .failures(List.of(ImportConsumerGroupsResultVO.Failure.builder()
+                                .index(1)
+                                .name("")
+                                .message("name is required")
+                                .build()))
+                        .build());
+
+        mockMvc.perform(post("/api/groups/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.imported").value(1))
+                .andExpect(jsonPath("$.data.failed").value(1))
+                .andExpect(jsonPath("$.data.failures[0].index").value(1));
+
+        verify(metadataService).importConsumerGroups(eq("rocketmq1"), any());
+    }
+
+    @Test
     void createConsumerGroupShouldRejectMissingName() throws Exception {
         Map<String, Object> body = Map.of(
                 "clusterId", "cluster-a",
