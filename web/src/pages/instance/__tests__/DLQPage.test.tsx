@@ -695,6 +695,29 @@ describe('DLQ page', () => {
     await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
   });
 
+  it('keeps the retry dialog open while its resend request is pending', async () => {
+    let resolveResend!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementationOnce(
+      () => new Promise((resolve) => (resolveResend = resolve)),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+    await waitFor(() => expect(messageService.resendDLQ).toHaveBeenCalledTimes(1));
+
+    const cancel = screen.getByRole('button', { name: /取\s*消/ });
+    expect(cancel).toBeDisabled();
+    await user.click(cancel);
+    expect(screen.getByText('重投死信消息')).toBeInTheDocument();
+
+    await act(async () => resolveResend({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }));
+  });
+
   it('warns when DLQ resend scans only part of the available queues', async () => {
     vi.mocked(messageService.resendDLQ).mockResolvedValue({
       matched: 3,
