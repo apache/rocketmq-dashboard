@@ -96,3 +96,40 @@ test('vitePackagingAndTamperGateTest', async (t) => {
   write(directory, output, 'tampered');
   assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
 });
+
+test('lateEntryRewriteStillPassesTheGateTest', async (t) => {
+  const directory = temporary(t);
+  const source = mkdtempSync(path.join(root, 'src/.license-lifecycle-'));
+  t.after(() => rmSync(source, { recursive: true, force: true }));
+  // A real frontend build reaches the gate with the entry chunk already rewritten: the Vite
+  // build-import-analysis plugin prepends __vite__mapDeps lines to entry chunks after this plugin
+  // has emitted legal/manifest.json. Reproduce that ordering with a second post plugin.
+  write(source, 'index.html', '<script type="module" src="./main.js"></script>');
+  write(source, 'main.js', "import React from 'react';console.log(React.version);");
+  const outDir = path.join(directory, 'dist');
+  await build({
+    root,
+    configFile: false,
+    logLevel: 'error',
+    plugins: [
+      distributionLicenses(),
+      {
+        name: 'late-entry-rewrite-fixture',
+        enforce: 'post',
+        generateBundle(_options, bundle) {
+          const entry = Object.values(bundle).find((item) => item.type === 'chunk' && item.isEntry);
+          assert(entry, 'the fixture must emit an entry chunk');
+          entry.code += '\n// rewritten after legal/manifest.json was emitted\n';
+        },
+      },
+    ],
+    build: { outDir, emptyOutDir: false, rollupOptions: { input: path.join(source, 'index.html') } },
+  });
+  checkDistribution(outDir);
+  const manifest = JSON.parse(readFileSync(path.join(outDir, 'legal/manifest.json')));
+  const entry = Object.keys(manifest.outputFiles).find((name) => name.endsWith('.js'));
+  assert(entry, 'the manifest must cover the emitted JavaScript');
+  assert.match(readFileSync(path.join(outDir, entry), 'utf8'), /rewritten after legal\/manifest\.json was emitted/);
+  write(outDir, entry, 'tampered after the build');
+  assert.throws(() => checkDistribution(outDir), /build artifact verification failed/);
+});
