@@ -22,6 +22,8 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -42,10 +44,19 @@ public class AuditService {
     private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final int CLEANUP_BATCH_SIZE = 500;
     private static final int CLEANUP_MAX_BATCHES = 20;
+    /** Upper bound the manual cleanup endpoint enforces; the scheduled sweep clamps to it. */
+    private static final int MAX_RETENTION_DAYS = 365;
     private static final String CSV_COLUMNS =
             "operator,operationType,resourceType,target,clusterId,detail,result,errorMessage";
 
     private final AuditRepository auditRepository;
+
+    /**
+     * Audit rows are compliance evidence, so retention is opt-in: 0 keeps every row forever and
+     * only a deployment that configures a positive value starts the scheduled sweep.
+     */
+    @Value("${studio.audit.retention-days:0}")
+    private int retentionDays;
 
 
     public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
@@ -150,6 +161,38 @@ public class AuditService {
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
         return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+    }
+
+    /**
+     * Scheduled retention sweep for the audit table, which otherwise grows forever: it reuses the
+     * same bounded delete as the manual cleanup endpoint and stays inert while retention is 0.
+     */
+    @Scheduled(fixedDelayString = "${studio.audit.retention-cleanup-interval:PT1H}")
+    public int purgeExpiredAuditLogs() {
+        int retention = effectiveRetentionDays();
+        if (retention <= 0) {
+            return 0;
+        }
+        try {
+            return cleanupLogs(retention);
+        } catch (RuntimeException error) {
+            // Retention is hygiene, not an application error: a failing repository must not make
+            // the scheduler log a failure every hour.
+            log.warn("Failed to purge audit logs older than {} days: {}", retention, error.getMessage());
+            return 0;
+        }
+    }
+
+    private int effectiveRetentionDays() {
+        if (retentionDays <= 0) {
+            return 0;
+        }
+        if (retentionDays > MAX_RETENTION_DAYS) {
+            log.warn("studio.audit.retention-days={} exceeds the maximum of {} days; using {} days",
+                    retentionDays, MAX_RETENTION_DAYS, MAX_RETENTION_DAYS);
+            return MAX_RETENTION_DAYS;
+        }
+        return retentionDays;
     }
 
     private void validatePagination(int page, int pageSize) {
