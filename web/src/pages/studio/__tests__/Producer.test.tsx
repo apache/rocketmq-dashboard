@@ -20,6 +20,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider, useLang } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import ProducerPage from '../Producer';
 import {
   type ProducerConnection,
@@ -115,6 +116,7 @@ describe('ProducerPage', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it('loads topic options after mount', async () => {
@@ -686,5 +688,26 @@ describe('ProducerPage', () => {
         'order-producer',
       );
     });
+  });
+
+  it('localizes the query form labels and result column titles in Chinese', async () => {
+    renderWithProviders(<ProducerPage />);
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalled());
+
+    expect(screen.getByText('实例')).toBeInTheDocument();
+    expect(screen.getByText('主题')).toBeInTheDocument();
+    expect(screen.getAllByText('生产者组').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('客户端 ID')).toBeInTheDocument();
+  });
+
+  it('localizes the query form labels in English', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderWithProviders(<ProducerPage />);
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalled());
+
+    expect(screen.getByText('Instance')).toBeInTheDocument();
+    expect(screen.getByText('Topic')).toBeInTheDocument();
+    expect(screen.getAllByText('Producer Group').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Client ID')).toBeInTheDocument();
   });
 });

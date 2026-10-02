@@ -3334,6 +3334,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'producer.title': { zh: '生产者连接', en: 'Producer Connection' },
   'producer.language': { zh: '语言', en: 'Language' },
   'producer.selectTopic': { zh: '请选择 Topic', en: 'Select a topic' },
+  'producer.selectInstanceBeforeQuery': {
+    zh: '请先选择实例后再查询生产者连接',
+    en: 'Select an instance before querying producer connections',
+  },
+  'producer.group': { zh: '生产者组', en: 'Producer Group' },
+  'producer.clientId': { zh: '客户端 ID', en: 'Client ID' },
   'producer.inputGroup': { zh: '请输入生产者组', en: 'Input producer group' },
   'producer.inputGroupOptional': {
     zh: '输入生产者组，留空查询全部活跃组',

@@ -211,7 +211,7 @@ const ProducerPage = () => {
   const onFinish = async (values: { selectedTopic: string; producerGroup?: string }) => {
     if (queryInFlightRef.current !== null) return;
     if (!selectedInstanceId) {
-      message.error('Select an instance before querying producer connections.');
+      message.error(t('producer.selectInstanceBeforeQuery'));
       return;
     }
     const requestId = ++queryRequestIdRef.current;
@@ -251,9 +251,14 @@ const ProducerPage = () => {
   };
 
   const columns = [
-    { title: 'Client ID', dataIndex: 'clientId', key: 'clientId', align: 'center' as const },
     {
-      title: 'Producer Group',
+      title: t('producer.clientId'),
+      dataIndex: 'clientId',
+      key: 'clientId',
+      align: 'center' as const,
+    },
+    {
+      title: t('producer.group'),
       dataIndex: 'producerGroup',
       key: 'producerGroup',
       align: 'center' as const,
@@ -336,12 +341,12 @@ const ProducerPage = () => {
         style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
       >
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
-          <Form.Item label="INSTANCE">
+          <Form.Item label={t('common.instance')}>
             <Select
               aria-label="Instance"
               value={selectedInstanceId}
               onChange={handleInstanceChange}
-              placeholder="Select instance"
+              placeholder={t('common.selectInstance')}
               style={{ width: 220 }}
               options={instances.map((instance) => ({
                 value: instance.name,
@@ -350,7 +355,7 @@ const ProducerPage = () => {
             />
           </Form.Item>
           <Form.Item
-            label="TOPIC"
+            label={t('common.topic')}
             name="selectedTopic"
             rules={[{ required: true, message: t('producer.selectTopic') }]}
           >
@@ -363,7 +368,7 @@ const ProducerPage = () => {
               options={topicList.map((topic) => ({ value: topic, label: topic }))}
             />
           </Form.Item>
-          <Form.Item label="PRODUCER GROUP" name="producerGroup">
+          <Form.Item label={t('producer.group')} name="producerGroup">
             <AutoComplete
               allowClear
               placeholder={t('producer.inputGroupOptional')}
