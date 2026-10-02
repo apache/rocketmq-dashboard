@@ -135,7 +135,9 @@ const UserManagementPage = () => {
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [userExporting, setUserExporting] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [createForm] = Form.useForm<CreateFormValues>();
@@ -143,6 +145,8 @@ const UserManagementPage = () => {
   const requestSeqRef = useRef(0);
   const sessionDetailsRequestSeqRef = useRef(0);
   const mutatingUserIdsRef = useRef(new Set<number>());
+  const createInFlightRef = useRef(false);
+  const passwordInFlightRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -186,7 +190,11 @@ const UserManagementPage = () => {
       setUsers(result.items);
       setTotal(result.total);
     } catch {
-      if (requestId === requestSeqRef.current) message.error(t('userMgmt.loadFailed'));
+      if (requestId === requestSeqRef.current) {
+        setUsers([]);
+        setTotal(0);
+        message.error(t('userMgmt.loadFailed'));
+      }
     } finally {
       if (requestId === requestSeqRef.current) setLoading(false);
     }
@@ -246,16 +254,23 @@ const UserManagementPage = () => {
   };
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
+    if (createInFlightRef.current) return;
+    createInFlightRef.current = true;
+    setCreating(true);
     try {
+      const values = await createForm.validateFields();
       await createStudioUser(values);
       message.success(t('userMgmt.userCreated'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.createFailed'));
+    } finally {
+      createInFlightRef.current = false;
+      setCreating(false);
     }
   };
 
@@ -295,8 +310,11 @@ const UserManagementPage = () => {
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
+    if (passwordInFlightRef.current) return;
+    passwordInFlightRef.current = true;
+    setSavingPassword(true);
     try {
+      const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
@@ -308,8 +326,12 @@ const UserManagementPage = () => {
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.changePasswordFailed'));
+    } finally {
+      passwordInFlightRef.current = false;
+      setSavingPassword(false);
     }
   };
 
@@ -752,7 +774,10 @@ const UserManagementPage = () => {
         title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          if (!createInFlightRef.current) setCreateOpen(false);
+        }}
+        confirmLoading={creating}
       >
         <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
           <Form.Item
@@ -787,9 +812,11 @@ const UserManagementPage = () => {
         open={passwordTarget !== null}
         onOk={() => void updatePassword()}
         onCancel={() => {
+          if (passwordInFlightRef.current) return;
           setPasswordTarget(null);
           passwordForm.resetFields();
         }}
+        confirmLoading={savingPassword}
       >
         <Form form={passwordForm} layout="vertical">
           {passwordTarget?.id === userId && (
