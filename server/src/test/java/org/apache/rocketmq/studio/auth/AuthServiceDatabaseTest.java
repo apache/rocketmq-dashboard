@@ -259,6 +259,71 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void adminPasswordResetRequiresRotationTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // The admin-reset path: requireCurrentPassword is false, the new password was chosen
+        // by someone other than the owner, so the owner must rotate it at the next login.
+        authService.changePassword(1L, null, "password-2", false);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioUser>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("password_must_change");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(true);
+    }
+
+    @Test
+    void selfServicePasswordChangeClearsTheRotationFlagTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        authService.changePassword(1L, "password-1", "password-2", true);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioUser>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("password_must_change");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(false);
+    }
+
+    @Test
+    void createdUsersMustRotateTheirInitialPasswordTest() {
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        authService.createUser("contractor", "initial-password", false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).insert(captor.capture());
+        assertThat(captor.getValue().getPasswordMustChange()).isTrue();
+    }
+
+    @Test
+    void loginReportsWhenThePasswordMustBeRotatedTest() {
+        RmqStudioUser flagged = user(1L, "operator", false, true, "password-1");
+        flagged.setPasswordMustChange(true);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(flagged);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+        LoginVO flaggedLogin = authService.login(request);
+
+        assertThat(flaggedLogin.getUser().isMustChangePassword()).isTrue();
+
+        RmqStudioUser settled = user(2L, "reader", false, true, "password-2");
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(settled);
+        request.setUsername("reader");
+        request.setPassword("password-2");
+        LoginVO settledLogin = authService.login(request);
+
+        assertThat(settledLogin.getUser().isMustChangePassword()).isFalse();
+    }
+
+    @Test
     void revokeSessionsForUserRevokesOnlyTheSelectedUsersOpenSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);

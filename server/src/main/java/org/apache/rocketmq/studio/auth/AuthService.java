@@ -308,6 +308,9 @@ public class AuthService {
         user.setAdmin(admin);
         user.setEnabled(true);
         user.setPasswordChangedAt(now());
+        // The initial password was chosen by the creator, not the owner: the owner rotates it
+        // at first login.
+        user.setPasswordMustChange(true);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -367,7 +370,10 @@ public class AuthService {
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", now())
+                // A password chosen by its owner needs no rotation; one handed out by an
+                // administrator does, until the owner replaces it.
+                .set("password_must_change", !requireCurrentPassword));
         revokeUserSessions(user.getId());
     }
 
@@ -616,7 +622,12 @@ public class AuthService {
     }
 
     private LoginVO.UserInfo userInfo(RmqStudioUser user) {
-        return userInfo(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getAdmin()));
+        return LoginVO.UserInfo.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .admin(Boolean.TRUE.equals(user.getAdmin()))
+                .mustChangePassword(Boolean.TRUE.equals(user.getPasswordMustChange()))
+                .build();
     }
 
     private LoginVO.UserInfo userInfo(Long userId, String username, boolean admin) {
