@@ -250,10 +250,10 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
             return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
         } catch (Exception e) {
-            if (MqResponseCodes.hasResponseCode(e, ResponseCode.NO_MESSAGE)) {
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST, ResponseCode.NO_MESSAGE)) {
                 // MQAdminImpl.queryMessage throws MQClientException(NO_MESSAGE) instead of
-                // returning an empty QueryResult when the key matches nothing: the query
-                // completed, so the correct response is an empty list, not a gateway error.
+                // returning an empty QueryResult when the key matches nothing, and fails with
+                // TOPIC_NOT_EXIST when the topic has no route: an empty list, not a 502.
                 log.info("queryMessage(topic={}, key={}) matched nothing", topic, key);
                 return MessageQueryResult.complete(Collections.emptyList());
             }
