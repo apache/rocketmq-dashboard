@@ -88,6 +88,18 @@ export async function getStudioUserSessionOverview() {
   return response.data.data;
 }
 
+export interface StudioLoginLockout {
+  username: string;
+  remainingSeconds: number;
+}
+
+export async function listStudioLoginLockouts() {
+  const response = await client.get<{ data: StudioLoginLockout[] }>(
+    '/studio-users/login-lockouts',
+  );
+  return response.data.data;
+}
+
 export async function listStudioUserSessions(userId: number) {
   const response = await client.get<{ data: StudioUserSessionDetail[] }>(
     `/studio-users/${userId}/sessions`,

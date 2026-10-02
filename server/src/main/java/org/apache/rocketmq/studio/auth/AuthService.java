@@ -295,6 +295,21 @@ public class AuthService {
         return revokeUserSessions(userId);
     }
 
+    /**
+     * Currently locked logins, sorted by remaining lock time. Read-only visibility into the
+     * brute-force limiter: locks always lift by themselves, and the snapshot reflects this
+     * instance only (the limiter is in-memory like every other login-protection state).
+     */
+    public List<StudioLoginLockoutVO> listLoginLockouts() {
+        requireDatabaseBacked();
+        return loginRateLimiter.activeLockouts().stream()
+                .map(lockout -> StudioLoginLockoutVO.builder()
+                        .username(lockout.username())
+                        .remainingSeconds(lockout.remainingSeconds())
+                        .build())
+                .toList();
+    }
+
     public RmqStudioUser createUser(String username, String password, boolean admin) {
         requireDatabaseBacked();
         validateUsername(username);

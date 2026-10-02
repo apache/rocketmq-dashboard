@@ -136,6 +136,22 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void loginLockoutsReturnTheCurrentlyLockedUsernames() throws Exception {
+        when(authService.listLoginLockouts()).thenReturn(List.of(
+                StudioLoginLockoutVO.builder().username("operator").remainingSeconds(280).build(),
+                StudioLoginLockoutVO.builder().username("contractor").remainingSeconds(240).build()));
+
+        mockMvc.perform(get("/api/studio-users/login-lockouts"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].username").value("operator"))
+                .andExpect(jsonPath("$.data[0].remainingSeconds").value(280))
+                .andExpect(jsonPath("$.data[1].username").value("contractor"))
+                .andExpect(jsonPath("$.data[1].remainingSeconds").value(240));
+
+        verify(authService).listLoginLockouts();
+    }
+
+    @Test
     void listActiveSessionsReturnsSafeSessionDetails() throws Exception {
         when(authService.listActiveSessionsForUser(7L))
                 .thenReturn(List.of(StudioUserSessionDetailVO.builder()

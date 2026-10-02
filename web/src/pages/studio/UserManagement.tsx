@@ -31,6 +31,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -50,11 +51,13 @@ import {
   createStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
+  listStudioLoginLockouts,
   listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  type StudioLoginLockout,
   type StudioUser,
   type StudioUserSessionDetail,
   type StudioUserSessionOverview,
@@ -131,6 +134,7 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
+  const [loginLockouts, setLoginLockouts] = useState<StudioLoginLockout[]>([]);
   const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
@@ -155,6 +159,7 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      setLoginLockouts([]);
       setSessionDrawerUser(null);
       setSessionDetails([]);
       return;
@@ -164,7 +169,7 @@ const UserManagementPage = () => {
       if (requestId === requestSeqRef.current) setLoading(true);
     });
     try {
-      const [result, overview] = await Promise.all([
+      const [result, overview, lockouts] = await Promise.all([
         listStudioUsers({
           search: debouncedSearch || undefined,
           admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
@@ -173,9 +178,11 @@ const UserManagementPage = () => {
           pageSize,
         }),
         getStudioUserSessionOverview().catch(() => null),
+        listStudioLoginLockouts().catch(() => []),
       ]);
       if (requestId !== requestSeqRef.current) return;
       setSessionOverview(overview);
+      setLoginLockouts(lockouts);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -576,7 +583,25 @@ const UserManagementPage = () => {
               })}
               value={sessionOverview.staleSessionCount}
             />
+            <Statistic title={t('userMgmt.loginLockouts')} value={loginLockouts.length} />
           </Flex>
+          {loginLockouts.length > 0 && (
+            <Flex gap={8} wrap style={{ marginTop: 8 }}>
+              {loginLockouts.map((lockout) => (
+                <Tooltip
+                  key={lockout.username}
+                  title={t('userMgmt.loginLockoutHelp')}
+                  placement="top"
+                >
+                  <Tag color="red">
+                    {lockout.username} · {t('userMgmt.loginLockoutRemaining', {
+                      seconds: lockout.remainingSeconds,
+                    })}
+                  </Tag>
+                </Tooltip>
+              ))}
+            </Flex>
+          )}
         </Card>
       )}
       {admin && (

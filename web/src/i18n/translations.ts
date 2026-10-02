@@ -2824,6 +2824,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
   'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
   'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
+  'userMgmt.loginLockouts': { zh: '登录锁定', en: 'Login lockouts' },
+  'userMgmt.loginLockoutRemaining': {
+    zh: '{seconds} 秒后自动解锁',
+    en: 'unlocks in {seconds}s',
+  },
+  'userMgmt.loginLockoutHelp': {
+    zh: '该用户名连续登录失败达到上限被临时锁定，锁定期满自动解除，无需人工干预。',
+    en: 'This username exhausted its failed-login budget and is temporarily locked; the lock lifts by itself when it expires.',
+  },
   'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
   'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
   'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
