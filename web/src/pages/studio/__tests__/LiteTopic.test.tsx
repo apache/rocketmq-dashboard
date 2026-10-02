@@ -31,8 +31,10 @@ const apiMocks = vi.hoisted(() => ({
   queryLiteTopicSession: vi.fn(),
   extendLiteTopicTTL: vi.fn(),
 }));
+const instanceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+vi.mock('../../../services/instanceService', () => instanceMocks);
 
 vi.mock('../../../utils/download', async () => {
   const downloadModule =
@@ -118,6 +120,55 @@ describe('LiteTopic Page', () => {
       totalMessages: 100,
       consumedMessages: 0,
       popProgress: 96,
+    });
+    instanceMocks.listInstances.mockResolvedValue([
+      { name: 'instance-a', vendor: 'APACHE' },
+      { name: 'instance-b', vendor: 'APACHE' },
+      { name: 'cloud-a', vendor: 'ALIYUN' },
+    ]);
+  });
+
+  it('requires an Apache instance before extending a parent topic TTL', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '延长 TTL' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByPlaceholderText('请输入新的 TTL 值（毫秒）'), '7200');
+    const confirm = within(dialog).getByRole('button', { name: /确\s*认/ });
+    expect(confirm).toBeDisabled();
+
+    await user.click(within(dialog).getByRole('combobox', { name: '实例 ID' }));
+    expect(
+      screen.queryByText('cloud-a', { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('instance-b', 'order-*', 7200);
+    });
+  });
+
+  it('selects the only Apache instance for a TTL update', async () => {
+    instanceMocks.listInstances.mockResolvedValue([
+      { name: 'instance-a', vendor: 'APACHE' },
+      { name: 'cloud-a', vendor: 'TENCENT' },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '延长 TTL' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByPlaceholderText('请输入新的 TTL 值（毫秒）'), '7200');
+    const confirm = within(dialog).getByRole('button', { name: /确\s*认/ });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('instance-a', 'order-*', 7200);
     });
   });
 

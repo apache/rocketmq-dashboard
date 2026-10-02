@@ -48,7 +48,9 @@ import {
   DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { useLang } from '../../i18n/LangContext';
+import { listInstances } from '../../services/instanceService';
 import {
   queryLiteTopicList,
   queryLiteTopicQuota,
@@ -144,16 +146,20 @@ const LiteTopicPage: React.FC = () => {
 
   // Extend TTL modal
   const [extendTTLModalOpen, setExtendTTLModalOpen] = useState(false);
+  const [ttlInstances, setTTLInstances] = useState<Instance[]>([]);
+  const [ttlInstancesLoading, setTTLInstancesLoading] = useState(false);
   const [extendTTLForm, setExtendTTLForm] = useState<{
+    instanceId: string | undefined;
     topicPattern: string;
     newTTL: number | null;
-  }>({ topicPattern: '', newTTL: null });
+  }>({ instanceId: undefined, topicPattern: '', newTTL: null });
   const [extendTTLLoading, setExtendTTLLoading] = useState(false);
 
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
   const sessionRequestId = useRef(0);
+  const ttlInstanceRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -299,18 +305,46 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
+    const requestId = ++ttlInstanceRequestId.current;
     setExtendTTLForm({
+      instanceId: undefined,
       topicPattern: record.topicPattern || '',
       newTTL: null,
     });
+    setTTLInstances([]);
+    setTTLInstancesLoading(true);
     setExtendTTLModalOpen(true);
+    void listInstances()
+      .then((instances) => {
+        if (!mountedRef.current || requestId !== ttlInstanceRequestId.current) return;
+        const apacheInstances = instances.filter(supportsApacheRuntime);
+        setTTLInstances(apacheInstances);
+        if (apacheInstances.length === 1) {
+          setExtendTTLForm((current) => ({ ...current, instanceId: apacheInstances[0].name }));
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current && requestId === ttlInstanceRequestId.current) {
+          messageRef.current.error(translationRef.current('common.fetchDataFailed'));
+        }
+      })
+      .finally(() => {
+        if (mountedRef.current && requestId === ttlInstanceRequestId.current) {
+          setTTLInstancesLoading(false);
+        }
+      });
   };
 
   const handleExtendTTL = async () => {
-    if (!extendTTLForm.topicPattern || extendTTLForm.newTTL == null) return;
+    if (!extendTTLForm.instanceId || !extendTTLForm.topicPattern || extendTTLForm.newTTL == null)
+      return;
     setExtendTTLLoading(true);
     try {
-      await extendLiteTopicTTL(extendTTLForm.topicPattern, extendTTLForm.newTTL);
+      await extendLiteTopicTTL(
+        extendTTLForm.instanceId,
+        extendTTLForm.topicPattern,
+        extendTTLForm.newTTL,
+      );
       message.success(t('liteTopic.extendTtlSuccess'));
       setExtendTTLModalOpen(false);
       void fetchData(patternFilter || undefined, namespaceFilter || undefined);
@@ -883,13 +917,41 @@ const LiteTopicPage: React.FC = () => {
         title={t('liteTopic.extendTtlModalTitle')}
         open={extendTTLModalOpen}
         onOk={handleExtendTTL}
-        onCancel={() => setExtendTTLModalOpen(false)}
+        onCancel={() => {
+          ++ttlInstanceRequestId.current;
+          setExtendTTLModalOpen(false);
+        }}
         confirmLoading={extendTTLLoading}
+        okButtonProps={{
+          disabled:
+            ttlInstancesLoading ||
+            !extendTTLForm.instanceId ||
+            !extendTTLForm.topicPattern ||
+            extendTTLForm.newTTL == null ||
+            extendTTLForm.newTTL <= 0,
+        }}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         destroyOnHidden
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label={t('instance.instanceName')} required>
+            <Select
+              aria-label={t('instance.instanceName')}
+              placeholder={t('liteTopic.selectInstance')}
+              value={extendTTLForm.instanceId}
+              onChange={(instanceId) => setExtendTTLForm((current) => ({ ...current, instanceId }))}
+              options={ttlInstances.map((instance) => ({
+                value: instance.name,
+                label: instance.name,
+              }))}
+              loading={ttlInstancesLoading}
+              disabled={ttlInstancesLoading}
+              showSearch
+              optionFilterProp="label"
+              notFoundContent={t('common.noData')}
+            />
+          </Form.Item>
           <Form.Item label={t('liteTopic.pattern')}>
             <Input
               value={extendTTLForm.topicPattern}
