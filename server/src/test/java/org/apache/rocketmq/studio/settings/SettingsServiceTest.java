@@ -690,6 +690,40 @@ class SettingsServiceTest {
     }
 
     @Test
+    void dataSourceAddressPolicyShouldRejectMulticastAndUniqueLocalAddressesTest() throws Exception {
+        // The create/update path judges the host with the shared UrlHostGuard, which refuses
+        // multicast (224.0.0.0/4) and IPv6 unique-local (fc00::/7) targets. The test endpoint
+        // carried its own copy of the policy and accepted both, so "Test connection" reached
+        // hosts that "Save" refuses.
+        assertThat(settingsService.areAllowedDataSourceAddresses(
+                new InetAddress[]{InetAddress.getByName("239.192.1.1")})).isFalse();
+        assertThat(settingsService.areAllowedDataSourceAddresses(
+                new InetAddress[]{InetAddress.getByName("fd12:3456:789a::1")})).isFalse();
+    }
+
+    @Test
+    void connectionShouldRejectMulticastAddressTest() {
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url("http://239.192.1.1:9090")
+                .type("Prometheus")
+                .build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void connectionShouldRejectUniqueLocalIpv6AddressTest() {
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url("http://[fd12:3456:789a::1]:9090")
+                .type("Prometheus")
+                .build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
     void connectionShouldRejectIncompleteBasicAuthenticationTest() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(PROMETHEUS_BASE_URL)

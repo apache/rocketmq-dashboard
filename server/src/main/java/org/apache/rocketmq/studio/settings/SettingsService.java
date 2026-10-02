@@ -394,8 +394,9 @@ public class SettingsService {
     /**
      * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
      * URL. The hostname {@code localhost}, loopback IPs (127.x.x.x, ::1), link-local addresses
-     * (169.254.x.x, fe80:: — the cloud metadata range), and known metadata endpoints not covered
-     * by Java's address categories are never legitimate Prometheus endpoints and are rejected.
+     * (169.254.x.x, fe80:: — the cloud metadata range), multicast addresses, IPv6 unique-local
+     * addresses (fc00::/7), and known metadata endpoints not covered by Java's address categories
+     * are never legitimate Prometheus endpoints and are rejected.
      * Private site-local ranges stay allowed because on-premise Prometheus servers live on the
      * internal network and the endpoint itself requires admin rights. Package-private so tests
      * can admit the loopback-bound embedded test server.
@@ -418,20 +419,23 @@ public class SettingsService {
         }
     }
 
+    /**
+     * Address policy of the test endpoint: the metadata endpoints Java's address categories do not
+     * cover, plus {@link UrlHostGuard}'s categories. The categories are deliberately not copied
+     * here — the local copy had drifted from the guard the create/update path uses and accepted
+     * multicast and IPv6 unique-local targets, so "Test connection" reached hosts that "Save"
+     * refuses.
+     */
     boolean areAllowedDataSourceAddresses(InetAddress[] addresses) {
         if (addresses == null || addresses.length == 0) {
             return false;
         }
         for (InetAddress address : addresses) {
-            if (address == null
-                    || address.isAnyLocalAddress()
-                    || address.isLinkLocalAddress()
-                    || address.isLoopbackAddress()
-                    || isKnownCloudMetadataAddress(address)) {
+            if (address == null || isKnownCloudMetadataAddress(address)) {
                 return false;
             }
         }
-        return true;
+        return UrlHostGuard.areAllowed(addresses, false);
     }
 
     private boolean isKnownCloudMetadataAddress(InetAddress address) {
