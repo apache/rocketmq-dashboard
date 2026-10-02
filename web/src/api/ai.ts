@@ -173,6 +173,24 @@ function eventTooLargeError(): AiStreamError {
 }
 
 /**
+ * The body closed before the server's terminal `done` frame.
+ *
+ * `AgentStreamSession.complete()` writes `event: done` before closing a normal stream, so a body
+ * that ends without it was cut short - a proxy timeout, a dropped connection, a restarted server -
+ * even though `reader.read()` reports a clean end of stream. Without this the run looks finished:
+ * the reader resolves, the UI stops streaming and the operator waits for an answer that never
+ * comes. Distinct from `llm.stream.idle_timeout`, which fires while the connection is still open
+ * but silent.
+ */
+function prematureEofError(): AiStreamError {
+  return new AiStreamError(
+    'AI stream ended before the terminal done frame',
+    'llm.stream.premature_eof',
+    'The connection was closed before the run finished. Reload the conversation to pick the run back up; the run itself continues on the server.',
+  );
+}
+
+/**
  * Reject a response that is not an event stream.
  *
  * A buffering gateway (nginx without `X-Accel-Buffering: no` passed through, an ALB, a corporate
@@ -233,8 +251,10 @@ async function readChunk(
 }
 
 /**
- * The hand-rolled SSE reader both the legacy chat stream and the run streams share: split frames on
- * a blank line, bound each frame, and let `onFrame` decide what a frame means and when to stop.
+ * The hand-rolled SSE reader the run streams use: split frames on a blank line, bound each frame,
+ * and let `onFrame` decide what a frame means and when to stop. `onFrame` returning `true` means
+ * the terminal control frame was seen; a body that ends without one rejects (see
+ * {@link prematureEofError}) rather than looking like a run that completed.
  *
  * Hand-rolled rather than `EventSource` because `EventSource` cannot POST, cannot send a JSON body
  * and cannot carry the session cookie cross-origin the way `fetch(..., {credentials:'include'})`
@@ -285,6 +305,9 @@ async function consumeEventStream(
     // A server that closes without a trailing blank line still delivered its last frame.
     buffer += decoder.decode();
     if (buffer && dispatch(buffer)) return;
+
+    // End of body without the terminal `done` frame: the stream was truncated, not completed.
+    throw prematureEofError();
   } finally {
     await reader.cancel().catch(() => undefined);
   }
