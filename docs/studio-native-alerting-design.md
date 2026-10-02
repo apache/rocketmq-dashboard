@@ -88,8 +88,8 @@ server/.../cluster/metrics/
     TencentMetricsCollector
 
 server/.../ops/alert/
-  AlertRuleService
   AlertRuleEvaluator
+  AlertService
   AlertStateMachine
   AlertEventService
   AlertSilenceService
@@ -283,22 +283,34 @@ Silences match `domain`, rule ID, instance ID, and optional resource labels. The
 
 ## APIs
 
-The two rule menus keep separate endpoints so their domain cannot be accidentally changed by a client. Both delegate to the same `AlertRuleService`.
+The two rule menus keep separate endpoints so their domain cannot be accidentally changed by a client. Both delegate to the same `AlertService`.
 
 ```text
-GET/POST/PUT /api/business-alert-rules
-GET/POST/PUT /api/cluster-alert-rules
-POST         /api/business-alert-rules/{id}/test
-POST         /api/cluster-alert-rules/{id}/test
+GET          /api/business-alert-rules
+GET          /api/business-alert-rules/page?search=&enabled=&page=&pageSize=
+POST         /api/business-alert-rules/create
+POST         /api/business-alert-rules/update
+POST         /api/business-alert-rules/test
 
-GET          /api/system-alerts?domain=&status=&severity=&instanceId=&page=
-POST         /api/system-alerts/{id}/acknowledge
+GET          /api/cluster-alert-rules
+GET          /api/cluster-alert-rules/page?search=&enabled=&page=&pageSize=
+POST         /api/cluster-alert-rules/create
+POST         /api/cluster-alert-rules/update
+POST         /api/cluster-alert-rules/test
+
+GET          /api/system-alerts?level=&domain=&instanceId=&transition=
+GET          /api/system-alerts/page?level=&domain=&instanceId=&transition=&labelKey=&labelValue=&from=&to=&notificationSuppressed=&page=&pageSize=
+POST         /api/system-alerts/acknowledge
 
 GET/POST     /api/alert-silences
 DELETE       /api/alert-silences/{id}
 GET          /api/alert-collector-status
-GET          /api/alert-metric-catalog?instanceId=&domain=
+GET          /api/native-alert-metrics?instanceId=&domain=
 ```
+
+Every rule mutation is a `POST` with the payload in the body — `create`, `update`, `toggle`, `delete`, `bulk-toggle`, `bulk-delete` and `import` — and `test` takes the full rule body as well, so no rule endpoint takes a `{id}` path variable and none of them is a `PUT`. The remaining rule reads are `GET /runtime` and `GET /transfer`.
+
+`GET /api/system-alerts` filters on `level`, `domain`, `instanceId` and `transition`; the names `status` and `severity` are not parameters and Spring ignores them silently. Paging lives on `GET /api/system-alerts/page`, which adds `labelKey`, `labelValue`, `from`, `to`, `notificationSuppressed`, `page` and `pageSize`. Acknowledgement carries the alert id in the body (`AcknowledgeSystemAlertDTO`) to `POST /api/system-alerts/acknowledge`.
 
 Existing `/api/alert-rules/export` remains as a compatibility endpoint for users who deliberately export rules to Prometheus. It must not be used by the native evaluator.
 
