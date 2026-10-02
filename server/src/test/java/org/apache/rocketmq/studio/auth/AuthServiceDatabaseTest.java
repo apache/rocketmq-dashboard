@@ -248,6 +248,38 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void emptyDatabaseWithoutBootstrapCredentialsFailsClosedTest() {
+        when(userMapper.selectCount(isNull())).thenReturn(0L);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("operator-supplied-test-password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("No Studio users are configured")
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(503));
+
+        verify(userMapper, never()).insert(any(RmqStudioUser.class));
+        verifyNoInteractions(sessionMapper);
+    }
+
+    @Test
+    void existingDatabaseUserDoesNotNeedBootstrapCredentialsTest() {
+        RmqStudioUser user = user(1L, "operator", true, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        assertThat(authService.login(request).getUser().getUserId()).isEqualTo(1L);
+
+        verify(userMapper, never()).insert(any(RmqStudioUser.class));
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+    }
+
+    @Test
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);
