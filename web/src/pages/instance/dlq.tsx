@@ -778,12 +778,17 @@ const DLQPage = () => {
         }
         open={retryModalOpen}
         onCancel={() => {
+          if (retryInFlightRef.current) return;
           setRetryModalOpen(false);
           setRetryGroup(null);
           setRetryError(null);
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
+        cancelButtonProps={{ disabled: retrySubmitting }}
+        closable={!retrySubmitting}
+        keyboard={!retrySubmitting}
+        maskClosable={!retrySubmitting}
         okText="确认重投"
         cancelText="取消"
         width={520}
