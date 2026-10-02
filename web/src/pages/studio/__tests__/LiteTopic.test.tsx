@@ -19,6 +19,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
+import dayjs from 'dayjs';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
 import { downloadCsv } from '../../../utils/download';
@@ -79,8 +80,20 @@ const createDeferred = <T,>() => {
 };
 
 describe('LiteTopic time formatting', () => {
-  it('preserves epoch timestamps and rejects invalid provider values', () => {
-    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+  it('renders instants in the labeled viewer zone and rejects invalid provider values', () => {
+    const instant = Date.UTC(2026, 8, 30, 2, 5, 4);
+    const viewerWallClock = dayjs(instant).format('YYYY-MM-DD HH:mm:ss');
+    const zoneLabel = new Intl.DateTimeFormat('en-US', {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZoneName: 'short',
+    })
+      .formatToParts(instant)
+      .find((part) => part.type === 'timeZoneName')?.value;
+
+    // The instant is preserved, rendered in the viewer's zone and labelled with it, so two
+    // operators in different zones cannot read the same row as two different times.
+    expect(formatTime(instant)).toBe(`${viewerWallClock} ${zoneLabel}`);
+    expect(formatTime(instant)).not.toBe(new Date(instant).toLocaleString());
     expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTime(Number.MAX_VALUE)).toBe('-');
   });
@@ -276,6 +289,24 @@ describe('LiteTopic Page', () => {
     expect(screen.getByText('unknown-*')).toBeInTheDocument();
     expect(screen.getByText('missing-status-*')).toBeInTheDocument();
     expect(apiMocks.queryLiteTopicList).toHaveBeenCalledTimes(initialListRequestCount);
+  });
+
+  it('renders the last-active instant in the labeled viewer zone', async () => {
+    const instant = 1893456000000;
+    const viewerWallClock = dayjs(instant).format('YYYY-MM-DD HH:mm:ss');
+    const zoneLabel = new Intl.DateTimeFormat('en-US', {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZoneName: 'short',
+    })
+      .formatToParts(instant)
+      .find((part) => part.type === 'timeZoneName')?.value;
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'order-*', lastActiveTime: instant },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText(`${viewerWallClock} ${zoneLabel}`)).toBeInTheDocument();
   });
 
   it('exports the current LiteTopic filter result', async () => {
