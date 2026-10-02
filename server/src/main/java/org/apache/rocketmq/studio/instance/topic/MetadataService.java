@@ -70,6 +70,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -295,7 +296,20 @@ public class MetadataService {
         request.setTopic(requireName(request.getTopic(), "topicName"));
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
-        return resolve(request.getInstanceId()).sendMessage(request);
+        InstanceProvider provider = resolve(request.getInstanceId());
+        // The Apache layer audits the send itself (its admin client records SEND_MESSAGE), which is
+        // why executeWithAudit skips that vendor; the cloud providers do not, so a send on a cloud
+        // instance used to leave no audit row at all. Audit it here under the same operation,
+        // resource type and name the Apache path records. Two consequences, both matching what an
+        // Apache send already writes today:
+        // - an AI-tool send now produces a second SEND_MESSAGE row (ToolAuditFilter records the
+        //   invocation itself), the same pair of rows an Apache AI send already yields;
+        // - the success row carries msgId like the Apache one; the failed row cannot (no send
+        //   result exists) and keeps the request-only detail.
+        return executeWithAudit(provider, Operation.SEND_MESSAGE, ResourceType.MESSAGE, request.getTopic(),
+                request.getInstanceId(), "tag=" + request.getTag() + ", key=" + request.getKey(),
+                sent -> "tag=" + request.getTag() + ", key=" + request.getKey() + ", msgId=" + sent.getMsgId(),
+                () -> provider.sendMessage(request));
     }
 
     /**
@@ -865,15 +879,24 @@ public class MetadataService {
 
     private <T> T executeWithAudit(InstanceProvider provider, String operation, String resourceType,
                                    String resourceName, String instanceId, String detail, Supplier<T> action) {
+        return executeWithAudit(provider, operation, resourceType, resourceName, instanceId, detail,
+                result -> detail, action);
+    }
+
+    /** Variant whose SUCCESS row can carry values (e.g. msgId) that only exist after {@code action} ran. */
+    private <T> T executeWithAudit(InstanceProvider provider, String operation, String resourceType,
+                                   String resourceName, String instanceId, String failureDetail,
+                                   Function<T, String> successDetail, Supplier<T> action) {
         if (provider.vendor() == InstanceVendor.APACHE) {
             return action.get();
         }
         try {
             T result = action.get();
-            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.SUCCESS, null);
+            recordAudit(operation, resourceType, resourceName, instanceId, successDetail.apply(result),
+                    Result.SUCCESS, null);
             return result;
         } catch (RuntimeException failure) {
-            recordAudit(operation, resourceType, resourceName, instanceId, detail, Result.FAILED,
+            recordAudit(operation, resourceType, resourceName, instanceId, failureDetail, Result.FAILED,
                     failure.getMessage());
             throw failure;
         }

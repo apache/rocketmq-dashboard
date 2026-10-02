@@ -24,6 +24,7 @@ import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.studio.audit.OperationAuditConstants;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
@@ -68,7 +69,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -736,6 +739,90 @@ class MetadataServiceTest {
         assertThat(result.getOffsetMsgId()).isEqualTo("offset-001");
         verify(apacheProvider).sendMessage(request);
         verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void cloudSendShouldBeAuditedLikeTheApachePathTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .tag("TagA")
+                .key("order-1")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenReturn(SendMessageVO.builder().msgId("msg-cloud").build());
+
+        SendMessageVO result = metadataService.sendMessage(request);
+
+        assertThat(result.getMsgId()).isEqualTo("msg-cloud");
+        // The cloud providers do not audit the send themselves, so the service has to record it —
+        // under the operation, resource type and resource name the Apache path already uses.
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("orders"), eq("cloud-instance"),
+                contains("TagA"), eq(OperationAuditConstants.Result.SUCCESS), isNull());
+    }
+
+    @Test
+    void cloudSendSuccessRowCarriesTheMsgIdLikeTheApacheRowTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .tag("TagA")
+                .key("order-1")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenReturn(SendMessageVO.builder().msgId("msg-cloud").build());
+
+        metadataService.sendMessage(request);
+
+        // The Apache admin client records "tag=..., key=..., msgId=..." on success; the cloud row
+        // can only do that when the detail is built from the send result, not before it runs.
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("orders"), eq("cloud-instance"),
+                eq("tag=TagA, key=order-1, msgId=msg-cloud"), eq(OperationAuditConstants.Result.SUCCESS),
+                isNull());
+    }
+
+    @Test
+    void failedCloudSendShouldBeAuditedWithItsReasonTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenThrow(new BusinessException(502, "cloud rejected the send"));
+
+        assertThatThrownBy(() -> metadataService.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cloud rejected the send");
+
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("orders"), eq("cloud-instance"),
+                anyString(), eq(OperationAuditConstants.Result.FAILED), eq("cloud rejected the send"));
+    }
+
+    @Test
+    void cloudRedeliveryShouldBeAuditedLikeTheApachePathTest() {
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .build();
+        when(messageService.queryMessages("cloud-instance", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(cloudProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("cloud-instance", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(cloudProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getTopic()).isEqualTo("%RETRY%group-a");
+        // Redelivery publishes through sendMessage, so a cloud redelivery is audited exactly like
+        // the Apache one, whose admin client records SEND_MESSAGE for the copy it publishes.
+        verify(operationAuditService).record(eq(OperationAuditConstants.Operation.SEND_MESSAGE),
+                eq(OperationAuditConstants.ResourceType.MESSAGE), eq("%RETRY%group-a"), eq("cloud-instance"),
+                anyString(), eq(OperationAuditConstants.Result.SUCCESS), isNull());
     }
 
     @Test
