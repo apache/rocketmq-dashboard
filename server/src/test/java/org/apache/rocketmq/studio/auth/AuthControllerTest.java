@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -65,6 +66,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private ToolCatalog toolCatalog;
+
+    @MockitoBean
+    private OperationAuditService operationAuditService;
 
     @Autowired
     private ObjectMapper objectMapper;

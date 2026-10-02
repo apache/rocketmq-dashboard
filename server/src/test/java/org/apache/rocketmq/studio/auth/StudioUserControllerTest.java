@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.springframework.context.annotation.Import;
@@ -30,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -48,6 +50,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "studio.auth.login-required=false")
 @Import(LegacyJackson2Config.class)
 class StudioUserControllerTest extends WebMvcAuthTestSupport {
+
+    @MockitoBean
+    private OperationAuditService operationAuditService;
 
     @Autowired
     private MockMvc mockMvc;
