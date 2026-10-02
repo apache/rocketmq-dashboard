@@ -289,6 +289,21 @@ public class AuthService {
                 .toList();
     }
 
+    /**
+     * Revokes every active session in the deployment, sparing one account.
+     *
+     * <p>Revoking a suspected credential leak user by user leaves the incident half-contained
+     * whenever the sweep is interrupted, so this is one statement over the same active-session
+     * predicate the per-user revoke uses ({@code revoked_at IS NULL AND expires_at > now}): it is
+     * idempotent, and sessions that are already revoked or absolutely expired are left alone. The
+     * spared account is the administrator pulling the lever — signing themselves out mid-response
+     * would end the response — and a system-triggered call (no authenticated principal, so no id)
+     * spares nobody. Like the per-user revoke it is a database-backed action.
+     */
+    public int revokeAllSessions(Long excludingUserId) {
+        requireDatabaseBacked();
+        return revokeActiveSessions(null, excludingUserId);
+    }
     public int revokeSessionsForUser(Long userId) {
         requireDatabaseBacked();
         getUser(userId);
@@ -511,12 +526,27 @@ public class AuthService {
     }
 
     private int revokeUserSessions(Long userId) {
+        return revokeActiveSessions(userId, null);
+    }
+
+    /**
+     * The one statement both revocations share. {@code userId} pins it to a single account,
+     * {@code excludingUserId} takes one account out of an otherwise deployment-wide sweep; both are
+     * optional and neither is set for "every session there is".
+     */
+    private int revokeActiveSessions(Long userId, Long excludingUserId) {
         LocalDateTime current = now();
-        return sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
-                .eq("user_id", userId)
+        UpdateWrapper<RmqStudioSession> update = new UpdateWrapper<RmqStudioSession>()
                 .isNull("revoked_at")
                 .gt("expires_at", current)
-                .set("revoked_at", current));
+                .set("revoked_at", current);
+        if (userId != null) {
+            update.eq("user_id", userId);
+        }
+        if (excludingUserId != null) {
+            update.ne("user_id", excludingUserId);
+        }
+        return sessionMapper.update(null, update);
     }
 
     private Set<Long> normalizeUserIds(Collection<Long> userIds) {

@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.util.InstanceIds;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -94,6 +95,21 @@ public class StudioUserController {
         int revokedSessionCount = authService.revokeSessionsForUser(userId);
         return Result.ok(StudioUserSessionRevokeVO.builder()
                 .userId(userId)
+                .revokedSessionCount(revokedSessionCount)
+                .build());
+    }
+
+    /**
+     * "Sign everyone out" for a suspected credential leak. The acting administrator's own sessions
+     * survive, which the returned {@code userId} names; a request that carries no principal (the
+     * deployment does not require a login) spares nobody.
+     */
+    @PostMapping("/sessions/revoke-all")
+    public Result<StudioUserSessionRevokeVO> revokeAllSessions() {
+        Long operatorId = InstanceIds.parseLongOrNull(AuthenticatedUserContext.currentUserId());
+        int revokedSessionCount = authService.revokeAllSessions(operatorId);
+        return Result.ok(StudioUserSessionRevokeVO.builder()
+                .userId(operatorId)
                 .revokedSessionCount(revokedSessionCount)
                 .build());
     }
