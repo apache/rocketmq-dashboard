@@ -213,6 +213,26 @@ class ConsumerGroupReadToolHandlersTest {
     }
 
     @Test
+    void detailPreservesTopicForQueuesWithTheSameBrokerAndQueueIdTest() {
+        QueueProgressVO orders = QueueProgressVO.builder()
+                .topic("orders").broker("broker-a").queueId(0)
+                .brokerOffset(20).consumerOffset(8).diffTotal(12).build();
+        QueueProgressVO payments = QueueProgressVO.builder()
+                .topic("payments").broker("broker-a").queueId(0)
+                .brokerOffset(20).consumerOffset(8).diffTotal(12).build();
+
+        GroupDetailOutput output = GroupDetailOutput.from(
+                group, "instance-a", "group-a", List.of(),
+                new GroupDetailOutput.Health("WARNING", List.of()),
+                List.of(group), List.of(orders, payments), null);
+
+        assertThat(output.progress().queues())
+                .extracting(queue -> queue.topic())
+                .containsExactly("orders", "payments");
+        assertThat(output.progress().totalLag()).isEqualTo(24L);
+    }
+
+    @Test
     void detailMarksHealthUnknownWhenConsumerConnectionsAreUnavailableTest() {
         group.setOnlineInstances(-1);
         group.setTotalLag(12L);
