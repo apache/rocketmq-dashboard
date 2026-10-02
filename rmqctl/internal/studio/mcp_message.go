@@ -89,6 +89,15 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		}
 		return decodedMCPMessage{notification: &notification}, nil
 	}
+	if hasID {
+		// An id without a method is a JSON-RPC response frame. This transport
+		// only carries client-originated requests and notifications, so name the
+		// frame kind instead of reporting the generic "missing method", which
+		// reads like a malformed request or notification.
+		return decodedMCPMessage{}, fmt.Errorf(
+			"invalid MCP JSON-RPC message: response frame (id without method); " +
+				"expected a client-originated request or notification")
+	}
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
 }
 
