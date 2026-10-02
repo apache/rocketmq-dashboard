@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -394,14 +395,40 @@ public class MetadataService {
 
     public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
                                                               int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, null, page, pageSize);
+    }
+
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId, String search,
+                                                              String subscriptionMode, int page, int pageSize) {
         validatePagination(page, pageSize);
         instanceId = normalizeInstanceId(instanceId);
+        String normalizedMode = normalizeSubscriptionMode(subscriptionMode);
         if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
+            // Legacy cluster-scoped read without an instance: filter the mode over the full
+            // inventory so the total describes the filtered result set, not one filtered page.
+            if (normalizedMode != null) {
+                List<ConsumerGroupVO> groups = metadataProvider.listConsumerGroups(
+                        normalizeFilter(clusterId), normalizeFilter(search)).stream()
+                        .filter(group -> group.getSubscriptionMode() != null
+                                && normalizedMode.equals(group.getSubscriptionMode().name()))
+                        .toList();
+                long offset = Pagination.pageOffset(page, pageSize);
+                int from = (int) Math.min(offset, groups.size());
+                int to = from + (int) Math.min(pageSize, groups.size() - from);
+                return PageResult.of(groups.subList(from, to), groups.size(), page, pageSize);
+            }
             return metadataProvider.listConsumerGroupsPage(normalizeFilter(clusterId),
                     normalizeFilter(search), page, pageSize);
         }
         return resolve(instanceId).listConsumerGroupsPage(instanceId, normalizeFilter(clusterId),
-                normalizeFilter(search), page, pageSize);
+                normalizeFilter(search), normalizedMode, page, pageSize);
+    }
+
+    private static String normalizeSubscriptionMode(String subscriptionMode) {
+        if (!StringUtils.hasText(subscriptionMode) || "ALL".equals(subscriptionMode.trim())) {
+            return null;
+        }
+        return subscriptionMode.trim();
     }
 
 
