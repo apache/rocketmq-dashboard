@@ -17,8 +17,9 @@
 
 import { App } from 'antd';
 import { render, screen } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { LangProvider } from '../../../i18n/LangContext';
 import { buildDashboardTrafficInsights } from '../../../utils/dashboardTrafficInsights';
 import DashboardTrafficInsights from '../DashboardTrafficInsights';
@@ -109,6 +110,10 @@ beforeAll(() => {
 });
 
 describe('DashboardTrafficInsights', () => {
+  beforeEach(() => {
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+  });
+
   it('renders traffic findings and summary cards without duplicating cluster rows', () => {
     renderPanel();
 
@@ -152,5 +157,15 @@ describe('DashboardTrafficInsights', () => {
     expect(screen.getByText('暂无集群流量数据')).toBeInTheDocument();
     // Findings render as one joined line, so match on a substring rather than the exact node text.
     expect(screen.getByText(/未检测到活跃流量/u)).toBeInTheDocument();
+  });
+
+  it('separates the traffic findings with the viewer language punctuation', () => {
+    // The findings line used a full-width colon and an ideographic comma even in the English UI.
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    renderPanel();
+
+    const findings = screen.getByText(/Traffic signals to review/u);
+    expect(findings.textContent).not.toMatch(/[：、]/u);
+    expect(findings.textContent).toMatch(/^Traffic signals to review: /u);
   });
 });
