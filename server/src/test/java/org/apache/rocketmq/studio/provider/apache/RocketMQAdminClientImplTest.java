@@ -553,6 +553,53 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void previewResetOffsetShouldFallBackToTheTopicRouteForAnOfflineGroup() throws Exception {
+        // examineConsumeStats answers CONSUMER_NOT_ONLINE as soon as the group has no live
+        // consumer, while resetOffsetNew - what the confirm button calls - resolves the target
+        // offsets from the topic route and applies them to an offline group. The preview has to
+        // stay usable there instead of blocking the reset for good.
+        long timestamp = 1784246400000L;
+        when(adminExt.examineConsumeStats("cg-orders"))
+                .thenThrow(new MQBrokerException(ResponseCode.CONSUMER_NOT_ONLINE, "Consumer Group Not Online"));
+        QueueData offlineQueueData = new QueueData();
+        offlineQueueData.setBrokerName("broker-a");
+        offlineQueueData.setReadQueueNums(2);
+        TopicRouteData offlineRoute = new TopicRouteData();
+        offlineRoute.setQueueDatas(List.of(offlineQueueData));
+        when(adminExt.examineTopicRouteInfo("orders")).thenReturn(offlineRoute);
+        ClusterInfo clusterInfo = clusterInfoWithMaster();
+        clusterInfo.getBrokerAddrTable().values().iterator().next().setBrokerName("broker-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        MessageQueue firstQueue = new MessageQueue("orders", "broker-a", 0);
+        MessageQueue secondQueue = new MessageQueue("orders", "broker-a", 1);
+        when(adminExt.minOffset(firstQueue)).thenReturn(0L);
+        when(adminExt.maxOffset(firstQueue)).thenReturn(200L);
+        when(adminExt.searchOffset("10.0.0.1:10911", "orders", 0, timestamp, 3_000L)).thenReturn(80L);
+        when(adminExt.minOffset(secondQueue)).thenReturn(10L);
+        when(adminExt.maxOffset(secondQueue)).thenReturn(300L);
+        when(adminExt.searchOffset("10.0.0.1:10911", "orders", 1, timestamp, 3_000L)).thenReturn(500L);
+
+        ResetConsumerOffsetPreviewVO preview = adminClient.previewResetOffset(
+                "instance-a", "cg-orders", timestamp, "orders");
+
+        assertThat(preview.isAllowReset()).isTrue();
+        assertThat(preview.getQueueCount()).isEqualTo(2);
+        assertThat(preview.getWarnings())
+                .contains("Consumer group cg-orders is not online; target offsets are previewed from the topic"
+                                + " route because the committed offsets are unavailable",
+                        "At least one queue has unavailable lag; affected backlog totals are unavailable");
+        assertThat(preview.getQueues())
+                .extracting(ResetConsumerOffsetQueuePreviewVO::getQueueId,
+                        ResetConsumerOffsetQueuePreviewVO::getTargetOffset,
+                        ResetConsumerOffsetQueuePreviewVO::getConsumerOffset,
+                        ResetConsumerOffsetQueuePreviewVO::getCurrentLag,
+                        ResetConsumerOffsetQueuePreviewVO::getProjectedLag)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(0, 80L, ConsumerLagResolver.UNKNOWN,
+                                ConsumerLagResolver.UNKNOWN, 120L),
+                        org.assertj.core.groups.Tuple.tuple(1, 300L, ConsumerLagResolver.UNKNOWN,
+                                ConsumerLagResolver.UNKNOWN, 0L));
+    }
+    @Test
     void previewResetOffsetShouldReturnEmptyPreviewWhenTopicHasNoOffsets() throws Exception {
         ConsumeStats stats = new ConsumeStats();
         stats.getOffsetTable().put(new MessageQueue("payments", "broker-a", 0), offsetWrapper(120L, 90L));

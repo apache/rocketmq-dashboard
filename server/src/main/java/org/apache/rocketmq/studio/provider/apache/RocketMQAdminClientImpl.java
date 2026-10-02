@@ -31,6 +31,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
@@ -956,6 +958,17 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .build();
         } catch (Exception e) {
             if (isConsumerNotOnline(e)) {
+                // A stopped group reports the typed CONSUMER_NOT_ONLINE code, although
+                // resetOffsetNew - the API the confirm button calls - resolves the target offsets
+                // from the topic route and applies them to an offline group. Preview that
+                // route-based reset instead of leaving the dialog permanently disabled.
+                if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE)) {
+                    ResetConsumerOffsetPreviewVO routePreview =
+                            previewResetOffsetFromTopicRoute(instanceId, admin, name, timestamp, topic);
+                    if (routePreview != null) {
+                        return routePreview;
+                    }
+                }
                 return emptyResetOffsetPreview(instanceId, name, timestamp, topic,
                         "Consumer group is not online and no consume offset data is available");
             }
@@ -963,11 +976,86 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
     }
 
+    /**
+     * Builds the preview of a reset for a consumer group that is not online.
+     *
+     * <p>{@code examineConsumeStats} answers {@code CONSUMER_NOT_ONLINE} as soon as the group has no
+     * live consumer, while {@code resetOffsetNew} resolves the target offsets from the topic route
+     * and applies them to an offline group. Mirror that offline behaviour here: enumerate the read
+     * queues from the topic route and compute the target offset of every queue, and keep the
+     * committed consumer offsets unknown, because the broker does not report them for an offline
+     * group.
+     *
+     * @return the route-based preview, or {@code null} when the topic route cannot be read
+     */
+    private ResetConsumerOffsetPreviewVO previewResetOffsetFromTopicRoute(String instanceId, MQAdminExt admin,
+                                                                         String name, long timestamp, String topic) {
+        try {
+            TopicRouteData route = admin.examineTopicRouteInfo(topic);
+            List<MessageQueue> queues = new ArrayList<>();
+            if (route != null && route.getQueueDatas() != null) {
+                for (QueueData queueData : route.getQueueDatas()) {
+                    if (queueData == null || queueData.getBrokerName() == null) {
+                        continue;
+                    }
+                    for (int queueId = 0; queueId < queueData.getReadQueueNums(); queueId++) {
+                        queues.add(new MessageQueue(topic, queueData.getBrokerName(), queueId));
+                    }
+                }
+            }
+            if (queues.isEmpty()) {
+                return null;
+            }
+            List<ResetConsumerOffsetQueuePreviewVO> previews = new ArrayList<>();
+            for (MessageQueue queue : queues) {
+                previews.add(previewResetOffsetQueue(admin, queue, null, timestamp));
+            }
+            previews.sort(Comparator
+                    .comparing((ResetConsumerOffsetQueuePreviewVO queue) ->
+                                    queue.getBroker() == null ? "" : queue.getBroker(),
+                            String.CASE_INSENSITIVE_ORDER)
+                    .thenComparingInt(ResetConsumerOffsetQueuePreviewVO::getQueueId));
+            int rewindQueueCount = (int) previews.stream().filter(queue -> queue.getOffsetDelta() < 0).count();
+            int fastForwardQueueCount = (int) previews.stream().filter(queue -> queue.getOffsetDelta() > 0).count();
+            List<String> warnings = new ArrayList<>();
+            warnings.add("Consumer group " + name + " is not online; target offsets are previewed"
+                    + " from the topic route because the committed offsets are unavailable");
+            warnings.addAll(buildResetOffsetPreviewWarnings(previews, rewindQueueCount, fastForwardQueueCount));
+            boolean complete = previews.stream().noneMatch(queue -> RISK_ERROR.equals(queue.getRiskLevel()));
+            return ResetConsumerOffsetPreviewVO.builder()
+                    .instanceId(instanceId)
+                    .groupName(name)
+                    .topic(topic)
+                    .timestamp(timestamp)
+                    .complete(complete)
+                    .allowReset(complete)
+                    .queueCount(previews.size())
+                    .warningCount(warnings.size())
+                    .rewindQueueCount(rewindQueueCount)
+                    .fastForwardQueueCount(fastForwardQueueCount)
+                    .currentTotalLag(aggregateResetPreviewLag(previews, false))
+                    .projectedTotalLag(aggregateResetPreviewLag(previews, true))
+                    .totalOffsetDelta(previews.stream()
+                            .mapToLong(ResetConsumerOffsetQueuePreviewVO::getOffsetDelta).sum())
+                    .warnings(warnings)
+                    .queues(previews)
+                    .build();
+        } catch (Exception e) {
+            log.warn("Failed to preview the reset of offline group {} on topic {}: {}", name, topic, e.getMessage());
+            return null;
+        }
+    }
+
     private ResetConsumerOffsetQueuePreviewVO previewResetOffsetQueue(MQAdminExt admin, MessageQueue queue,
                                                                        OffsetWrapper wrapper, long timestamp) {
-        long brokerOffset = wrapper == null ? 0L : wrapper.getBrokerOffset();
-        long consumerOffset = wrapper == null ? 0L : wrapper.getConsumerOffset();
-        long currentLag = resolveLag(brokerOffset, consumerOffset);
+        // A null wrapper means the broker did not report the committed offset of the group (offline
+        // group previewed from the topic route): keep the offset and the lag unknown instead of
+        // fabricating zeroes, and let the preview warnings carry that information.
+        boolean consumerOffsetKnown = wrapper != null;
+        long consumerOffset = consumerOffsetKnown ? wrapper.getConsumerOffset() : ConsumerLagResolver.UNKNOWN;
+        long knownBrokerOffset = consumerOffsetKnown ? wrapper.getBrokerOffset() : ConsumerLagResolver.UNKNOWN;
+        long currentLag = consumerOffsetKnown
+                ? resolveLag(knownBrokerOffset, consumerOffset) : ConsumerLagResolver.UNKNOWN;
         try {
             long minOffset = admin.minOffset(queue);
             long maxOffset = admin.maxOffset(queue);
@@ -975,7 +1063,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
             long targetOffset = admin.searchOffset(brokerAddr, queue.getTopic(), queue.getQueueId(),
                     timestamp, RESET_OFFSET_PREVIEW_TIMEOUT_MILLIS);
             targetOffset = clampOffset(targetOffset, minOffset, maxOffset);
-            long offsetDelta = targetOffset - consumerOffset;
+            long brokerOffset = consumerOffsetKnown ? knownBrokerOffset : maxOffset;
+            long offsetDelta = consumerOffsetKnown ? targetOffset - consumerOffset : 0L;
             long projectedLag = resolveLag(brokerOffset, targetOffset);
             return ResetConsumerOffsetQueuePreviewVO.builder()
                     .topic(queue.getTopic())
@@ -989,8 +1078,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .currentLag(currentLag)
                     .projectedLag(projectedLag)
                     .offsetDelta(offsetDelta)
-                    .riskLevel(resetOffsetRiskLevel(offsetDelta, targetOffset, minOffset, maxOffset))
-                    .message(resetOffsetPreviewMessage(offsetDelta, targetOffset, minOffset, maxOffset))
+                    .riskLevel(consumerOffsetKnown
+                            ? resetOffsetRiskLevel(offsetDelta, targetOffset, minOffset, maxOffset) : RISK_WARNING)
+                    .message(consumerOffsetKnown
+                            ? resetOffsetPreviewMessage(offsetDelta, targetOffset, minOffset, maxOffset)
+                            : "Consumer offset is unknown while the group is offline; the target offset is"
+                                    + " derived from the topic route")
                     .build();
         } catch (Exception e) {
             return ResetConsumerOffsetQueuePreviewVO.builder()
@@ -999,7 +1092,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .queueId(queue.getQueueId())
                     .minOffset(-1L)
                     .maxOffset(-1L)
-                    .brokerOffset(brokerOffset)
+                    .brokerOffset(knownBrokerOffset)
                     .consumerOffset(consumerOffset)
                     .targetOffset(consumerOffset)
                     .currentLag(currentLag)
