@@ -871,6 +871,30 @@ class MetadataServiceTest {
     }
 
     @Test
+    void resetOffsetShouldRejectNonPositiveTimestampBeforeProviderResolution() {
+        for (long timestamp : new long[] {0L, -1L}) {
+            assertThatThrownBy(() -> metadataService.resetOffset("instance-a", "cg-orders",
+                    timestamp, "orders"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("timestamp must be positive")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        }
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectNonPositiveTimestampBeforeProviderResolution() {
+        assertThatThrownBy(() -> metadataService.previewResetOffset("instance-a", "cg-orders",
+                -1L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("timestamp must be positive")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
     void exportConsumerGroupsShouldApplyFiltersSortingAndCsvEscaping() {
         ConsumerGroupVO stale = consumerGroup("users-cg", "=formula", 2, SubscriptionMode.Push);
         ConsumerGroupVO unknownLag = consumerGroup("orders-unknown", "orders", -1, SubscriptionMode.Pop);
