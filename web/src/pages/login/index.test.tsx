@@ -51,9 +51,9 @@ describe('LoginPage', () => {
     loginStoreMock.mockClear();
   });
 
-  const renderPage = () =>
+  const renderPage = (initialEntry = '/login') =>
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <AntdApp>
           <LoginPage />
         </AntdApp>
@@ -126,5 +126,39 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByText('login.usernameRequired')).toBeTruthy());
     expect(screen.getByText('login.passwordRequired')).toBeTruthy();
     expect(loginApiMock).not.toHaveBeenCalled();
+  });
+
+  it('returns to the page the operator was on when the login page carries a redirect', async () => {
+    loginApiMock.mockResolvedValue({ user: { username: 'alice', userId: 42, admin: true } });
+    renderPage('/login?redirect=%2Fops%2Falerts%3Flevel%3Derror');
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/ops/alerts?level=error', { replace: true }),
+    );
+  });
+
+  it('still lands on home when the login page carries no redirect', async () => {
+    loginApiMock.mockResolvedValue({ user: { username: 'alice', userId: 42, admin: true } });
+    renderPage();
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/', { replace: true }));
+  });
+
+  it.each([
+    ['protocol-relative', '%2F%2Fevil.example'],
+    ['absolute external', 'https%3A%2F%2Fevil.example%2Fsteal'],
+    ['relative path without a leading slash', 'ops%2Falerts'],
+    ['backslash trick', '%2F%5C%5Cevil.example'],
+  ])('falls back to home for a %s redirect target', async (_shape, redirect) => {
+    loginApiMock.mockResolvedValue({ user: { username: 'alice', userId: 42, admin: true } });
+    renderPage(`/login?redirect=${redirect}`);
+    fillCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'login.title' }));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/', { replace: true }));
   });
 });
