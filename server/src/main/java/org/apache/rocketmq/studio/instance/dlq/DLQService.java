@@ -107,6 +107,9 @@ public class DLQService {
         requireApacheInstance(instanceId);
         String normalizedGroupName = requireGroupName(groupName);
         validateTimeRange(startTime, endTime);
+        if (msgIds != null && msgIds.isEmpty()) {
+            throw new BusinessException(400, "msgIds must not be empty when provided");
+        }
         if (msgIds != null && msgIds.size() > MAX_SELECTED_MESSAGES) {
             throw new BusinessException(400, "At most 100 msgIds are allowed per export");
         }

@@ -1816,7 +1816,7 @@ GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTim
 
 **Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body`，其中 `Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
 
-`msgIds` 是重复同名参数（`msgIds=a&msgIds=b`），不是 `msgIds[]=a`：Spring 的 `@RequestParam List<String>` 不绑定方括号形式，写成方括号会静默退化为导出整个时间窗口。
+`msgIds` 使用重复同名参数（`msgIds=a&msgIds=b`）。省略 `msgIds` 才会导出整个时间窗口；显式传入空值（`msgIds=`）会返回 `400`。方括号或点号索引形式（如 `msgIds[]=a`、`msgIds[0]=a` 或 `msgIds.0=a`）也会返回 `400`，避免误将选中消息导出变成整个窗口导出。
 
 > `msgIds` 是在一次上限 `5000` 条的扫描之后再做过滤，因此选中的消息若不在该窗口内不会出现在导出结果里；`X-DLQ-Export-Limit` 恒为 `5000`，不随 `msgIds` 条数变化。
 
