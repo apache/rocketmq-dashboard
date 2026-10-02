@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.JdbcRowValues;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioSession;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqStudioSessionMapper;
@@ -195,7 +196,8 @@ public class AuthService {
                     "search must not exceed " + MAX_USER_SEARCH_LENGTH + " characters");
         }
         QueryWrapper<RmqStudioUser> query = new QueryWrapper<RmqStudioUser>()
-                .like(!normalizedSearch.isEmpty(), "username", normalizedSearch)
+                .apply(!normalizedSearch.isEmpty(), SqlLikeUtils.likePredicate("username"),
+                        SqlLikeUtils.contains(normalizedSearch))
                 .eq(admin != null, "admin", admin)
                 .eq(enabled != null, "enabled", enabled)
                 .orderByAsc("username")
