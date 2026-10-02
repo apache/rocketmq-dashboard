@@ -261,15 +261,22 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     public PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query) {
         QueryWrapper<RmqSystemAlert> conditions = new QueryWrapper<RmqSystemAlert>()
                 .eq(StringUtils.hasText(query.level()), "level", normalizeLevel(query.level()))
-                .eq(query.domain() != null, "domain", query.domain() == null ? null : query.domain().name())
                 .eq(StringUtils.hasText(query.instanceId()), "instance_id", trimToNull(query.instanceId()))
                 .eq(StringUtils.hasText(query.transition()), "transition", normalizeTransition(query.transition()))
                 .eq(query.notificationSuppressed() != null, "notification_suppressed", query.notificationSuppressed())
                 .apply(StringUtils.hasText(query.labelKey()),
                         "JSON_CONTAINS(labels_json, JSON_OBJECT({0}, {1}))", query.labelKey(), query.labelValue())
                 .ge(query.from() != null, "time", query.from())
-                .le(query.to() != null, "time", query.to())
-                .orderByDesc("time", "id");
+                .le(query.to() != null, "time", query.to());
+        if (query.domain() == AlertDomain.BUSINESS) {
+            // Alert events recorded before alert domains were introduced are business events
+            // (parseDomain reads NULL as BUSINESS, and the column was added without a default
+            // or backfill), so a plain equality would silently drop them from the feed.
+            conditions.and(wrapper -> wrapper.isNull("domain").or().eq("domain", AlertDomain.BUSINESS.name()));
+        } else if (query.domain() != null) {
+            conditions.eq("domain", query.domain().name());
+        }
+        conditions.orderByDesc("time", "id");
         Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
