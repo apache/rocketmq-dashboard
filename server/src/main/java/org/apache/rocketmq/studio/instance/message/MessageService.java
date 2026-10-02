@@ -207,9 +207,15 @@ public class MessageService {
         return provider.consumeMessageDirectly(request);
     }
 
-    /** consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed. */
+    /**
+     * consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed.
+     * The cloud providers answer in their own vocabulary: Tencent returns REQUEST_ACCEPTED for a
+     * request the cloud accepted but whose consumption outcome it does not report, so it is an
+     * accepted operation rather than a failed one.
+     */
     private static String auditResult(String consumeResult) {
-        return "CR_SUCCESS".equals(consumeResult) ? "SUCCESS" : "FAILED";
+        return "CR_SUCCESS".equals(consumeResult) || "REQUEST_ACCEPTED".equals(consumeResult)
+                ? "SUCCESS" : "FAILED";
     }
 
     private void recordDirectConsumeAudit(DirectConsumeMessageDTO request, String detail,
