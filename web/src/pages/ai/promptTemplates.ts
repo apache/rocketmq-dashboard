@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { readAuthSession } from '../../stores/authStorage';
 import type { ChatMode } from './chatDraft';
 
 export type PromptTemplateScope = 'builtin' | 'custom';
@@ -58,7 +59,28 @@ export interface SavePromptTemplateResult {
 
 type Translate = (key: string) => string;
 
+/**
+ * The key the custom templates used before they became account-scoped. It is read once more, to
+ * take over (no account signed in) or drop (account signed in) whatever is still under it, and is
+ * never written again.
+ */
 export const PROMPT_TEMPLATE_STORAGE_KEY = 'rocketmq-studio-ai-prompt-templates';
+
+/**
+ * Where the custom templates of one owner live.
+ *
+ * A template is a personal snippet, but a browser profile is shared infrastructure: keyed globally,
+ * one operator's saved prompts are readable, applicable and deletable by the next account that signs
+ * in on the same machine. `null` is the unauthenticated single-user mode the app falls back to when
+ * no login is required - `AuthGate` clears the session in that case, so there is nothing to scope to
+ * but this browser itself.
+ */
+export function promptTemplateStorageKey(owner: number | null): string {
+  return owner === null
+    ? `${PROMPT_TEMPLATE_STORAGE_KEY}:v2:single-user`
+    : `${PROMPT_TEMPLATE_STORAGE_KEY}:v2:user-id:${owner}`;
+}
+
 export const MAX_CUSTOM_PROMPT_TEMPLATES = 20;
 export const MAX_PROMPT_TEMPLATE_BODY_LENGTH = 6000;
 export const MAX_PROMPT_TEMPLATE_TITLE_LENGTH = 80;
@@ -268,6 +290,30 @@ function getBuiltinPromptTemplates(translate?: Translate): PromptTemplate[] {
   }));
 }
 
+/**
+ * The catalog written before the templates became account-scoped, under one ownerless key.
+ *
+ * With no account signed in it is this browser's own data, so it moves to the single-user key and is
+ * kept. With an account signed in it belongs to whoever used this browser last: adopting it would
+ * hand one operator's saved prompts to the next account, which is the defect this scoping removes,
+ * so it is dropped instead. Either way the legacy key is left empty behind it.
+ */
+function takeOverLegacyCatalog(
+  owner: number | null,
+  key: string,
+  storage: PromptTemplateStorage,
+): string | null {
+  const legacy = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+  if (legacy === null) return null;
+  if (owner !== null) {
+    storage.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    return null;
+  }
+  storage.setItem(key, legacy);
+  storage.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+  return legacy;
+}
+
 function readCustomPromptTemplates(storage = getStorage()): {
   templates: PromptTemplate[];
   storageAvailable: boolean;
@@ -276,7 +322,11 @@ function readCustomPromptTemplates(storage = getStorage()): {
   if (!storage) return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   let raw: string | null;
   try {
-    raw = storage.getItem(PROMPT_TEMPLATE_STORAGE_KEY);
+    const owner = readAuthSession().userId;
+    const key = promptTemplateStorageKey(owner);
+    raw = storage.getItem(key);
+    // Nothing under this account's key yet: the ownerless catalog may be the only copy there is.
+    if (raw === null) raw = takeOverLegacyCatalog(owner, key, storage);
   } catch {
     return { templates: [], storageAvailable: false, invalidCustomCount: 0 };
   }
@@ -307,7 +357,7 @@ function writeCustomPromptTemplates(templates: PromptTemplate[], storage = getSt
   if (!storage) return false;
   try {
     storage.setItem(
-      PROMPT_TEMPLATE_STORAGE_KEY,
+      promptTemplateStorageKey(readAuthSession().userId),
       JSON.stringify(templates.slice(0, MAX_CUSTOM_PROMPT_TEMPLATES)),
     );
     return true;
@@ -368,7 +418,7 @@ export function deleteCustomPromptTemplate(id: string, storage = getStorage()): 
   if (next.length === current.templates.length) return true;
   if (next.length === 0) {
     try {
-      storage?.removeItem(PROMPT_TEMPLATE_STORAGE_KEY);
+      storage?.removeItem(promptTemplateStorageKey(readAuthSession().userId));
       return true;
     } catch {
       return false;
