@@ -343,7 +343,7 @@ const ProducerPage = () => {
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
           <Form.Item label={t('common.instance')}>
             <Select
-              aria-label="Instance"
+              aria-label={t('common.instance')}
               value={selectedInstanceId}
               onChange={handleInstanceChange}
               placeholder={t('common.selectInstance')}

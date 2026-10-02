@@ -696,7 +696,7 @@ describe('ProducerPage', () => {
 
     expect(screen.getByText('实例')).toBeInTheDocument();
     expect(screen.getByText('主题')).toBeInTheDocument();
-    expect(screen.getAllByText('生产者组').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('生产者组').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('客户端 ID')).toBeInTheDocument();
   });
 
@@ -707,7 +707,7 @@ describe('ProducerPage', () => {
 
     expect(screen.getByText('Instance')).toBeInTheDocument();
     expect(screen.getByText('Topic')).toBeInTheDocument();
-    expect(screen.getAllByText('Producer Group').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Producer Group').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Client ID')).toBeInTheDocument();
   });
 });
