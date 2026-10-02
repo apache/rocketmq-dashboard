@@ -22,8 +22,6 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAiEvent;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAiEventMapper;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /** MySQL-backed AI event repository (rmq_ai_event). */
@@ -61,16 +59,17 @@ public class MybatisPlusAiEventRepository implements AiEventRepository {
             return List.of();
         }
         int bounded = Math.min(limit, MAX_LIMIT);
-        // No SQL ORDER BY on purpose: payload is MEDIUMTEXT and any sort MySQL cannot serve
-        // from uk_ai_event_conversation_seq materialises the whole value into
-        // sort_buffer_size. Filter on the index, then sort this bounded slice in memory.
-        List<RmqAiEvent> rows = eventMapper.selectList(new QueryWrapper<RmqAiEvent>()
+        // The ordering belongs in the statement. uk_ai_event_conversation_seq leads with the
+        // equality column and orders by seq, so the range scan that applies seq > ? already visits
+        // the qualifying rows in seq order and MySQL serves ORDER BY seq from that index without
+        // materialising the MEDIUMTEXT payload into sort_buffer_size. Without it, LIMIT keeps an
+        // unspecified subset of the qualifying rows and the cursor derived from the last of them
+        // can skip events; a sort applied afterwards cannot repair the choice.
+        return eventMapper.selectList(new QueryWrapper<RmqAiEvent>()
                 .eq("conversation_id", conversationId)
                 .gt("seq", afterSeq)
+                .orderByAsc("seq")
                 .last("LIMIT " + bounded));
-        List<RmqAiEvent> sorted = new ArrayList<>(rows);
-        sorted.sort(Comparator.comparing(RmqAiEvent::getSeq).thenComparing(RmqAiEvent::getId));
-        return sorted;
     }
 
     @Override

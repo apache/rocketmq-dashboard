@@ -35,10 +35,13 @@ public interface AiEventRepository {
     /**
      * Events with seq strictly greater than afterSeq, capped at limit, ascending by seq.
      *
-     * <p>Deliberately does NOT use SQL ORDER BY. The payload column is MEDIUMTEXT, and any
-     * sort MySQL cannot satisfy from an index materialises the whole value into
-     * sort_buffer_size. The query filters on uk_ai_event_conversation_seq and the caller
-     * sorts the (small, bounded) result in memory. Do not "optimise" this into an ORDER BY.
+     * <p>The ascending order is part of the statement, not a courtesy of the storage engine.
+     * uk_ai_event_conversation_seq leads with the equality column and orders by seq, so the range
+     * scan that applies the seq predicate already visits the qualifying rows in seq order and MySQL
+     * satisfies ORDER BY seq ASC from that index without materialising the MEDIUMTEXT payload into
+     * sort_buffer_size. An implementation must order before it limits: which rows a LIMIT keeps
+     * without an ORDER BY is unspecified, and the caller derives its next cursor from the last row
+     * of the page it is handed.
      */
     List<RmqAiEvent> findByConversationIdAfterSeq(Long conversationId, int afterSeq, int limit);
 

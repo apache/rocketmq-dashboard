@@ -63,14 +63,14 @@ import static org.mockito.Mockito.when;
  * derives from it, the owner-scoped conversation list, and the run lookups the admission guard and the
  * two sweeps are built on.
  *
- * <p>One assertion here is load-bearing and easy to mistake for pedantry: the generated SQL must not
- * contain {@code ORDER BY}. {@code rmq_ai_event.payload} is MEDIUMTEXT, and a sort MySQL cannot serve
- * from {@code uk_ai_event_conversation_seq} materialises the whole value of every candidate row into
- * {@code sort_buffer_size} — a timeline read that spills, on the column that is largest in the schema,
- * for an ordering the caller could have produced in memory over a slice of at most 500 rows. The slice
- * is bounded by construction, so it is sorted in Java instead. Someone "tidying up" the query by adding
- * an ordering gets a green functional test and a slower database; these cases are what turns that into
- * a red build.
+ * <p>One assertion here is load-bearing and easy to mistake for pedantry: the generated SQL must order
+ * the slice by {@code seq} before it limits it. {@code uk_ai_event_conversation_seq} leads with the
+ * equality column and orders by {@code seq}, so the range scan that applies the {@code seq > ?}
+ * predicate already visits the qualifying rows in {@code seq} order, and MySQL satisfies
+ * {@code ORDER BY seq ASC} from that index instead of materialising the MEDIUMTEXT
+ * {@code rmq_ai_event.payload} into {@code sort_buffer_size}. Without the clause, which rows the
+ * {@code LIMIT} keeps is unspecified by SQL, and the cursor {@link AiConversationService#timeline}
+ * derived from the last retained row would come from an arbitrary page.
  *
  * <p>Two further choices are pinned the same way, because both fail in production rather than in a
  * functional test: an empty id collection never reaches the database (MyBatis-Plus renders {@code IN ()}
@@ -91,11 +91,12 @@ class AiTimelineRepositoryTest {
 
     /**
      * The whole where-clause of a timeline slice, in the form MyBatis-Plus renders it: the two index
-     * columns of {@code uk_ai_event_conversation_seq} as bound parameters, then the row count. Asserted
-     * by equality, not by {@code contains}, so an added ordering shows up in the failure message instead
-     * of hiding behind a passing substring.
+     * columns of {@code uk_ai_event_conversation_seq} as bound parameters, the ordering the slice is
+     * contractually returned in, then the row count. Asserted by equality, not by {@code contains}, so a
+     * dropped or reordered clause shows up in the failure message instead of hiding behind a passing
+     * substring.
      */
-    private static final String SLICE_SQL = "(conversation_id = ? AND seq > ?) LIMIT ";
+    private static final String SLICE_SQL = "(conversation_id = ? AND seq > ?) ORDER BY seq ASC LIMIT ";
 
     private final RmqAiEventMapper eventMapper = mock(RmqAiEventMapper.class);
     private final RmqAiConversationMapper conversationMapper = mock(RmqAiConversationMapper.class);
@@ -128,45 +129,43 @@ class AiTimelineRepositoryTest {
         assertThat(query.getSqlSegment())
                 .contains("conversation_id = #{")
                 .contains("AND seq > #{")
-                .endsWith(") LIMIT 51");
+                .endsWith(") ORDER BY seq ASC LIMIT 51");
         assertThat(query.getParamNameValuePairs().values()).containsExactlyInAnyOrder(CONVERSATION_ID, 150);
     }
 
     @Test
-    void theSliceShouldNeverSortInTheDatabaseTest() {
+    void theSliceShouldOrderBySeqBeforeTheLimitTest() {
         when(eventMapper.selectList(any())).thenReturn(List.of());
 
         repository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 201);
 
         QueryWrapper<RmqAiEvent> query = capturedQuery();
-        // See the class javadoc: MEDIUMTEXT payload + a sort the unique key cannot serve = the whole
-        // value of every row copied into sort_buffer_size. The slice is sorted in Java instead, which
-        // the next case asserts.
-        assertThat(query.getTargetSql().toUpperCase(Locale.ROOT)).doesNotContain("ORDER BY");
-        assertThat(query.getSqlSegment().toUpperCase(Locale.ROOT)).doesNotContain("ORDER BY");
+        // See the class javadoc: the ordering is part of the statement, because LIMIT decides which
+        // rows are kept before anything outside the database can look at them.
         assertThat(query.getTargetSql()).isEqualTo(SLICE_SQL + 201);
+        assertThat(query.getSqlSegment().toUpperCase(Locale.ROOT)).contains("ORDER BY SEQ ASC");
+        String rendered = query.getTargetSql().toUpperCase(Locale.ROOT);
+        assertThat(rendered.indexOf("ORDER BY SEQ ASC")).isLessThan(rendered.indexOf("LIMIT"));
     }
 
     @Test
-    void theSliceShouldBeSortedInMemoryBySeqThenIdTest() {
-        // Scrambled on purpose: the database was not asked to sort, so whatever order the storage engine
-        // happens to return is what arrives here.
+    void theSliceShouldKeepTheDatabaseOrderTest() {
+        // Handed back in the order the index scan produced: the repository adds no second ordering, so
+        // the page the service cuts the cursor from is exactly the statement's slice.
         when(eventMapper.selectList(any())).thenReturn(new ArrayList<>(List.of(
-                row(905L, 5), row(903L, 3), row(909L, 9), row(901L, 1))));
+                row(901L, 1), row(903L, 3), row(905L, 5), row(909L, 9))));
 
         List<RmqAiEvent> slice = repository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 50);
 
         assertThat(slice).extracting(RmqAiEvent::getSeq).containsExactly(1, 3, 5, 9);
-        assertThat(capturedQuery().getTargetSql()).doesNotContain("ORDER BY");
 
-        // uk_ai_event_conversation_seq makes equal seq values impossible in the database, so the id
-        // tie-break can only fire on a fixture; it is what makes the comparator total, and therefore
-        // what keeps two reads of the same slice from disagreeing about the order.
+        // uk_ai_event_conversation_seq makes equal seq values impossible in the database, so the
+        // repository invents no tie-break of its own: the ordering is whatever the scan returned.
         when(eventMapper.selectList(any())).thenReturn(new ArrayList<>(List.of(row(902L, 4), row(901L, 4))));
 
         assertThat(repository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 50))
                 .extracting(RmqAiEvent::getId)
-                .containsExactly(901L, 902L);
+                .containsExactly(902L, 901L);
     }
 
     // --- the cursor the caller derives -------------------------------------------
