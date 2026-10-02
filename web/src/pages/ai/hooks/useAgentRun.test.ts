@@ -340,6 +340,53 @@ describe('useAgentRun', () => {
     expect(result.current.error).toBe('AI stream idle for more than 30s');
   });
 
+  it('keepsThePendingQuestionWhenTheStreamFailsBeforeAdmissionTest', async () => {
+    const refetchTimeline = vi.fn().mockResolvedValue(undefined);
+    const { result } = render({ refetchTimeline });
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.send(7, { message: '这个问题还会在吗' });
+    });
+    expect(result.current.pendingUserMessage).toBe('这个问题还会在吗');
+
+    // The POST dies before the server admits the run (a refused connection, or a 409 from another
+    // tab). No `run_started` frame ever arrived, so the run wrote nothing and the refetched
+    // transcript cannot contain the user row: dropping the optimistic copy here erases the
+    // operator's own question from the screen and leaves only an error banner.
+    await act(async () => {
+      openedStreams[0].fail(new Error('connection refused'));
+      await flushFrame();
+      await sent;
+    });
+
+    expect(refetchTimeline).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingUserMessage).toBe('这个问题还会在吗');
+    expect(result.current.error).toBe('connection refused');
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it('dropsThePendingQuestionWhenTheRunWasAdmittedBeforeTheStreamFailedTest', async () => {
+    const refetchTimeline = vi.fn().mockResolvedValue(undefined);
+    const { result } = render({ refetchTimeline });
+
+    let sent!: Promise<void>;
+    await act(async () => {
+      sent = result.current.send(7, { message: '已经入队的问题' });
+    });
+    await act(async () => {
+      openedStreams[0].emit(runStarted());
+      openedStreams[0].fail(new Error('stream broken mid-run'));
+      await flushFrame();
+      await sent;
+    });
+
+    // Admission persisted the user row, so the refetched transcript paints it: keeping the
+    // optimistic twin would draw the same question twice. Only the never-admitted run keeps it.
+    expect(refetchTimeline).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingUserMessage).toBeNull();
+  });
+
   it('stopsThroughTheApiWithoutAbortingTheStreamTest', async () => {
     const { result } = render();
 
