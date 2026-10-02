@@ -158,7 +158,9 @@ func (c Client) request(ctx context.Context, target Target, method string, path 
 	if !hasJSONData(envelope.Data) {
 		return nil
 	}
-	if err := json.Unmarshal(envelope.Data, out); err != nil {
+	// The payload is decoded into the caller's any, so it must not go through
+	// float64: types.DecodeJSON keeps int64 values exact.
+	if err := types.DecodeJSON(envelope.Data, out); err != nil {
 		return fmt.Errorf("invalid studio data: %w", err)
 	}
 	return nil
