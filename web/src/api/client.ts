@@ -78,9 +78,32 @@ function isPublicAuthRequest(url?: string): boolean {
   }
 }
 
+/**
+ * Builds the URL an expired session navigates to. The page the operator was on rides along as an
+ * encoded `redirect` parameter so that a re-login can return there, and a session that expires
+ * while the login page itself is open redirects plainly instead of linking to itself.
+ */
+export function sessionExpiryRedirectUrl(pathname: string, search: string): string {
+  if (pathname === '/login') {
+    return '/login';
+  }
+  return `/login?redirect=${encodeURIComponent(`${pathname}${search}`)}`;
+}
+
+/**
+ * Only a same-app absolute path may become the post-login target of sessionExpiryRedirectUrl.
+ * Protocol-relative URLs (`//evil.example`), absolute external URLs, relative paths without a
+ * leading slash and backslash variants (which browsers normalize to `/`) all fall back to home.
+ */
+export function sanitizeLoginRedirect(target: string | null | undefined): string {
+  if (!target || !target.startsWith('/')) return '/';
+  if (target.startsWith('//') || target.includes('\\')) return '/';
+  return target;
+}
+
 export function handleSessionUnauthorized(): void {
   clearAuthSession();
-  window.location.href = '/login';
+  window.location.href = sessionExpiryRedirectUrl(window.location.pathname, window.location.search);
 }
 
 const client = axios.create({

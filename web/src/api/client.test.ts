@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import client from './client';
+import client, { handleSessionUnauthorized } from './client';
 
 vi.mock('antd', () => ({
   message: {
@@ -40,6 +40,26 @@ vi.stubGlobal('localStorage', {
   },
 });
 
+let originalLocation: Location | undefined;
+
+/** jsdom makes `window.location` non-navigable, so a test that observes a redirect replaces it. */
+const stubSessionLocation = (pathname: string, search: string) => {
+  originalLocation ??= window.location;
+  const stub = { origin: 'http://localhost:3000', pathname, search, href: '' };
+  Object.defineProperty(window, 'location', { configurable: true, writable: true, value: stub });
+  return { href: () => stub.href };
+};
+
+const restoreWindowLocation = () => {
+  if (!originalLocation) return;
+  Object.defineProperty(window, 'location', {
+    configurable: true,
+    writable: true,
+    value: originalLocation,
+  });
+  originalLocation = undefined;
+};
+
 describe('API client response contract', () => {
   beforeEach(() => {
     mock.reset();
@@ -48,6 +68,7 @@ describe('API client response contract', () => {
   });
 
   afterEach(() => {
+    restoreWindowLocation();
     mock.reset();
   });
 
@@ -181,5 +202,32 @@ describe('API client response contract', () => {
     await expect(client.post('/instances/delete', { id: 'x' })).rejects.toThrow(
       'Admin permission required',
     );
+  });
+
+  it('sends an expired session to the login page carrying the page it was on', () => {
+    const session = stubSessionLocation('/ops/alerts', '?level=error');
+
+    handleSessionUnauthorized();
+
+    expect(session.href()).toBe('/login?redirect=%2Fops%2Falerts%3Flevel%3Derror');
+  });
+
+  it('carries the current page when a protected request expires the session', async () => {
+    const session = stubSessionLocation('/instance/message', '?topic=orders');
+    mock.onGet('/clusters').reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+    await expect(client.get('/clusters')).rejects.toMatchObject({ response: { status: 401 } });
+
+    expect(session.href()).toBe(
+      `/login?redirect=${encodeURIComponent('/instance/message?topic=orders')}`,
+    );
+  });
+
+  it('redirects plainly when the session expires on the login page itself', () => {
+    const session = stubSessionLocation('/login', '?stale=1');
+
+    handleSessionUnauthorized();
+
+    expect(session.href()).toBe('/login');
   });
 });
