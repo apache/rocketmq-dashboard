@@ -245,6 +245,25 @@ describe('DLQ page', () => {
     expect(screen.getByText('-')).toBeInTheDocument();
   });
 
+  it('renders the last enqueue time in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes LocalDateTime without an offset, so the wire value is a UTC wall
+    // clock. Parsing it as browser-local (the plain formatDateTime path) would shift the displayed
+    // time by the viewer's zone; formatUtcDateTime reads it as UTC and converts.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+        pageOf([{ ...dlqGroup, lastEnqueueTime: '2026-07-24T10:00:00' }]),
+      );
+      renderWithProviders(<DLQPage />);
+
+      const row = (await screen.findByText('cg-order')).closest('tr');
+      if (!row) throw new Error('DLQ group row not found');
+      expect(within(row).getByText('2026-07-24 18:00:00 GMT+8')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens a message detail drawer with the selected group metadata', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);

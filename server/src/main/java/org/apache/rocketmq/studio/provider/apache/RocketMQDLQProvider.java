@@ -58,7 +58,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -151,8 +151,13 @@ public class RocketMQDLQProvider implements DLQProvider {
                     }
                 }
                 if (latestUpdate > 0L) {
+                    // Backend LocalDateTime values are UTC by convention (the metrics and alert
+                    // subsystems write ZoneOffset.UTC, and the frontend renders no-offset strings
+                    // through formatUtcDateTime). Converting in the server's default zone would
+                    // ship a wall clock no viewer can interpret: the serialized string carries no
+                    // offset, so a browser in another zone silently shifts the displayed time.
                     lastEnqueueTime = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(latestUpdate), ZoneId.systemDefault());
+                            Instant.ofEpochMilli(latestUpdate), ZoneOffset.UTC);
                 }
             }
         } catch (Exception e) {

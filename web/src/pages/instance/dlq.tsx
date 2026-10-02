@@ -49,6 +49,7 @@ import {
 } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -505,7 +506,7 @@ const DLQPage = () => {
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(time)}
+          {formatUtcDateTime(time)}
         </Text>
       ),
     },
@@ -882,7 +883,7 @@ const DLQPage = () => {
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
-                    {formatDateTime(detailGroup.lastEnqueueTime)}
+                    {formatUtcDateTime(detailGroup.lastEnqueueTime)}
                   </Text>
                 </div>
               </Space>

@@ -30,6 +30,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -55,11 +56,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
@@ -182,6 +187,34 @@ class RocketMQDLQProviderTest {
         assertThat(filtered.getTotal()).isEqualTo(1);
         assertThat(filtered.getItems()).extracting(DLQGroupVO::getGroupName)
                 .containsExactly("order-b");
+    }
+
+    @Test
+    void listDLQGroupsShouldReportLastEnqueueTimeAsUtcTest() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a"));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        // 2025-07-31T16:00:00Z: the UTC wall clock differs from Asia/Shanghai's by eight hours,
+        // so a conversion in the server's default zone cannot pass the assertion below.
+        long lastUpdate = LocalDateTime.of(2025, 7, 31, 16, 0).toInstant(ZoneOffset.UTC).toEpochMilli();
+        TopicStatsTable statsTable = new TopicStatsTable();
+        TopicOffset topicOffset = new TopicOffset();
+        topicOffset.setMinOffset(0);
+        topicOffset.setMaxOffset(5);
+        topicOffset.setLastUpdateTimestamp(lastUpdate);
+        statsTable.getOffsetTable().put(new MessageQueue("%DLQ%group-a", "broker-a", 0), topicOffset);
+        when(adminExt.examineTopicStats(anyString())).thenReturn(statsTable);
+
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+            assertThat(groups).singleElement()
+                    .extracting(DLQGroupVO::getLastEnqueueTime)
+                    .isEqualTo(LocalDateTime.ofInstant(Instant.ofEpochMilli(lastUpdate), ZoneOffset.UTC));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test
