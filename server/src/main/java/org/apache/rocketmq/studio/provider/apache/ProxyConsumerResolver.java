@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Resolves consumer connection info from the cluster proxies.
@@ -72,6 +73,7 @@ public class ProxyConsumerResolver {
     private final RocketMQProperties properties;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
+    private final AtomicLong cacheGeneration = new AtomicLong();
     private final AtomicBoolean clientStarted = new AtomicBoolean(false);
     private volatile NettyRemotingClient remotingClient;
 
@@ -177,11 +179,28 @@ public class ProxyConsumerResolver {
         return discoverProxyAddressesStatus(instanceId).addresses();
     }
 
+    /** Evicts addresses discovered through an instance endpoint that has just changed or closed. */
+    public void invalidateInstance(String instanceId) {
+        if (StringUtils.hasText(instanceId)) {
+            synchronized (proxyAddressCache) {
+                proxyAddressCache.remove(instanceId);
+            }
+        }
+    }
+
     private ProxyAddressResolution discoverProxyAddressesStatus(String instanceId) {
         String cacheKey = StringUtils.hasText(instanceId) ? instanceId : DEFAULT_INSTANCE_KEY;
-        CachedProxyAddresses cached = proxyAddressCache.get(cacheKey);
-        if (cached != null && cached.expiresAtMillis() > System.currentTimeMillis()) {
-            return ProxyAddressResolution.available(cached.addresses());
+        CachedProxyAddresses generation;
+        synchronized (proxyAddressCache) {
+            CachedProxyAddresses cached = proxyAddressCache.get(cacheKey);
+            if (cached != null && cached.addresses() != null
+                    && cached.expiresAtMillis() > System.currentTimeMillis()) {
+                return ProxyAddressResolution.available(cached.addresses());
+            }
+            generation = cached != null && cached.addresses() == null
+                    ? cached
+                    : new CachedProxyAddresses(null, 0, cacheGeneration.incrementAndGet());
+            proxyAddressCache.put(cacheKey, generation);
         }
         Set<String> ips = new LinkedHashSet<>();
         try {
@@ -203,14 +222,29 @@ public class ProxyConsumerResolver {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE, ResponseCode.TOPIC_NOT_EXIST)) {
                 // A known absent heartbeat-syncer group means no proxy address is currently observable.
                 // Do not cache the empty result: a Proxy may register immediately afterwards.
+                removeIfCurrent(cacheKey, generation);
                 return ProxyAddressResolution.available(List.of());
             }
             log.debug("Proxy discovery via heartbeat syncer failed for instance {}: {}", instanceId, e.getMessage());
+            removeIfCurrent(cacheKey, generation);
             return ProxyAddressResolution.unavailable();
         }
         List<String> addresses = ips.stream().map(ip -> ip + ":" + PROXY_REMOTING_PORT).toList();
-        proxyAddressCache.put(cacheKey, new CachedProxyAddresses(addresses, System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS));
+        synchronized (proxyAddressCache) {
+            if (proxyAddressCache.get(cacheKey) == generation) {
+                proxyAddressCache.put(cacheKey, new CachedProxyAddresses(addresses,
+                        System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS, generation.generation()));
+            }
+        }
         return ProxyAddressResolution.available(addresses);
+    }
+
+    private void removeIfCurrent(String cacheKey, CachedProxyAddresses generation) {
+        synchronized (proxyAddressCache) {
+            if (proxyAddressCache.get(cacheKey) == generation) {
+                proxyAddressCache.remove(cacheKey);
+            }
+        }
     }
 
     private <T> T executeAdmin(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
@@ -263,6 +297,6 @@ public class ProxyConsumerResolver {
         static ProxyQueryResolution unavailable() { return new ProxyQueryResolution(null, false); }
     }
 
-    private record CachedProxyAddresses(List<String> addresses, long expiresAtMillis) {
+    private record CachedProxyAddresses(List<String> addresses, long expiresAtMillis, long generation) {
     }
 }

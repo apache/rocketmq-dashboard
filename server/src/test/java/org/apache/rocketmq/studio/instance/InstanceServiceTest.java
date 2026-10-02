@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.apache.ProxyConsumerResolver;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.apache.rocketmq.studio.settings.SettingsService;
@@ -108,6 +109,9 @@ class InstanceServiceTest {
 
     @Mock
     private ResourceOwnershipGuard ownershipGuard;
+
+    @Mock
+    private ProxyConsumerResolver proxyConsumerResolver;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -717,6 +721,22 @@ class InstanceServiceTest {
 
         assertThat(saved.getAdminCredentialRef()).isEqualTo("credential-b");
         verify(adminFactory).release("namesrv:9876");
+        verify(proxyConsumerResolver).invalidateInstance("production");
+    }
+
+    @Test
+    void updateApacheInstanceShouldInvalidateProxyAddressesWhenEndpointChangesTest() {
+        InstanceVO existing = InstanceVO.builder().name("production").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("old-namesrv:9876").build();
+        existing.setId(1L);
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        instanceService.updateInstance(update);
+
+        verify(proxyConsumerResolver).invalidateInstance("production");
     }
 
     @Test
@@ -808,6 +828,7 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.updateInstance(update))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("storage unavailable");
+        verify(proxyConsumerResolver, never()).invalidateInstance(any());
 
         assertThat(stored.getName()).isEqualTo("old-name");
         assertThat(stored.getRemark()).isEqualTo("old remark");
@@ -1240,6 +1261,7 @@ class InstanceServiceTest {
 
         verify(instanceRepository).deleteById(1L);
         verify(adminFactory).release("namesrv:9876");
+        verify(proxyConsumerResolver).invalidateInstance("to-delete");
     }
 
     @Test
@@ -1272,6 +1294,7 @@ class InstanceServiceTest {
 
         verify(adminFactory).release("namesrv:9876");
         verify(clientPool).release("namesrv:9876");
+        verify(proxyConsumerResolver).invalidateInstance("to-delete");
         verify(dataSourceCache).clear();
     }
 

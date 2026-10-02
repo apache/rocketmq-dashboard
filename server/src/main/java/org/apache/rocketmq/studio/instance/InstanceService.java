@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.apache.ProxyConsumerResolver;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.apache.rocketmq.studio.settings.SettingsService;
@@ -77,6 +78,7 @@ public class InstanceService {
     private final CacheManager cacheManager;
     private final RegionNames regionNames;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final ProxyConsumerResolver proxyConsumerResolver;
 
     // @Lazy self-injection: Spring AOP proxies intercept @Transactional calls only when they
     // originate from outside the bean. Calling deleteInstance() directly from within this class
@@ -869,6 +871,7 @@ public class InstanceService {
                 && Objects.equals(oldCredentialRef, normalizeCredentialRef(currentCredentialRef))) {
             return;
         }
+        proxyConsumerResolver.invalidateInstance(existing.getName());
         List<InstanceVO> remaining = instanceRepository.findAll().stream()
                 .filter(instance -> !excludedInstanceId.equals(instance.getId()))
                 .toList();
