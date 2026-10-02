@@ -171,4 +171,29 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(producerConnectionService);
     }
+
+    @Test
+    void auditProducerHealthShouldReturnReport() throws Exception {
+        ProducerHealthAuditReportVO report = ProducerHealthAuditReportVO.builder()
+                .topic("order-topic")
+                .producerGroup("pg-order")
+                .totalProducerClients(2)
+                .multiIpRedundancy(true)
+                .healthSummary("HEALTHY")
+                .build();
+        when(producerConnectionService.auditProducerHealth("instance-1", "order-topic", "pg-order"))
+                .thenReturn(report);
+
+        mockMvc.perform(get("/api/producer/health-audit")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "order-topic")
+                        .param("producerGroup", "pg-order"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.topic").value("order-topic"))
+                .andExpect(jsonPath("$.data.healthSummary").value("HEALTHY"))
+                .andExpect(jsonPath("$.data.multiIpRedundancy").value(true));
+
+        verify(producerConnectionService).auditProducerHealth("instance-1", "order-topic", "pg-order");
+    }
 }

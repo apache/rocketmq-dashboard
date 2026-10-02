@@ -52,6 +52,16 @@ public class ProducerController {
         return producerConnectionService.listConnections(instanceId, topic, producerGroup);
     }
 
+    @GetMapping("/health-audit")
+    public Result<ProducerHealthAuditReportVO> auditProducerHealth(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String topic,
+            @RequestParam(required = false) String producerGroup) {
+        requireParameter(instanceId, "instanceId");
+        requireParameter(topic, "topic");
+        return Result.ok(producerConnectionService.auditProducerHealth(instanceId, topic, producerGroup));
+    }
+
     private void requireParameter(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new BusinessException(400, name + " is required");

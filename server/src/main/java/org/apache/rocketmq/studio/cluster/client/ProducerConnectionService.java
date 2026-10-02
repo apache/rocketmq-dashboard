@@ -32,6 +32,13 @@ public class ProducerConnectionService {
     private static final int MAX_PRODUCER_GROUP_SELECTOR_LIMIT = 100;
 
     private final ClientProvider clientProvider;
+    private final ProducerConnectionHealthAnalyzer healthAnalyzer;
+
+    public ProducerHealthAuditReportVO auditProducerHealth(String instanceId, String topic, String producerGroup) {
+        ProducerConnectionResultVO result = listConnections(instanceId, topic, producerGroup);
+        List<ProducerConnectionVO> connections = result.getConnections();
+        return healthAnalyzer.analyze(topic, producerGroup, connections);
+    }
 
     public ProducerConnectionResultVO listConnections(
             String instanceId, String topic, String producerGroup) {

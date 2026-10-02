@@ -39,6 +39,9 @@ class ProducerConnectionServiceTest {
     @Mock
     private ClientProvider clientProvider;
 
+    @Mock
+    private ProducerConnectionHealthAnalyzer healthAnalyzer;
+
     @InjectMocks
     private ProducerConnectionService producerConnectionService;
 
@@ -146,5 +149,23 @@ class ProducerConnectionServiceTest {
                 .hasMessage("instanceId is required")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
         verifyNoInteractions(clientProvider);
+    }
+
+    @Test
+    void auditProducerHealthShouldDelegateToHealthAnalyzer() {
+        when(clientProvider.scanProducerConnections("instance-1", "order-topic", "pg-order"))
+                .thenReturn(ProducerConnectionScanResult.complete(List.of()));
+        ProducerHealthAuditReportVO mockReport = ProducerHealthAuditReportVO.builder()
+                .topic("order-topic")
+                .producerGroup("pg-order")
+                .healthSummary("HEALTHY")
+                .build();
+        when(healthAnalyzer.analyze(eq("order-topic"), eq("pg-order"), any())).thenReturn(mockReport);
+
+        ProducerHealthAuditReportVO result =
+                producerConnectionService.auditProducerHealth("instance-1", "order-topic", "pg-order");
+
+        assertThat(result.getHealthSummary()).isEqualTo("HEALTHY");
+        verify(healthAnalyzer).analyze(eq("order-topic"), eq("pg-order"), any());
     }
 }
