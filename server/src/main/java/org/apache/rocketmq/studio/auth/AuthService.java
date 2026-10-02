@@ -71,6 +71,8 @@ public class AuthService {
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 1440;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
+    private static final int DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES = 30;
+    private static final int MIN_SESSION_IDLE_TIMEOUT_MINUTES = 10;
     private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
     private static final Duration SESSION_EXPIRING_SOON_WINDOW = Duration.ofMinutes(5);
     private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
@@ -374,10 +376,30 @@ public class AuthService {
     @Scheduled(fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
     public void purgeExpiredSessions() {
         if (databaseBacked()) {
-            sessionMapper.delete(new QueryWrapper<RmqStudioSession>().lt("expires_at", now()));
+            LocalDateTime current = now();
+            revokeIdleSessions(current);
+            sessionMapper.delete(new QueryWrapper<RmqStudioSession>().lt("expires_at", current));
         } else {
             purgeExpiredSessions(clock.millis());
         }
+    }
+
+    /**
+     * Revokes the rows whose token has not been used for longer than the idle window, so the
+     * active-session views stay truthful even when the abandoned token is never presented again.
+     * Rows are still deleted once their absolute deadline passes.
+     */
+    private void revokeIdleSessions(LocalDateTime current) {
+        int idleMinutes = sessionIdleTimeoutMinutes();
+        if (idleMinutes <= 0) {
+            return;
+        }
+        sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                .isNull("revoked_at")
+                .gt("expires_at", current)
+                .isNotNull("last_seen_at")
+                .lt("last_seen_at", current.minusMinutes(idleMinutes))
+                .set("revoked_at", current));
     }
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
@@ -421,7 +443,7 @@ public class AuthService {
         purgeExpiredSessions(current);
         int tokenTtlSeconds = sessionTimeoutSeconds();
         String token = "studio-jwt-" + UUID.randomUUID();
-        activeTokens.put(token, new AuthSession(user, current + tokenTtlSeconds * 1000L));
+        activeTokens.put(token, new AuthSession(user, current + tokenTtlSeconds * 1000L, current));
         return loginResponse(user, token, tokenTtlSeconds);
     }
 
@@ -441,6 +463,15 @@ public class AuthService {
             return Optional.empty();
         }
         LocalDateTime current = now();
+        if (idleSessionExpired(session.getLastSeenAt(), current)) {
+            // Inside its absolute window but unused for longer than the idle deadline: revoke the
+            // row so the session overview stops counting a token nobody can use any more.
+            sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                    .eq("id", session.getId())
+                    .isNull("revoked_at")
+                    .set("revoked_at", current));
+            return Optional.empty();
+        }
         if (session.getLastSeenAt() == null
                 || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
@@ -455,9 +486,18 @@ public class AuthService {
         if (session == null) {
             return Optional.empty();
         }
-        if (session.expiresAtMillis() <= clock.millis()) {
+        long current = clock.millis();
+        if (session.expiresAtMillis() <= current) {
             activeTokens.remove(token);
             return Optional.empty();
+        }
+        if (idleSessionExpired(session.lastSeenAtMillis(), current)) {
+            activeTokens.remove(token);
+            return Optional.empty();
+        }
+        if (session.lastSeenAtMillis() + LAST_SEEN_UPDATE_INTERVAL.toMillis() <= current) {
+            activeTokens.put(token,
+                    new AuthSession(session.user(), session.expiresAtMillis(), current));
         }
         return Optional.of(session.user());
     }
@@ -623,6 +663,39 @@ public class AuthService {
         return LoginVO.UserInfo.builder().userId(userId).username(username).admin(admin).build();
     }
 
+    /**
+     * Minutes a token may stay unused. 0 opts out of the deadline, a value below the minimum
+     * resolves to it, and an out-of-range value falls back to the default; the minimum stays above
+     * the last-seen write throttle so an active session's throttled writes can never lag enough to
+     * idle it out falsely.
+     */
+    private int sessionIdleTimeoutMinutes() {
+        int minutes = authProperties.getSessionIdleTimeoutMinutes();
+        if (minutes <= 0) {
+            return 0;
+        }
+        if (minutes < MIN_SESSION_IDLE_TIMEOUT_MINUTES) {
+            return MIN_SESSION_IDLE_TIMEOUT_MINUTES;
+        }
+        if (minutes > MAX_SESSION_TIMEOUT_MINUTES) {
+            log.warn("Ignoring invalid session idle timeout: {} minutes", minutes);
+            return DEFAULT_SESSION_IDLE_TIMEOUT_MINUTES;
+        }
+        return minutes;
+    }
+
+    private boolean idleSessionExpired(LocalDateTime lastSeenAt, LocalDateTime current) {
+        int idleMinutes = sessionIdleTimeoutMinutes();
+        return idleMinutes > 0 && lastSeenAt != null
+                && !lastSeenAt.plusMinutes(idleMinutes).isAfter(current);
+    }
+
+    private boolean idleSessionExpired(long lastSeenAtMillis, long currentMillis) {
+        int idleMinutes = sessionIdleTimeoutMinutes();
+        return idleMinutes > 0
+                && currentMillis - lastSeenAtMillis >= Duration.ofMinutes(idleMinutes).toMillis();
+    }
+
     private int sessionTimeoutSeconds() {
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         int minutes = settings == null ? DEFAULT_SESSION_TIMEOUT_MINUTES : settings.getSessionTimeout();
@@ -662,7 +735,8 @@ public class AuthService {
     }
 
     private void purgeExpiredSessions(long current) {
-        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= current);
+        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= current
+                || idleSessionExpired(entry.getValue().lastSeenAtMillis(), current));
     }
 
     private boolean databaseBacked() {
@@ -675,6 +749,6 @@ public class AuthService {
         }
     }
 
-    private record AuthSession(LoginVO.UserInfo user, long expiresAtMillis) {
+    private record AuthSession(LoginVO.UserInfo user, long expiresAtMillis, long lastSeenAtMillis) {
     }
 }

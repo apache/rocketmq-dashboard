@@ -35,6 +35,13 @@ public class AuthProperties {
     private String sessionCookieName = "rmq_studio_session";
     private boolean sessionCookieSecure = true;
     private String sessionCookieSameSite = "Strict";
+
+    /**
+     * Minutes a session token may stay unused before its session is treated as expired. 0 disables
+     * the idle deadline and leaves the absolute session timeout as the only deadline, and the
+     * property is deliberately a deployment setting rather than a value a stale client could clear.
+     */
+    private int sessionIdleTimeoutMinutes = 30;
     private List<User> users = new ArrayList<>();
 
     public List<User> configuredUsers() {
