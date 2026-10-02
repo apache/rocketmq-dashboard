@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useMemo, useState, type Key } from 'react';
+import { useCallback, useMemo, useRef, useState, type Key } from 'react';
 import {
   Alert,
   Button,
@@ -170,6 +170,9 @@ const ConversationListPanel = ({
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [deletingIds, setDeletingIds] = useState<readonly number[]>([]);
   const [archivingIds, setArchivingIds] = useState<readonly number[]>([]);
+  // Synchronous view of the deleting ids so a second confirmation for a conversation whose
+  // delete is already queued is a no-op instead of a duplicate request.
+  const deletingIdsRef = useRef<Set<number>>(new Set());
   const deleting = deletingIds.length > 0;
   // Pulled out of `list` for the callback below: the hook returns a fresh object every render, so
   // depending on it would rebuild `columns` — and with it every cell — on each one.
@@ -210,17 +213,25 @@ const ConversationListPanel = ({
   const remove = useCallback(
     async (ids: readonly number[]) => {
       if (ids.length === 0) return;
-      setDeletingIds(ids);
+      // Merge into whatever is already in flight (the archivingIds pattern) instead of
+      // replacing it: a row delete confirmed during a batch keeps both spinners alive,
+      // and this call's exit clears only the ids it owns. Already-queued ids are skipped
+      // so a repeated confirmation never double-POSTs a delete.
+      const pending = ids.filter((id) => !deletingIdsRef.current.has(id));
+      if (pending.length === 0) return;
+      pending.forEach((id) => deletingIdsRef.current.add(id));
+      setDeletingIds([...deletingIdsRef.current]);
       const failed: number[] = [];
-      for (const id of ids) {
+      for (const id of pending) {
         try {
           await deleteConversation(id);
         } catch {
           failed.push(id);
         }
       }
-      const deletedCount = ids.length - failed.length;
-      setDeletingIds([]);
+      const deletedCount = pending.length - failed.length;
+      pending.forEach((id) => deletingIdsRef.current.delete(id));
+      setDeletingIds([...deletingIdsRef.current]);
       setSelectedRowKeys((keys) => keys.filter((key) => failed.includes(Number(key))));
       if (failed.length === 0) {
         message.success(t('ai.list.deleted', { count: deletedCount }));
