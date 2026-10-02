@@ -21,10 +21,12 @@ import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.InOrder;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,14 +36,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ClaudeCodeAgentProviderTest {
@@ -97,6 +101,36 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
+    void streamTimeoutShouldDestroyDescendantsBeforeTheCliProcessTest() throws Exception {
+        Process process = mock(Process.class);
+        ProcessHandle descendant = mock(ProcessHandle.class);
+        List<String> terminationOrder = new ArrayList<>();
+        when(process.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(process.getErrorStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(process.getOutputStream()).thenReturn(new java.io.ByteArrayOutputStream());
+        when(process.waitFor(anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+        when(process.descendants()).thenReturn(Stream.of(descendant));
+        when(descendant.pid()).thenReturn(42L);
+        doAnswer(invocation -> {
+            terminationOrder.add("descendant");
+            return true;
+        }).when(descendant).destroyForcibly();
+        doAnswer(invocation -> {
+            terminationOrder.add("root");
+            return process;
+        }).when(process).destroyForcibly();
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("claude"), 1, process);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(504));
+
+        assertThat(terminationOrder).containsExactly("descendant", "root");
+    }
+
+    @Test
 
     void streamUsesTheIsolatedEnvironment() {
         RecordingEnvironment processEnvironment = new RecordingEnvironment();
@@ -116,12 +150,14 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
-    void streamInterruptionDestroysTheChildProcess() throws Exception {
+    void streamInterruptionDestroysTheProcessTreeTest() throws Exception {
         Process process = mock(Process.class);
+        ProcessHandle descendant = mock(ProcessHandle.class);
         CountDownLatch waitStarted = new CountDownLatch(1);
         when(process.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(process.getErrorStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(process.getOutputStream()).thenReturn(new java.io.ByteArrayOutputStream());
+        when(process.descendants()).thenReturn(Stream.of(descendant));
         doAnswer(invocation -> {
             waitStarted.countDown();
             new CountDownLatch(1).await();
@@ -151,7 +187,37 @@ class ClaudeCodeAgentProviderTest {
         assertThat(failure.get()).isNotNull();
         assertThat(failure.get().getCode()).isEqualTo("llm.provider.interrupted");
         assertThat(interruptPreserved).isTrue();
-        verify(process).destroyForcibly();
+        InOrder order = inOrder(descendant, process);
+        order.verify(descendant).destroyForcibly();
+        order.verify(process).destroyForcibly();
+    }
+
+    @Test
+    void streamIoFailureDestroysDescendantsBeforeTheCliProcessTest() throws Exception {
+        Process process = mock(Process.class);
+        ProcessHandle descendant = mock(ProcessHandle.class);
+        OutputStream stdin = mock(OutputStream.class);
+        List<String> terminationOrder = new ArrayList<>();
+        when(process.getOutputStream()).thenReturn(stdin);
+        doThrow(new IOException("could not close stdin")).when(stdin).close();
+        when(process.descendants()).thenReturn(Stream.of(descendant));
+        doAnswer(invocation -> {
+            terminationOrder.add("descendant");
+            return true;
+        }).when(descendant).destroyForcibly();
+        doAnswer(invocation -> {
+            terminationOrder.add("root");
+            return process;
+        }).when(process).destroyForcibly();
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("claude"), 30, process, false);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("llm.provider.io_error"));
+
+        assertThat(terminationOrder).containsExactly("descendant", "root");
     }
 
     @Test
@@ -425,29 +491,36 @@ class ClaudeCodeAgentProviderTest {
         private final long timeoutSeconds;
         private final Map<String, String> environment;
         private final Process process;
+        private final Boolean devNullAvailable;
 
         TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds) {
-            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of(), null);
+            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of(), null, null);
         }
 
         TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds,
                                     CliProcessEnvironment processEnvironment,
                                     Map<String, String> environment) {
-            this(command, timeoutSeconds, processEnvironment, environment, null);
+            this(command, timeoutSeconds, processEnvironment, environment, null, null);
         }
 
         TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds, Process process) {
-            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of(), process);
+            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of(), process, null);
+        }
+
+        TestClaudeCodeAgentProvider(
+                List<String> command, long timeoutSeconds, Process process, boolean devNullAvailable) {
+            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of(), process, devNullAvailable);
         }
 
         TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds,
                                     CliProcessEnvironment processEnvironment,
-                                    Map<String, String> environment, Process process) {
+                                    Map<String, String> environment, Process process, Boolean devNullAvailable) {
             super(null, processEnvironment);
             this.command = command;
             this.timeoutSeconds = timeoutSeconds;
             this.environment = environment;
             this.process = process;
+            this.devNullAvailable = devNullAvailable;
         }
 
         @Override
@@ -478,6 +551,11 @@ class ClaudeCodeAgentProviderTest {
         @Override
         protected Process startProcess(ProcessBuilder builder) throws java.io.IOException {
             return process == null ? super.startProcess(builder) : process;
+        }
+
+        @Override
+        protected boolean redirectInputFromDevNull(ProcessBuilder builder) {
+            return devNullAvailable == null ? super.redirectInputFromDevNull(builder) : devNullAvailable;
         }
     }
 
