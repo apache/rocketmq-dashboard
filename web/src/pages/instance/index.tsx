@@ -379,11 +379,15 @@ const InstancePage = () => {
 
   const handleImportAll = async () => {
     if (importing || vendor === 'APACHE') return;
+    // Share the modal's mutation guard: create/update and a one-click import must never
+    // interleave (both close and reset this modal and reload the list on completion).
+    if (mutationInFlightRef.current) return;
     const credentialId = addForm.getFieldValue('credentialId') as number | undefined;
     if (!credentialId) {
       message.warning(t('instance.selectCloudCredentialFirst'));
       return;
     }
+    mutationInFlightRef.current = true;
     setImporting(true);
     try {
       const result = await importCloudInstances({ vendor, credentialId });
@@ -429,6 +433,7 @@ const InstancePage = () => {
     } catch (error) {
       message.error(describeApiError(error, t('instance.importFailed')));
     } finally {
+      mutationInFlightRef.current = false;
       setImporting(false);
     }
   };
@@ -789,7 +794,7 @@ const InstancePage = () => {
               <Tooltip title={t('instance.importAllTooltip')}>
                 <Button
                   loading={importing}
-                  disabled={!addCredentialId}
+                  disabled={!addCredentialId || submitting}
                   onClick={() => void handleImportAll()}
                 >
                   {t('instance.importAll')}
@@ -807,7 +812,12 @@ const InstancePage = () => {
             >
               {t('common.cancel')}
             </Button>
-            <Button type="primary" loading={submitting} onClick={() => void handleCreate()}>
+            <Button
+              type="primary"
+              loading={submitting}
+              disabled={importing}
+              onClick={() => void handleCreate()}
+            >
               {t('instance.connect')}
             </Button>
           </Flex>
