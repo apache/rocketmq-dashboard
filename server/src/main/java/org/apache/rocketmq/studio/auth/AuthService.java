@@ -295,6 +295,27 @@ public class AuthService {
         return revokeUserSessions(userId);
     }
 
+    /**
+     * Revokes one session row. Revoking an already-revoked or expired session is a no-op
+     * rather than an error, so a stale drawer never turns a repeated confirmation into a
+     * failure toast; the row disappears from the active list either way.
+     */
+    public void revokeSessionById(Long sessionId) {
+        requireDatabaseBacked();
+        RmqStudioSession session = sessionMapper.selectById(sessionId);
+        if (session == null) {
+            throw new BusinessException(404, "Session not found");
+        }
+        LocalDateTime current = now();
+        if (session.getRevokedAt() != null || !session.getExpiresAt().isAfter(current)) {
+            return;
+        }
+        sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                .eq("id", sessionId)
+                .isNull("revoked_at")
+                .set("revoked_at", current));
+    }
+
     public RmqStudioUser createUser(String username, String password, boolean admin) {
         requireDatabaseBacked();
         validateUsername(username);
