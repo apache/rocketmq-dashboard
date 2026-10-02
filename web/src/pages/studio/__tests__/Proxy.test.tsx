@@ -273,7 +273,11 @@ describe('ProxyPage', () => {
     await screen.findAllByText('127.0.0.1:8081');
 
     await user.type(screen.getByLabelText('Proxy 地址'), '10.0.0.10:8081');
-    await user.click(screen.getByRole('button', { name: '新增' }));
+    const addButton = screen.getByRole('button', { name: '新增' });
+    await user.click(addButton);
+    // The add button tracks its own mutation's lifecycle: loading while the
+    // request is in flight (antd shows the loading state as a class).
+    expect(addButton).toHaveClass('ant-btn-loading');
 
     // Switching the language re-runs the load effect while the add is still in flight.
     // Its fresh response carries the post-add list; the older add response carries the
@@ -291,7 +295,61 @@ describe('ProxyPage', () => {
       add.resolve(proxyHome);
     });
     expect(screen.getByText('10.0.0.10:8081')).toBeInTheDocument();
-    expect(screen.queryByText('Proxy 地址已新增')).not.toBeInTheDocument();
+    // The language has already switched to English, so a toast that fired here
+    // would read 'Proxy address added'; asserting on the English string is what
+    // actually pins the suppression (the Chinese one is trivially absent).
+    expect(screen.queryByText('Proxy address added')).not.toBeInTheDocument();
+    // The spinner must clear even though the response was skipped as stale —
+    // reverting the unconditional finally would leave the button wedged.
+    await waitFor(() => expect(addButton).toBeEnabled());
+    expect(addButton).not.toHaveClass('ant-btn-loading');
+  });
+
+  it('clears the remove spinner when a stale remove resolves after a language switch', async () => {
+    const remove = createDeferred<typeof proxyHome>();
+    const freshLoad = createDeferred<typeof proxyHome>();
+    let homeCalls = 0;
+    vi.mocked(queryProxyHomePage).mockImplementation(() => {
+      homeCalls += 1;
+      return homeCalls === 1
+        ? Promise.resolve({
+            proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+            currentProxyAddr: '127.0.0.1:8081',
+          })
+        : freshLoad.promise;
+    });
+    vi.mocked(removeProxyAddress).mockImplementation(() => remove.promise);
+    const user = userEvent.setup();
+    renderPageWithLangSwitch();
+    await screen.findAllByText('10.0.0.10:8081');
+
+    const deleteButtons = screen.getAllByRole('button', { name: '删除' });
+    await user.click(deleteButtons[1]);
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+    await waitFor(() => expect(removeProxyAddress).toHaveBeenCalledWith('10.0.0.10:8081'));
+    // While the remove is in flight its row button shows the loading state.
+    expect(deleteButtons[1]).toHaveClass('ant-btn-loading');
+
+    await user.click(screen.getByRole('button', { name: 'switch-en' }));
+    await waitFor(() => expect(queryProxyHomePage).toHaveBeenCalledTimes(2));
+
+    // The fresh reload still sees both rows (the remove has not landed
+    // server-side yet), so the removed row stays mounted and its button
+    // state stays observable.
+    freshLoad.resolve({
+      proxyAddrList: ['127.0.0.1:8081', '10.0.0.10:8081'],
+      currentProxyAddr: '127.0.0.1:8081',
+    });
+    expect(await screen.findAllByText('10.0.0.10:8081')).toHaveLength(1);
+
+    await act(async () => {
+      remove.resolve(proxyHome);
+    });
+    // The stale remove carried the pre-remove list and must not re-add rows
+    // or fire a success toast.
+    expect(screen.queryByText('Proxy address removed')).not.toBeInTheDocument();
+    // The per-row spinner clears even for a stale response.
+    await waitFor(() => expect(deleteButtons[1]).not.toHaveClass('ant-btn-loading'));
   });
 
   it('removes a Proxy address and applies the updated address list', async () => {
