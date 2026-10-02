@@ -28,13 +28,13 @@ const cluster: ClusterInfo = {
   nsClusterName: 'production',
   type: 'V5_PROXY_CLUSTER',
   endpoint: '127.0.0.1:9876',
-  status: 'RUNNING',
+  status: 'healthy',
   version: '5.3.0',
   brokers: [
     {
       name: 'broker-a',
       addr: '127.0.0.1:10911',
-      status: 'RUNNING',
+      status: 'running',
       tpsIn: 1,
       tpsOut: 2,
       diskUsage: 10,
@@ -44,13 +44,13 @@ const cluster: ClusterInfo = {
   proxies: [
     {
       addr: '127.0.0.1:8080',
-      status: 'RUNNING',
+      status: 'healthy',
       connections: 3,
       grpcPort: 8081,
       remotingPort: 8080,
     },
   ],
-  nameServers: [{ addr: '127.0.0.1:9876', status: 'RUNNING' }],
+  nameServers: [{ addr: '127.0.0.1:9876', status: 'healthy' }],
   config: {
     flushDiskType: 'ASYNC_FLUSH',
     autoCreateTopicEnable: true,
@@ -85,5 +85,17 @@ describe('cluster API contract', () => {
 
     await expect(listClusters()).resolves.toEqual([cluster]);
     await expect(getCluster(cluster.id)).resolves.toEqual(cluster);
+  });
+
+  // The backend serializes ClusterVO.status, ProxyVO.status and NameServerVO.status as ClusterStatus
+  // (healthy|warning|error|offline) and BrokerVO.status as BrokerStatus (running|readonly|maintenance).
+  it('pins the status vocabulary the backend serializes', () => {
+    const clusterStatuses = ['healthy', 'warning', 'error', 'offline'];
+    const brokerStatuses = ['running', 'readonly', 'maintenance'];
+
+    expect(clusterStatuses).toContain(cluster.status);
+    expect(brokerStatuses).toContain(cluster.brokers[0].status);
+    expect(clusterStatuses).toContain(cluster.proxies[0].status);
+    expect(clusterStatuses).toContain(cluster.nameServers[0].status);
   });
 });
