@@ -60,6 +60,7 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { formatUtcDateTime } from '../../utils/format';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -71,8 +72,7 @@ const formatDuration = (ms: number | undefined | null): string => {
 
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  return formatUtcDateTime(new Date(timestamp));
 };
 
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
