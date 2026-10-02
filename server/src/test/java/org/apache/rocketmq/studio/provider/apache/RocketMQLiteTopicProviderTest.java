@@ -156,6 +156,25 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsRejectsAnEmptyResultWhenEveryMasterReadFails() throws Exception {
+        String silentMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, silentMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenThrow(new IllegalStateException("broker restarting"));
+        when(admin.getBrokerLiteInfo(silentMaster)).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.listLiteTopics(null, null))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void listLiteTopicsReturnsEmptyWhenABrokerReportsNoParentTopics() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(0, 40, 0));
+
+        assertThat(provider.listLiteTopics(null, null)).isEmpty();
+    }
+
+    @Test
     void quotaSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
         String failingMaster = "127.0.0.1:10912";
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
@@ -176,6 +195,17 @@ class RocketMQLiteTopicProviderTest {
         assertThat(quota.getMaxTopicCount()).isEqualTo(40);
         assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
         assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
+    }
+
+    @Test
+    void quotaRejectsZeroValuesWhenEveryMasterReadFails() throws Exception {
+        String silentMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, silentMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenThrow(new IllegalStateException("broker restarting"));
+        when(admin.getBrokerLiteInfo(silentMaster)).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.getQuota(null))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(502));
     }
 
     @Test
