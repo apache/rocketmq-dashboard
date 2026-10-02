@@ -73,6 +73,14 @@ public final class UrlHostGuard {
         if (uri.getHost() == null || uri.getHost().isBlank()) {
             throw new IllegalArgumentException("URL must include a host");
         }
+        String userInfo = uri.getUserInfo();
+        if (userInfo != null && !userInfo.isBlank()) {
+            // The URL is persisted and echoed back by reader-visible APIs, so a credential in it
+            // would be disclosed; the dedicated credential fields (data source auth, LLM apiKey,
+            // webhook signing secret) are the only supported place for secrets.
+            throw new IllegalArgumentException("URL must not embed credentials (user:password@host);"
+                    + " use the dedicated credential field instead");
+        }
         if (!isAllowedHost(uri.getHost(), allowLoopback)) {
             throw new IllegalArgumentException(
                     "URL must not point to a local, loopback or metadata address");
