@@ -73,7 +73,10 @@ public class AclUpdateToolHandler extends MutationToolHandler<AclMutationInput, 
         try {
             return Long.parseLong(id);
         } catch (NumberFormatException e) {
-            throw ToolError.ACL_ID_INVALID.exception(id);
+            // Tencent ACL roles use the role name as their identifier. Keep non-numeric
+            // identifiers intact at the service boundary so the provider can handle them;
+            // Apache-backed ACLs still reject a null numeric id in AclService.
+            return null;
         }
     }
 }

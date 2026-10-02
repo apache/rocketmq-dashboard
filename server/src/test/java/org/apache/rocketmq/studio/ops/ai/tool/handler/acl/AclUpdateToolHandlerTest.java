@@ -67,4 +67,26 @@ class AclUpdateToolHandlerTest {
         assertThat(captor.getValue().getId()).isEqualTo(1L);
     }
 
+    @Test
+    void applyShouldAcceptTencentRoleNameIdentifier() {
+        AclRuleVO updated = AclRuleVO.builder()
+                .principal("role-orders")
+                .resource("*")
+                .decision("ALLOW")
+                .build();
+        when(aclService.updateRule(any(AclRuleVO.class), eq("tencent-instance")))
+                .thenReturn(updated);
+
+        Object result = handler.execute(new AclMutationInput(
+                "tencent-instance", "role-orders", "role-orders", "*", "TOPIC",
+                "LITERAL", java.util.List.of("PUB"), "ALLOW", null),
+                context("tencent-instance"));
+
+        assertThat(result).isSameAs(updated);
+        ArgumentCaptor<AclRuleVO> captor = ArgumentCaptor.forClass(AclRuleVO.class);
+        verify(aclService).updateRule(captor.capture(), eq("tencent-instance"));
+        assertThat(captor.getValue().getId()).isNull();
+        assertThat(captor.getValue().getPrincipal()).isEqualTo("role-orders");
+    }
+
 }
