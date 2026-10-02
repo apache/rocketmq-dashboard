@@ -383,6 +383,11 @@ public class LlmConfigService {
                     || apiBase.endsWith(CHAT_COMPLETIONS_PATH)) {
                 return false;
             }
+            // The API key has its own field; a base URL that embeds it as user-info would be
+            // persisted and returned with the credential inside.
+            if (UrlHostGuard.hasUserInfo(uri)) {
+                return false;
+            }
             // SSRF guard on both the save and test paths (validate() runs for each). Loopback is
             // allowed because a local ollama gateway is a supported provider, but link-local and
             // cloud-metadata addresses (169.254.x.x) are rejected.
