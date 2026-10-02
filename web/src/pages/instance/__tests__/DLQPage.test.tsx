@@ -219,6 +219,23 @@ describe('DLQ page', () => {
     );
   });
 
+  it('debounces the group search so typing does not fire a request per keystroke', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const callsBefore = vi.mocked(messageService.listDLQGroups).mock.calls.length;
+
+    const searchInput = screen.getByPlaceholderText('搜索 Group 名称或 DLQ Topic');
+    await user.type(searchInput, 'order');
+
+    // One request serves the whole typed word once the debounce settles.
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', 'order', 1, 20),
+    );
+    expect(vi.mocked(messageService.listDLQGroups).mock.calls.length).toBe(callsBefore + 1);
+  });
+
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {
     vi.mocked(messageService.listDLQGroups).mockRejectedValue(
       new Error('DLQ provider is not configured'),
