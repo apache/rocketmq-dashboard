@@ -2498,6 +2498,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.docs': { zh: '文档中心', en: 'Documentation' },
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
+  'home.currentVersion': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Version {time} build({commit})',
+  },
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
