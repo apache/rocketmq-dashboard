@@ -26,6 +26,7 @@ import {
   listStudioUserSessions,
   listStudioUsers,
   revokeAllStudioUserSessions,
+  revokeStudioSession,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
@@ -46,6 +47,7 @@ vi.mock('../../../api/studioUsers', () => ({
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
   revokeAllStudioUserSessions: vi.fn(),
+  revokeStudioSession: vi.fn(),
   revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
 }));
@@ -321,6 +323,35 @@ describe('UserManagementPage', () => {
     // The table and the overview both reload with the post-revocation state.
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
     await screen.findByText('已注销 6 个活跃会话（不含你自己的）');
+  });
+
+  it('revokes a single session from the drawer without touching the others', async () => {
+    vi.mocked(listStudioUserSessions)
+      .mockResolvedValueOnce(sessionDetails)
+      .mockResolvedValueOnce([sessionDetails[1]]);
+    vi.mocked(revokeStudioSession).mockResolvedValue();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    expect(within(drawer).getByText('19')).toBeInTheDocument();
+
+    const rowButtons = within(drawer).getAllByRole('button', { name: '注销会话' });
+    expect(rowButtons).toHaveLength(2);
+    await user.click(rowButtons[0]);
+    await screen.findByText('注销会话 #19？该用户的其他会话不受影响。');
+    await waitFor(() => expect(document.querySelector('.ant-popover')).toBeTruthy());
+    const popover = document.querySelector('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: /注\s*销/ }));
+
+    await waitFor(() => expect(revokeStudioSession).toHaveBeenCalledWith(19));
+    // The drawer reloads with the survivor only.
+    await waitFor(() => expect(listStudioUserSessions).toHaveBeenCalledTimes(2));
+    expect(within(drawer).getByText('20')).toBeInTheDocument();
+    expect(within(drawer).queryByText('19')).not.toBeInTheDocument();
+  
   });
 
   it('renders session timestamps as UTC values in the viewer timezone', async () => {

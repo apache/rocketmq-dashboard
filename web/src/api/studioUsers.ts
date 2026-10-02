@@ -144,3 +144,7 @@ export async function revokeAllStudioUserSessions() {
   );
   return response.data.data.revokedSessionCount;
 }
+
+export async function revokeStudioSession(sessionId: number) {
+  await client.delete(`/studio-users/sessions/${sessionId}`);
+}
