@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.auth;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioSession;
@@ -82,6 +83,14 @@ class StudioUserSessionRevokeAllTest {
 
     @MockitoBean
     private ToolCatalog toolCatalog;
+
+    /**
+     * Declared here rather than inherited: this slice has to build against both the tree that
+     * contains only this change and the tree where the auth controllers already audit, and a
+     * controller collaborator a slice does not declare is a context that cannot start.
+     */
+    @MockitoBean
+    private OperationAuditService operationAuditService;
 
     @MockitoBean
     private RmqStudioUserMapper userMapper;
