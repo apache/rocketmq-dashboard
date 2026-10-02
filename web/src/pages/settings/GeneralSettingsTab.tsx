@@ -152,6 +152,8 @@ export const GeneralSettingsTab = () => {
 
   const clearDingtalkSigningSecret = async () => {
     if (!settings) return;
+    if (notifyInFlightRef.current) return;
+    notifyInFlightRef.current = true;
     setSavingNotification(true);
     try {
       if (
@@ -165,6 +167,7 @@ export const GeneralSettingsTab = () => {
         message.success(t('settings.dingtalkSecretCleared'));
       }
     } finally {
+      notifyInFlightRef.current = false;
       setSavingNotification(false);
     }
   };
@@ -203,6 +206,8 @@ export const GeneralSettingsTab = () => {
   };
 
   const sendTest = async (channel: 'dingtalk' | 'email' | 'sms') => {
+    if (notifyInFlightRef.current) return;
+    notifyInFlightRef.current = true;
     setTestingChannel(channel);
     try {
       const values = await notifyForm.validateFields();
@@ -210,10 +215,12 @@ export const GeneralSettingsTab = () => {
       await testNotification(channel);
       message.success(t('settings.testMessageSent'));
     } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       const apiMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
         ?.message;
       message.error(typeof apiMessage === 'string' ? apiMessage : t('settings.testMessageFailed'));
     } finally {
+      notifyInFlightRef.current = false;
       setTestingChannel(undefined);
     }
   };
@@ -345,6 +352,7 @@ export const GeneralSettingsTab = () => {
                 danger
                 onClick={() => void clearDingtalkSigningSecret()}
                 loading={savingNotification}
+                disabled={testingChannel !== undefined}
               >
                 {t('settings.clearDingtalkSigningSecret')}
               </Button>
@@ -373,13 +381,22 @@ export const GeneralSettingsTab = () => {
                 <Button
                   onClick={() => void sendTest('dingtalk')}
                   loading={testingChannel === 'dingtalk'}
+                  disabled={savingNotification || testingChannel !== undefined}
                 >
                   {t('settings.testDingtalk')}
                 </Button>
-                <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                <Button
+                  onClick={() => void sendTest('email')}
+                  loading={testingChannel === 'email'}
+                  disabled={savingNotification || testingChannel !== undefined}
+                >
                   {t('settings.testEmail')}
                 </Button>
-                <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                <Button
+                  onClick={() => void sendTest('sms')}
+                  loading={testingChannel === 'sms'}
+                  disabled={savingNotification || testingChannel !== undefined}
+                >
                   {t('settings.testSmsWebhook')}
                 </Button>
               </Space>
@@ -387,7 +404,7 @@ export const GeneralSettingsTab = () => {
                 type="primary"
                 htmlType="submit"
                 loading={savingNotification}
-                disabled={loading}
+                disabled={loading || testingChannel !== undefined}
               >
                 {t('settings.saveSettings')}
               </Button>
