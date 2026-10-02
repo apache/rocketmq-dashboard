@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
+import com.aliyun.sdk.service.rocketmq20220801.models.DataLiteTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.DataTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetInstanceResponseBody;
@@ -193,21 +194,23 @@ final class AliyunConverters {
 
     static List<QueueProgressVO> toQueueProgressRows(GetConsumerGroupLagResponseBody.Data data) {
         List<QueueProgressVO> rows = new ArrayList<>();
+        // Aliyun reports topic lag and LiteTopic lag in two separate maps, and a group that
+        // consumes only LiteTopics has no entry in the ordinary map at all, so both breakdowns
+        // have to become progress rows.
+        Map<String, DataLiteTopicLagMapValue> liteTopicLagMap = data.getLiteTopicLagMap();
+        if (liteTopicLagMap != null) {
+            for (Map.Entry<String, DataLiteTopicLagMapValue> entry : liteTopicLagMap.entrySet()) {
+                long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
+                        ? 0L : entry.getValue().getReadyCount();
+                rows.add(topicLagRow(entry.getKey(), ready));
+            }
+        }
         Map<String, DataTopicLagMapValue> topicLagMap = data.getTopicLagMap();
         if (topicLagMap != null) {
             for (Map.Entry<String, DataTopicLagMapValue> entry : topicLagMap.entrySet()) {
                 long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
                         ? 0L : entry.getValue().getReadyCount();
-                // The Aliyun API reports the lag per topic, so the row carries no queue offsets;
-                // report the unknown sentinel instead of a zero that reads like a measurement.
-                rows.add(QueueProgressVO.builder()
-                        .topic(entry.getKey())
-                        .broker("topic:" + entry.getKey())
-                        .queueId(0)
-                        .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
-                        .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
-                        .diffTotal(ready)
-                        .build());
+                rows.add(topicLagRow(entry.getKey(), ready));
             }
         }
         GetConsumerGroupLagResponseBody.TotalLag totalLag = data.getTotalLag();
@@ -224,6 +227,21 @@ final class AliyunConverters {
                     .build());
         }
         return rows;
+    }
+
+    /**
+     * The Aliyun API reports the lag per topic, so the row carries no queue offsets; report the
+     * unknown sentinel instead of a zero that reads like a measurement.
+     */
+    private static QueueProgressVO topicLagRow(String topic, long diffTotal) {
+        return QueueProgressVO.builder()
+                .topic(topic)
+                .broker("topic:" + topic)
+                .queueId(0)
+                .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                .diffTotal(diffTotal)
+                .build();
     }
 
     static SubscriptionEntryVO toSubscriptionEntry(ListConsumerGroupSubscriptionsResponseBody.Data data) {
