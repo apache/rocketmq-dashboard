@@ -97,6 +97,36 @@ class MybatisPlusAlertStateRepositoryTest {
     }
 
     @Test
+    void findsActiveStatesToleratesACorruptLabelsRowInsteadOfFailingTheQueryTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        RmqAlertState state = new RmqAlertState();
+        state.setRuleId(4L);
+        state.setFingerprint("fingerprint");
+        state.setStatus(AlertStateStatus.FIRING.name());
+        state.setConsecutiveHits(1);
+        state.setCurrentValue(30D);
+        when(mapper.selectList(any())).thenReturn(List.of(state));
+        RmqSystemAlert alert = new RmqSystemAlert();
+        alert.setId(7L);
+        alert.setRuleId(4L);
+        alert.setFingerprint("fingerprint");
+        alert.setInstanceId("local");
+        alert.setLabelsJson("{not-json");
+        RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
+        when(alertMapper.selectList(any())).thenReturn(List.of(alert));
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
+        AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS).enabled(true)
+                .instanceId("local").metric("consumer.lag.total").build();
+
+        List<ActiveAlertState> active = repository.findActive(new MetricCollectionScope(AlertDomain.BUSINESS,
+                "local", Set.of("consumer.lag.total")), List.of(rule));
+
+        // Same contract as the alert-event read: the corrupt row degrades to empty labels so
+        // one bad row cannot fail the whole state read (and with it the rule evaluation).
+        assertThat(active).singleElement().satisfies(item -> assertThat(item.labels()).isEmpty());
+    }
+
+    @Test
     void findsActiveStatesForRulesWithPaddedStoredMetricsTest() {
         // NativeAlertProcessor keeps rules whose stored metric has surrounding whitespace
         // (legacy rows) by matching trimWhitespace(rule.getMetric()) against the scope keys;
