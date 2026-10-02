@@ -209,6 +209,23 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listTopicsPageShouldTreatSystemPrefixesAsLiteralPatternsTest() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class)))
+                .thenReturn(new Page<>(1, 20));
+        RocketMQMetadataProvider provider = newProvider();
+
+        provider.listTopicsPage(null, null, null, null, 1, 20);
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectPage(any(Page.class), captor.capture());
+        assertThat(captor.getValue().getParamNameValuePairs().values())
+                .withFailMessage("sql=%s params=%s", captor.getValue().getSqlSegment(),
+                        captor.getValue().getParamNameValuePairs())
+                .contains("rmq\\_sys\\_%", "\\%RETRY\\%%", "\\%DLQ\\%%");
+    }
+
+    @Test
     void listConsumerGroupsShouldScopeDatabaseQueryToSelectedInstance() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         when(groupMapper.selectList(any())).thenReturn(List.of());
