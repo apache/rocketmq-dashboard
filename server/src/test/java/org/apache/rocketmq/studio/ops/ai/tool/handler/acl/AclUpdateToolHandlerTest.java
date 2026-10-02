@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.acl;
 import org.apache.rocketmq.studio.instance.acl.AclRuleVO;
 import org.apache.rocketmq.studio.instance.acl.AclService;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.acl.AclMutationInput;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -26,10 +27,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.apache.rocketmq.studio.ops.ai.tool.TestToolExecutionContexts.context;
 
@@ -65,6 +70,40 @@ class AclUpdateToolHandlerTest {
         ArgumentCaptor<AclRuleVO> captor = ArgumentCaptor.forClass(AclRuleVO.class);
         verify(aclService).updateRule(captor.capture(), eq("cluster-1"));
         assertThat(captor.getValue().getId()).isEqualTo(1L);
+    }
+
+    @Test
+    void applyShouldPassATencentRoleNameIdentifierThroughToTheService() {
+        AclRuleVO updated = AclRuleVO.builder()
+                .principal("role-orders")
+                .resource("*")
+                .decision("ALLOW")
+                .build();
+        when(aclService.updateRule(any(AclRuleVO.class), eq("tencent-instance")))
+                .thenReturn(updated);
+
+        Object result = handler.execute(new AclMutationInput(
+                "tencent-instance", "role-orders", "role-orders", "*", "TOPIC", "LITERAL",
+                List.of("PUB"), "ALLOW", null), context("tencent-instance"));
+
+        assertThat(result).isSameAs(updated);
+        ArgumentCaptor<AclRuleVO> captor = ArgumentCaptor.forClass(AclRuleVO.class);
+        verify(aclService).updateRule(captor.capture(), eq("tencent-instance"));
+        // A Tencent ACL role is identified by its role name, which the provider reads from the rule
+        // principal; the handler has to hand the identifier over instead of refusing it as a bad Long.
+        assertThat(captor.getValue().getId()).isNull();
+        assertThat(captor.getValue().getPrincipal()).isEqualTo("role-orders");
+    }
+
+    @Test
+    void applyShouldStillRejectAMissingIdentifier() {
+        assertThatThrownBy(() -> handler.execute(new AclMutationInput(
+                "cluster-1", "   ", "user-1", "TopicB", null, null,
+                null, "DENY", null), context("cluster-1")))
+                .isInstanceOf(ToolExecutionException.class)
+                .hasMessageContaining("ACL id must be numeric");
+
+        verifyNoInteractions(aclService);
     }
 
 }
