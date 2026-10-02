@@ -28,9 +28,14 @@ public record AclUserItem(
         boolean admin,
         List<String> clusters) {
 
+    /**
+     * Cloud users are not database rows: the Tencent provider leaves the numeric id null and
+     * carries the role name in the username, which is the identifier {@code AclService} accepts
+     * for such users. The published output schema requires a non-null id, so fall back to it.
+     */
     public static AclUserItem from(AclUserVO user) {
         return new AclUserItem(
-                user.getId() == null ? null : user.getId().toString(),
+                user.getId() != null ? user.getId().toString() : user.getUsername(),
                 user.getUsername(),
                 user.isAdmin(),
                 user.getClusters());

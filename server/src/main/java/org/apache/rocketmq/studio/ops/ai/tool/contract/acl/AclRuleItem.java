@@ -34,9 +34,14 @@ public record AclRuleItem(
         String aclVersion,
         String gmtCreate) {
 
+    /**
+     * Cloud rules are not database rows: the Tencent provider leaves the numeric id null and
+     * carries the role name in the principal, which is the identifier {@code AclService} accepts
+     * for such rules. The published output schema requires a non-null id, so fall back to it.
+     */
     public static AclRuleItem from(AclRuleVO rule) {
         return new AclRuleItem(
-                rule.getId() == null ? null : rule.getId().toString(),
+                rule.getId() != null ? rule.getId().toString() : rule.getPrincipal(),
                 rule.getPrincipal(),
                 rule.getResource(),
                 rule.getResourceType(),
