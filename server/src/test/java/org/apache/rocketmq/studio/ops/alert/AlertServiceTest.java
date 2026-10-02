@@ -49,6 +49,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -1339,8 +1340,28 @@ class AlertServiceTest {
 
         assertThat(result).containsExactly(related);
         verify(alertRepository).findAlertsPage(argThat(query -> query.domain() == AlertDomain.CLUSTER
-                && "local".equals(query.instanceId()) && "FIRING".equals(query.transition())
+                && "local".equals(query.instanceId()) && query.transition() == null
                 && eventTime.minusMinutes(30).equals(query.from()) && eventTime.plusMinutes(30).equals(query.to())));
+    }
+
+    @Test
+    void relatedAlertsShouldIncludeAnIncidentWhoseInWindowEventIsAReminderTest() {
+        LocalDateTime eventTime = LocalDateTime.of(2026, 8, 23, 12, 0);
+        SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .instanceId("local").time(eventTime).labels(Map.of("brokerName", "broker-a")).build();
+        // The cluster incident fired outside the correlation window and is still active only
+        // through its in-window REMINDER event; the panel must not drop it.
+        SystemAlertVO reminderOnly = SystemAlertVO.builder().id(2L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(10)).transition("REMINDER")
+                .labels(Map.of("brokerName", "broker-a")).build();
+        SystemAlertVO resolved = SystemAlertVO.builder().id(3L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(5)).transition("RESOLVED")
+                .labels(Map.of("brokerName", "broker-a")).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(source));
+        when(alertRepository.findAlertsPage(any(SystemAlertQuery.class)))
+                .thenReturn(PageResult.of(List.of(reminderOnly, resolved), 2, 1, 100));
+
+        assertThat(alertService.findRelatedAlerts(1L)).containsExactly(reminderOnly);
     }
 
     @Test
@@ -1355,6 +1376,74 @@ class AlertServiceTest {
         when(alertRepository.findAlertById(12L)).thenReturn(Optional.of(cause));
 
         assertThat(alertService.findRelatedAlerts(1L)).containsExactly(cause);
+    }
+
+    @Test
+    void relatedAlertsShouldFetchACandidateThatSitsOnPageTwoTest() {
+        LocalDateTime eventTime = LocalDateTime.of(2026, 8, 23, 12, 0);
+        SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .instanceId("local").time(eventTime).labels(Map.of("brokerName", "broker-a")).build();
+        SystemAlertVO pageTwoCandidate = SystemAlertVO.builder().id(200L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime).transition("FIRING")
+                .labels(Map.of("brokerName", "broker-a")).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(source));
+        when(alertRepository.findAlertsPage(any(SystemAlertQuery.class)))
+                .thenReturn(PageResult.of(unmatchedRows(100, 100), 150, 1, 100))
+                .thenReturn(PageResult.of(List.of(pageTwoCandidate), 150, 2, 100));
+
+        List<SystemAlertVO> result = alertService.findRelatedAlerts(1L);
+
+        assertThat(result).containsExactly(pageTwoCandidate);
+        verify(alertRepository, times(2)).findAlertsPage(any(SystemAlertQuery.class));
+    }
+
+    @Test
+    void relatedAlertsShouldMergeTheInWindowRowsOfOneIncidentKeepingTheLatestTest() {
+        LocalDateTime eventTime = LocalDateTime.of(2026, 8, 23, 12, 0);
+        SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .instanceId("local").time(eventTime).labels(Map.of("brokerName", "broker-a")).build();
+        SystemAlertVO firing = SystemAlertVO.builder().id(2L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(5)).transition("FIRING")
+                .fingerprint("fp-incident-1").labels(Map.of("brokerName", "broker-a")).build();
+        SystemAlertVO reminder = SystemAlertVO.builder().id(3L).domain(AlertDomain.CLUSTER)
+                .instanceId("local").time(eventTime.minusMinutes(2)).transition("REMINDER")
+                .fingerprint("fp-incident-1").labels(Map.of("brokerName", "broker-a")).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(source));
+        when(alertRepository.findAlertsPage(any(SystemAlertQuery.class)))
+                .thenReturn(PageResult.of(List.of(firing, reminder), 2, 1, 100));
+
+        // FIRING and REMINDER belong to one incident; the panel lists it once, as its latest
+        // in-window event, instead of one row per emitted event.
+        assertThat(alertService.findRelatedAlerts(1L)).containsExactly(reminder);
+    }
+
+    @Test
+    void relatedAlertsShouldStopTheCandidateScanAtThePageCapTest() {
+        LocalDateTime eventTime = LocalDateTime.of(2026, 8, 23, 12, 0);
+        SystemAlertVO source = SystemAlertVO.builder().id(1L).domain(AlertDomain.BUSINESS)
+                .instanceId("local").time(eventTime).labels(Map.of("brokerName", "broker-a")).build();
+        when(alertRepository.findAlertById(1L)).thenReturn(Optional.of(source));
+        when(alertRepository.findAlertsPage(any(SystemAlertQuery.class)))
+                .thenReturn(PageResult.of(unmatchedRows(100, 100), 1000, 1, 100))
+                .thenReturn(PageResult.of(unmatchedRows(200, 100), 1000, 2, 100))
+                .thenReturn(PageResult.of(unmatchedRows(300, 100), 1000, 3, 100))
+                .thenReturn(PageResult.of(unmatchedRows(400, 100), 1000, 4, 100))
+                .thenReturn(PageResult.of(unmatchedRows(500, 100), 1000, 5, 100));
+
+        assertThat(alertService.findRelatedAlerts(1L)).isEmpty();
+
+        // The scan is bounded on a synchronous console request: five pages, then the cap stops it.
+        verify(alertRepository, times(5)).findAlertsPage(any(SystemAlertQuery.class));
+    }
+
+    private static List<SystemAlertVO> unmatchedRows(long firstId, int count) {
+        List<SystemAlertVO> rows = new java.util.ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            rows.add(SystemAlertVO.builder().id(firstId + i).domain(AlertDomain.CLUSTER)
+                    .instanceId("local").transition("FIRING")
+                    .labels(Map.of("brokerName", "broker-b")).build());
+        }
+        return rows;
     }
 
     @Test
