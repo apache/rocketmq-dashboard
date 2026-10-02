@@ -85,17 +85,21 @@ public class AclService {
         int normalizedPage = requireValidPage(page);
         int normalizedPageSize = requireValidPageSize(pageSize);
         requireAcl2Supported(instanceId);
+        // The rule filters come from free-text inputs, so a padded term (easy to get from a paste)
+        // must not turn an exact filter into one that matches nothing; pageUsers trims the same way.
+        String principalFilter = normalizeFilter(principal);
+        String resourceFilter = normalizeFilter(resource);
         if (isTencentInstance(instanceId)) {
-            List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principal).stream()
-                    .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
+            List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principalFilter).stream()
+                    .filter(rule -> containsIgnoreCase(rule.getResource(), resourceFilter))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
                     .toList();
             return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
         log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
-                principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
+                principalFilter, resourceFilter, scope, decision, normalizedPage, normalizedPageSize);
+        return aclRepository.findRulePage(principalFilter, resourceFilter, scope, decision, null,
                 normalizedPage, normalizedPageSize);
     }
 
@@ -508,6 +512,10 @@ public class AclService {
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    private static String normalizeFilter(String value) {
+        return !StringUtils.hasText(value) ? null : value.trim();
     }
 
     private static int normalizePage(Integer page) {
