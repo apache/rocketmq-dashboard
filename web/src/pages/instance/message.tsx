@@ -686,6 +686,9 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(true);
     setTraceError(null);
+    // The row-opened path (loadMessageTrace) trims the same field; an untrimmed topic here
+    // would query the wrong topic for input that only differs by padding.
+    const normalizedTraceTopic = customTraceTopic.trim();
     try {
       const result =
         traceQueryMode === 'key'
@@ -693,9 +696,14 @@ const MessagePageContent = ({
               value,
               selectedInstanceId,
               selectedMsg?.topic,
-              customTraceTopic,
+              normalizedTraceTopic,
             )
-          : await getMessageTrace(value, selectedInstanceId, selectedMsg?.topic, customTraceTopic);
+          : await getMessageTrace(
+              value,
+              selectedInstanceId,
+              selectedMsg?.topic,
+              normalizedTraceTopic,
+            );
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);
