@@ -171,6 +171,13 @@ export function useAgentRun(
   const abortControllerRef = useRef<AbortController | null>(null);
   const frameRef = useRef<number | null>(null);
   const runIdRef = useRef<number | null>(null);
+  /**
+   * Whether the run behind the in-flight stream was admitted server-side. A `run_started` frame is
+   * the proof for a run this hook started, and `attach` addresses an already admitted run by id. A
+   * stream that died before admission wrote nothing server-side, so the persisted transcript cannot
+   * have gained the user row and the optimistic question must stay on screen.
+   */
+  const admittedRunRef = useRef(false);
   const conversationIdRef = useRef<number | null>(conversationId);
 
   // Callbacks arrive as fresh closures on every render; keeping them in a ref is what lets `send`,
@@ -206,6 +213,7 @@ export function useAgentRun(
 
       switch (event.type) {
         case 'run_started':
+          admittedRunRef.current = true;
           runIdRef.current = event.runId;
           setRunId(event.runId);
           optionsRef.current.onRunStarted?.(event);
@@ -287,8 +295,10 @@ export function useAgentRun(
       // refetch swaps the live bubble for its persisted twin, which is what displays it.
       setLastRunTokensPerSecond(speedTrackerRef.current.tokensPerSecond());
       // The refetched transcript now renders the persisted user row; drop the optimistic twin in
-      // the same commit so it never paints twice.
-      setPendingUserMessage(null);
+      // the same commit so it never paints twice. A stream that failed before the run was admitted
+      // is the exception: that run was never persisted, so the refetch cannot have produced the
+      // user row and clearing this copy would erase the question the operator asked.
+      if (streamFailure === null || admittedRunRef.current) setPendingUserMessage(null);
       blocksRef.current = [];
       scheduleTick();
     },
@@ -333,6 +343,7 @@ export function useAgentRun(
       // the URL, and the server never replays `run_started` — without seeding it here the stop
       // button would render but address nothing until the run finished.
       runIdRef.current = knownRunId;
+      admittedRunRef.current = knownRunId !== null;
       setRunId(knownRunId);
       setLastStatus(null);
       setError('');
