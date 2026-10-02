@@ -83,8 +83,8 @@ studio:
     session-cookie-secure: ${STUDIO_AUTH_SESSION_COOKIE_SECURE:true}
     session-cookie-same-site: Strict
     users:
-      - username: ${STUDIO_AUTH_ADMIN_USERNAME:admin}
-        password: ${STUDIO_AUTH_ADMIN_PASSWORD:admin}
+      - username: ${STUDIO_AUTH_ADMIN_USERNAME:}
+        password: ${STUDIO_AUTH_ADMIN_PASSWORD:}
         admin: true
   cluster:
     seed-demo-data: false
