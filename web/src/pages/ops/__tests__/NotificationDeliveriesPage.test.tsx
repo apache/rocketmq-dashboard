@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -194,6 +194,82 @@ describe('NotificationDeliveriesPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /^重\s*试$/ })).not.toBeInTheDocument(),
     );
+  });
+
+  it('clears stale rows and offers a persistent retry when a filtered reload fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    let failNextDeliveredQuery = true;
+    vi.mocked(listAlertDeliveriesPage).mockImplementation(async (query) => {
+      if (query?.status !== 'DELIVERED') {
+        return {
+          items: [
+            {
+              id: 7,
+              alertId: 3,
+              alertTitle: 'Broker disk usage',
+              channel: 'dingtalk',
+              status: 'FAILED',
+              attemptCount: 5,
+              createdAt: '2026-08-23T10:00:00',
+              lastError: 'Webhook rejected the request',
+            },
+          ],
+          total: 1,
+          page: 1,
+          size: 20,
+        };
+      }
+      if (failNextDeliveredQuery) {
+        failNextDeliveredQuery = false;
+        throw new Error('the delivery service is down');
+      }
+      return {
+        items: [
+          {
+            id: 8,
+            alertId: 4,
+            alertTitle: 'Delivered notification',
+            channel: 'email',
+            status: 'DELIVERED',
+            attemptCount: 1,
+            createdAt: '2026-08-23T10:00:00',
+            deliveredAt: '2026-08-23T10:01:00',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      };
+    });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(await screen.findByText('DELIVERED'));
+
+    // A failed replacement request must not present the previous result set under the new filter,
+    // because the old row's retry action would target the query the operator just left.
+    await waitFor(() => expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
+    expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'DELIVERED' }),
+    );
+
+    // The failure has to stay actionable, and its retry has to keep the current filters.
+    const failureAlert = await screen.findByRole('alert');
+    await user.click(within(failureAlert).getByRole('button', { name: /重\s*试/u }));
+
+    expect(await screen.findByText('Delivered notification')).toBeInTheDocument();
+    expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'DELIVERED' }),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('searches alert titles and errors and returns to page one when the filter changes', async () => {
