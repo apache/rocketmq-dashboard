@@ -37,6 +37,9 @@ public class BrokerConfigDiffVO {
     private List<String> comparedFields;
     private List<BrokerStatusVO> brokers;
     private List<ConfigDifferenceVO> differences;
+    private double consistencyScore;
+    private String clusterPosture; // SYNCHRONIZED, DRIFT_DETECTED, CRITICAL_DRIFT
+    private List<String> operationalSuggestions;
 
     @Data
     @Builder
@@ -56,6 +59,9 @@ public class BrokerConfigDiffVO {
     public static class ConfigDifferenceVO {
         private String field;
         private String brokerProperty;
+        private String severity; // CRITICAL, HIGH, MEDIUM
+        private String impactDescription;
+        private String remediationAdvice;
         private List<ConfigValueVO> values;
     }
 

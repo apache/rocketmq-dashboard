@@ -1079,6 +1079,32 @@ const ClusterPage = () => {
         render: (value: string) => <Text code>{value}</Text>,
       },
       {
+        title: 'Severity',
+        dataIndex: 'severity',
+        key: 'severity',
+        width: 110,
+        render: (severity?: BrokerConfigDifference['severity']) => {
+          if (!severity) return <Text type="secondary">-</Text>;
+          const color = severity === 'CRITICAL' ? 'red' : severity === 'HIGH' ? 'orange' : 'gold';
+          return <Tag color={color}>{severity}</Tag>;
+        },
+      },
+      {
+        title: 'Impact & Remediation',
+        key: 'impact',
+        width: 240,
+        render: (_: unknown, record: BrokerConfigDifference) => (
+          <div>
+            <div>{record.impactDescription ?? '-'}</div>
+            {record.remediationAdvice && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {record.remediationAdvice}
+              </Text>
+            )}
+          </div>
+        ),
+      },
+      {
         title: t('cluster.brokerConfigDiffValues'),
         dataIndex: 'values',
         key: 'values',
@@ -1154,6 +1180,20 @@ const ClusterPage = () => {
                 <Descriptions.Item label={t('cluster.brokerConfigDiffComplete')}>
                   {result.complete ? t('common.yes') : t('common.no')}
                 </Descriptions.Item>
+                {result.consistencyScore !== undefined && (
+                  <Descriptions.Item label="Consistency Score">
+                    <Tag color={result.consistencyScore >= 90 ? 'green' : result.consistencyScore >= 70 ? 'orange' : 'red'}>
+                      {`${result.consistencyScore}%`}
+                    </Tag>
+                  </Descriptions.Item>
+                )}
+                {result.clusterPosture && (
+                  <Descriptions.Item label="Cluster Posture">
+                    <Tag color={result.clusterPosture === 'SYNCHRONIZED' ? 'green' : result.clusterPosture === 'CRITICAL_DRIFT' ? 'red' : 'orange'}>
+                      {result.clusterPosture}
+                    </Tag>
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label={t('cluster.brokerConfigDiffComparedFields')} span={2}>
                   <Space size={[0, 4]} wrap>
                     {result.comparedFields.map((field) => (
@@ -1178,6 +1218,18 @@ const ClusterPage = () => {
                 size="small"
                 locale={{ emptyText: t('cluster.configPreviewNoChanges') }}
               />
+              {result.operationalSuggestions && result.operationalSuggestions.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <Text strong>Operational Recommendations:</Text>
+                  <ul style={{ paddingLeft: 20, marginTop: 4, marginBottom: 0 }}>
+                    {result.operationalSuggestions.map((item, idx) => (
+                      <li key={idx}>
+                        <Text type="secondary">{item}</Text>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           ) : failed ? (
             <Alert

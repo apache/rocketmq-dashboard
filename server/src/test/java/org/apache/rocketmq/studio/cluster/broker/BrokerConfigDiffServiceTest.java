@@ -252,7 +252,59 @@ class BrokerConfigDiffServiceTest {
 
         assertThat(result.getCluster()).isEqualTo("DefaultCluster");
         assertThat(result.isComplete()).isTrue();
+        assertThat(result.getConsistencyScore()).isEqualTo(100.0);
+        assertThat(result.getClusterPosture()).isEqualTo("SYNCHRONIZED");
         verify(brokerConfigService).getBrokerConfig("10.0.0.1:10911", "prod-apache");
+    }
+
+    @Test
+    void criticalDriftShouldBeClassifiedWhenFlushDiskTypeDivergesTest() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                broker("broker-a", "10.0.0.1:10911"),
+                broker("broker-b", "10.0.0.2:10911")));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null))
+                .thenReturn(config(FlushDiskType.SYNC_FLUSH, true, 8, 6, "04"));
+
+        BrokerConfigDiffVO result = service.compare("cluster-a", null);
+
+        assertThat(result.isDriftDetected()).isTrue();
+        assertThat(result.getClusterPosture()).isEqualTo("CRITICAL_DRIFT");
+        assertThat(result.getConsistencyScore()).isEqualTo(90.0);
+        assertThat(result.getDifferences()).singleElement().satisfies(diff -> {
+            assertThat(diff.getField()).isEqualTo("flushDiskType");
+            assertThat(diff.getSeverity()).isEqualTo("CRITICAL");
+            assertThat(diff.getImpactDescription()).contains("durability");
+            assertThat(diff.getRemediationAdvice()).contains("flushDiskType");
+        });
+        assertThat(result.getOperationalSuggestions()).hasSize(1);
+    }
+
+    @Test
+    void highAndMediumDriftShouldBeClassifiedWithoutCriticalPostureTest() {
+        when(clusterService.getCluster("cluster-a")).thenReturn(cluster(
+                broker("broker-a", "10.0.0.1:10911"),
+                broker("broker-b", "10.0.0.2:10911")));
+        when(brokerConfigService.getBrokerConfig("10.0.0.1:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, true, 8, 6, "04"));
+        when(brokerConfigService.getBrokerConfig("10.0.0.2:10911", null))
+                .thenReturn(config(FlushDiskType.ASYNC_FLUSH, false, 16, 4, "06"));
+
+        BrokerConfigDiffVO result = service.compare("cluster-a", null);
+
+        assertThat(result.isDriftDetected()).isTrue();
+        assertThat(result.getClusterPosture()).isEqualTo("DRIFT_DETECTED");
+        assertThat(result.getConsistencyScore()).isLessThan(80.0);
+        assertThat(result.getDifferences())
+                .anySatisfy(diff -> {
+                    assertThat(diff.getField()).isEqualTo("autoCreateTopicEnable");
+                    assertThat(diff.getSeverity()).isEqualTo("HIGH");
+                })
+                .anySatisfy(diff -> {
+                    assertThat(diff.getField()).isEqualTo("deleteWhen");
+                    assertThat(diff.getSeverity()).isEqualTo("MEDIUM");
+                });
     }
 
 }

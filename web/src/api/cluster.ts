@@ -139,6 +139,9 @@ export interface BrokerConfigDiffValue {
 export interface BrokerConfigDifference {
   field: string;
   brokerProperty: string;
+  severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  impactDescription?: string;
+  remediationAdvice?: string;
   values: BrokerConfigDiffValue[];
 }
 
@@ -146,6 +149,9 @@ export interface BrokerConfigDiffResult {
   cluster: string;
   complete: boolean;
   driftDetected: boolean;
+  consistencyScore?: number;
+  clusterPosture?: 'SYNCHRONIZED' | 'DRIFT_DETECTED' | 'CRITICAL_DRIFT';
+  operationalSuggestions?: string[];
   brokerCount: number;
   reachableBrokerCount: number;
   comparedFields: string[];
