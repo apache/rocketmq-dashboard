@@ -131,6 +131,24 @@ class DLQServiceTest {
     }
 
     @Test
+    void exportExcelShouldRejectEmptySelectionInsteadOfDelegatingWholeWindowTest() {
+        assertThatThrownBy(() -> dlqService.exportExcel(
+                "instance-1", "group-1", null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgIds must not be empty when provided")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void exportExcelShouldKeepAbsentSelectionAsWholeWindowTest() {
+        dlqService.exportExcel("instance-1", "group-1", null, null, null);
+
+        verify(dlqProvider).exportExcel("instance-1", "group-1", null, null, null);
+    }
+
+    @Test
     void resendMessagesShouldAcceptNullTimeRange() {
         dlqService.resendMessages("instance-1", "group-1", null, null, "target-topic");
 
