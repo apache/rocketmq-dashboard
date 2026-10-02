@@ -48,16 +48,17 @@ public class AuditService {
     private final AuditRepository auditRepository;
 
 
-    public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
+    public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search, String operator,
                                              String operationType, String resourceType,
                                              String target, String clusterId, boolean clusterIdMissing,
                                              String startDate,
                                              String endDate, String result) {
         validatePagination(page, pageSize);
-        log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
-                page, pageSize, search, operationType, result);
+        log.info("Querying audit logs, page={}, pageSize={}, search={}, operator={}, operationType={}, result={}",
+                page, pageSize, search, operator, operationType, result);
 
-        return findPage(search, operationType, resourceType, target, clusterId, clusterIdMissing,
+        return findPage(search, operator, operationType, resourceType, target, clusterId,
+                clusterIdMissing,
                 startDate, endDate, result, page, pageSize);
     }
 
@@ -65,19 +66,19 @@ public class AuditService {
         return auditRepository.findFilterOptions();
     }
 
-    public AuditSummaryVO summarize(String search, String operationType, String resourceType,
+    public AuditSummaryVO summarize(String search, String operator, String operationType, String resourceType,
                                     String clusterId, String startDate, String endDate, String result) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        return auditRepository.summarize(normalizedSearch, operationType, resourceType, clusterId,
+        return auditRepository.summarize(normalizedSearch, operator, operationType, resourceType, clusterId,
                 range.start(), range.end(), result);
     }
 
-    public String exportLogs(String search, String operationType, String resourceType,
+    public String exportLogs(String search, String operator, String operationType, String resourceType,
                              String target, String clusterId, boolean clusterIdMissing, String startDate,
                              String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
-                search, operationType, resourceType, target, clusterId, clusterIdMissing,
+                search, operator, operationType, resourceType, target, clusterId, clusterIdMissing,
                 startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
         if (page.getTotal() > MAX_EXPORT_RECORDS) {
             throw new BusinessException(400,
@@ -161,15 +162,15 @@ public class AuditService {
         }
     }
 
-    private PageResult<AuditRecordVO> findPage(String search, String operationType,
+    private PageResult<AuditRecordVO> findPage(String search, String operator, String operationType,
                                                String resourceType, String target, String clusterId,
                                                boolean clusterIdMissing,
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        return auditRepository.findPage(normalizedSearch, operationType, resourceType, target, clusterId,
-                clusterIdMissing,
+        return auditRepository.findPage(normalizedSearch, operator, operationType, resourceType, target,
+                clusterId, clusterIdMissing,
                 range.start(), range.end(), result, page, pageSize);
     }
 
