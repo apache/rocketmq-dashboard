@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.ai.tool.core;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -39,6 +41,11 @@ public record ToolExecutionContext(
             "confirm_token",
             "dry_run",
             "reason");
+
+    private static final BigInteger LONG_MIN = BigInteger.valueOf(Long.MIN_VALUE);
+    private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
+    private static final BigDecimal DECIMAL_LONG_MIN = new BigDecimal(Long.MIN_VALUE);
+    private static final BigDecimal DECIMAL_LONG_MAX = new BigDecimal(Long.MAX_VALUE);
 
     public ToolExecutionContext {
         input = input == null
@@ -79,7 +86,10 @@ public record ToolExecutionContext(
     }
 
     /**
-     * Converts business fields into the tool's input record.
+     * Converts business fields into the tool's input record. The input schema declares every
+     * numeric argument as an integer, which JSON Schema accepts for an integral value of any
+     * magnitude, so an argument may still not fit the {@code long}/{@code int} component it binds
+     * to. That is a caller error and is reported as one instead of failing as an internal error.
      */
     @SuppressWarnings("unchecked")
     public <I> I convertInput(Class<I> inputType) {
@@ -87,7 +97,44 @@ public record ToolExecutionContext(
         if (inputType == Map.class) {
             return (I) business;
         }
-        return INPUT_MAPPER.convertValue(business, inputType);
+        requireBindableNumbers(business, "");
+        try {
+            return INPUT_MAPPER.convertValue(business, inputType);
+        } catch (IllegalArgumentException exception) {
+            throw ToolError.REQUEST_PARAMETER_INVALID.exception(exception.getMessage());
+        }
+    }
+
+    /** Rejects a numeric argument that is too large for any {@code long}/{@code int} component. */
+    private static void requireBindableNumbers(Object value, String path) {
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, nested) -> requireBindableNumbers(
+                    nested, path.isEmpty() ? String.valueOf(key) : path + "." + key));
+            return;
+        }
+        if (value instanceof Iterable<?> items) {
+            items.forEach(item -> requireBindableNumbers(item, path));
+            return;
+        }
+        if (value instanceof Number number && !withinLongRange(number)) {
+            throw ToolError.REQUEST_PARAMETER_INVALID.exception(path);
+        }
+    }
+
+    /** The range Jackson enforces when coercing a JSON number into a long component. */
+    private static boolean withinLongRange(Number number) {
+        if (number instanceof BigInteger integer) {
+            return integer.compareTo(LONG_MIN) >= 0 && integer.compareTo(LONG_MAX) <= 0;
+        }
+        if (number instanceof BigDecimal decimal) {
+            return decimal.compareTo(DECIMAL_LONG_MIN) >= 0
+                    && decimal.compareTo(DECIMAL_LONG_MAX) <= 0;
+        }
+        if (number instanceof Double || number instanceof Float) {
+            double primitive = number.doubleValue();
+            return primitive >= (double) Long.MIN_VALUE && primitive <= (double) Long.MAX_VALUE;
+        }
+        return true;
     }
 
     /**
