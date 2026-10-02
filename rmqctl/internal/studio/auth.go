@@ -7,6 +7,7 @@
 package studio
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -119,18 +120,39 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// hostLookupTimeout bounds the name lookup performed for an intranet Studio
+// host so that the scheme check cannot hang on a slow resolver.
+const hostLookupTimeout = 2 * time.Second
+
 // isPrivateHost reports whether host is a loopback, RFC1918 private-network,
-// or link-local address. Plain HTTP is permitted for these non-routable,
-// trusted networks (local development and same-VPC/intranet deployments);
-// public endpoints must still use HTTPS so that HMAC credentials are never
+// or link-local target. A literal address is judged directly; an intranet DNS
+// name is judged by its resolution, and counts as private only when every
+// address it resolves to is private, so mixed or unresolvable names keep
+// requiring HTTPS. Plain HTTP is permitted for these non-routable, trusted
+// networks (local development and same-VPC/intranet deployments); public
+// endpoints must still use HTTPS so that HMAC credentials are never
 // transmitted in the clear over the Internet.
 func isPrivateHost(host string) bool {
 	if isLoopbackHost(host) {
 		return true
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
+	if ip := net.ParseIP(host); ip != nil {
+		return isPrivateAddress(ip)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), hostLookupTimeout)
+	defer cancel()
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addresses) == 0 {
 		return false
 	}
-	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	for _, address := range addresses {
+		if !isPrivateAddress(address.IP) {
+			return false
+		}
+	}
+	return true
+}
+
+func isPrivateAddress(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
