@@ -219,7 +219,9 @@ const NotificationDeliveriesPage = () => {
     {
       title: t('deliveries.deliveredAt'),
       width: 185,
-      render: (_, record) => formatUtcDateTime(record.deliveredAt ?? record.createdAt),
+      // Undelivered records have no delivery time; the drawer renders the same field as '-',
+      // and substituting the creation time made failed sends look delivered.
+      render: (_, record) => formatUtcDateTime(record.deliveredAt),
     },
     {
       title: t('common.actions'),

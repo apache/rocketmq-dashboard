@@ -5,12 +5,13 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
 import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import { formatUtcDateTime } from '../../../utils/format';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -81,6 +82,53 @@ describe('NotificationDeliveriesPage', () => {
 
     await waitFor(() => expect(retryAlertDelivery).toHaveBeenCalledWith(7));
     await waitFor(() => expect(listAlertDeliveriesPage).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows the delivery time only for records that were actually delivered', async () => {
+    vi.mocked(listAlertDeliveriesPage).mockResolvedValue({
+      items: [
+        {
+          id: 7,
+          alertId: 3,
+          alertTitle: 'Broker disk usage',
+          channel: 'dingtalk',
+          status: 'FAILED',
+          attemptCount: 5,
+          createdAt: '2026-08-23T10:00:00',
+          lastError: 'Webhook rejected the request',
+        },
+        {
+          id: 8,
+          alertId: 4,
+          alertTitle: 'Consumer lag',
+          channel: 'dingtalk',
+          status: 'DELIVERED',
+          attemptCount: 1,
+          createdAt: '2026-08-23T11:00:00',
+          deliveredAt: '2026-08-23T11:01:00',
+        },
+      ],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    const failedRow = screen.getByText('Broker disk usage').closest('tr')!;
+    const deliveredRow = screen.getByText('Consumer lag').closest('tr')!;
+    // The failed record has no delivery time: the column must not substitute its creation
+    // time (which made the failed send look delivered), while the delivered one shows its
+    // actual delivery timestamp.
+    expect(within(failedRow).queryByText(formatUtcDateTime('2026-08-23T10:00:00'))).not.toBeInTheDocument();
+    expect(within(failedRow).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(deliveredRow).getByText(formatUtcDateTime('2026-08-23T11:01:00'))).toBeInTheDocument();
   });
 
   it('queues one retry when the action is clicked twice before rendering', async () => {
