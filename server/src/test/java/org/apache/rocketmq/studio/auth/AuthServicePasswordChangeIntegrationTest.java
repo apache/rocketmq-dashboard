@@ -33,7 +33,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
@@ -88,7 +90,8 @@ class AuthServicePasswordChangeIntegrationTest {
                 user.getId(), ORIGINAL_PASSWORD, REPLACEMENT_PASSWORD, true))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+        verify(sessionMapper, atLeastOnce()).update(isNull(),
+                argThat(statement -> statement.getSqlSegment().contains("user_id")));
         RmqStudioUser reloaded = userMapper.selectById(user.getId());
         assertThat(passwordHasher.matches(REPLACEMENT_PASSWORD, reloaded.getPasswordHash()))
                 .as("a password change whose session revoke failed must not be half applied")
@@ -102,7 +105,8 @@ class AuthServicePasswordChangeIntegrationTest {
 
         authService.changePassword(user.getId(), ORIGINAL_PASSWORD, REPLACEMENT_PASSWORD, true);
 
-        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+        verify(sessionMapper, atLeastOnce()).update(isNull(),
+                argThat(statement -> statement.getSqlSegment().contains("user_id")));
         RmqStudioUser reloaded = userMapper.selectById(user.getId());
         assertThat(passwordHasher.matches(REPLACEMENT_PASSWORD, reloaded.getPasswordHash())).isTrue();
         assertThat(passwordHasher.matches(ORIGINAL_PASSWORD, reloaded.getPasswordHash())).isFalse();
