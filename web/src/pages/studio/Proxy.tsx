@@ -166,12 +166,11 @@ const ProxyPage: React.FC = () => {
   }, [applyProxyHome, message, t]);
 
   useEffect(() => {
-    const requestId = loadRequestId.current;
     // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProxyNodes();
     return () => {
-      loadRequestId.current = requestId + 1;
+      loadRequestId.current += 1;
     };
   }, [loadProxyNodes]);
 
