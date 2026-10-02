@@ -35,7 +35,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -341,6 +343,90 @@ class AclControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data[0].accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data[0].secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data[0].admin").value(true));
+    }
+
+    @Test
+    void exportUsersShouldStreamTheMaskedInventoryForTheFilteredInstanceTest() throws Exception {
+        AclUserVO apacheUser = AclUserVO.builder()
+                .id(7L)
+                .username("alice")
+                .accessKey("LTAI****wxyz")
+                .secretKey("raw-secret-must-not-appear")
+                .admin(false)
+                .clusters(List.of("cluster-a", "cluster-b"))
+                .whiteRemoteAddress("10.*.*.*")
+                .gmtCreate(LocalDateTime.of(2026, 1, 2, 3, 4))
+                .build();
+        AclUserVO tencentRole = AclUserVO.builder()
+                .id(8L)
+                .username("studio-role")
+                .accessKey("AKID****4321")
+                .secretKey("raw-role-secret-must-not-appear")
+                .admin(false)
+                .permRead(true)
+                .permWrite(false)
+                .gmtCreate(LocalDateTime.of(2026, 1, 3, 4, 5))
+                .build();
+        when(aclService.pageUsers("instance-1", 1, 100, "alice"))
+                .thenReturn(PageResult.of(List.of(apacheUser, tencentRole), 2L, 1, 100));
+
+        byte[] body = mockMvc.perform(get("/api/acl/users/export")
+                        .param("instanceId", "instance-1")
+                        .param("keyword", "  alice  "))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "text/csv;charset=UTF-8"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"acl-users.csv\""))
+                .andReturn().getResponse().getContentAsByteArray();
+
+        String csv = new String(body, StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("\uFEFF" + "User ID,Username,Access Key,Admin,Clusters,"
+                + "Read Permission,Write Permission,IP Whitelist,Created\r\n");
+        assertThat(csv).contains("\"LTAI****wxyz\"", "\"AKID****4321\"", "\"cluster-a;cluster-b\"",
+                "\"10.*.*.*\"", "\"2026-01-02T03:04\"", "\"2026-01-03T04:05\"");
+        assertThat(csv).doesNotContain("raw-secret-must-not-appear");
+        assertThat(csv).doesNotContain("raw-role-secret-must-not-appear");
+        assertThat(csv).doesNotContain("Secret Key");
+        verify(aclService).pageUsers("instance-1", 1, 100, "alice");
+    }
+
+    @Test
+    void exportUsersShouldWalkEveryPageOfTheFilteredResultTest() throws Exception {
+        when(aclService.pageUsers("instance-1", 1, 100, null))
+                .thenReturn(PageResult.of(exportUsers(1, 100), 150L, 1, 100));
+        when(aclService.pageUsers("instance-1", 2, 100, null))
+                .thenReturn(PageResult.of(exportUsers(101, 150), 150L, 2, 100));
+
+        byte[] body = mockMvc.perform(get("/api/acl/users/export").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        String csv = new String(body, StandardCharsets.UTF_8);
+        assertThat(csv.split("\r\n")).hasSize(151);
+        assertThat(csv).contains("\"user-1\"").contains("\"user-150\"");
+        verify(aclService).pageUsers("instance-1", 2, 100, null);
+    }
+
+    @Test
+    void exportUsersShouldRejectAnInventoryBeyondTheExportBoundTest() throws Exception {
+        when(aclService.pageUsers("instance-1", 1, 100, null))
+                .thenReturn(PageResult.of(exportUsers(1, 100), 10_001L, 1, 100));
+
+        String error = mockMvc.perform(get("/api/acl/users/export").param("instanceId", "instance-1"))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(error).contains("10000");
+        verify(aclService).pageUsers("instance-1", 1, 100, null);
+    }
+
+    private static List<AclUserVO> exportUsers(int firstId, int lastId) {
+        List<AclUserVO> users = new ArrayList<>();
+        for (int id = firstId; id <= lastId; id++) {
+            users.add(AclUserVO.builder().id((long) id).username("user-" + id)
+                    .accessKey("acce****" + id).admin(false).build());
+        }
+        return users;
     }
 
     @Test

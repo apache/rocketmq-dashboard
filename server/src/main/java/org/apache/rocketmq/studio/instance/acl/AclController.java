@@ -23,6 +23,9 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,12 +35,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/acl")
 @RequiredArgsConstructor
 public class AclController {
+
+    private static final int EXPORT_PAGE_SIZE = 100;
+    private static final long MAX_EXPORT_USERS = 10_000L;
+    private static final String EXPORT_FILE_NAME = "acl-users.csv";
+    private static final MediaType CSV_CONTENT_TYPE = MediaType.parseMediaType("text/csv;charset=UTF-8");
 
     private final AclService aclService;
     private final ApacheAclReadService apacheAclReadService;
@@ -99,6 +109,36 @@ public class AclController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String keyword) {
         return Result.ok(aclService.pageUsers(instanceId, page, pageSize, keyword));
+    }
+
+    /**
+     * Streams the ACL account inventory as CSV. The export walks the same filtered page query the
+     * users table reads, so the file matches what the operator sees after typing a keyword; the
+     * whole inventory is materialized here, so the row count is bounded.
+     */
+    @GetMapping("/users/export")
+    public ResponseEntity<byte[]> exportUsers(
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String keyword) {
+        String query = keyword == null ? null : keyword.strip();
+        List<AclUserVO> users = new ArrayList<>();
+        int page = 1;
+        PageResult<AclUserVO> chunk;
+        do {
+            chunk = aclService.pageUsers(instanceId, page, EXPORT_PAGE_SIZE, query);
+            if (page == 1 && chunk.getTotal() > MAX_EXPORT_USERS) {
+                throw new BusinessException(400, "ACL user export exceeds the maximum of "
+                        + MAX_EXPORT_USERS + " records; narrow the keyword filter");
+            }
+            users.addAll(chunk.getItems());
+            page++;
+        } while (users.size() < chunk.getTotal() && !chunk.getItems().isEmpty());
+        byte[] csv = AclUserCsvExporter.render(users).getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(EXPORT_FILE_NAME).build().toString())
+                .contentType(CSV_CONTENT_TYPE)
+                .body(csv);
     }
 
     @GetMapping("/users/{id}/credentials")
