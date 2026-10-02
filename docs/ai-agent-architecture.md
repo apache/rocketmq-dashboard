@@ -112,9 +112,11 @@ Agent 循环 ⊃ 一条时间线条目。不带多租户 `tenant_id`、`shareSco
 `engine`/`model` 快照在 run 上而不是只在 conversation 上，是为了让历史**保持真实**：用户改了设置之后，
 回看旧对话仍能看到当时实际用的是什么。
 
-`payload` 用 `MEDIUMTEXT` 不用 MySQL `json`：`json` 存二进制 blob，任何走不到索引的 `ORDER BY` 都会把
-整个值物化进 `sort_buffer_size`。同理，时间线查询**故意不用 SQL `ORDER BY`**，
-而是走 `uk_ai_event_conversation_seq` 过滤后在内存里排序。
+`payload` 用 `MEDIUMTEXT` 不用 MySQL `json`：`json` 存二进制 blob，走不到索引的 `ORDER BY` 可能把
+整个值物化进 `sort_buffer_size`。时间线查询则显式使用 `ORDER BY seq ASC` 后再应用 `LIMIT`，把分页所需
+的顺序写进 SQL 合同，而不是依赖数据库未承诺的返回顺序。MySQL 8.0.46 对精确查询的 `EXPLAIN` 选择
+`uk_ai_event_conversation_seq (conversation_id, seq)` 做 range scan，`using_filesort=false`，所以不会为
+`MEDIUMTEXT payload` 建立 filesort。
 
 ## 6. 事件契约：三种词汇，一个渲染目标
 
