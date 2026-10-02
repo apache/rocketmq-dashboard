@@ -442,7 +442,10 @@ const MainLayout = () => {
           collapsed={collapsed}
           onCollapse={setCollapsed}
           width={220}
-          collapsedWidth={64}
+          // Narrow viewports must not reserve the desktop sidebar: below the lg breakpoint the
+          // sider collapses to nothing and the zero-width control reopens the navigation.
+          breakpoint="lg"
+          collapsedWidth={0}
           style={{
             background: siderBg,
             borderRight: `1px solid ${borderColor}`,
@@ -513,6 +516,8 @@ const MainLayout = () => {
                   alignItems: 'center',
                   gap: 8,
                   width: 280,
+                  // Shrink with a narrow header instead of forcing 280px onto the viewport.
+                  flex: '0 1 280px',
                   padding: '6px 8px 6px 14px',
                   borderRadius: 999,
                   border: `1px solid ${borderColor}`,
