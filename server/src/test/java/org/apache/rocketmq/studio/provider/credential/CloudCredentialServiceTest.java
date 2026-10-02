@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -206,7 +207,7 @@ class CloudCredentialServiceTest {
         stored.setVendor(InstanceVendor.TENCENT);
         stored.setAccessKey("AKIDexample");
         when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
-        when(credentialRepository.replace(stored)).thenReturn(false);
+        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(false);
         UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
         request.setId(1L);
         request.setName("renamed");
@@ -216,6 +217,59 @@ class CloudCredentialServiceTest {
                 .hasMessage("Cloud credential not found: 1");
 
         verify(tencentClientFactory, never()).invalidateCredential(any());
+    }
+
+    @Test
+    void nameOnlyUpdateShouldNotRestoreAConcurrentlyRotatedSecretTest() {
+        // The snapshot a metadata edit read before a concurrent rotation stored the new secret.
+        CloudCredentialVO staleSnapshot = new CloudCredentialVO();
+        staleSnapshot.setId(1L);
+        staleSnapshot.setVendor(InstanceVendor.ALIYUN);
+        staleSnapshot.setName("credential");
+        staleSnapshot.setAccessKey("LTAI5tUpdateKey000000001");
+        staleSnapshot.setSecretKey("rotated-away-secret");
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(staleSnapshot));
+        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(true);
+
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(1L);
+        request.setName("renamed");
+
+        service.update(request);
+
+        // A request that supplies no secret must not write one, so the concurrent rotation is not
+        // undone by this metadata edit.
+        ArgumentCaptor<CloudCredentialVO> written = ArgumentCaptor.forClass(CloudCredentialVO.class);
+        verify(credentialRepository).replace(written.capture());
+        assertThat(written.getValue().getId()).isEqualTo(1L);
+        assertThat(written.getValue().getName()).isEqualTo("renamed");
+        assertThat(written.getValue().getSecretKey()).isNull();
+    }
+
+    @Test
+    void secretOnlyRotationShouldNotRewriteMetadataFromTheStaleSnapshotTest() {
+        CloudCredentialVO staleSnapshot = new CloudCredentialVO();
+        staleSnapshot.setId(1L);
+        staleSnapshot.setVendor(InstanceVendor.ALIYUN);
+        staleSnapshot.setName("old-name");
+        staleSnapshot.setRemark("old-remark");
+        staleSnapshot.setAccessKey("LTAI5tUpdateKey000000001");
+        staleSnapshot.setSecretKey("old-secret");
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(staleSnapshot));
+        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(true);
+
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(1L);
+        request.setSecretKey("new-secret");
+
+        service.update(request);
+
+        // The mirror image: a rotation must not write the metadata its snapshot still carries.
+        ArgumentCaptor<CloudCredentialVO> written = ArgumentCaptor.forClass(CloudCredentialVO.class);
+        verify(credentialRepository).replace(written.capture());
+        assertThat(written.getValue().getSecretKey()).isEqualTo("new-secret");
+        assertThat(written.getValue().getName()).isNull();
+        assertThat(written.getValue().getRemark()).isNull();
     }
 
     @Test

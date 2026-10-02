@@ -132,7 +132,19 @@ public class CloudCredentialService {
             existing.setRemark(request.getRemark());
         }
         existing.setGmtModified(LocalDateTime.now());
-        if (!credentialRepository.replace(existing)) {
+        // `existing` is a snapshot that another request may have superseded while this one ran, so
+        // writing it back wholesale would restore the values that request changed (for example a
+        // secret rotation). Only the fields this request supplied are persisted; null fields are
+        // skipped by the update, so a concurrent edit of another field survives.
+        CloudCredentialVO patch = new CloudCredentialVO();
+        patch.setId(existing.getId());
+        patch.setName(request.getName());
+        patch.setRemark(request.getRemark());
+        if (request.getSecretKey() != null && !request.getSecretKey().isBlank()) {
+            patch.setSecretKey(request.getSecretKey());
+        }
+        patch.setGmtModified(existing.getGmtModified());
+        if (!credentialRepository.replace(patch)) {
             throw new BusinessException(404, "Cloud credential not found: " + request.getId());
         }
         invalidateCloudClients(existing);
