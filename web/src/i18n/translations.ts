@@ -1593,6 +1593,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.cleanupDaysSuffix': { zh: '天之前的日志', en: 'days of logs' },
+  'audit.cleanupFailed': {
+    zh: '清理审计日志失败，请稍后重试',
+    en: 'Failed to clean audit logs. Try again later.',
+  },
+  'audit.loadFailed': {
+    zh: '审计日志加载失败，请稍后重试',
+    en: 'Failed to load audit logs. Try again later.',
+  },
+  'audit.summaryLoadFailed': {
+    zh: '审计概览加载失败，请稍后重试',
+    en: 'Failed to load the audit summary. Try again later.',
+  },
+  'audit.exportFailed': {
+    zh: '导出审计日志失败，请稍后重试',
+    en: 'Failed to export audit logs. Try again later.',
+  },
   'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
   'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
