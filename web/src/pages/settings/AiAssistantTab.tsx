@@ -305,7 +305,10 @@ export const AiAssistantTab = () => {
         message.success(t('settings.saveSucceeded'));
         if (payload.apiKey) {
           setApiKeyConfigured(true);
-          form.setFieldValue('apiKey', undefined);
+          const currentApiKey = form.getFieldValue('apiKey') as string | undefined;
+          if (currentApiKey?.trim() === payload.apiKey) {
+            form.setFieldValue('apiKey', undefined);
+          }
         }
         try {
           const models = await getLlmModels();
