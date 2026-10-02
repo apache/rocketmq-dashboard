@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -302,7 +303,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             if (processSink != null) {
                 processSink.attachProcess(process);
             }
-            CompletableFuture<Void> stdoutFuture = drainStdout(process.getInputStream(), stdoutLine);
+            CompletableFuture<Void> stdoutFuture = drainStdout(process, stdoutLine);
             CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
@@ -410,11 +411,12 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return StringUtils.hasText(stderr) ? stderr.trim() : "unknown error";
     }
 
-    private CompletableFuture<Void> drainStdout(InputStream stdout, Consumer<String> stdoutLine) {
+    private CompletableFuture<Void> drainStdout(Process process, Consumer<String> stdoutLine) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stdout, StandardCharsets.UTF_8))) {
+                    new InputStreamReader(new BoundedStdout(process.getInputStream(), outputLimitBytes()),
+                            StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     stdoutLine.accept(line);
@@ -422,9 +424,52 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                 result.complete(null);
             } catch (Exception exception) {
                 result.completeExceptionally(exception);
+                // Unblock waitFor immediately instead of waiting for a producer blocked on stdout.
+                process.destroyForcibly();
             }
         });
         return result;
+    }
+
+    /**
+     * Apply the same aggregate byte budget as buffered CLI completion before decoding or readLine.
+     * This bounds individual JSON frames and the parser state assembled across many small frames.
+     */
+    private static final class BoundedStdout extends FilterInputStream {
+        private int remaining;
+
+        private BoundedStdout(InputStream input, int limit) {
+            super(input);
+            remaining = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = in.read();
+            if (value != -1) {
+                consume(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            int count = in.read(bytes, offset, Math.min(length, remaining + 1));
+            if (count > 0) {
+                consume(count);
+            }
+            return count;
+        }
+
+        private void consume(int count) throws IOException {
+            if (count > remaining) {
+                throw new StdoutLimitException();
+            }
+            remaining -= count;
+        }
+    }
+
+    private static final class StdoutLimitException extends IOException {
     }
 
     private CompletableFuture<String> readAsync(InputStream stream) {
@@ -447,6 +492,11 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         try {
             return future.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof StdoutLimitException) {
+                throw new LlmGatewayException(502, "llm.provider.output_too_large",
+                        binaryName() + " CLI output exceeded the maximum of " + outputLimitBytes() + " bytes",
+                        "Retry with a shorter prompt or reduce the provider response size.", exception);
+            }
             throw new IOException("Failed to drain Claude CLI output", exception.getCause());
         } catch (TimeoutException exception) {
             throw new IOException("Timed out while draining Claude CLI output", exception);
