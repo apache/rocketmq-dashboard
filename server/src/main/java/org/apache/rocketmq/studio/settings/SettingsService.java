@@ -325,10 +325,18 @@ public class SettingsService {
         }
     }
 
+    /**
+     * Rejects an unknown data source type before any HTTP request is attempted. The separators
+     * are stripped exactly like {@code MetricsBackendType.fromProviderType} does, so every
+     * spelling the data source API accepts ("victoria metrics", "victoria_metrics",
+     * "victoriametrics") also passes the connection test instead of being reported as
+     * unsupported. Unlike the resolver this must not fall back to a default for unknown
+     * values, otherwise a typo would silently be tested against the Prometheus paths.
+     */
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
                 && PROMETHEUS_COMPATIBLE_TYPES.contains(
-                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
+                        type.replaceAll("[\\s_-]+", "").toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDataSourceKey(String key) {

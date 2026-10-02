@@ -757,4 +757,19 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).isEqualTo("Unsupported data source type: rocketmq");
     }
 
+    @Test
+    void connectionShouldAcceptTheProviderTypeAliasTheDataSourceApiAcceptsTest() {
+        prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("victoria_metrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
 }
