@@ -117,6 +117,62 @@ class AliyunClientFactoryTest {
     }
 
     @Test
+    void invalidateCredentialShouldEvictClientCreatedDuringRotationTest() throws Exception {
+        AsyncClient oldClient = Mockito.mock(AsyncClient.class);
+        AsyncClient rotatedClient = Mockito.mock(AsyncClient.class);
+        AtomicInteger created = new AtomicInteger();
+        CountDownLatch creationStarted = new CountDownLatch(1);
+        CountDownLatch releaseCreation = new CountDownLatch(1);
+        CountDownLatch invalidationFinished = new CountDownLatch(1);
+        factory = new AliyunClientFactory(credentialRepository) {
+            @Override
+            protected AsyncClient createClient(Long credentialId, String region) {
+                if (created.getAndIncrement() > 0) {
+                    return rotatedClient;
+                }
+                creationStarted.countDown();
+                awaitQuietly(releaseCreation);
+                return oldClient;
+            }
+
+            @Override
+            public void invalidateCredential(Long credentialId) {
+                super.invalidateCredential(credentialId);
+                invalidationFinished.countDown();
+            }
+        };
+
+        Thread creator = new Thread(() -> factory.client(CREDENTIAL_ID, REGION));
+        creator.start();
+        assertThat(creationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Thread invalidator = new Thread(() -> factory.invalidateCredential(CREDENTIAL_ID));
+        invalidator.start();
+        // The first client is still being created here. An invalidation that removes nothing and
+        // returns (the defect) lets that client be published afterwards and reused; a factory that
+        // coordinates creation with invalidation cannot finish while the creation is in flight.
+        invalidationFinished.await(500, TimeUnit.MILLISECONDS);
+
+        releaseCreation.countDown();
+        creator.join(TimeUnit.SECONDS.toMillis(5));
+        invalidator.join(TimeUnit.SECONDS.toMillis(5));
+
+        assertThat(creator.isAlive()).isFalse();
+        assertThat(invalidator.isAlive()).isFalse();
+        assertThat(factory.client(CREDENTIAL_ID, REGION)).isSameAs(rotatedClient);
+        Mockito.verify(oldClient).close();
+        assertThat(created.get()).isEqualTo(2);
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
     void callShouldThrow504OnTimeoutTest() {
         factory.setCallTimeoutSeconds(1L);
         AliyunClientFactory spy = Mockito.spy(factory);
