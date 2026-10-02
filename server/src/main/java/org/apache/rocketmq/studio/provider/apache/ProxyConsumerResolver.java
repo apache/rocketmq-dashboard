@@ -41,7 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Resolves consumer connection info from the cluster proxies.
@@ -72,7 +71,9 @@ public class ProxyConsumerResolver {
     private final RocketMQProperties properties;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
-    private final AtomicBoolean clientStarted = new AtomicBoolean(false);
+    // The remoting client is published only after its start() returned, so a reader either sees no
+    // client (and initializes one itself) or a fully started one. A failed start publishes nothing,
+    // which lets the next request initialise a fresh client instead of reusing an unstarted one.
     private volatile NettyRemotingClient remotingClient;
 
     /**
@@ -222,30 +223,48 @@ public class ProxyConsumerResolver {
 
     private NettyRemotingClient remotingClient() {
         NettyRemotingClient client = remotingClient;
-        if (client == null) {
-            synchronized (this) {
-                if (remotingClient == null) {
-                    remotingClient = new NettyRemotingClient(new NettyClientConfig());
-                }
-                client = remotingClient;
+        if (client != null) {
+            return client;
+        }
+        synchronized (this) {
+            if (remotingClient != null) {
+                return remotingClient;
             }
+            NettyRemotingClient candidate = new NettyRemotingClient(new NettyClientConfig());
+            try {
+                candidate.start();
+            } catch (RuntimeException e) {
+                // A client that did not finish starting must never be published: dispose of it so
+                // the next request starts a fresh one instead of reusing a half-initialised client.
+                shutdownFailedCandidateQuietly(candidate);
+                throw e;
+            }
+            // Concurrent first-use callers wait on this monitor, so they only ever observe a client
+            // whose start() has returned.
+            remotingClient = candidate;
+            return candidate;
         }
-        if (clientStarted.compareAndSet(false, true)) {
-            client.start();
+    }
+
+    private static void shutdownFailedCandidateQuietly(NettyRemotingClient client) {
+        try {
+            client.shutdown();
+        } catch (Exception e) {
+            log.warn("Failed to shut down the proxy remoting client whose start failed", e);
         }
-        return client;
     }
 
     @PreDestroy
     public void shutdownRemotingClient() {
-        if (clientStarted.get() && remotingClient != null) {
-            remotingClient.shutdown();
+        synchronized (this) {
+            if (remotingClient != null) {
+                remotingClient.shutdown();
+            }
         }
     }
 
     void setRemotingClientForTest(NettyRemotingClient client) {
         this.remotingClient = client;
-        clientStarted.set(true);
     }
 
     public record ConsumerConnectionResolution(ConsumerConnection connection, boolean available) {
