@@ -16,6 +16,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { USER_ID_STORAGE_KEY } from '../../stores/authStorage';
 import {
   MAX_CUSTOM_PROMPT_TEMPLATES,
   MAX_PROMPT_TEMPLATE_BODY_LENGTH,
@@ -29,6 +30,15 @@ import {
   saveCustomPromptTemplate,
   type PromptTemplate,
 } from './promptTemplates';
+
+/**
+ * The storage layout the scoping has to use: one key per signed-in account, plus one for the
+ * unauthenticated single-user mode the app falls back to when no login is required.
+ */
+const accountStorageKey = (userId: number | null): string =>
+  userId === null
+    ? `${PROMPT_TEMPLATE_STORAGE_KEY}:v2:single-user`
+    : `${PROMPT_TEMPLATE_STORAGE_KEY}:v2:user-id:${userId}`;
 
 describe('AI prompt templates', () => {
   beforeEach(() => {
@@ -148,7 +158,7 @@ describe('AI prompt templates', () => {
       customCount: 1,
       storageAvailable: true,
     });
-    expect(localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)).toContain('Recovery');
+    expect(localStorage.getItem(accountStorageKey(null))).toContain('Recovery');
   });
 
   it('bounds custom template count and body size', () => {
@@ -176,7 +186,72 @@ describe('AI prompt templates', () => {
     const catalog = loadPromptTemplateCatalog();
     expect(catalog.customCount).toBe(0);
     expect(catalog.templates).toHaveLength(builtinPromptTemplates.length);
+    expect(localStorage.getItem(accountStorageKey(null))).toBeNull();
+  });
+
+  it('keeps the custom templates of one account away from another', () => {
+    localStorage.setItem(USER_ID_STORAGE_KEY, '11');
+    expect(
+      saveCustomPromptTemplate({ title: 'Orders incident', body: 'escalate rmq-a to @oncall' }).ok,
+    ).toBe(true);
+
+    // The same browser profile, a different account: none of alice's templates may show up.
+    localStorage.setItem(USER_ID_STORAGE_KEY, '22');
+    expect(loadPromptTemplateCatalog().customCount).toBe(0);
+
+    saveCustomPromptTemplate({ title: 'Bob checklist', body: 'bob only' });
+    expect(loadPromptTemplateCatalog().customCount).toBe(1);
+
+    // Bob's list is his own, so alice's template is still there and untouched.
+    localStorage.setItem(USER_ID_STORAGE_KEY, '11');
+    const aliceCatalog = loadPromptTemplateCatalog();
+    expect(aliceCatalog.customCount).toBe(1);
+    expect(aliceCatalog.templates[0].title).toBe('Orders incident');
+  });
+
+  it('scopes a delete to the account that owns the template', () => {
+    localStorage.setItem(USER_ID_STORAGE_KEY, '11');
+    const saved = saveCustomPromptTemplate({ title: 'Orders incident', body: 'alice only' });
+    expect(saved.template).toBeDefined();
+
+    // Bob knows the id - the list used to be shared - but must not be able to remove alice's work.
+    localStorage.setItem(USER_ID_STORAGE_KEY, '22');
+    expect(deleteCustomPromptTemplate(saved.template!.id)).toBe(true);
+
+    localStorage.setItem(USER_ID_STORAGE_KEY, '11');
+    expect(loadPromptTemplateCatalog().customCount).toBe(1);
+  });
+
+  it('does not adopt the ownerless legacy catalog for a signed-in account', () => {
+    localStorage.setItem(
+      PROMPT_TEMPLATE_STORAGE_KEY,
+      JSON.stringify([{ id: 'alice-1', title: 'Orders incident', body: 'internal context' }]),
+    );
+    localStorage.setItem(USER_ID_STORAGE_KEY, '22');
+
+    const catalog = loadPromptTemplateCatalog();
+
+    // Whoever used this browser last wrote that catalog. Handing it to the next account is exactly
+    // the disclosure this scoping removes, so it is dropped rather than adopted.
+    expect(catalog.customCount).toBe(0);
     expect(localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('migrates the ownerless legacy catalog in single-user mode', () => {
+    localStorage.setItem(
+      PROMPT_TEMPLATE_STORAGE_KEY,
+      JSON.stringify([{ id: 'legacy-1', title: 'Legacy runbook', body: 'kept' }]),
+    );
+
+    // No account signed in: the legacy key is this browser's own data, so it moves instead of
+    // being dropped - and it survives the move.
+    expect(loadPromptTemplateCatalog().customCount).toBe(1);
+    expect(localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(accountStorageKey(null))).toContain('Legacy runbook');
+    expect(loadPromptTemplateCatalog().templates[0]).toMatchObject({
+      scope: 'custom',
+      title: 'Legacy runbook',
+    });
   });
 
   it('filters templates by keyword and mode', () => {
