@@ -61,4 +61,8 @@ describe('LlmSettingsPage', () => {
       { value: 'custom-model', label: 'custom-model' },
     ]);
   });
+
+  it('returns no options for unknown providers without a current model', () => {
+    expect(fallbackModelOptions('custom')).toEqual([]);
+  });
 });
