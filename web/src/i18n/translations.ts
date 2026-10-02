@@ -3582,6 +3582,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.begin': { zh: '开始', en: 'Begin' },
   'common.end': { zh: '结束', en: 'End' },
   'common.selectInstance': { zh: '选择实例', en: 'Select Instance' },
+  'instanceSelect.notFound': { zh: '暂无匹配实例', en: 'No matching instances' },
   'common.selectProxy': { zh: '选择代理', en: 'Select Proxy' },
   'common.enableProxy': { zh: '启用代理', en: 'Enable Proxy' },
   'common.proxyDisabled': { zh: '代理禁用', en: 'Proxy Disabled' },
