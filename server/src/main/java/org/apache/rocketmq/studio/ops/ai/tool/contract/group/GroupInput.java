@@ -36,9 +36,7 @@ public record GroupInput(
         vo.setInstanceId(instanceId);
         vo.setSubscriptionDataType(subscriptionDataType);
         vo.setDeliveryOrderType(deliveryOrderType);
-        if (retryMaxTimes != null) {
-            vo.setRetryMaxTimes(retryMaxTimes);
-        }
+        vo.setRetryMaxTimes(retryMaxTimes == null ? 16 : retryMaxTimes);
         if (delaySeconds != null) {
             vo.setDelaySeconds(delaySeconds);
         }

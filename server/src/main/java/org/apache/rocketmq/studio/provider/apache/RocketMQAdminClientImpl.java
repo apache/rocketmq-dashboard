@@ -783,7 +783,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             config.setConsumeEnable(true);
             config.setConsumeBroadcastEnable(true);
             config.setRetryQueueNums(1);
-            config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
+            config.setRetryMaxTimes(group.getRetryMaxTimes());
             // The create form submits the ordered spelling of the group's delivery order type,
             // and consumeMessageOrderly is the very flag the group settings dialog reads and
             // writes, so an ordered create request has to reach the broker instead of being
