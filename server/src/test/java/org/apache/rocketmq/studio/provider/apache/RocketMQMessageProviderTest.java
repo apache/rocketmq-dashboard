@@ -334,6 +334,19 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByKeyReturnsEmptyListWhenTheTopicRouteIsGone() throws Exception {
+        // A deleted topic has no route, so MQAdminImpl.queryMessage fails the RPC locally with
+        // TOPIC_NOT_EXIST. The key query completed with no business data, exactly like the
+        // NO_MESSAGE case above, so it must degrade to an empty result instead of a 502.
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "No route info of this topic: TopicA"));
+
+        assertThat(provider.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L)).isEmpty();
+    }
+
+    @Test
     void queryByUniqueKeyWithoutWindowUsesTwoArgAdminLookupTest() throws Exception {
         MQAdminImpl mqAdmin = mockUniqKeyLookupAdmin();
         MessageExt message = new MessageExt();
