@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -44,6 +45,7 @@ public class AuthController {
     private final AuthService authService;
     private final AuthProperties authProperties;
     private final SettingsRepository settingsRepository;
+    private final OperationAuditService operationAuditService;
 
     @GetMapping("/status")
     public ResponseEntity<Result<AuthStatusVO>> status(
@@ -58,6 +60,23 @@ public class AuthController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(Result.ok(status));
+    }
+
+    /**
+     * Records an authentication event for an explicit actor. A login attempt happens before the
+     * request has a principal (the interceptor never runs for {@code /api/auth/login}) and a logout
+     * has just given its token up, so the acting operator is published for the duration of the
+     * audit call instead of being read from the request context.
+     */
+    private void recordAs(String operator, String operationType, String resourceType,
+                          String target, String detail, String result) {
+        AuthenticatedUserContext.setUsername(operator);
+        try {
+            operationAuditService.record(operationType, resourceType, target, null, detail, result,
+                    null);
+        } finally {
+            AuthenticatedUserContext.clear();
+        }
     }
 
     private boolean isLoginRequired() {
@@ -75,7 +94,17 @@ public class AuthController {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
-        LoginVO login = authService.login(request);
+        LoginVO login;
+        try {
+            login = authService.login(request);
+        } catch (BusinessException failure) {
+            // The answered message is recorded verbatim: a failed login leaves the same uniform
+            // information the caller received and never reveals whether the account exists.
+            recordAs(request.getUsername(), "LOGIN", "AUTH", request.getUsername(),
+                    failure.getMessage(), "FAILURE");
+            throw failure;
+        }
+        recordAs(request.getUsername(), "LOGIN", "AUTH", request.getUsername(), null, "SUCCESS");
         if (AuthCookie.requestsBearerToken(servletRequest)) {
             return Result.ok(login);
         }
@@ -86,7 +115,14 @@ public class AuthController {
 
     @PostMapping("/logout")
     public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-        authService.logout(AuthCookie.authorization(request, authProperties));
+        String authorization = AuthCookie.authorization(request, authProperties);
+        // Resolved before the token is revoked: afterwards no principal is left to name.
+        String username = authService.getAuthenticatedUser(authorization)
+                .map(LoginVO.UserInfo::getUsername).orElse(null);
+        authService.logout(authorization);
+        if (username != null) {
+            recordAs(username, "LOGOUT", "AUTH", username, null, "SUCCESS");
+        }
         AuthCookie.clear(response, authProperties);
         return Result.ok();
     }
@@ -101,6 +137,7 @@ public class AuthController {
             throw new BusinessException(503, "Studio user management is not initialized");
         }
         authService.changePassword(user.getUserId(), request.getCurrentPassword(), request.getNewPassword(), true);
+        recordAs(user.getUsername(), "UPDATE_OWN_PASSWORD", "AUTH", user.getUsername(), null, "SUCCESS");
         return Result.ok();
     }
 }

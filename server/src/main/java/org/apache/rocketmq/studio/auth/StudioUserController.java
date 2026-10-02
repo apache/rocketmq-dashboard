@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.auth;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
@@ -38,6 +39,7 @@ import java.util.Map;
 public class StudioUserController {
 
     private final AuthService authService;
+    private final OperationAuditService operationAuditService;
 
     @GetMapping("/sessions/overview")
     public Result<StudioUserSessionOverviewVO> sessionOverview() {
@@ -72,26 +74,36 @@ public class StudioUserController {
 
     @PostMapping
     public Result<StudioUserVO> create(@Valid @RequestBody CreateStudioUserDTO request) {
-        return Result.ok(StudioUserVO.from(authService.createUser(
-                request.getUsername(), request.getPassword(), request.isAdmin())));
+        RmqStudioUser created = authService.createUser(
+                request.getUsername(), request.getPassword(), request.isAdmin());
+        operationAuditService.record("CREATE_USER", "STUDIO_USER", created.getUsername(), null,
+                "admin=" + request.isAdmin(), "SUCCESS", null);
+        return Result.ok(StudioUserVO.from(created));
     }
 
     @PostMapping("/{userId}/status")
     public Result<StudioUserVO> updateStatus(@PathVariable Long userId,
                                               @Valid @RequestBody UpdateStudioUserStatusDTO request) {
-        return Result.ok(StudioUserVO.from(authService.setUserEnabled(userId, request.getEnabled())));
+        RmqStudioUser updated = authService.setUserEnabled(userId, request.getEnabled());
+        operationAuditService.record("UPDATE_USER_STATUS", "STUDIO_USER", updated.getUsername(), null,
+                "enabled=" + request.getEnabled(), "SUCCESS", null);
+        return Result.ok(StudioUserVO.from(updated));
     }
 
     @PostMapping("/{userId}/password")
     public Result<Void> resetPassword(@PathVariable Long userId,
                                       @Valid @RequestBody ResetPasswordDTO request) {
         authService.changePassword(userId, null, request.getNewPassword(), false);
+        operationAuditService.record("RESET_USER_PASSWORD", "STUDIO_USER", String.valueOf(userId),
+                null, null, "SUCCESS", null);
         return Result.ok();
     }
 
     @PostMapping("/{userId}/sessions/revoke")
     public Result<StudioUserSessionRevokeVO> revokeSessions(@PathVariable Long userId) {
         int revokedSessionCount = authService.revokeSessionsForUser(userId);
+        operationAuditService.record("REVOKE_USER_SESSIONS", "STUDIO_USER", String.valueOf(userId),
+                null, "revoked=" + revokedSessionCount, "SUCCESS", null);
         return Result.ok(StudioUserSessionRevokeVO.builder()
                 .userId(userId)
                 .revokedSessionCount(revokedSessionCount)
