@@ -126,6 +126,19 @@ describe('ProducerPage', () => {
     expect(fetchProducerGroups).not.toHaveBeenCalled();
   });
 
+  it('renders the form labels and table header through the translation table', async () => {
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => {
+      expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
+    });
+    // The Chinese default must not leak the hardcoded English strings the page used before.
+    expect(screen.getByText('实例')).toBeInTheDocument();
+    expect(screen.getByText('Topic')).toBeInTheDocument();
+    expect(screen.getAllByText('生产者组').length).toBeGreaterThan(0);
+    expect(screen.getByText('客户端 ID')).toBeInTheDocument();
+  });
+
   it('uses an Apache instance rather than a cloud instance for producer diagnostics', async () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
