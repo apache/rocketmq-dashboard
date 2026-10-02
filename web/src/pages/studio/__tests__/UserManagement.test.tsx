@@ -21,11 +21,13 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  createStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as downloadStudioUsers,
   listStudioUserSessions,
   listStudioUsers,
   revokeStudioUserSessions,
+  resetStudioUserPassword,
   setStudioUserEnabled,
   type StudioUser,
   type StudioUserSessionDetail,
@@ -203,6 +205,57 @@ describe('UserManagementPage', () => {
         pageSize: 20,
       }),
     );
+  });
+
+  it('clears previous users when a filtered list request fails', async () => {
+    vi.mocked(listStudioUsers)
+      .mockResolvedValueOnce(studioUserPage)
+      .mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await selectOption(user, '按权限筛选', '管理员');
+
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('operator')).not.toBeInTheDocument());
+  });
+
+  it('submits a new user only once while creation is pending', async () => {
+    vi.mocked(createStudioUser).mockImplementation(() => new Promise<StudioUser>(() => undefined));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '新建用户' }));
+    const dialog = screen.getByRole('dialog', { name: '新建 Studio 用户' });
+    await user.type(within(dialog).getByLabelText('用户名'), 'new-operator');
+    await user.type(within(dialog).getByLabelText('初始密码'), 'password-123');
+    const ok = within(dialog).getByRole('button', { name: 'OK' });
+    fireEvent.click(ok);
+    await waitFor(() => expect(createStudioUser).toHaveBeenCalledTimes(1));
+    fireEvent.click(ok);
+    await act(async () => undefined);
+
+    expect(createStudioUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits a password reset only once while the request is pending', async () => {
+    vi.mocked(resetStudioUserPassword).mockImplementation(() => new Promise<void>(() => undefined));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '改密' }));
+    const dialog = screen.getByRole('dialog', { name: '重置 operator 的密码' });
+    await user.type(within(dialog).getByLabelText('新密码'), 'password-456');
+    const ok = within(dialog).getByRole('button', { name: 'OK' });
+    fireEvent.click(ok);
+    await waitFor(() => expect(resetStudioUserPassword).toHaveBeenCalledTimes(1));
+    fireEvent.click(ok);
+    await act(async () => undefined);
+
+    expect(resetStudioUserPassword).toHaveBeenCalledTimes(1);
   });
 
   it('exports all users that match the active filters', async () => {
