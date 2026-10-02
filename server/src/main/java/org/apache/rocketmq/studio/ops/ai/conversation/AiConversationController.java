@@ -209,9 +209,10 @@ public class AiConversationController {
      * {@code nextAfter} in the answer is the cursor for the following page, or null at the tail.
      *
      * <p>Items are the full {@code TimelineItem} contract — the row id, the run that produced it and the
-     * <em>deserialised</em> event, not the raw {@code type} + {@code payload} columns. The query behind
-     * this has no SQL {@code ORDER BY} on purpose ({@code payload} is MEDIUMTEXT and a filesort would
-     * materialise it into {@code sort_buffer_size}); the repository sorts the bounded slice in memory.
+     * <em>deserialised</em> event, not the raw {@code type} + {@code payload} columns. The repository
+     * orders the slice by {@code seq} before it limits it, and
+     * {@code uk_ai_event_conversation_seq} serves that ordering without a filesort over the
+     * MEDIUMTEXT {@code payload}.
      */
     @GetMapping("/conversations/{id}/events")
     public Result<AiTimelineVO> conversationEvents(
