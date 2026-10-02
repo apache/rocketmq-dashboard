@@ -175,6 +175,30 @@ describe('AiAssistantTab', () => {
     ).toBeInTheDocument();
   });
 
+  it('preserves a new API key typed while an earlier save is pending', async () => {
+    let resolveSave!: (result: { status: number }) => void;
+    llmApiMocks.saveLlmConfig.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    const apiKey = screen.getByLabelText('API Key');
+    await user.type(apiKey, 'sk-first');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+
+    await user.clear(apiKey);
+    await user.type(apiKey, 'sk-second');
+    await act(async () => resolveSave({ status: 0 }));
+
+    expect(apiKey).toHaveValue('sk-second');
+  });
+
   it('ignores a saved model refresh after the provider changes', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     let resolveModels!: (result: { status: number; data: { id: string }[] }) => void;
