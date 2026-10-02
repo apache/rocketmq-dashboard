@@ -146,6 +146,24 @@ class AlertNotificationSuppressionServiceTest {
         assertThat(result).contains(reminder);
     }
 
+    @Test
+    void suppressesWhileTheClusterIncidentKeepsAPaddedStoredInstanceIdTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        // The row is compared as text here, so a stored id that carries padding is not dropped after
+        // the query already returned it. The padding is trailing on purpose: a PAD SPACE collation
+        // ignores trailing padding in `instance_id = 'local'`, while MySQL 8's default
+        // utf8mb4_0900_ai_ci is NO PAD and would not have returned a padded row in the first place.
+        SystemAlertVO cause = event(5L, AlertDomain.CLUSTER, "FIRING", "broker-1", now.minusMinutes(4));
+        cause.setInstanceId("local ");
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(cause), 1, 1, 100));
+
+        Optional<SystemAlertVO> result = new AlertNotificationSuppressionService(repository)
+                .findSuppressingClusterAlert(event(6L, AlertDomain.BUSINESS, "FIRING", "broker-1", now));
+
+        assertThat(result).contains(cause);
+    }
+
     private static SystemAlertVO event(Long id, AlertDomain domain, String transition, String brokerName,
             LocalDateTime time) {
         return SystemAlertVO.builder().id(id).domain(domain).transition(transition).instanceId("local")

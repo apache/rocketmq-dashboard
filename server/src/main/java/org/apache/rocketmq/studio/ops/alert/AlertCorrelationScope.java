@@ -30,8 +30,12 @@ final class AlertCorrelationScope {
     }
 
     static boolean matches(SystemAlertVO source, SystemAlertVO candidate) {
-        if (!StringUtils.hasText(source.getInstanceId())
-                || !source.getInstanceId().trim().equals(candidate.getInstanceId())) {
+        // Both sides of the instance comparison are compared as trimmed text, the same way the
+        // instance filter states it in SQL and the way the active-state filters treat a stored
+        // rule instance id. A stored value that still carries padding therefore cannot be
+        // returned by the query and then dropped here.
+        if (!StringUtils.hasText(source.getInstanceId()) || !source.getInstanceId().trim()
+                .equals(StringUtils.trimWhitespace(candidate.getInstanceId()))) {
             return false;
         }
         Map<String, String> sourceLabels = source.getLabels() == null ? Map.of() : source.getLabels();
