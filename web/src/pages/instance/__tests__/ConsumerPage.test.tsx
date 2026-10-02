@@ -1381,6 +1381,64 @@ describe('Consumer page', () => {
     expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
+  it.each<[string, boolean]>([
+    ['the superseding silent refresh settles last', true],
+    ['the superseded user-visible check settles last', false],
+  ])('stops the subscription check spinner when %s', async (_order, silentRefreshSettlesLast) => {
+    type SubscriptionList = Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>;
+    const subscriptions: SubscriptionList = [
+      {
+        topic: 'remote-topic',
+        expression: '*',
+        type: 'NORMAL',
+        filterMode: '全量',
+        consistency: 'consistent',
+      },
+    ];
+    const checkRequest = deferred<SubscriptionList>();
+    const silentRefreshRequest = deferred<SubscriptionList>();
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockReturnValueOnce(checkRequest.promise)
+      .mockReturnValueOnce(silentRefreshRequest.promise);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    // The user-visible check is in flight, so its panel shows the spinner. The loading state
+    // replaces the button icon with antd's labelled loading icon.
+    expect(screen.getByRole('button', { name: /重新检查/ })).toHaveClass('ant-btn-loading');
+
+    // The modal re-checks subscriptions silently every 2s, which supersedes that request.
+    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
+      timeout: 10000,
+    });
+
+    const settle = async (request: {
+      promise: Promise<SubscriptionList>;
+      resolve: (value: SubscriptionList) => void;
+    }) => {
+      await act(async () => {
+        request.resolve(subscriptions);
+        await request.promise;
+      });
+    };
+    if (silentRefreshSettlesLast) {
+      await settle(checkRequest);
+      await settle(silentRefreshRequest);
+    } else {
+      await settle(silentRefreshRequest);
+      await settle(checkRequest);
+    }
+
+    // Whichever order they settle in, the newest request owns the loading flag: a superseded one
+    // dropping out of the race must not leave the check spinning for the rest of the session.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /重新检查/ })).not.toHaveClass('ant-btn-loading'),
+    );
+    expect(screen.getByText('全部 1 个订阅配置一致')).toBeInTheDocument();
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {

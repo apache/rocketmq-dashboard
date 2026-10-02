@@ -413,7 +413,10 @@ const ConsumerPageContent = ({
           }
         }
       } finally {
-        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
+        // The newest request for this group owns the loading flag whichever way it was started.
+        // A silent auto-refresh supersedes a user-visible check by taking over the request slot,
+        // and the superseded check must not be the only one allowed to clear the spinner.
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
           setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
         }
       }
