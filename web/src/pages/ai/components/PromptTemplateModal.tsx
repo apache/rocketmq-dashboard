@@ -35,6 +35,7 @@ import {
 } from 'antd';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
+import useAuthStore from '../../../stores/authStore';
 import type { ChatMode } from '../chatDraft';
 import {
   deleteCustomPromptTemplate,
@@ -90,6 +91,8 @@ const PromptTemplateModal = ({
   onApply,
 }: PromptTemplateModalProps) => {
   const { t } = useLang();
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [search, setSearch] = useState('');
@@ -123,11 +126,15 @@ const PromptTemplateModal = ({
     [modeFilter, search, templates],
   );
 
+  // Custom templates are scoped to the signed-in account: the storage key derived from this owner
+  // keeps one browser profile from serving another operator's saved prompts after a logout/login.
+  const promptTemplateOwner = useMemo(() => ({ userId, username }), [userId, username]);
+
   const refreshPromptTemplates = useCallback(() => {
-    const catalog = loadPromptTemplateCatalog(undefined, t);
+    const catalog = loadPromptTemplateCatalog(promptTemplateOwner, undefined, t);
     setTemplates(catalog.templates);
     setStorageAvailable(catalog.storageAvailable);
-  }, [t]);
+  }, [promptTemplateOwner, t]);
 
   // The catalog is read from localStorage, so it is refreshed on every open: a template saved in
   // another tab (or by the previous open of this modal) has to show up.
@@ -141,7 +148,7 @@ const PromptTemplateModal = ({
   }, [open, refreshPromptTemplates]);
 
   const handleSaveCurrentPromptTemplate = useCallback(() => {
-    const result = saveCustomPromptTemplate({
+    const result = saveCustomPromptTemplate(promptTemplateOwner, {
       title: customTemplateTitle,
       tags: customTemplateTags,
       mode,
@@ -168,6 +175,7 @@ const PromptTemplateModal = ({
     enhance,
     inputValue,
     mode,
+    promptTemplateOwner,
     refreshPromptTemplates,
     t,
   ]);
@@ -175,14 +183,14 @@ const PromptTemplateModal = ({
   const handleDeletePromptTemplate = useCallback(
     (template: PromptTemplate) => {
       if (template.scope !== 'custom') return;
-      if (!deleteCustomPromptTemplate(template.id)) {
+      if (!deleteCustomPromptTemplate(promptTemplateOwner, template.id)) {
         message.error(t('ai.promptTemplates.storageDeleteFailed'));
         return;
       }
       message.success(t('ai.promptTemplates.deleted'));
       refreshPromptTemplates();
     },
-    [refreshPromptTemplates, t],
+    [promptTemplateOwner, refreshPromptTemplates, t],
   );
 
   return (
