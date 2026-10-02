@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "098b84cd35cfe2dde3b71a1d4381863a54e187517564bbe004b6ea329e8f1814",
+	Digest:               "250fadab7d82d7ccbdc0652643f3b631582cad46f667825e4bf3d960b173d6eb",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -409,6 +409,24 @@ var defaultDocument = Document{
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "namespace", Flag: "namespace", Description: "Namespace filter.", Kind: StringField, MinLength: 1},
+				},
+			},
+			ViewHint: "object",
+		},
+		{
+			Name:                 "rmq.litetopic.extend_ttl",
+			CLI:                  CLI{Resource: "litetopic", Verb: "extend-ttl"},
+			Description:          "Extend the LiteTopic TTL of a registered Lite parent topic on the selected Instance (L2 mutation: dry-run first, then apply with the returned confirm_token). Rewrites the lite.topic.expiration attribute on every broker master; lite topics under the pattern inherit the new TTL. Broker granularity is one minute and the cap is 30 days. Fails with 409 when the pattern is not a registered Lite parent topic and 501 when the cluster has no LiteTopic support. Current pattern state and quota come from rmq.litetopic.list / rmq.litetopic.quota.",
+			RiskLevel:            "L2",
+			Permission:           "litetopic:write",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "topicPattern", Flag: "topic-pattern", Description: "Registered Lite parent topic whose lite topics' TTL is extended.", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "newTtlMillis", Flag: "new-ttl-millis", Description: "New TTL in milliseconds; the broker rounds to whole minutes and caps at 30 days.", Kind: IntegerField, Required: true, Minimum: 1, HasMinimum: true},
+					{Name: "dry_run", Flag: "dry-run", Description: "When true, preview the mutation without executing it; omit to apply with a confirm_token.", Kind: BooleanField},
+					{Name: "confirm_token", Flag: "confirm-token", Kind: StringField, MinLength: 1},
 				},
 			},
 			ViewHint: "object",

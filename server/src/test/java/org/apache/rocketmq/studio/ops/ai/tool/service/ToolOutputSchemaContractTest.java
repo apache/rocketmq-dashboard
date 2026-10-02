@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicExtendTtlOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicQuotaOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicSessionOutput;
@@ -165,6 +166,8 @@ class ToolOutputSchemaContractTest {
                 List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L)))));
         samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
                 120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
+        samples.put("rmq.litetopic.extend_ttl", List.of(planned(), executed(
+                new LiteTopicExtendTtlOutput("orders", 86400000L))));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
