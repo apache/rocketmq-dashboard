@@ -739,6 +739,62 @@ class MetadataServiceTest {
     }
 
     @Test
+    void cloudSendShouldBeAuditedLikeTheApachePathTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .tag("TagA")
+                .key("order-1")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenReturn(SendMessageVO.builder().msgId("msg-cloud").build());
+
+        SendMessageVO result = metadataService.sendMessage(request);
+
+        assertThat(result.getMsgId()).isEqualTo("msg-cloud");
+        verify(operationAuditService).record("SEND_MESSAGE", "MESSAGE", "orders", "cloud-instance",
+                "tag=TagA, key=order-1", "SUCCESS", null);
+    }
+
+    @Test
+    void failedCloudSendShouldBeAuditedWithItsReasonTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("cloud-instance")
+                .topic("orders")
+                .tag("TagA")
+                .body("hello")
+                .build();
+        when(cloudProvider.sendMessage(request)).thenThrow(new IllegalStateException("cloud api unavailable"));
+
+        assertThatThrownBy(() -> metadataService.sendMessage(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("cloud api unavailable");
+
+        verify(operationAuditService).record("SEND_MESSAGE", "MESSAGE", "orders", "cloud-instance",
+                "tag=TagA, key=null", "FAILED", "cloud api unavailable");
+    }
+
+    @Test
+    void cloudRedeliveryShouldBeAuditedLikeTheApachePathTest() {
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .tag("paid")
+                .key("order-1")
+                .body("payload")
+                .build();
+        when(messageService.queryMessages(
+                "cloud-instance", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(cloudProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("cloud-instance", "group-a", "orders", "msg-original", null);
+
+        verify(operationAuditService).record("SEND_MESSAGE", "MESSAGE", "%RETRY%group-a", "cloud-instance",
+                "tag=paid, key=order-1", "SUCCESS", null);
+    }
+    @Test
     void listConsumerGroupsShouldReturnGroupsFromProvider() {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("test-group");
