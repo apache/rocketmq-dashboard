@@ -137,6 +137,8 @@ const UserManagementPage = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [mutatingUserIds, setMutatingUserIds] = useState<Set<number>>(() => new Set());
   const [createForm] = Form.useForm<CreateFormValues>();
   const [passwordForm] = Form.useForm<PasswordFormValues>();
@@ -246,7 +248,10 @@ const UserManagementPage = () => {
   };
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
+    if (creatingUser) return;
+    const values = await createForm.validateFields().catch(() => undefined);
+    if (!values) return;
+    setCreatingUser(true);
     try {
       await createStudioUser(values);
       message.success(t('userMgmt.userCreated'));
@@ -256,6 +261,8 @@ const UserManagementPage = () => {
       else setPage(1);
     } catch {
       message.error(t('userMgmt.createFailed'));
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -294,8 +301,10 @@ const UserManagementPage = () => {
     );
 
   const updatePassword = async () => {
-    if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
+    if (!passwordTarget || resettingPassword) return;
+    const values = await passwordForm.validateFields().catch(() => undefined);
+    if (!values) return;
+    setResettingPassword(true);
     try {
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
@@ -310,6 +319,8 @@ const UserManagementPage = () => {
       passwordForm.resetFields();
     } catch {
       message.error(t('userMgmt.changePasswordFailed'));
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -751,6 +762,7 @@ const UserManagementPage = () => {
       <Modal
         title={t('userMgmt.createTitle')}
         open={createOpen}
+        confirmLoading={creatingUser}
         onOk={() => void createUser()}
         onCancel={() => setCreateOpen(false)}
       >
@@ -785,6 +797,7 @@ const UserManagementPage = () => {
             : t('userMgmt.resetPasswordOf', { username: passwordTarget?.username ?? '' })
         }
         open={passwordTarget !== null}
+        confirmLoading={resettingPassword}
         onOk={() => void updatePassword()}
         onCancel={() => {
           setPasswordTarget(null);

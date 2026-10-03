@@ -254,7 +254,15 @@ const ProxyPage: React.FC = () => {
     }
   };
 
+  // One reload at a time — the row table renders a reload button per node, and a second
+  // click (same or different row) would fire a second server-side config reload.
+  const [reloadingAddress, setReloadingAddress] = useState<string | null>(null);
+  const reloadInFlightRef = useRef(false);
+
   const handleReloadConfig = async (node: ProxyNode) => {
+    if (reloadInFlightRef.current) return;
+    reloadInFlightRef.current = true;
+    setReloadingAddress(node.address);
     try {
       const result = await reloadProxyConfig(clusterId, node.address);
       if (result.success) {
@@ -264,6 +272,9 @@ const ProxyPage: React.FC = () => {
       }
     } catch {
       message.error(t('proxy.reloadFailed'));
+    } finally {
+      reloadInFlightRef.current = false;
+      setReloadingAddress(null);
     }
   };
 
@@ -448,6 +459,8 @@ const ProxyPage: React.FC = () => {
               size="small"
               icon={<ArrowClockwise size={14} />}
               aria-label={t('proxy.reloadConfig')}
+              loading={reloadingAddress === record.address}
+              disabled={reloadingAddress !== null && reloadingAddress !== record.address}
               onClick={() => handleReloadConfig(record)}
             />
           </Tooltip>
