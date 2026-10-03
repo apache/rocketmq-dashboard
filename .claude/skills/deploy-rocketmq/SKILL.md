@@ -102,9 +102,14 @@ XML'
 
 ```bash
 cd <项目根目录>   # rocketmq-studio 仓库根
-tar czf /tmp/src.tar.gz --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' server web deploy
+# rmqctl 必须随包上传：server 镜像的构建上下文是仓库根目录，Dockerfile 的 Go 阶段要
+# COPY rmqctl/（镜像自带 rmqctl，AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）。
+# 根目录的 LICENSE/NOTICE 同理：同一阶段要 COPY LICENSE NOTICE /src/。
+# deploy/.env 是环境专属配置，由目标机上的 .env 提供，不随源码覆盖。
+tar czf /tmp/src.tar.gz --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
+  --exclude='deploy/.env' --exclude='rmqctl/bin' server web deploy rmqctl LICENSE NOTICE
 scp /tmp/src.tar.gz <user>@<host>:/opt/rocketmq-studio/
-$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy && tar xzf src.tar.gz && rm src.tar.gz'
+$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy rmqctl LICENSE NOTICE && tar xzf src.tar.gz && rm src.tar.gz'
 ```
 
 ### 4. 在目标机上编译后端 + 构建镜像
@@ -118,7 +123,7 @@ $SSH 'cd /opt/rocketmq-studio && \
     -v $PWD/server:/app -v $HOME/.m2:/maven-cache -w /app \
     maven:3.9.16-eclipse-temurin-21 \
     mvn -B -ntp -s /maven-cache/settings.xml -Dmaven.repo.local=/maven-cache/repository package -DskipTests && \
-  docker build --target runtime-prebuilt -t rocketmq-server:latest server/'
+  docker build --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest .'
 ```
 
 - 若目标机 `~/.m2/settings.xml` 不存在（海外机器通常不需要镜像源），去掉 `-s /maven-cache/settings.xml`。
