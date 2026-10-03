@@ -203,7 +203,7 @@ export const mockAlertRuleAssets: MockAlertRuleAsset[] = [
       'rocketmq-jvm-gc-cpu-high',
       'rocketmq-broker.rules',
       'RocketMQJVMCpuHigh',
-      'rate(jvm_gc_pause_seconds_count[5m]) * avg(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3',
+      'sum by (cluster, broker) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.3',
       'warning',
     ),
   },

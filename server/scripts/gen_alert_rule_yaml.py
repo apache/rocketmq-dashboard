@@ -79,7 +79,7 @@ RULES = [
      'increase(rocketmq_threadpool_reject_count[5m]) > 0', "5m", "critical", "broker",
      "Thread pool rejections", "The broker thread pool rejected tasks, indicating saturation."),
     ("rocketmq-jvm-gc-cpu-high", "RocketMQJVMCpuHigh", "rocketmq-broker.rules",
-     'rate(jvm_gc_pause_seconds_count[5m]) * avg(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3', "5m", "warning", "broker",
+     'sum by (cluster, broker) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.3', "5m", "warning", "broker",
      "JVM GC CPU high", "The broker spends more than 30% of CPU time in GC pauses."),
 ]
 

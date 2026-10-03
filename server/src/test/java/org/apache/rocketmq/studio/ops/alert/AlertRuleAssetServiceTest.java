@@ -65,6 +65,31 @@ class AlertRuleAssetServiceTest {
     }
 
     @Test
+    void gcCpuAlertShouldCompareTheGcTimeRatioTest() {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(candidate -> "RocketMQJVMCpuHigh".equals(candidate.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("bundled RocketMQJVMCpuHigh rule missing"));
+
+        // rate(jvm_gc_pause_seconds_sum[5m]) is the share of wall clock spent in GC pauses, so it
+        // needs no companion factor; grouping keeps the threshold per broker instead of summing
+        // the whole fleet into one label-less series, and keeps cluster/broker on the alert.
+        assertEquals("sum by (cluster, broker) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.3", rule.expr());
+    }
+
+    @Test
+    void generatorShouldUseSameGroupedGcPauseRatioExpressionTest() throws IOException {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(candidate -> "RocketMQJVMCpuHigh".equals(candidate.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("bundled RocketMQJVMCpuHigh rule missing"));
+        String generator = Files.readString(Path.of("scripts", "gen_alert_rule_yaml.py"));
+
+        assertTrue(generator.contains("'" + rule.expr() + "'"),
+                "generator must keep emitting the shipped expression");
+    }
+
+    @Test
     void getAssetYamlShouldReturnRawContent() {
         List<AlertRuleAssetInfo> assets = service.listAssets();
         String name = assets.get(0).name();
