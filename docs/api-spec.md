@@ -541,6 +541,8 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 POST /api/nameservers/create
 ```
 
+> **未实现**：与 4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -555,6 +557,8 @@ POST /api/nameservers/create
 ```
 POST /api/nameservers/update
 ```
+
+> **未实现**：与 4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -572,6 +576,8 @@ POST /api/nameservers/update
 POST /api/nameservers/restart
 ```
 
+> **未实现**：与 4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -586,6 +592,8 @@ POST /api/nameservers/restart
 POST /api/nameservers/upgrade
 ```
 
+> **未实现**：与 4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -599,6 +607,8 @@ POST /api/nameservers/upgrade
 ```
 POST /api/nameservers/delete
 ```
+
+> **未实现**：与 4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
