@@ -120,11 +120,19 @@ const normalizeText = (value?: string | null): string => value?.trim() ?? '';
 
 const normalizeKey = (value?: string | null): string => normalizeText(value).toLowerCase();
 
+// The consistency verdict arrives as free-form strings from three producers:
+// Apache sends "consistent"/"inconsistent" (or omits the field), Aliyun sends
+// String.valueOf(Boolean) ("true"/"false"), Tencent sends String.valueOf(Long)
+// ("1"/"0"). All three forms must land in the consistent/inconsistent buckets
+// before an unknown verdict is considered.
+const CONSISTENT_SUBSCRIPTION_VALUES = ['consistent', 'true', '1', '一致'];
+const INCONSISTENT_SUBSCRIPTION_VALUES = ['inconsistent', 'false', '0', '不一致'];
+
 const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
-  ['consistent', '一致'].includes(normalizeKey(subscription.consistency));
+  CONSISTENT_SUBSCRIPTION_VALUES.includes(normalizeKey(subscription.consistency));
 
 const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
-  ['inconsistent', '不一致'].includes(normalizeKey(subscription.consistency));
+  INCONSISTENT_SUBSCRIPTION_VALUES.includes(normalizeKey(subscription.consistency));
 
 const parseTimestamp = (value: Date | string | number | undefined): number | null => {
   if (value === undefined || value === null || value === '') return null;
