@@ -454,7 +454,7 @@ const TopicPageContent = ({
         return requestId === topicRequestIdRef.current ? result : undefined;
       } catch {
         if (requestId === topicRequestIdRef.current)
-          message.error('Topic 列表加载失败，请稍后重试');
+          message.error(t('topic.listLoadFailed'));
         return undefined;
       } finally {
         if (requestId === topicRequestIdRef.current) setLoading(false);
@@ -537,7 +537,7 @@ const TopicPageContent = ({
         }
       } catch {
         if (requestId === detailRequestIdRef.current)
-          message.error('Topic 详情加载失败，请稍后重试');
+          message.error(t('topic.detailLoadFailed'));
       } finally {
         if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
@@ -561,7 +561,7 @@ const TopicPageContent = ({
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       message.success(`Topic「${topic.name}」已在 Broker 上重建`);
     } catch {
-      message.error('重建 Topic 失败，请检查 Broker 状态后重试');
+      message.error(t('topic.rebuildFailed'));
     } finally {
       setRebuilding(false);
     }
@@ -603,7 +603,7 @@ const TopicPageContent = ({
       if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
-        message.error('部分 Topic 路由校验失败，请稍后重试');
+        message.error(t('topic.routeCheckPartialFailed'));
       }
       setRoutesByTopic((previous) => {
         const next = { ...previous };
@@ -671,7 +671,7 @@ const TopicPageContent = ({
             await reloadTopicPage();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
-            message.error('删除 Topic 失败，请稍后重试');
+            message.error(t('topic.deleteFailed'));
           }
         },
       });
@@ -691,7 +691,7 @@ const TopicPageContent = ({
         message.success('Topic 导出完成');
       })
       .catch(() => {
-        message.error('导出 Topic 失败，请稍后重试');
+        message.error(t('topic.exportFailed'));
       })
       .finally(() => setExporting(false));
   };
@@ -1173,7 +1173,7 @@ const TopicPageContent = ({
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     createInFlightRef.current = true;
@@ -1225,7 +1225,7 @@ const TopicPageContent = ({
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -1246,7 +1246,7 @@ const TopicPageContent = ({
 
   const handleImportTopics = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -1598,7 +1598,7 @@ const TopicPageContent = ({
                         message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
                       }
                     } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
+                      message.error(t('topic.batchDeleteFailed'));
                     }
                   },
                 });
