@@ -41,7 +41,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 RocketMQ 集群。要管理真实资源，请注册一个指向你自己 RocketMQ 的实例，或启动下方的
 「内置 RocketMQ 集群（可选）」。
 
-**Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
+**Studio 服务端口：** 前端 6789（Nginx，同时代理 `/api`）、后端 8888（Spring Boot，仅容器内可达；后端在 compose 之外直接运行时才对外暴露）
 
 共享环境可复制 `deploy/.env.example` 为 `deploy/.env`，设置
 `STUDIO_AUTH_LOGIN_REQUIRED=true`，并配置 `STUDIO_AUTH_ADMIN_USERNAME` /
