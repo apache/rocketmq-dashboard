@@ -118,6 +118,39 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void findRulePageMatchesPrincipalAndResourceLiterallyTest() {
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqAclRule>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findRulePage("svc_prod", "%DLQ%", null, null, null, 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclRule> wrapper = (QueryWrapper<RmqAclRule>) queryCaptor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("principal LIKE", "resource LIKE");
+        // The filters are names, not patterns: "svc_prod" must not also match "svcXprod", and a
+        // typed "%" must not turn the filter into a match-everything search. The outer % are the
+        // wrapper's own wildcards; the user's term is escaped inside them.
+        assertThat(wrapper.getParamNameValuePairs().values())
+                .containsOnly("%svc\\_prod%", "%\\%DLQ\\%%");
+    }
+
+    @Test
+    void findUserPageMatchesTheKeywordLiterallyTest() {
+        when(userMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqAclUser>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findUserPage("svc_prod", 1, 20);
+
+        ArgumentCaptor<Wrapper<RmqAclUser>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(userMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        QueryWrapper<RmqAclUser> wrapper = (QueryWrapper<RmqAclUser>) queryCaptor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("username LIKE", "access_key LIKE");
+        // Lower-cased first (the columns are lower-case), then escaped.
+        assertThat(wrapper.getParamNameValuePairs().values()).containsOnly("%svc\\_prod%");
+    }
+
+    @Test
     void findUserPageShouldNormalizeKeywordFiltersAndApplyDatabasePagination() {
         RmqAclUser entity = new RmqAclUser();
         entity.setId(11L);
