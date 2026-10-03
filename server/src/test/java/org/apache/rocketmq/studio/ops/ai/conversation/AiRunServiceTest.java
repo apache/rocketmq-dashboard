@@ -351,6 +351,26 @@ class AiRunServiceTest {
     }
 
     @Test
+    void secondStopOfAnAbortingRunShouldNotWriteItsOwnTerminalStateTest() {
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID))
+                .thenReturn(Optional.of(running));
+        // A worker in this process owns the run and is already aborting, which is exactly what
+        // registry.stop() reports as false - the same value it returns for a run nobody owns here.
+        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofSeconds(3));
+        registry.register(RUN_ID, handle);
+        assertThat(handle.requestStop(AbortReason.USER_STOP)).isTrue();
+
+        service.stop(RUN_ID);
+
+        // The worker writes the terminal state itself; a fabricated one here would append a second
+        // terminal row and close the observers mid-flush.
+        assertThat(runUpdates).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
     void reportSpeedShouldTouchOnlyTheSpeedColumnTest() {
         // The client reports the speed as its stream closes, which also happens mid-run when the
         // connection drops while the run keeps executing. A full-row write read before the worker
