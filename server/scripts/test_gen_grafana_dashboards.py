@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_grafana_dashboards import gauge_panel, layout_panels
+from gen_grafana_dashboards import gauge_panel, layout_panels, specs
 
 
 def panel(width, height):
@@ -56,6 +56,26 @@ class LayoutPanelsTest(unittest.TestCase):
             layout_panels([panel(25, 8)])
         with self.assertRaises(ValueError):
             layout_panels([panel(12, 0)])
+
+
+class OverviewPanelsTest(unittest.TestCase):
+
+    def specs_by_uid(self):
+        return {spec[0]: spec for spec in specs}
+
+    def test_broker_count_counts_brokers_not_series(self):
+        overview = self.specs_by_uid()["rocketmq-overview"]
+        panels = {item["title"]: item for item in overview[3]}
+        expr = panels["Broker Count"]["targets"][0]["expr"]
+
+        # rocketmq_messages_in_total carries both broker and topic labels - the same dashboard
+        # derives its $broker and $topic template variables from them - so a bare count() returns
+        # one series per broker/topic pair and reads hundreds on a two-broker cluster. The
+        # neighbouring "Total Topics" panel already counts with count(count by (topic) (...)).
+        self.assertEqual(
+            'count(count by (broker) (rocketmq_messages_in_total{cluster="$cluster"}))',
+            expr,
+        )
 
 
 class GaugePanelTest(unittest.TestCase):

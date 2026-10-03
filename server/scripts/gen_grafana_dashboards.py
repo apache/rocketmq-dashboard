@@ -173,7 +173,7 @@ specs.append((
         stat_panel(3, "Total Topics", "count(count by (topic) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(4, "Total Consumer Groups", "count(count by (group) (rocketmq_messages_out_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(5, "Producer Count", "max(rocketmq_producer_count{cluster=\"$cluster\"})", 6, 8),
-        stat_panel(6, "Broker Count", "count(rocketmq_messages_in_total{cluster=\"$cluster\"})", 6, 8),
+        stat_panel(6, "Broker Count", "count(count by (broker) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
     ],
 ))
 
