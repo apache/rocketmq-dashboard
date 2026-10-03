@@ -23,6 +23,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
@@ -106,6 +107,48 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         Page<RmqAlertRule> result = ruleMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toRuleVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
+    }
+
+    @Override
+    public AlertRuleSummaryVO summarizeRules(AlertRuleQuery query) {
+        QueryWrapper<RmqAlertRule> conditions = ruleSummaryConditions(query);
+        List<Map<String, Object>> rows = ruleMapper.selectMaps(conditions);
+        Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
+        return AlertRuleSummaryVO.builder()
+                .total(asLong(row, "total_count"))
+                .enabled(asLong(row, "enabled_count"))
+                .triggeredSince(asLong(row, "triggered_count"))
+                .build();
+    }
+
+    private QueryWrapper<RmqAlertRule> ruleSummaryConditions(AlertRuleQuery query) {
+        QueryWrapper<RmqAlertRule> conditions = new QueryWrapper<RmqAlertRule>()
+                .select(
+                        "COUNT(*) AS total_count",
+                        "COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0) AS enabled_count",
+                        "COALESCE(SUM(CASE WHEN last_triggered IS NOT NULL "
+                                + "AND last_triggered >= '" + query.triggeredSince() + "' THEN 1 ELSE 0 END), 0) "
+                                + "AS triggered_count")
+                .eq(query.enabled() != null, "enabled", query.enabled())
+                .and(StringUtils.hasText(query.search()), wrapper -> wrapper
+                        .like("name", query.search().trim())
+                        .or()
+                        .like("metric", query.search().trim()));
+        if (query.domain() == AlertDomain.BUSINESS) {
+            // Rules created before alert domains were introduced are business rules.
+            conditions.and(wrapper -> wrapper.isNull("domain").or().eq("domain", AlertDomain.BUSINESS.name()));
+        } else {
+            conditions.eq("domain", query.domain().name());
+        }
+        return conditions;
+    }
+
+    private static long asLong(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return value == null ? 0L : Long.parseLong(value.toString());
     }
 
     @Override
@@ -273,6 +316,29 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         Page<RmqSystemAlert> result = alertMapper.selectPage(new Page<>(query.page(), query.pageSize()), conditions);
         return PageResult.of(result.getRecords().stream().map(MybatisPlusAlertRepository::toAlertVO).toList(),
                 result.getTotal(), query.page(), query.pageSize());
+    }
+
+    @Override
+    public SystemAlertSummaryVO summarizeAlerts(SystemAlertQuery query) {
+        QueryWrapper<RmqSystemAlert> conditions = new QueryWrapper<RmqSystemAlert>()
+                .select(
+                        "COUNT(*) AS total_count",
+                        "COALESCE(SUM(CASE WHEN acknowledged = 0 THEN 1 ELSE 0 END), 0) AS unacknowledged_count")
+                .eq(StringUtils.hasText(query.level()), "level", normalizeLevel(query.level()))
+                .eq(query.domain() != null, "domain", query.domain() == null ? null : query.domain().name())
+                .eq(StringUtils.hasText(query.instanceId()), "instance_id", trimToNull(query.instanceId()))
+                .eq(StringUtils.hasText(query.transition()), "transition", normalizeTransition(query.transition()))
+                .eq(query.notificationSuppressed() != null, "notification_suppressed", query.notificationSuppressed())
+                .apply(StringUtils.hasText(query.labelKey()),
+                        "JSON_CONTAINS(labels_json, JSON_OBJECT({0}, {1}))", query.labelKey(), query.labelValue())
+                .ge(query.from() != null, "time", query.from())
+                .le(query.to() != null, "time", query.to());
+        List<Map<String, Object>> rows = alertMapper.selectMaps(conditions);
+        Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
+        return SystemAlertSummaryVO.builder()
+                .total(JdbcRowValues.longValueOrZero(row, "total_count"))
+                .unacknowledged(JdbcRowValues.longValueOrZero(row, "unacknowledged_count"))
+                .build();
     }
 
     @Override

@@ -30,6 +30,8 @@ public interface AlertRepository {
 
     PageResult<AlertRuleVO> findRulesPage(AlertRuleQuery query);
 
+    AlertRuleSummaryVO summarizeRules(AlertRuleQuery query);
+
     Optional<AlertRuleVO> findRuleById(Long id);
 
     List<AlertRuleVO> findRulesByIds(List<Long> ids);
@@ -49,6 +51,8 @@ public interface AlertRepository {
     Optional<SystemAlertVO> findAlertById(Long id);
 
     PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query);
+
+    SystemAlertSummaryVO summarizeAlerts(SystemAlertQuery query);
 
     SystemAlertVO saveAlert(SystemAlertVO alert);
 

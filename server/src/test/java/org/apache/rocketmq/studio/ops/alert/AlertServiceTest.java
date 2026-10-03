@@ -148,6 +148,22 @@ class AlertServiceTest {
     }
 
     @Test
+    void summarizeRulesShouldDelegateNormalizedFiltersTest() {
+        AlertRuleSummaryVO summary = AlertRuleSummaryVO.builder()
+                .total(12).enabled(7).triggeredSince(3).build();
+        when(alertRepository.summarizeRules(any(AlertRuleQuery.class))).thenReturn(summary);
+
+        AlertRuleSummaryVO result = alertService.summarizeRules(
+                AlertDomain.BUSINESS, " lag ", true, LocalDateTime.of(2026, 9, 5, 0, 0));
+
+        assertThat(result).isSameAs(summary);
+        verify(alertRepository).summarizeRules(argThat(query -> query.domain() == AlertDomain.BUSINESS
+                && "lag".equals(query.search())
+                && Boolean.TRUE.equals(query.enabled())
+                && "2026-09-05T00:00".equals(query.triggeredSince())));
+    }
+
+    @Test
     void listRulesPageShouldRejectInvalidPageBoundsTest() {
         assertThatThrownBy(() -> alertService.listRules(AlertDomain.BUSINESS, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)
@@ -1341,6 +1357,29 @@ class AlertServiceTest {
         verify(alertRepository).findAlertsPage(argThat(query -> query.domain() == AlertDomain.CLUSTER
                 && "local".equals(query.instanceId()) && "FIRING".equals(query.transition())
                 && eventTime.minusMinutes(30).equals(query.from()) && eventTime.plusMinutes(30).equals(query.to())));
+    }
+
+    @Test
+    void summarizeAlertsShouldValidateAndDelegateFiltersTest() {
+        SystemAlertSummaryVO summary = SystemAlertSummaryVO.builder()
+                .total(21).unacknowledged(13).build();
+        when(alertRepository.summarizeAlerts(any(SystemAlertQuery.class))).thenReturn(summary);
+
+        SystemAlertSummaryVO result = alertService.summarizeAlerts("error", AlertDomain.CLUSTER,
+                "instance-a", "FIRING", "topic", "orders",
+                LocalDateTime.of(2026, 9, 1, 0, 0), LocalDateTime.of(2026, 9, 5, 0, 0), false);
+
+        assertThat(result).isSameAs(summary);
+        verify(alertRepository).summarizeAlerts(argThat(query ->
+                "error".equals(query.level())
+                        && query.domain() == AlertDomain.CLUSTER
+                        && "instance-a".equals(query.instanceId())
+                        && "FIRING".equals(query.transition())
+                        && "topic".equals(query.labelKey())
+                        && "orders".equals(query.labelValue())
+                        && query.from().equals(LocalDateTime.of(2026, 9, 1, 0, 0))
+                        && query.to().equals(LocalDateTime.of(2026, 9, 5, 0, 0))
+                        && Boolean.FALSE.equals(query.notificationSuppressed())));
     }
 
     @Test
