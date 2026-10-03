@@ -272,7 +272,7 @@ specs.append((
     "rocketmq-dlq", "RocketMQ DLQ & Retry",
     "Dead-letter queue resend volume and latency.",
     [
-        ts_panel(1, "DLQ Resend Count (1m)", "rate(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])", 12, 0, "{{topic}}"),
+        ts_panel(1, "DLQ Resend Count (1m)", "increase(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])", 12, 0, "{{topic}}"),
         ts_panel(2, "DLQ Resend Latency", "rocketmq_dlq_resend_latency{cluster=\"$cluster\"}", 12, 0, "{{topic}}", "s"),
     ],
 ))

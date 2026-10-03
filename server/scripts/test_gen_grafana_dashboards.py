@@ -17,6 +17,7 @@
 ################################################################################
 """Regression tests for the Grafana dashboard asset generator."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -24,9 +25,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_grafana_dashboards import gauge_panel, layout_panels
 
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "src" / "main" / "resources" / "grafana"
+
 
 def panel(width, height):
     return {"gridPos": {"w": width, "h": height, "x": 99, "y": 99}}
+
+
+def shipped_panel_expr(uid, title):
+    """Expression a shipped dashboard asset renders in the panel named ``title``."""
+    with open(DASHBOARD_DIR / f"{uid}.json", encoding="utf-8") as handle:
+        dashboard = json.load(handle)
+    for item in dashboard["panels"]:
+        if item["title"] == title:
+            return item["targets"][0]["expr"]
+    raise AssertionError(f"panel {title!r} missing from {uid}")
 
 
 class LayoutPanelsTest(unittest.TestCase):
@@ -56,6 +69,18 @@ class LayoutPanelsTest(unittest.TestCase):
             layout_panels([panel(25, 8)])
         with self.assertRaises(ValueError):
             layout_panels([panel(12, 0)])
+
+
+class ShippedDashboardPanelsTest(unittest.TestCase):
+
+    def test_dlq_resend_count_panel_counts_over_the_window(self):
+        # The panel title and its "short" unit promise a count over the 1m window, but rate()
+        # renders resends per second - 60x below the number a reader takes from the title. The
+        # sibling "Reject Count (1m)" panel in the same bundle already uses increase(...[1m]).
+        self.assertEqual(
+            'increase(rocketmq_dlq_resend_count{cluster="$cluster"}[1m])',
+            shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
+        )
 
 
 class GaugePanelTest(unittest.TestCase):
