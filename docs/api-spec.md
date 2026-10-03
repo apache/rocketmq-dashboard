@@ -533,13 +533,24 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 | `clusterId` | `string` | 集群 ID |
 | `name` | `string` | Broker 名称 |
 
-**Response `data`:** `{ success: boolean, message: string }`
+**Response `data`:** `{ message: string }`
+
+接口先校验集群存在、且该集群下登记了这个 Broker，再把动作交给集群 Provider。当前 Provider 尚未实现 Broker 重启，校验通过后固定抛出 `501`，因此上面的成功分支不可达，调用方不应依赖任何 `success` 字段。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 集群不存在，或该集群下没有这个 Broker |
+| `501` | 当前集群 Provider 未实现 Broker 重启 |
 
 ### 4.5 创建 NameServer
 
 ```
 POST /api/nameservers/create
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -555,6 +566,8 @@ POST /api/nameservers/create
 ```
 POST /api/nameservers/update
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -572,6 +585,8 @@ POST /api/nameservers/update
 POST /api/nameservers/restart
 ```
 
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -586,6 +601,8 @@ POST /api/nameservers/restart
 POST /api/nameservers/upgrade
 ```
 
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -599,6 +616,8 @@ POST /api/nameservers/upgrade
 ```
 POST /api/nameservers/delete
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
