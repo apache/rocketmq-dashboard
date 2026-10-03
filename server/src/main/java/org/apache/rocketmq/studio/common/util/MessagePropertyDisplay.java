@@ -34,6 +34,9 @@ public final class MessagePropertyDisplay {
 
     public static final int MAX_PROPERTIES = 64;
 
+    /** Marker appended by {@link #abbreviate} to a value it cut at the code-point cap. */
+    public static final String ABBREVIATION_SUFFIX = "...";
+
     /**
      * Caps a single property value by code point rather than by UTF-16 {@code char}. The two differ
      * for supplementary characters (an emoji, a CJK extension character), which occupy two chars:
@@ -86,6 +89,6 @@ public final class MessagePropertyDisplay {
     private static String abbreviate(String value) {
         // A property value is end-user text, so the cut has to land on a code point boundary: it is
         // always passed through whole or abbreviated with the ellipsis, never split mid-character.
-        return TextBounds.truncate(value, MAX_PROPERTY_VALUE_CODE_POINTS, "...");
+        return TextBounds.truncate(value, MAX_PROPERTY_VALUE_CODE_POINTS, ABBREVIATION_SUFFIX);
     }
 }
