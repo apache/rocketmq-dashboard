@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -56,7 +57,7 @@ func completeTestApp(t *testing.T, setup func(*App), args ...string) ([]string, 
 	app.HTTP = &http.Client{Transport: completionTransport{t}}
 	app.Store.Getenv = func(name string) string { t.Fatalf("unexpected environment lookup: %s", name); return "" }
 	app.Store.HomeDir = func() (string, error) { t.Fatal("unexpected home directory lookup"); return "", nil }
-	app.confirm = func(io.Reader, io.Writer, string, string, string) error {
+	app.confirm = func(context.Context, io.Reader, io.Writer, string, string, string) error {
 		t.Fatal("completion must not prompt")
 		return nil
 	}
