@@ -2065,7 +2065,11 @@ const TopicPageContent = ({
           </Flex>
         ) : syncMissing.length === 0 ? (
           <div style={{ padding: '16px 0' }}>
-            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+            <Text type="secondary">
+              当前列表中的 {topics.length} 个 Topic 在 Broker
+              上均有路由，无需同步（本次校验只覆盖当前页与当前筛选，翻页或清除筛选可校验其他
+              Topic）。
+            </Text>
           </div>
         ) : (
           <>
