@@ -140,7 +140,7 @@ function mapClusters(clusters: ClusterInfo[]): {
         key: `${cluster.id}-broker-${broker.addr || index}`,
         clusterId: cluster.id,
         k8sCluster: clusterLabel,
-        brokerName: broker.name || broker.addr,
+        brokerName: broker.name || '-',
         status: normalizeStatus(broker.status),
         version: broker.version || '-',
         diskUsage: broker.runtimeStatsAvailable === false ? null : (broker.diskUsage ?? 0),
