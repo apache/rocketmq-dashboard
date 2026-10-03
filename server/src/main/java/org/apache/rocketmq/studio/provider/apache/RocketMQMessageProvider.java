@@ -62,6 +62,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -649,13 +650,17 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         List<TraceNodeVO> nodes = new ArrayList<>();
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
+        // SubBefore of an attempt can be flushed into a different trace message than its
+        // SubAfter, so the retry-count join map lives for the whole query, not one body.
+        Map<String, Integer> retryByRequestId = new HashMap<>();
 
         try {
             QueryResult traceResult =
                     adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, null, nodes, consumerStatus, true);
+                    parseTraceBody(traceMessage.getBody(), msgId, null, nodes, consumerStatus, true,
+                            retryByRequestId);
                 }
             }
         } catch (BusinessException e) {
@@ -698,13 +703,15 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         List<TraceNodeVO> nodes = new ArrayList<>();
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
+        Map<String, Integer> retryByRequestId = new HashMap<>();
 
         try {
             QueryResult traceResult =
                     adminExt.queryMessage(effectiveTraceTopic(traceTopic), key, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), null, key, nodes, consumerStatus, false);
+                    parseTraceBody(traceMessage.getBody(), null, key, nodes, consumerStatus, false,
+                            retryByRequestId);
                 }
             }
         } catch (BusinessException e) {
@@ -768,7 +775,8 @@ public class RocketMQMessageProvider implements MessageProvider {
      * are not filtered by key.
      */
     private void parseTraceBody(byte[] body, String targetMsgId, String targetKey, List<TraceNodeVO> nodes,
-                                List<ConsumerStatusVO> consumerStatus, boolean filterByMsgId) {
+                                List<ConsumerStatusVO> consumerStatus, boolean filterByMsgId,
+                                Map<String, Integer> retryByRequestId) {
         if (body == null || body.length == 0) {
             return;
         }
@@ -796,9 +804,17 @@ public class RocketMQMessageProvider implements MessageProvider {
                     case "Pub":
                         nodes.add(buildProduceNode(fields));
                         break;
+                    case "SubBefore":
+                        // SubBefore = type, timeStamp, regionId, groupName, requestId, msgId,
+                        // retryTimes (RocketMQ 5.5.0 TraceDataEncoder). It carries the attempt's
+                        // retry count; join it into the SubAfter-built consumer status by the
+                        // requestId the encoder stamps on both ends of the same attempt.
+                        retryByRequestId.put(field(fields, 4), (int) parseLong(field(fields, 6)));
+                        break;
                     case "SubAfter":
                         nodes.add(buildConsumeNode(fields));
-                        consumerStatus.add(buildConsumerStatus(fields));
+                        consumerStatus.add(buildConsumerStatus(fields,
+                                retryByRequestId.getOrDefault(field(fields, 1), 0)));
                         break;
                     case "EndTransaction":
                         nodes.add(buildTransactionNode(fields));
@@ -807,7 +823,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                         nodes.add(buildRecallNode(fields));
                         break;
                     default:
-                        // SubBefore and unknown types are not surfaced as timeline nodes.
+                        // Unknown types are not surfaced as timeline nodes.
                         break;
                 }
             } catch (Exception e) {
@@ -882,12 +898,12 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .build();
     }
 
-    private ConsumerStatusVO buildConsumerStatus(String[] f) {
+    private ConsumerStatusVO buildConsumerStatus(String[] f, int retryCount) {
         return ConsumerStatusVO.builder()
                 .group(field(f, 8))
                 .deliveryStatus(parseBoolean(field(f, 4)) ? DeliveryStatus.success : DeliveryStatus.failed)
                 .consumeTime(parseLong(field(f, 7)))
-                .retryCount(0)
+                .retryCount(retryCount)
                 .build();
     }
 
