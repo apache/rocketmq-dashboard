@@ -247,6 +247,23 @@ class AiConversationServiceTest {
     }
 
     @Test
+    void timelineShouldReportNoCursorWhenThePageIsTheTailTest() {
+        RmqAiConversation stored = AiRunTestSupport.conversation(CONVERSATION_ID, OWNER);
+        when(conversationRepository.findByIdAndOwner(CONVERSATION_ID, OWNER)).thenReturn(Optional.of(stored));
+        // Exactly `limit` rows exist: the page is full but final. The controller contract says
+        // nextAfter is "the cursor for the following page, or null at the tail" — a phantom cursor
+        // here makes every client walk issue one extra, always-empty request.
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 3)).thenReturn(List.of(
+                event(1, "user", "{\"type\":\"user\",\"text\":\"hi\"}"),
+                event(2, "text", "{\"type\":\"text\",\"text\":\"hello\"}")));
+
+        AiConversationService.TimelinePage page = service.timeline(CONVERSATION_ID, OWNER, 0, 2);
+
+        assertThat(page.items()).hasSize(2);
+        assertThat(page.nextAfter()).isNull();
+    }
+
+    @Test
     void timelineShouldCarryTheRowIdAndTheRunThatProducedItTest() {
         RmqAiConversation stored = AiRunTestSupport.conversation(CONVERSATION_ID, OWNER);
         when(conversationRepository.findByIdAndOwner(CONVERSATION_ID, OWNER)).thenReturn(Optional.of(stored));
@@ -278,9 +295,10 @@ class AiConversationServiceTest {
         AiConversationService.TimelinePage page = service.timeline(CONVERSATION_ID, OWNER, 0, 200);
 
         // One row written by an older build, or truncated by a full disk, must not cost the whole
-        // conversation. The cursor still advances past the bad rows so paging cannot get stuck.
+        // conversation. The page is the whole remaining timeline here, so there is no next page
+        // and no cursor to hand back.
         assertThat(page.items()).hasSize(1);
-        assertThat(page.nextAfter()).isEqualTo(3);
+        assertThat(page.nextAfter()).isNull();
     }
 
     @Test
