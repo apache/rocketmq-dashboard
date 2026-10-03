@@ -55,6 +55,7 @@ import {
   listStudioUsers,
   resetStudioUserPassword,
   revokeAllStudioUserSessions,
+  revokeStudioSession,
   revokeStudioUserSessions,
   setStudioUserEnabled,
   type StudioUser,
@@ -339,6 +340,19 @@ const UserManagementPage = () => {
       t('userMgmt.revokeFailed'),
     );
 
+  // Shares the per-user in-flight guard with revoke-all, so the two can never overlap.
+  const revokeSession = (record: StudioUser, sessionId: number) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await revokeStudioSession(sessionId);
+        message.success(t('userMgmt.sessionRevoked', { id: sessionId }));
+        await loadSessionDetails(record);
+        await loadUsers();
+      },
+      t('userMgmt.revokeFailed'),
+    );
+
   const openCreateUserModal = () => setCreateOpen(true);
 
   // The endpoint spares this operator's own sessions, so the incident responder stays
@@ -436,6 +450,25 @@ const UserManagementPage = () => {
         ) : (
           '-'
         ),
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 96,
+      render: (_, record) =>
+        sessionDrawerUser && !mutatingUserIds.has(sessionDrawerUser.id) ? (
+          <Popconfirm
+            title={t('userMgmt.revokeSessionConfirm', { id: record.id })}
+            okText={t('userMgmt.revokeSession')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void revokeSession(sessionDrawerUser, record.id)}
+          >
+            <Button size="small" danger icon={<SignOut size={14} />}>
+              {t('userMgmt.revokeSession')}
+            </Button>
+          </Popconfirm>
+        ) : null,
     },
   ];
   // Declared widths total 1116px, which stays inside the usable content width of a normal

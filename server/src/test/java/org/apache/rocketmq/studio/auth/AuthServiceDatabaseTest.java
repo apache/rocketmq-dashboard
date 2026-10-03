@@ -369,6 +369,58 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void revokingASessionByIdUpdatesOnlyThatRowTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-13T00:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        authService.revokeSessionById(19L);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("id", "revoked_at IS NULL");
+    }
+
+    @Test
+    void revokingAnAlreadyRevokedSessionIsANoOpTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-13T00:00:00"));
+        session.setRevokedAt(LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        // A stale drawer must not turn a repeated confirmation into a failure.
+        authService.revokeSessionById(19L);
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAnExpiredSessionIsANoOpTest() {
+        RmqStudioSession session = activeSession(19L, 7L,
+                LocalDateTime.parse("2026-08-12T22:00:00"));
+        session.setExpiresAt(LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectById(19L)).thenReturn(session);
+
+        authService.revokeSessionById(19L);
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAMissingSessionIsRejectedTest() {
+        when(sessionMapper.selectById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> authService.revokeSessionById(404L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Session not found");
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
     void disablingLastEnabledAdministratorIsRejected() {
         RmqStudioUser user = user(1L, "admin", true, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);

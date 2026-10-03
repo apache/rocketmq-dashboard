@@ -2829,6 +2829,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.userSessions': { zh: '用户会话', en: 'User Sessions' },
   'userMgmt.sessionsOf': { zh: '{username} 的会话', en: 'Sessions of {username}' },
   'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
+  'userMgmt.revokeSession': { zh: '注销会话', en: 'Revoke session' },
+  'userMgmt.revokeSessionConfirm': {
+    zh: '注销会话 #{id}？该用户的其他会话不受影响。',
+    en: 'Revoke session #{id}? Other sessions of this user stay active.',
+  },
+  'userMgmt.sessionRevoked': { zh: '已注销会话 #{id}', en: 'Revoked session #{id}' },
   'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
   'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
   'userMgmt.clientOrigin': { zh: '来源', en: 'Origin' },
