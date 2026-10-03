@@ -398,6 +398,24 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toHaveAttribute('data-state', 'stop');
   });
 
+  it('doesNotAdmitASecondBareRouteSendWhileTheConversationIsBeingCreatedTest', async () => {
+    // The bare-route creation window (create + default-instance lookup + navigation) has
+    // no run in flight yet, so the composer stays enabled; a second Enter in that window
+    // must not create a second conversation and drop the first prompt.
+    vi.mocked(createConversation).mockReturnValue(new Promise(() => {}));
+    renderRouted('/ai');
+    const input = await typeAndWaitForReady('检查集群状态');
+
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    // The suppressed second prompt returns to the composer instead of being lost.
+    await waitFor(() => expect(input).toHaveValue('检查集群状态'));
+  });
+
   it('rendersTheNeutralNoticeWhenRmqctlIsUnavailableTest', async () => {
     vi.mocked(getAgentCapabilities).mockResolvedValue({
       rmqctlAvailable: false,

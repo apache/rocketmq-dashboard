@@ -271,6 +271,52 @@ describe('InstancePage', () => {
     await waitFor(() => expect(instanceService.createInstance).toHaveBeenCalledTimes(1));
   });
 
+  it('blocks the one-click import while a create submission is pending', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(instanceService.createInstance).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
+      cloudCredentialPage([
+        {
+          id: 101,
+          name: 'prod-account',
+          vendor: 'ALIYUN',
+          accessKey: 'LTAI-prod',
+          gmtCreate: '2026-01-01T00:00:00Z',
+        },
+      ]),
+    );
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    // Submit a connect that stays pending, then try to start an import from the same modal.
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
+    const createTypeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(createTypeSelect.parentElement!);
+    const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
+      selector: '.ant-select-item-option-content',
+    });
+    await user.click(proxyOptions[proxyOptions.length - 1]);
+    await user.type(within(dialog).getByLabelText('接入地址'), 'proxy-new:8080');
+    fireEvent.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
+    await waitFor(() => expect(instanceService.createInstance).toHaveBeenCalledTimes(1));
+
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+    const credentialSelect = within(dialog).getAllByRole('combobox')[0];
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/prod-account/, { selector: '.ant-select-item-option-content' }),
+    );
+
+    // The credential alone would enable the import; the pending connect must keep it
+    // blocked — the two mutations share the modal and must never interleave.
+    const importButton = within(dialog).getByRole('button', { name: /一键导入/ });
+    await waitFor(() => expect(importButton).toBeDisabled());
+    expect(instanceService.importCloudInstances).not.toHaveBeenCalled();
+  });
+
   it('reloads the current filters after creating an instance', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockResolvedValue(instance(9, 'new-proxy'));

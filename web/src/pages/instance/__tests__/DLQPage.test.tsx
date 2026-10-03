@@ -579,6 +579,34 @@ describe('DLQ page', () => {
     );
   });
 
+  it('queues one export when the button is clicked twice before rendering', async () => {
+    let resolveExport!: (result: Awaited<ReturnType<typeof messageService.exportDLQExcel>>) => void;
+    vi.mocked(messageService.exportDLQExcel).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    const exportButton = within(row).getByRole('button', { name: '导出' });
+    act(() => {
+      exportButton.click();
+      exportButton.click();
+    });
+
+    // The export scans broker queues; a double click must not start a second scan.
+    expect(messageService.exportDLQExcel).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      resolveExport({
+        blob: new Blob(['xlsx-bytes']),
+        meta: { truncated: false, failedQueueCount: 0, limit: 5000 },
+      }),
+    );
+  });
+
   it('exports summaries for the selected groups in one CSV file', async () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
     const user = userEvent.setup({ pointerEventsCheck: 0 });
