@@ -408,6 +408,75 @@ describe('ConversationListModal', () => {
     );
   });
 
+  it('keepsBatchDeleteSpinnersWhenARowDeleteRunsConcurrentlyTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    listMock
+      .mockResolvedValueOnce(
+        page(
+          [
+            conversation(7, '检查集群状态'),
+            conversation(8, '另一个会话'),
+            conversation(9, '第三个会话'),
+          ],
+          3,
+          1,
+        ),
+      )
+      .mockResolvedValue(page([], 0, 1));
+    const resolvers = new Map<number, () => void>();
+    deleteMock.mockImplementation(
+      (id: number) =>
+        new Promise<void>((resolve) => {
+          resolvers.set(id, resolve);
+        }),
+    );
+    renderModal();
+    await screen.findByText('检查集群状态');
+
+    // Start a batch delete of 7 and 8; it stalls on the first request.
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+    await user.click(screen.getByTestId('ai-conversation-selected-delete'));
+    await confirmDelete(user);
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(7));
+    const rowButton = (id: number) => screen.getByTestId(`ai-conversation-row-delete-${id}`);
+    expect(rowButton(7)).toHaveClass('ant-btn-loading');
+    expect(rowButton(8)).toHaveClass('ant-btn-loading');
+
+    // A row outside the batch is still clickable; its delete must not steal the batch
+    // rows' spinners (the old single-array replace re-enabled 7 and 8 here, letting a
+    // re-confirmation double-POST their deletes).
+    await user.keyboard('{Escape}');
+    fireEvent.click(rowButton(9));
+    // The batch toolbar's confirmation can linger visible in jsdom; scope to this row's.
+    const rowConfirm = await waitFor(() => {
+      const nodes = Array.from(
+        document.querySelectorAll('.ant-popconfirm:not(.ant-popover-hidden)'),
+      );
+      const match = nodes.find((node) => node.textContent?.includes('删除这条会话？'));
+      if (!match) throw new Error('the row delete confirmation did not open');
+      return match as HTMLElement;
+    });
+    await user.click(within(rowConfirm).getByRole('button', { name: /删\s*除/ }));
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(9));
+    expect(rowButton(7)).toHaveClass('ant-btn-loading');
+    expect(rowButton(8)).toHaveClass('ant-btn-loading');
+    expect(rowButton(9)).toHaveClass('ant-btn-loading');
+
+    // Letting everything finish deletes each conversation exactly once.
+    await act(async () => {
+      resolvers.get(7)?.();
+    });
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(8));
+    await act(async () => {
+      resolvers.get(8)?.();
+      resolvers.get(9)?.();
+    });
+    await waitFor(() => expect(screen.queryByText('检查集群状态')).not.toBeInTheDocument());
+    expect(deleteMock).toHaveBeenCalledTimes(3);
+  });
+
   it('deletesEveryConversationOnThePageTest', async () => {
     const user = userEvent.setup();
     listMock
