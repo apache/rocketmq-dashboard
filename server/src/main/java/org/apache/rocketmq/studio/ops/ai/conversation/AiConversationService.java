@@ -313,7 +313,9 @@ public class AiConversationService implements ApplicationRunner {
                         row.getRunId(), event));
             }
         }
-        Integer nextAfter = page.isEmpty() ? null : page.get(page.size() - 1).getSeq();
+        // A cursor exists only when the limit+1 probe row proved there is more; a full-but-final
+        // page is the tail, and the controller contract hands back null there.
+        Integer nextAfter = truncated ? page.get(page.size() - 1).getSeq() : null;
         return new TimelinePage(items, nextAfter, activeRun(conversation.getId()).orElse(null),
                 runsReferencedBy(conversation.getId(), items));
     }
