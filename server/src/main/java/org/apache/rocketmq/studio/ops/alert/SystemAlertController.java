@@ -67,6 +67,21 @@ public class SystemAlertController {
                 labelKey, labelValue, from, to, page, pageSize, notificationSuppressed));
     }
 
+    @GetMapping("/summary")
+    public Result<SystemAlertSummaryVO> summarizeAlerts(
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) AlertDomain domain,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String transition,
+            @RequestParam(required = false) String labelKey,
+            @RequestParam(required = false) String labelValue,
+            @RequestParam(required = false) LocalDateTime from,
+            @RequestParam(required = false) LocalDateTime to,
+            @RequestParam(required = false) Boolean notificationSuppressed) {
+        return Result.ok(alertService.summarizeAlerts(level, domain, instanceId, transition,
+                labelKey, labelValue, from, to, notificationSuppressed));
+    }
+
     @GetMapping("/{id}/related")
     public Result<List<SystemAlertVO>> listRelatedAlerts(@PathVariable Long id) {
         return Result.ok(alertService.findRelatedAlerts(id));
