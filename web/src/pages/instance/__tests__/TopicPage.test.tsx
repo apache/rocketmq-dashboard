@@ -1297,7 +1297,11 @@ describe('TopicPage', () => {
       resolveSecond([healthyRoute]);
       await secondCheck;
     });
-    expect(screen.getByText(/所有 Topic 在 Broker 上均有路由/)).toBeInTheDocument();
+    // The check only looks at the rows of the current page and filter, so the verdict must say so
+    // instead of declaring the whole inventory healthy.
+    expect(
+      screen.getByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由.*只覆盖当前页与当前筛选/),
+    ).toBeInTheDocument();
 
     await act(async () => {
       resolveFirst([]);
