@@ -137,3 +137,10 @@ export async function revokeStudioUserSessions(userId: number) {
   );
   return response.data.data;
 }
+
+export async function revokeAllStudioUserSessions() {
+  const response = await client.post<{ data: { revokedSessionCount: number } }>(
+    '/studio-users/sessions/revoke-all',
+  );
+  return response.data.data.revokedSessionCount;
+}

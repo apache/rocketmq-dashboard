@@ -177,4 +177,15 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
 
         verify(authService).revokeSessionsForUser(7L);
     }
+
+    @Test
+    void revokeAllSessionsReturnsTheRevokedCount() throws Exception {
+        when(authService.revokeAllSessions()).thenReturn(11);
+
+        mockMvc.perform(post("/api/studio-users/sessions/revoke-all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.revokedSessionCount").value(11));
+
+        verify(authService).revokeAllSessions();
+    }
 }

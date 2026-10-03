@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqStudioSessionMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqStudioUserMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +61,11 @@ class AuthServiceDatabaseTest {
     private RmqStudioUserMapper userMapper;
     private RmqStudioSessionMapper sessionMapper;
     private PasswordHasher passwordHasher;
+
+    @AfterEach
+    void clearAuthenticatedUserContext() {
+        AuthenticatedUserContext.clear();
+    }
 
     @BeforeEach
     void setUp() {
@@ -323,6 +329,43 @@ class AuthServiceDatabaseTest {
                 .hasMessage("User not found");
 
         verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingAllSessionsSparesTheOperatorTest() {
+        AuthenticatedUserContext.setUser(1L, "operator", true);
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(7);
+
+        int revoked = authService.revokeAllSessions();
+
+        assertThat(revoked).isEqualTo(7);
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        // The active-session predicate plus the operator exclusion; the incident responder
+        // stays logged in and can still revoke their own account from its drawer.
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at IS NULL", "expires_at", "user_id");
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values()).contains(1L);
+    }
+
+    @Test
+    void revokingAllSessionsWithoutAnOperatorContextRevokesEveryoneTest() {
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(9);
+
+        int revoked = authService.revokeAllSessions();
+
+        assertThat(revoked).isEqualTo(9);
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        // No authenticated principal (e.g. a scheduled or system-triggered call): nothing
+        // is excluded, every active session is revoked.
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at IS NULL", "expires_at")
+                .doesNotContain("user_id");
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
     }
 
     @Test

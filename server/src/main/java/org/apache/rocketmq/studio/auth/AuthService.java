@@ -315,6 +315,27 @@ public class AuthService {
         return revokeUserSessions(userId);
     }
 
+    /**
+     * Revokes every active session in one statement. The operator's own sessions are spared:
+     * the incident responder who pulls this lever must not log themselves out mid-response,
+     * and can still revoke their own account from its session drawer afterwards. The
+     * predicate is the active-session half of {@link #revokeUserSessions}, without the
+     * per-user column.
+     */
+    public int revokeAllSessions() {
+        requireDatabaseBacked();
+        LocalDateTime current = now();
+        UpdateWrapper<RmqStudioSession> wrapper = new UpdateWrapper<RmqStudioSession>()
+                .isNull("revoked_at")
+                .gt("expires_at", current);
+        String currentUserId = AuthenticatedUserContext.currentUserId();
+        if (currentUserId != null) {
+            wrapper.ne("user_id", Long.parseLong(currentUserId));
+        }
+        wrapper.set("revoked_at", current);
+        return sessionMapper.update(null, wrapper);
+    }
+
     public RmqStudioUser createUser(String username, String password, boolean admin) {
         requireDatabaseBacked();
         validateUsername(username);
