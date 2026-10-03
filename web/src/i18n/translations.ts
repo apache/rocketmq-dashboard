@@ -120,6 +120,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load the dashboard' },
+  'dashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not fetch the cluster overview. Check the network connection and retry.',
+  },
   // ─── Shared mini charts ───
   'charts.noTrendData': { zh: '暂无趋势数据', en: 'No trend data yet' },
   'charts.trendData': { zh: '趋势数据：{values}', en: 'Trend: {values}' },
@@ -900,6 +905,69 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.issueSeverityCritical': { zh: '高风险', en: 'Critical' },
   'clients.issueSeverityWarning': { zh: '关注', en: 'Warning' },
   'clients.issueSeverityInfo': { zh: '提示', en: 'Info' },
+  'clients.loadFailed': {
+    zh: '客户端连接加载失败，请稍后重试',
+    en: 'Failed to load client connections. Please try again later.',
+  },
+
+  // ─── K8s Certificates ───
+  'certs.title': { zh: 'K8s 证书配置', en: 'K8s Certificate Config' },
+  'certs.subtitleCount': { zh: '共 {count} 个证书', en: '{count} certificates in total' },
+  'certs.requestFailed': {
+    zh: '请求失败，请稍后重试',
+    en: 'Request failed. Please try again later.',
+  },
+  'certs.added': { zh: '证书「{id}」已添加', en: 'Certificate "{id}" added' },
+  'certs.deleted': { zh: '证书「{id}」已删除', en: 'Certificate "{id}" deleted' },
+  'certs.clusterName': { zh: 'K8s 集群名称', en: 'K8s Cluster Name' },
+  'certs.type': { zh: '类型', en: 'Type' },
+  'certs.issuer': { zh: '签发者', en: 'Issuer' },
+  'certs.expiry': { zh: '到期时间', en: 'Expiry' },
+  'certs.daysRemaining': { zh: '剩余天数', en: 'Days Left' },
+  'certs.status': { zh: '状态', en: 'Status' },
+  'certs.statusValid': { zh: '有效', en: 'Valid' },
+  'certs.statusExpiring': { zh: '即将过期', en: 'Expiring' },
+  'certs.statusExpired': { zh: '已过期', en: 'Expired' },
+  'certs.deleteConfirm': { zh: '确定要删除证书「{id}」吗？', en: 'Delete certificate "{id}"?' },
+  'certs.storageNoteTitle': {
+    zh: '当前证书记录仅保存为 Studio 本地配置',
+    en: 'Certificate records are stored as Studio-local configuration only',
+  },
+  'certs.storageNoteDescription': {
+    zh: '这些操作不会连接 Kubernetes 集群或修改集群中的证书资源。请在集群侧管理实际证书。',
+    en: 'These operations do not connect to the Kubernetes cluster or modify certificate resources in it. Manage the actual certificates on the cluster side.',
+  },
+  'certs.searchPlaceholder': { zh: '搜索 k8s ID 或集群', en: 'Search k8s ID or cluster' },
+  'certs.create': { zh: '新增证书', en: 'Add Certificate' },
+  'certs.add': { zh: '添加', en: 'Add' },
+  'certs.k8sIdRequired': { zh: '请输入 k8s ID', en: 'Please enter the k8s ID' },
+  'certs.k8sIdPlaceholder': { zh: '例如：kubernetes-daily', en: 'e.g. kubernetes-daily' },
+  'certs.clusterNameRequired': { zh: '请输入集群名称', en: 'Please enter the cluster name' },
+  'certs.clusterNamePlaceholder': {
+    zh: '例如：kubernetes（120.26.99.191:6443）',
+    en: 'e.g. kubernetes (120.26.99.191:6443)',
+  },
+  'certs.certPem': { zh: '证书内容（PEM）', en: 'Certificate (PEM)' },
+  'certs.certPemExtra': {
+    zh: '粘贴 PEM 格式证书，签发者、有效期与 SAN 将自动解析；留空时有效期按一年占位',
+    en: 'Paste a PEM certificate; the issuer, validity, and SAN are parsed automatically. When empty, the validity is placeholdered as one year.',
+  },
+  'certs.keyPem': { zh: '私钥内容（PEM）', en: 'Private Key (PEM)' },
+  'certs.keyPemExtra': {
+    zh: '仅保存，不会在页面展示或返回',
+    en: 'Stored only; never displayed or returned by the page',
+  },
+
+  // ─── About ───
+  'about.version': { zh: '版本', en: 'Version' },
+  'about.buildCommit': { zh: '构建提交', en: 'Build Commit' },
+  'about.buildTime': { zh: '构建时间', en: 'Build Time' },
+  'about.rocketmqVersions': { zh: 'RocketMQ 支持版本', en: 'RocketMQ Versions' },
+  'about.frontendFramework': { zh: '前端框架', en: 'Frontend Framework' },
+  'about.backendFramework': { zh: '后端框架', en: 'Backend Framework' },
+  'about.links': { zh: '相关链接', en: 'Links' },
+  'about.docs': { zh: '文档中心', en: 'Documentation' },
+  'about.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
 
   // ─── Alert Rules ───
   'alerts.title': { zh: '集群告警', en: 'Cluster Alerts' },
@@ -1598,6 +1666,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
   'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
   'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
+  'audit.loadFailed': {
+    zh: '审计日志加载失败，请稍后重试',
+    en: 'Failed to load audit logs. Please try again later.',
+  },
+  'audit.summaryLoadFailed': {
+    zh: '审计概览加载失败，请稍后重试',
+    en: 'Failed to load the audit summary. Please try again later.',
+  },
+  'audit.cleanupFailed': {
+    zh: '清理审计日志失败，请稍后重试',
+    en: 'Failed to clean up audit logs. Please try again later.',
+  },
+  'audit.exportFailed': {
+    zh: '导出审计日志失败，请稍后重试',
+    en: 'Failed to export audit logs. Please try again later.',
+  },
+  'audit.cleanupDaysSuffix': { zh: '天之前的日志', en: 'days and older' },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
@@ -1704,7 +1789,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -1754,6 +1842,21 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '上下文约 {used} / {total} tokens（{percent}%）',
     en: 'Context ≈ {used} / {total} tokens ({percent}%)',
   },
+  'ai.composer.quickAction.clusterStatus': {
+    zh: '查看集群状态',
+    en: 'Check cluster status',
+  },
+  'ai.composer.quickAction.topBacklog': { zh: 'Topic 堆积 Top10', en: 'Top 10 topics by backlog' },
+  'ai.composer.quickAction.consumerLag': {
+    zh: '诊断消费延迟',
+    en: 'Diagnose consumer lag',
+  },
+  'ai.composer.quickAction.createTopic': { zh: '创建 Topic', en: 'Create a topic' },
+  'ai.composer.quickAction.messageTrace': {
+    zh: '消息轨迹查询',
+    en: 'Query a message trace',
+  },
+  'ai.composer.quickAction.capacity': { zh: '扩缩容评估', en: 'Capacity planning' },
   'ai.providerNotReady': { zh: 'AI 助手未启用', en: 'AI assistant is not enabled' },
   'ai.goToSettings': { zh: '去配置', en: 'Configure' },
 
@@ -2098,6 +2201,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '留空表示保持原密钥不变',
     en: 'Leave blank to keep the current secret',
   },
+  'acl.secretLoading': { zh: '加载中…', en: 'Loading…' },
   'acl.required': { zh: '请选择{field}', en: 'Please select {field}' },
   'acl.inputRequired': { zh: '请输入{field}', en: 'Please enter {field}' },
   'acl.clusterConfigTab': { zh: '集群 ACL 配置', en: 'Cluster ACL Config' },

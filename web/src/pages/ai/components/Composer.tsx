@@ -71,14 +71,16 @@ import SendStopButton, { type SendStopState } from './SendStopButton';
  * guard is load-bearing: confirming a CJK candidate with Enter must not send half a sentence.
  */
 
-/** Prompt shortcuts, inserted into the draft rather than sent, so they stay editable. */
+/** Prompt shortcuts, inserted into the draft rather than sent, so they stay editable.
+ * The entries are translation keys; unknown strings pass through t() unchanged, so
+ * callers may still supply raw labels. */
 const DEFAULT_QUICK_ACTIONS = [
-  '查看集群状态',
-  'Topic 堆积 Top10',
-  '诊断消费延迟',
-  '创建 Topic',
-  '消息轨迹查询',
-  '扩缩容评估',
+  'ai.composer.quickAction.clusterStatus',
+  'ai.composer.quickAction.topBacklog',
+  'ai.composer.quickAction.consumerLag',
+  'ai.composer.quickAction.createTopic',
+  'ai.composer.quickAction.messageTrace',
+  'ai.composer.quickAction.capacity',
 ];
 
 const ENGINE_OPTIONS: { value: AgentEngine; label: string }[] = [
@@ -443,27 +445,30 @@ const Composer = ({
               className="flex items-center gap-2 overflow-x-auto scrollbar-hide px-3 pt-2"
               aria-label={t('ai.commonCommands')}
             >
-              {quickActions.map((action) => (
-                <Tag
-                  key={action}
-                  style={{
-                    cursor: 'pointer',
-                    borderRadius: 999,
-                    padding: '1px 10px',
-                    fontSize: 14,
-                    userSelect: 'none',
-                    flexShrink: 0,
-                    marginInlineEnd: 0,
-                    color: token.colorTextSecondary,
-                    borderColor: token.colorBorderSecondary,
-                    background: token.colorFillQuaternary,
-                    transition: 'all 0.2s',
-                  }}
-                  onClick={() => handleQuickAction(action)}
-                >
-                  {action}
-                </Tag>
-              ))}
+              {quickActions.map((action) => {
+                const label = t(action);
+                return (
+                  <Tag
+                    key={action}
+                    style={{
+                      cursor: 'pointer',
+                      borderRadius: 999,
+                      padding: '1px 10px',
+                      fontSize: 14,
+                      userSelect: 'none',
+                      flexShrink: 0,
+                      marginInlineEnd: 0,
+                      color: token.colorTextSecondary,
+                      borderColor: token.colorBorderSecondary,
+                      background: token.colorFillQuaternary,
+                      transition: 'all 0.2s',
+                    }}
+                    onClick={() => handleQuickAction(label)}
+                  >
+                    {label}
+                  </Tag>
+                );
+              })}
             </div>
           )}
 
