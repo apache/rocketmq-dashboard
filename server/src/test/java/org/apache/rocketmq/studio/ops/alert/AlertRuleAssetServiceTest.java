@@ -65,6 +65,21 @@ class AlertRuleAssetServiceTest {
     }
 
     @Test
+    void gcCpuAlertShouldCompareTheGcTimeRatio() {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(candidate -> "RocketMQJVMCpuHigh".equals(candidate.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("bundled RocketMQJVMCpuHigh rule missing"));
+
+        // rate(jvm_gc_pause_seconds_sum[5m]) is seconds spent in GC per second of wall clock, i.e.
+        // the share of time the broker spends in GC pauses that the description promises to
+        // threshold. The bundled rule multiplied that ratio by the pause-count rate, so its
+        // "> 30% of the time in GC" threshold actually compared GC pauses/second: frequent short
+        // pauses that barely spend any time in GC fired it, while long rare pauses stayed silent.
+        assertEquals("sum(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3", rule.expr());
+    }
+
+    @Test
     void getAssetYamlShouldReturnRawContent() {
         List<AlertRuleAssetInfo> assets = service.listAssets();
         String name = assets.get(0).name();
