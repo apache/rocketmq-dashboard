@@ -100,6 +100,27 @@ class OverviewPanelsTest(unittest.TestCase):
         )
 
 
+class ShippedDashboardPanelsTest(unittest.TestCase):
+
+    def test_dlq_resend_count_panel_counts_over_the_window(self):
+        # The panel title and its "short" unit promise a count over the 1m window, but rate()
+        # renders resends per second - 60x below the number a reader takes from the title. The
+        # sibling "Reject Count (1m)" panel in the same bundle already uses increase(...[1m]).
+        self.assertEqual(
+            'increase(rocketmq_dlq_resend_count{cluster="$cluster"}[1m])',
+            shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
+        )
+
+    def test_shipped_dlq_dashboard_matches_the_generator(self):
+        dlq = {spec[0]: spec for spec in specs}["rocketmq-dlq"]
+        panels = {item["title"]: item for item in dlq[3]}
+
+        self.assertEqual(
+            panels["DLQ Resend Count (1m)"]["targets"][0]["expr"],
+            shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
+        )
+
+
 class GaugePanelTest(unittest.TestCase):
 
     def test_places_minimum_in_field_defaults(self):
