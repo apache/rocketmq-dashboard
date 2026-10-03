@@ -359,6 +359,22 @@ describe('Consumer page', () => {
     errorSpy.mockRestore();
   });
 
+  it('clears the previous search rows when a filtered reload fails', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    // The consumer search is not debounced (every keystroke reloads), so every
+    // follow-up must fail: the rows fetched for the empty search must not stay
+    // listed under the new filter behind a transient toast.
+    vi.mocked(consumerService.listConsumerGroupPage).mockRejectedValue(
+      new Error('backend unavailable'),
+    );
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'missing');
+
+    await waitFor(() => expect(screen.queryByText('remote-cg')).not.toBeInTheDocument());
+  });
+
   afterEach(async () => {
     await act(async () => {
       cleanup();

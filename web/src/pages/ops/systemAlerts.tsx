@@ -213,7 +213,13 @@ const SystemAlertsPage = () => {
         }
       })
       .catch(() => {
-        if (!cancelled) message.error(t('sysAlerts.loadFailed'));
+        if (!cancelled) {
+          // A failed reload must not leave the previous filter's alerts listed under the
+          // new level/domain/transition filter.
+          setAlerts([]);
+          setTotal(0);
+          message.error(t('sysAlerts.loadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
