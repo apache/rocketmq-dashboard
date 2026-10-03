@@ -1001,6 +1001,36 @@ class MetadataServiceTest {
         verifyNoInteractions(apacheProvider);
     }
 
+    @Test
+    void previewResetOffsetShouldRejectForeignGroupBeforeProviderAccess() {
+        doThrow(new BusinessException(409, "Resource belongs to another instance"))
+                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                        ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true));
+
+        assertThatThrownBy(() -> metadataService.previewResetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Resource belongs to another instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectForeignTopicBeforeProviderAccess() {
+        when(ownershipGuard.check(any(), eq(new ResourceOwnershipGuard.Resource(
+                ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true))).thenReturn(null);
+        doThrow(new BusinessException(409, "Resource belongs to another instance"))
+                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                        ResourceOwnershipGuard.Kind.TOPIC, "orders")), eq(true));
+
+        assertThatThrownBy(() -> metadataService.previewResetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Resource belongs to another instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        verifyNoInteractions(apacheProvider);
+    }
+
     private ConsumerGroupVO consumerGroup(String name, String namespace, long lag, SubscriptionMode mode) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);
