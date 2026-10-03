@@ -36,6 +36,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -176,5 +178,39 @@ class StudioUserControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.revokedSessionCount").value(3));
 
         verify(authService).revokeSessionsForUser(7L);
+    }
+
+    @Test
+    void userManagementMutationsAreAuditedTest() throws Exception {
+        RmqStudioUser created = new RmqStudioUser();
+        created.setId(7L);
+        created.setUsername("operator");
+        created.setAdmin(false);
+        created.setEnabled(true);
+        RmqStudioUser disabled = new RmqStudioUser();
+        disabled.setId(7L);
+        disabled.setUsername("operator");
+        disabled.setEnabled(false);
+        when(authService.createUser("operator", "password-1", false)).thenReturn(created);
+        when(authService.setUserEnabled(7L, false)).thenReturn(disabled);
+        when(authService.revokeSessionsForUser(7L)).thenReturn(3);
+
+        mockMvc.perform(post("/api/studio-users")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"operator\",\"password\":\"password-1\",\"admin\":false}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/studio-users/7/status")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/studio-users/7/sessions/revoke"))
+                .andExpect(status().isOk());
+
+        verify(operationAuditService).record(eq("CREATE_USER"), eq("USER"), eq("operator"),
+                isNull(), eq("admin=false"), eq("SUCCESS"), isNull());
+        verify(operationAuditService).record(eq("UPDATE_USER_STATUS"), eq("USER"), eq("operator"),
+                isNull(), eq("enabled=false"), eq("SUCCESS"), isNull());
+        verify(operationAuditService).record(eq("REVOKE_USER_SESSIONS"), eq("USER"), eq("7"),
+                isNull(), eq("revoked=3"), eq("SUCCESS"), isNull());
     }
 }
