@@ -356,6 +356,15 @@ const TopicPageContent = ({
   const [loading, setLoading] = useState(true);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
+  // A failed detail request leaves the per-topic maps empty, which is not the same as "the broker
+  // has no route" or "nobody consumes this": without these flags the route diagnosis renders the
+  // empty fallback as the critical "Broker 上没有 Topic 路由" verdict and offers the rebuild action
+  // for a topic that exists. Kept per request kind so a route failure cannot mislabel the consumer
+  // table, and vice versa.
+  const [routeLoadFailedTopics, setRouteLoadFailedTopics] = useState<Record<string, boolean>>({});
+  const [consumerLoadFailedTopics, setConsumerLoadFailedTopics] = useState<Record<string, boolean>>(
+    {},
+  );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -527,20 +536,37 @@ const TopicPageContent = ({
       setSelectedTopic(topic);
       setDetailModalOpen(true);
       setDetailLoading(true);
+      setRouteLoadFailedTopics((previous) => ({ ...previous, [topic.name]: false }));
+      setConsumerLoadFailedTopics((previous) => ({ ...previous, [topic.name]: false }));
+      // Load the two independently: a failing consumer page must not skip the route lookup, or the
+      // modal renders "no route" for a topic whose routes were never requested.
+      let detailFailed = false;
       try {
         await loadTopicConsumers(topic);
-        if (requestId !== detailRequestIdRef.current) return;
-        if (!isCloudInstance) {
+      } catch {
+        detailFailed = true;
+        if (requestId === detailRequestIdRef.current) {
+          setConsumerLoadFailedTopics((previous) => ({ ...previous, [topic.name]: true }));
+        }
+      }
+      if (requestId !== detailRequestIdRef.current) return;
+      if (!isCloudInstance) {
+        try {
           const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
           if (requestId !== detailRequestIdRef.current) return;
           setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+        } catch {
+          detailFailed = true;
+          if (requestId === detailRequestIdRef.current) {
+            setRouteLoadFailedTopics((previous) => ({ ...previous, [topic.name]: true }));
+          }
         }
-      } catch {
-        if (requestId === detailRequestIdRef.current)
-          message.error('Topic 详情加载失败，请稍后重试');
-      } finally {
-        if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
+      if (requestId !== detailRequestIdRef.current) return;
+      if (detailFailed) {
+        message.error('Topic 详情加载失败，请稍后重试');
+      }
+      setDetailLoading(false);
     },
     [loadTopicConsumers, isCloudInstance, selectedInstanceId],
   );
@@ -1060,6 +1086,7 @@ const TopicPageContent = ({
     const routes = getRoutes(topic.name);
     const diagnostics = analyzeTopicRoutes(routes);
     const summary = diagnostics.summary;
+    const routeLoadFailed = routeLoadFailedTopics[topic.name] === true;
 
     return (
       <>
@@ -1069,16 +1096,22 @@ const TopicPageContent = ({
         {!detailLoading && (
           <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
             <Alert
-              type={diagnostics.statusColor}
+              type={routeLoadFailed ? 'error' : diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${diagnostics.statusText}`}
+              message={`路由诊断：${routeLoadFailed ? '加载失败' : diagnostics.statusText}`}
               description={
-                diagnostics.status === 'healthy'
-                  ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                  : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+                routeLoadFailed
+                  ? '路由信息获取失败，下面的结论与重建操作暂不可用，请重试。'
+                  : diagnostics.status === 'healthy'
+                    ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
+                    : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
               }
               action={
-                routes.length === 0 ? (
+                routeLoadFailed ? (
+                  <Button size="small" onClick={() => void openDetail(topic)}>
+                    重试
+                  </Button>
+                ) : routes.length === 0 ? (
                   <Button
                     size="small"
                     type="primary"
@@ -1737,6 +1770,13 @@ const TopicPageContent = ({
               columns={consumerColumns}
               dataSource={getConsumerPage(selectedTopic.name).items}
               rowKey="group"
+              // An empty table is only "nobody consumes this" after a load that succeeded.
+              locale={{
+                emptyText:
+                  consumerLoadFailedTopics[selectedTopic.name] === true
+                    ? '消费者加载失败，请重试'
+                    : undefined,
+              }}
               pagination={{
                 current: getConsumerPage(selectedTopic.name).page,
                 pageSize: getConsumerPage(selectedTopic.name).pageSize,

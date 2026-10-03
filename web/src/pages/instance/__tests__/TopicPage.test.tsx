@@ -566,6 +566,57 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('still loads the routes when the consumer page fails, and does not claim the topic has no route', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '10.101.2.11:10911',
+        writeQueues: 8,
+        readQueues: 8,
+        perm: 'RW',
+      },
+    ]);
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // The route lookup is an independent request: a failed consumer page must not skip it, or the
+    // modal renders the empty fallback as "the broker has no route" for a topic that exists.
+    await waitFor(() =>
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+  });
+
+  it('shows a retry instead of the rebuild action when the route request itself failed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    expect(await screen.findByText('路由诊断：加载失败')).toBeInTheDocument();
+    // Rebuilding an existing topic is not the answer to a failed request.
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('labels an empty consumer table as a failed load instead of as no consumers', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // Those rows never arrived, so an empty table must not read as "nobody consumes this topic".
+    expect(await screen.findByText('消费者加载失败，请重试')).toBeInTheDocument();
+  });
+
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
