@@ -130,7 +130,12 @@ export const formatThresholdCondition = (
     return unavailableLabel;
   }
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
-    return `${rule.operator} ${rule.threshold * 100}%`;
+    // Legacy ratio rules store the threshold as a fraction; plain double
+    // multiplication leaves float residue (0.29 * 100 === 28.999999999999996).
+    // The backend's AlertNotificationTemplate uses BigDecimal for the same
+    // conversion; round to a stable precision here too.
+    const percent = Math.round(rule.threshold * 100 * 10) / 10;
+    return `${rule.operator} ${percent}%`;
   }
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
