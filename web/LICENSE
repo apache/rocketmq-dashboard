@@ -186,7 +186,7 @@
       understanding of the Apache License by reading the FAQ at
       http://www.apache.org/foundation/license-faq.html
 
-   Copyright 2026 RocketMQ Studio Contributors
+   Copyright [yyyy] [name of copyright owner]
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -199,3 +199,16 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+Third-party source materials
+===========================
+This source distribution includes 17 model brand SVG icons from
+@lobehub/icons-static-svg 1.95.0 (https://github.com/lobehub/lobe-icons).
+They are licensed under MIT; the complete upstream license is reproduced in
+src/assets/model-logos/LICENSE. Copyright (c) 2023 LobeHub.
+Upstream license: https://github.com/lobehub/lobe-icons/blob/v1.95.0/LICENSE
+This does not grant rights to third-party trademarks.
+
+Production builds generate distribution-specific LICENSE, NOTICE and legal/
+from the actual bundled modules and these vendored icons. Build-only packages
+are not included unless their code or assets are actually redistributed.

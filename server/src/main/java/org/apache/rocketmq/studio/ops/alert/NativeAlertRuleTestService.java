@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +42,11 @@ public class NativeAlertRuleTestService {
 
     public AlertRuleTestResultVO test(AlertRuleVO rule) {
         normalizeRule(rule);
+        if (!StringUtils.hasText(rule.getMetric())) {
+            // A test run without a metric used to reach the sample filter below and fail with a
+            // NullPointerException, which the request layer reports as an unhandled server error.
+            throw new BusinessException(400, "metric is required");
+        }
         NativeAlertRulePolicy.validate(rule);
         InstanceVO instance = instanceRepository.findByIdentifier(rule.getInstanceId())
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + rule.getInstanceId()));

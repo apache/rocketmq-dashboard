@@ -24,6 +24,8 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +36,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -75,6 +79,33 @@ class ApacheInstanceProviderTest {
     }
 
     @Test
+    void groupWritesRequireRequestAndExplicitCanonicalInstanceTest() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId("other-instance");
+        provider.createConsumerGroup(" selected ", group);
+        assertThat(group.getInstanceId()).isEqualTo("selected");
+        provider.importConsumerGroup(" selected ", group);
+        provider.updateConsumerGroup(" selected ", group);
+        verify(adminClient).createConsumerGroup(group);
+        verify(adminClient).importConsumerGroup(group);
+        verify(adminClient).updateConsumerGroup(group);
+    }
+
+    @Test
+    void groupWritesRejectMissingInstanceOrRequestBeforeAdminTest() {
+        for (String instanceId : new String[] {null, " ", "selected"}) {
+            for (java.util.function.BiFunction<String, ConsumerGroupVO, ConsumerGroupVO> mutation :
+                    java.util.List.<java.util.function.BiFunction<String, ConsumerGroupVO, ConsumerGroupVO>>of(
+                            provider::createConsumerGroup, provider::importConsumerGroup, provider::updateConsumerGroup)) {
+                assertThatThrownBy(() -> mutation.apply(instanceId, null))
+                        .isInstanceOfSatisfying(org.apache.rocketmq.studio.common.exception.BusinessException.class,
+                                failure -> assertThat(failure.getCode()).isEqualTo(400));
+            }
+        }
+        verifyNoInteractions(adminClient);
+    }
+
+    @Test
     void capabilitiesShouldIncludeApacheOnlyOperationsTest() {
         assertThat(provider.capabilities()).contains(
                 InstanceCapability.TOPIC_MANAGEMENT,
@@ -82,6 +113,7 @@ class ApacheInstanceProviderTest {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT,
                 InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -103,6 +135,27 @@ class ApacheInstanceProviderTest {
                 .isSameAs(result);
         verify(messageProvider).queryMessagesDetailed(
                 "inst-1", "TopicA", null, null, "order-1", 100L, 200L);
+    }
+
+    @Test
+    void nativeMessageOperationsShouldDelegateToMessageProviderTest() {
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        QueueOffsetVO queue = QueueOffsetVO.builder().brokerName("broker-a").queueId(0).build();
+        when(messageProvider.queryMessageByUniqueKey("inst-1", "TopicA", "uniq-1", 100L, 200L))
+                .thenReturn(java.util.List.of(record));
+        when(messageProvider.getQueueOffsets("inst-1", "TopicA")).thenReturn(java.util.List.of(queue));
+        when(messageProvider.pullMessageAtOffset("inst-1", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(record);
+
+        assertThat(provider.queryMessageByUniqueKey("inst-1", "TopicA", "uniq-1", 100L, 200L))
+                .containsExactly(record);
+        assertThat(provider.getQueueOffsets("inst-1", "TopicA")).containsExactly(queue);
+        assertThat(provider.pullMessageAtOffset("inst-1", "TopicA", "broker-a", 0, 7L))
+                .isSameAs(record);
+
+        verify(messageProvider).queryMessageByUniqueKey("inst-1", "TopicA", "uniq-1", 100L, 200L);
+        verify(messageProvider).getQueueOffsets("inst-1", "TopicA");
+        verify(messageProvider).pullMessageAtOffset("inst-1", "TopicA", "broker-a", 0, 7L);
     }
 
     @Test
@@ -135,6 +188,18 @@ class ApacheInstanceProviderTest {
     }
 
     @Test
+    void listTopicsPageShouldPassClusterToMetadataProviderTest() {
+        PageResult<TopicVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20))
+                .thenReturn(page);
+
+        assertThat(provider.listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20))
+                .isSameAs(page);
+
+        verify(metadataProvider).listTopicsPage("inst-1", "cluster-a", "FIFO", "orders", 1, 20);
+    }
+
+    @Test
     void listConsumerGroupsShouldPassTheSelectedInstanceToMetadataProvider() {
         when(metadataProvider.listConsumerGroups("inst-1", null, "orders")).thenReturn(java.util.List.of());
 
@@ -151,5 +216,17 @@ class ApacheInstanceProviderTest {
         assertThat(provider.listConsumerGroupsPage("inst-1", "orders", 1, 20)).isSameAs(page);
 
         verify(metadataProvider).listConsumerGroupsPage("inst-1", null, "orders", 1, 20);
+    }
+
+    @Test
+    void listConsumerGroupsPageShouldPassClusterToMetadataProviderTest() {
+        PageResult<ConsumerGroupVO> page = PageResult.of(java.util.List.of(), 0, 1, 20);
+        when(metadataProvider.listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20))
+                .thenReturn(page);
+
+        assertThat(provider.listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20))
+                .isSameAs(page);
+
+        verify(metadataProvider).listConsumerGroupsPage("inst-1", "cluster-a", "orders", 1, 20);
     }
 }

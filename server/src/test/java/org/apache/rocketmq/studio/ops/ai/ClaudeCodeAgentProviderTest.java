@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -351,6 +352,46 @@ class ClaudeCodeAgentProviderTest {
 
         assertThat(events).containsExactly(
                 new AgentEvent.ResultMeta("s-1", 12L, 3, 4, "error_max_turns"));
+    }
+
+    @Test
+    void streamEventsShouldReportALostResumeSessionTest() {
+        // The measured shape of a stale --resume: exit 1, the session-not-found line on stderr, and a
+        // result frame whose subtype is error_during_execution with the dead id echoed back.
+        StreamingTestProvider provider = new StreamingTestProvider(
+                List.of("sh", "-c", "printf '%s' "
+                        + "'{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,"
+                        + "\"num_turns\":0,\"session_id\":\"gone-session\"}'; "
+                        + "echo 'No conversation found with session ID: gone-session' >&2; exit 1"), 30);
+
+        // The caller can only retry correctly if it knows the retry has to drop --resume, and the
+        // command is built here. See ResumeRecovery.
+        assertThatThrownBy(() -> provider.streamEvents(LlmConfigVO.builder().build(),
+                AgentStreamOptions.builder().prompt("hi").model("qwen3.8-max")
+                        .resumeSessionId("gone-session").build(), event -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo(ResumeRecovery.RESUME_LOST_CODE);
+                    assertThat(exception.getMessage()).contains("gone-session");
+                });
+    }
+
+    @Test
+    void streamEventsShouldNotReportALostResumeWhenTheRunNeverResumedTest() {
+        StreamingTestProvider provider = new StreamingTestProvider(
+                List.of("sh", "-c", "printf '%s' "
+                        + "'{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,"
+                        + "\"num_turns\":0,\"session_id\":\"s-1\"}'; "
+                        + "echo 'No conversation found with session ID: s-1' >&2; exit 1"), 30);
+        List<AgentEvent> events = new ArrayList<>();
+
+        // Nothing was resumed, so the signal is not the one a retry repairs: the frames explain the
+        // failure and retrying the same command would only repeat it.
+        provider.streamEvents(LlmConfigVO.builder().build(),
+                AgentStreamOptions.builder().prompt("hi").model("qwen3.8-max").build(), events::add);
+
+        assertThat(events).containsExactly(
+                new AgentEvent.ResultMeta("s-1", null, null, null, "error_during_execution"));
     }
 
     private static int count(List<AgentEvent> events, Class<?> type) {

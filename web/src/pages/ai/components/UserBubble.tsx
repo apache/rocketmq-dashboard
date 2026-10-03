@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { memo } from 'react';
 import { Flex, theme } from 'antd';
 import useAuthStore from '../../../stores/authStore';
 import { formatUtcDateTime } from '../../../utils/format';
@@ -98,4 +99,4 @@ const UserBubble = ({ text, createdAt }: UserBubbleProps) => {
   );
 };
 
-export default UserBubble;
+export default memo(UserBubble);

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.Data;
+import lombok.ToString;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import java.util.List;
 @Data
 @ConfigurationProperties(prefix = "studio.llm")
 public class LlmProperties {
+    @ToString.Exclude
     private String token;
     private String anthropicBaseUrl;
     private List<String> cliAllowedEnvironment = new ArrayList<>();

@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.common.util.CsvUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -67,7 +68,8 @@ public class AuditService {
     public AuditSummaryVO summarize(String search, String operationType, String resourceType,
                                     String clusterId, String startDate, String endDate, String result) {
         DateRange range = parseDateRange(startDate, endDate);
-        return auditRepository.summarize(search, operationType, resourceType, clusterId,
+        String normalizedSearch = normalizeSearch(search);
+        return auditRepository.summarize(normalizedSearch, operationType, resourceType, clusterId,
                 range.start(), range.end(), result);
     }
 
@@ -165,7 +167,8 @@ public class AuditService {
                                                String startDate, String endDate,
                                                String result, int page, int pageSize) {
         DateRange range = parseDateRange(startDate, endDate);
-        return auditRepository.findPage(search, operationType, resourceType, target, clusterId,
+        String normalizedSearch = normalizeSearch(search);
+        return auditRepository.findPage(normalizedSearch, operationType, resourceType, target, clusterId,
                 clusterIdMissing,
                 range.start(), range.end(), result, page, pageSize);
     }
@@ -189,6 +192,15 @@ public class AuditService {
         } catch (DateTimeParseException e) {
             throw new BusinessException(400, parameterName + " must use YYYY-MM-DD");
         }
+    }
+
+    /**
+     * Trims the free-text search term so a term pasted with surrounding whitespace still matches, and
+     * treats a whitespace-only term as no filter at all. Normalized once on the way into the repository
+     * so the paged list, the summary aggregates and the CSV export all filter on the same term.
+     */
+    private static String normalizeSearch(String search) {
+        return StringUtils.hasText(search) ? search.trim() : null;
     }
 
     private record DateRange(LocalDateTime start, LocalDateTime end) {

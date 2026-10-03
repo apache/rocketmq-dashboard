@@ -87,8 +87,9 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv } from '../../utils/download';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatBytes, formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeTopicRoutes,
@@ -306,12 +307,6 @@ const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
 
 const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
-
 const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
   empty: '空 Body',
   'json-object': 'JSON Object',
@@ -344,6 +339,8 @@ const TopicPageContent = ({
   selectInstance,
   instanceOptions,
   instancesLoading,
+  instancesFailed,
+  reloadInstances,
   instances,
 }: TopicPageContentProps) => {
   const { t } = useLang();
@@ -402,7 +399,15 @@ const TopicPageContent = ({
   const topicRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const consumersRequestIdRef = useRef(0);
+  const syncRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      syncRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   const sendPayloadPreview = useMemo(
     () =>
@@ -568,7 +573,18 @@ const TopicPageContent = ({
     consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
 
   // ─── Sync data: find topics without broker routes and sync them ──
+  const invalidateSyncRequest = () => {
+    syncRequestIdRef.current += 1;
+  };
+
+  const closeSyncModal = () => {
+    invalidateSyncRequest();
+    setSyncModalOpen(false);
+  };
+
   const openSyncModal = async () => {
+    const requestId = syncRequestIdRef.current + 1;
+    syncRequestIdRef.current = requestId;
     setSyncModalOpen(true);
     setSyncChecking(true);
     setSyncMissing([]);
@@ -584,6 +600,7 @@ const TopicPageContent = ({
           }
         }),
       );
+      if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
       if (checked.length < results.length) {
         message.error('部分 Topic 路由校验失败，请稍后重试');
@@ -599,7 +616,7 @@ const TopicPageContent = ({
         checked.filter(({ routes }) => (routes as BrokerRoute[]).length === 0).map((r) => r.topic),
       );
     } finally {
-      setSyncChecking(false);
+      if (syncRequestIdRef.current === requestId) setSyncChecking(false);
     }
   };
 
@@ -929,7 +946,18 @@ const TopicPageContent = ({
       title: '消费模式',
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
+      render: (m: string) => {
+        // The API sends enum values ("BROADCASTING"/"CLUSTERING" and vendor case
+        // variants), never the legacy display strings the old comparison matched.
+        const normalized = (m ?? '').trim().toUpperCase();
+        const isBroadcast = normalized.includes('BROADCAST');
+        const label = isBroadcast
+          ? t('topic.broadcast')
+          : normalized.includes('CLUSTER')
+            ? t('topic.clustering')
+            : m;
+        return <Tag color={isBroadcast ? 'orange' : 'blue'}>{label}</Tag>;
+      },
     },
     {
       title: '消费 TPS',
@@ -943,7 +971,7 @@ const TopicPageContent = ({
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? (
+        record.metricsAvailable === false || !isLagAvailable(n) ? (
           <Text type="secondary">不可用</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
@@ -1261,10 +1289,9 @@ const TopicPageContent = ({
     setImportRows([...nextRows]);
 
     if (createdTopics.length > 0) {
-      setTopics((previous) => {
-        const createdNames = new Set(createdTopics.map((topic) => topic.name));
-        return [...createdTopics, ...previous.filter((topic) => !createdNames.has(topic.name))];
-      });
+      // The inventory is server-paginated, so a local prepend leaves the rows,
+      // the header count and the pagination total disagreeing with the server.
+      await reloadTopicPage();
     }
 
     const failedCount = nextRows.filter((row) => row.status === 'failed').length;
@@ -1498,12 +1525,15 @@ const TopicPageContent = ({
           <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={(value) => {
+              closeSyncModal();
               setSelectedRowKeys([]);
               resetTablePage();
               selectInstance(value);
             }}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Topic 名称"
@@ -2022,8 +2052,8 @@ const TopicPageContent = ({
       <Modal
         title="同步数据"
         open={syncModalOpen}
-        onCancel={() => setSyncModalOpen(false)}
-        footer={<Button onClick={() => setSyncModalOpen(false)}>关闭</Button>}
+        onCancel={closeSyncModal}
+        footer={<Button onClick={closeSyncModal}>关闭</Button>}
         width={680}
         destroyOnHidden
       >

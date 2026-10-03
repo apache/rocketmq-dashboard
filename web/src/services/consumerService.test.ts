@@ -16,9 +16,11 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { mockConsumerGroups } from '../mock/consumers';
 import {
   createConsumerGroup,
   deleteConsumerGroup,
+  exportConsumerGroups,
   getConsumerGroup,
   getConsumerProgress,
   getConsumerStack,
@@ -279,9 +281,9 @@ describe('consumer service mock data', () => {
     await createConsumerGroup({ name, instanceId: 'instance-b', namespace: 'namespace-b' });
 
     try {
-      await expect(
-        createConsumerGroup({ name, instanceId: 'instance-a' }),
-      ).rejects.toThrow(`Consumer group already exists: ${name}`);
+      await expect(createConsumerGroup({ name, instanceId: 'instance-a' })).rejects.toThrow(
+        `Consumer group already exists: ${name}`,
+      );
 
       const instanceAGroups = await listConsumerGroups({ instanceId: 'instance-a', search: name });
       const instanceBGroups = await listConsumerGroups({ instanceId: 'instance-b', search: name });
@@ -342,6 +344,38 @@ describe('consumer service mock data', () => {
       expect(detail.instances).toEqual([]);
     } finally {
       mode.mock = true;
+    }
+  });
+});
+
+describe('consumer group CSV export', () => {
+  it('renders an unavailable connection count as unknown instead of the sentinel', async () => {
+    const unavailable = {
+      ...mockConsumerGroups[0],
+      name: 'cg-conn-unavailable',
+      namespace: 'ns',
+      clusterId: 'cluster-a',
+      subscriptionMode: 'Push' as const,
+      consumeType: 'CLUSTERING' as const,
+      onlineInstances: -1,
+      totalLag: 10,
+    };
+    const confirmedOffline = { ...unavailable, name: 'cg-conn-offline', onlineInstances: 0 };
+    mockConsumerGroups.push(unavailable, confirmedOffline);
+    try {
+      const csv = await exportConsumerGroups({
+        names: ['cg-conn-unavailable', 'cg-conn-offline'],
+      });
+
+      expect(csv).toContain(
+        '"cg-conn-unavailable","ns","cluster-a","Push","CLUSTERING","unknown","10"',
+      );
+      // A confirmed zero must stay numeric, otherwise the column loses its meaning entirely.
+      expect(csv).toContain('"cg-conn-offline","ns","cluster-a","Push","CLUSTERING","0","10"');
+      expect(csv).not.toContain(`"'-1"`);
+    } finally {
+      mockConsumerGroups.pop();
+      mockConsumerGroups.pop();
     }
   });
 });

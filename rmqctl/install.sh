@@ -102,10 +102,10 @@ fi
 
 if [ "$GOOS" = "windows" ]; then
   BINARY="rmqctl.exe"
-  ASSET="rmqctl_${ASSET_VERSION}_${GOOS}_${GOARCH}.zip"
+  ASSET="rmqctl-${GOOS}-${GOARCH}-${ASSET_VERSION}.zip"
 else
   BINARY="rmqctl"
-  ASSET="rmqctl_${ASSET_VERSION}_${GOOS}_${GOARCH}.tar.gz"
+  ASSET="rmqctl-${GOOS}-${GOARCH}-${ASSET_VERSION}.tar.gz"
 fi
 URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
 
@@ -137,7 +137,9 @@ if [ "$GOOS" = "windows" ]; then
 else
   tar xzf "${INSTALL_TMP_DIR}/${ASSET}" -C "$INSTALL_TMP_DIR"
 fi
-SRC="${INSTALL_TMP_DIR}/rmqctl/${BINARY}"
+# The release archives produced by scripts/package-release.sh store the
+# binary at the archive root (alongside LICENSE, NOTICE and completions).
+SRC="${INSTALL_TMP_DIR}/${BINARY}"
 
 if [ ! -f "$SRC" ]; then
   echo "binary not found in archive: $SRC" >&2

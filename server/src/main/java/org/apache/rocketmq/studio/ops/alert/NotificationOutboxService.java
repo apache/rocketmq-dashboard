@@ -18,6 +18,7 @@ import org.apache.rocketmq.studio.cluster.metrics.AlertingProperties;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.NoRedirectClientHttpRequestFactory;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertNotificationOutbox;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertNotificationOutboxMapper;
@@ -69,6 +70,12 @@ public class NotificationOutboxService {
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
     private static final int MAX_HEARTBEAT_THREADS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** The test message must name the channel it exercises, not always DingTalk. */
+    private static final Map<String, String> TEST_MESSAGE_DESCRIPTIONS = Map.of(
+            "dingtalk", "DingTalk notification configuration is working.",
+            "email", "Email notification configuration is working.",
+            "sms", "SMS notification configuration is working.");
 
     private final RmqAlertNotificationOutboxMapper mapper;
     private final SettingsRepository settingsRepository;
@@ -160,8 +167,8 @@ public class NotificationOutboxService {
         }
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.info)
-                .title("RocketMQ Studio test notification").description("DingTalk notification configuration is working.")
-                .build();
+                .title("RocketMQ Studio test notification")
+                .description(TEST_MESSAGE_DESCRIPTIONS.get(channel)).build();
         try {
             String content = AlertNotificationTemplate.render(null, alert, null);
             if ("email".equals(channel)) sendEmail(settings, alert, content);
@@ -215,18 +222,25 @@ public class NotificationOutboxService {
     }
 
     public PageResult<NotificationDeliveryPageVO> listDeliveries(String channel, String status, String instanceId,
-            int page, int pageSize) {
+            String search, LocalDateTime from, LocalDateTime to, int page, int pageSize) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Delivery start time must not be after end time");
+        }
         int safePage = Math.max(1, page);
         int safePageSize = Math.min(100, Math.max(1, pageSize));
         String normalizedChannel = normalizeFilter(channel);
         String normalizedStatus = normalizeStatus(status);
         String normalizedInstanceId = normalizeTrim(instanceId);
-        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId);
+        String normalizedSearch = normalizeTrim(search);
+        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to);
         if (total == 0) {
             return PageResult.empty(safePage, safePageSize);
         }
-        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
-                (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to, safePageSize, (long) (safePage - 1) * safePageSize),
+                total, safePage, safePageSize);
     }
 
     public void retryFailedDelivery(Long deliveryId) {
@@ -255,6 +269,10 @@ public class NotificationOutboxService {
         if (deliveryIds == null || deliveryIds.isEmpty() || deliveryIds.size() > 100) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Provide between 1 and 100 notification delivery IDs");
+        }
+        if (deliveryIds.stream().anyMatch(id -> id == null)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Notification delivery IDs must not contain null");
         }
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new java.util.LinkedHashMap<>();
@@ -523,8 +541,10 @@ public class NotificationOutboxService {
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
+        // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
+        // exhausted deliveries never landed in the audit summary's failed bucket.
         recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
-                exhausted ? "FAILURE" : "RETRYING", abbreviate(error));
+                exhausted ? "FAILED" : "RETRYING", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
 
@@ -544,7 +564,9 @@ public class NotificationOutboxService {
 
     private static String abbreviate(String value) {
         if (value == null) return "Delivery failed";
-        return value.length() > 1000 ? value.substring(0, 1000) : value;
+        // The text comes from outside the codebase - a webhook receiver's response body, an SMTP
+        // reply - and those quote the notification content back, so an emoji can sit at the cut.
+        return TextBounds.truncate(value, 1000);
     }
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,

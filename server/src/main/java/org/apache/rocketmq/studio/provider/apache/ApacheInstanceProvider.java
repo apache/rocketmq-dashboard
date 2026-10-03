@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
@@ -28,6 +30,7 @@ import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -68,6 +71,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT,
                 InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -98,8 +102,19 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<TopicVO> listTopicsPage(String instanceId, String clusterId, String type,
+            String search, int page, int pageSize) {
+        return metadataProvider.listTopicsPage(instanceId, clusterId, type, search, page, pageSize);
+    }
+
+    @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         return adminClient.createTopic(instanceId, topic);
+    }
+
+    @Override
+    public TopicVO importTopic(String instanceId, TopicVO topic) {
+        return adminClient.importTopic(instanceId, topic);
     }
 
     @Override
@@ -134,13 +149,35 @@ public class ApacheInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, int page, int pageSize) {
+        return metadataProvider.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+    }
+
+    @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
         return adminClient.createConsumerGroup(group);
     }
 
     @Override
+    public ConsumerGroupVO importConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
+        return adminClient.importConsumerGroup(group);
+    }
+
+    @Override
     public ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
+        requireGroupInstance(instanceId, group);
         return adminClient.updateConsumerGroup(group);
+    }
+
+    private void requireGroupInstance(String instanceId, ConsumerGroupVO group) {
+        String target = ResourceOwnershipGuard.requireText(instanceId, "instanceId");
+        if (group == null) {
+            throw new BusinessException(400, "Group request is required");
+        }
+        group.setInstanceId(target);
     }
 
     @Override
@@ -184,6 +221,23 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return messageProvider.getMessageTrace(instanceId, msgId, topic);
+    }
+
+    @Override
+    public List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                         Long startTime, Long endTime) {
+        return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
+    }
+
+    @Override
+    public List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        return messageProvider.getQueueOffsets(instanceId, topic);
+    }
+
+    @Override
+    public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                               int queueId, long offset) {
+        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
     }
 
     @Override

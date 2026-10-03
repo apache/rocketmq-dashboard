@@ -35,6 +35,9 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicListItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicQuotaOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicSessionOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.PageOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupDetailOutput;
@@ -42,6 +45,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.group.ResetOffsetOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.instance.InstanceCapabilitiesOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageQueryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryDlqOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.message.MessageRedeliveryOutput;
@@ -124,21 +128,43 @@ class ToolOutputSchemaContractTest {
                 .aclVersion("v2")
                 .gmtCreate(LocalDateTime.of(2026, 8, 22, 8, 0))
                 .build();
-        samples.put("rmq.acl.get", List.of(aclRule));
-        samples.put("rmq.acl.list", List.of(new PageOutput<>(1, 20, 1L, List.of(aclRule))));
+        // Tencent roles have no database row: id stays null and the role name (principal)
+        // is the identifier, so tool outputs must tolerate a missing id
+        AclRuleItem tencentAclRule = new AclRuleItem(
+                null, "alice", "orders", "TOPIC", "LITERAL",
+                List.of("PUB"), "ALLOW", INSTANCE, "v2", null);
+        samples.put("rmq.acl.get", List.of(aclRule, tencentAclRule));
+        samples.put("rmq.acl.list", List.of(new PageOutput<>(1, 20, 2L, List.of(aclRule, tencentAclRule))));
         samples.put("rmq.acl.create", List.of(planned(), executed(aclRuleVO)));
         samples.put("rmq.acl.update", List.of(planned(), executed(aclRuleVO)));
         samples.put("rmq.acl.delete", List.of(planned(), executedVoid()));
 
         AclUserItem user = new AclUserItem("1", "alice", true, List.of(INSTANCE));
-        samples.put("rmq.user.get", List.of(user));
-        samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user))));
-        samples.put("rmq.user.create", List.of(planned(), executed(user)));
+        AclUserItem tencentUser = new AclUserItem(null, "alice", false, List.of("cloud-instance"));
+        samples.put("rmq.user.get", List.of(user, tencentUser));
+        samples.put("rmq.user.list", List.of(new ListOutput<>(List.of(user, tencentUser))));
+        samples.put("rmq.user.create", List.of(planned(), executed(user), executed(tencentUser)));
         samples.put("rmq.user.delete", List.of(planned(), executedVoid()));
 
+        // metric is optional at the service layer (AlertService only validates name),
+        // so a metric-less rule must still validate against the output schema
         samples.put("rmq.alert.rule.list", List.of(new ListOutput<>(List.of(
                 new AlertRuleListItem(1L, "consumer-lag", "consumer.lag.total", ">",
-                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert")))));
+                        1000.0, "count", "5m", List.of("dingtalk"), true, "lag alert"),
+                new AlertRuleListItem(2L, "draft-rule", null, null,
+                        0.0, null, null, List.of(), false, null)))));
+
+        samples.put("rmq.litetopic.list", List.of(new ListOutput<>(List.of(
+                new LiteTopicListItem("chat/sess-", "ns-a", 12, 3, 120L, 3600L, "ACTIVE",
+                        1789092600000L, List.of("sess-1")),
+                new LiteTopicListItem("orders/", null, null, null, null, null, null, null, null)))));
+        samples.put("rmq.litetopic.session", List.of(new LiteTopicSessionOutput(
+                "sess-1", "client-1", "10.0.0.1:5678", "chat", "cg-chat",
+                1789092000000L, 1789092600000L, 3600L, 1800L, "ACTIVE",
+                10L, 4L, 6L, 40, 1,
+                List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L)))));
+        samples.put("rmq.litetopic.quota", List.of(new LiteTopicQuotaOutput(
+                120, 1000, 30, 100, 5, 50, 0.12, 0.3, 3600L, 86400L, 880, 2.5)));
 
         samples.put("rmq.audit.list", List.of(new PageOutput<>(1, 20, 1L, List.of(
                 new AuditItem(1L, "2026-08-22T08:00:00", "admin", "CREATE_TOPIC", "TOPIC",
@@ -239,7 +265,15 @@ class ToolOutputSchemaContractTest {
         GroupListItem groupItem = new GroupListItem(
                 "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 16, 2, 100L, List.of("orders"));
-        samples.put("rmq.group.list", List.of(new ListOutput<>(List.of(groupItem))));
+        // onlineInstances carries a -1 sentinel when the connection inventory is unavailable.
+        // ToolValidationFilter validates every tool result, so a schema that rejects -1 would
+        // fail the whole call at runtime instead of reporting the unknown state.
+        GroupListItem unknownConnectionsItem = new GroupListItem(
+                "cg-orders", INSTANCE, SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                16, -1, 100L, List.of("orders"));
+        samples.put("rmq.group.list", List.of(
+                new ListOutput<>(List.of(groupItem)),
+                new ListOutput<>(List.of(unknownConnectionsItem))));
         samples.put("rmq.group.detail", List.of(new GroupDetailOutput(
                 INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
                 2, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
@@ -251,12 +285,24 @@ class ToolOutputSchemaContractTest {
                 new GroupDetailOutput.Health("HEALTHY", List.of()),
                 List.of(groupItem),
                 new GroupDetailOutput.Progress(100L, List.of(
-                        new GroupDetailOutput.QueueProgress("broker-a", 0, 120L, 90L, 30L))),
+                        new GroupDetailOutput.QueueProgress("orders", "broker-a", 0, 120L, 90L, 30L))),
                 new GroupDetailOutput.Clients(1, List.of(
                         new GroupDetailOutput.Client(
                                 "client-1", "gRPC", "127.0.0.1:50000", "JAVA", "5.0.7",
                                 true, List.of("orders"), "2026-08-22T09:30:00",
-                                Map.of("orders", 10L)))))));
+                                Map.of("orders", 10L))))),
+                new GroupDetailOutput(
+                        INSTANCE, "cg-orders", SubscriptionMode.Push, ConsumeType.CLUSTERING,
+                        -1, 100L, List.of("orders"), "TAG", "Concurrently", 16, 0,
+                        List.of(new GroupDetailOutput.Subscription(
+                                "orders", "*", "TAG", "STANDARD", "CONSISTENT")),
+                        List.of(),
+                        new GroupDetailOutput.Health(
+                                "UNKNOWN", List.of("Consumer connection information is unavailable.")),
+                        List.of(unknownConnectionsItem),
+                        new GroupDetailOutput.Progress(-1L, List.of(
+                                new GroupDetailOutput.QueueProgress(null, "total", 0, -1L, -1L, -1L))),
+                        null)));
         samples.put("rmq.group.update", List.of(planned(), executed(groupItem)));
         samples.put("rmq.group.delete", List.of(planned(), executedVoid()));
         samples.put("rmq.group.reset_offset", List.of(
@@ -266,8 +312,18 @@ class ToolOutputSchemaContractTest {
         MessageItem message = new MessageItem(
                 "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
                 "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
-        samples.put("rmq.message.query", List.of(new ListOutput<>(List.of(message))));
-        samples.put("rmq.message.query_by_topic", List.of(new ListOutput<>(List.of(message))));
+        MessageQueryOutput.Item withoutBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", null, null, null, 5);
+        MessageQueryOutput.Item withBody = new MessageQueryOutput.Item(
+                "MSG-1", "orders", "tagA", "keyA", TIMESTAMP,
+                "127.0.0.1:10911", "127.0.0.1:50000", "aGVsbG8=", "BASE64", false, 5);
+        samples.put("rmq.message.query", List.of(
+                new MessageQueryOutput(List.of(withoutBody), false, 0),
+                new MessageQueryOutput(List.of(withBody), false, 0)));
+        samples.put("rmq.message.query_by_topic", List.of(
+                new MessageQueryOutput(List.of(withoutBody), true, 199),
+                new MessageQueryOutput(List.of(withBody), true, 199)));
         samples.put("rmq.message.query_by_offset", List.of(new ListOutput<>(List.of(message))));
         samples.put("rmq.message.query_dlq", List.of(
                 MessageQueryDlqOutput.ofGroups(INSTANCE, 1, 20, 1L, List.of(

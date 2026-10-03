@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,6 +50,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -475,6 +477,31 @@ class AiTimelineRepositoryTest {
         verify(conversationMapper, never()).selectObjs(any());
     }
 
+    /**
+     * Forgetting the remembered {@code --resume} session is the recovery for a stale one, so this write
+     * has to actually null the column. {@code updateById} skips null fields, which is why the port has a
+     * method of its own — a fake pass through the ordinary update would be a silent no-op that leaves the
+     * conversation pointing at a session that no longer exists.
+     */
+    @Test
+    void forgettingTheRuntimeSessionShouldNullTheColumnByNameTest() {
+        conversations.clearRuntimeSessionId(CONVERSATION_ID);
+
+        UpdateWrapper<RmqAiConversation> update = capturedConversationUpdate();
+        assertThat(update.getSqlSet()).contains("runtime_session_id");
+        // The bound value is what makes it a clear rather than a no-op.
+        assertThat(update.getParamNameValuePairs()).containsValue(null);
+        assertThat(update.getTargetSql()).contains("id = ?");
+        assertThat(update.getParamNameValuePairs().values()).contains(CONVERSATION_ID);
+    }
+
+    @Test
+    void forgettingTheRuntimeSessionShouldNeedAnIdTest() {
+        conversations.clearRuntimeSessionId(null);
+
+        verify(conversationMapper, never()).update(any(), any());
+    }
+
     // --- the run rows -----------------------------------------------------------------
 
     /**
@@ -712,6 +739,13 @@ class AiTimelineRepositoryTest {
         ArgumentCaptor<Wrapper<RmqAiConversation>> captor = wrapperCaptor();
         verify(conversationMapper).selectObjs(captor.capture());
         return queryOf(captor.getValue());
+    }
+
+    @SuppressWarnings("unchecked")
+    private UpdateWrapper<RmqAiConversation> capturedConversationUpdate() {
+        ArgumentCaptor<Wrapper<RmqAiConversation>> captor = wrapperCaptor();
+        verify(conversationMapper).update(isNull(), captor.capture());
+        return (UpdateWrapper<RmqAiConversation>) captor.getValue();
     }
 
     private QueryWrapper<RmqAiRun> capturedRunSelectList() {

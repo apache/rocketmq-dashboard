@@ -51,5 +51,9 @@ export const buildCsv = <T>(columns: CsvColumn<T>[], rows: T[]) =>
   ].join('\n');
 
 export const downloadCsv = (filename: string, csv: string) => {
-  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename);
+  // Spreadsheet apps sniff the encoding instead of honouring the charset parameter: without
+  // a BOM, Excel decodes the file as ANSI/GBK and garbles every non-ASCII cell. The
+  // server-side CSV exporters already prefix \uFEFF, and resourceCsvImport strips it again,
+  // so the in-app export → import round trip stays byte-identical.
+  downloadBlob(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }), filename);
 };

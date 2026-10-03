@@ -79,6 +79,15 @@ class ProducerConnectionSummaryVOTest {
                 .containsExactly("UNKNOWN");
     }
 
+    @Test
+    void fromShouldWarnWhenTheProducerScanIsIncompleteTest() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0")), false);
+
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.WARNING);
+        assertThat(summary.getWarnings()).containsExactly(ProducerConnectionSummaryVO.INCOMPLETE_SCAN);
+    }
+
     private ProducerConnectionVO connection(String clientId, String address, String language, String version) {
         return ProducerConnectionVO.builder()
                 .clientId(clientId)

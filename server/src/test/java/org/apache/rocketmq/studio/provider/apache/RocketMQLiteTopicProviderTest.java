@@ -16,10 +16,13 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.attribute.TopicMessageType;
 import org.apache.rocketmq.common.lite.LiteUtil;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
@@ -30,6 +33,9 @@ import org.apache.rocketmq.remoting.protocol.body.GetLiteGroupInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.GetParentTopicInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
@@ -69,6 +75,8 @@ class RocketMQLiteTopicProviderTest {
 
     private MQAdminExt admin;
     private RocketMQLiteTopicProvider provider;
+    private ResourceOwnershipGuard guard;
+    private RuntimeAdminClientResolver runtime;
 
     @BeforeEach
     void setUp() {
@@ -80,12 +88,23 @@ class RocketMQLiteTopicProviderTest {
         }).when(factory).execute(anyString(), nullable(RPCHook.class), any());
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr(NAMESRV);
-        provider = new RocketMQLiteTopicProvider(factory, properties);
+        guard = mock(ResourceOwnershipGuard.class);
+        runtime = mock(RuntimeAdminClientResolver.class);
+        when(guard.requireInstance(any())).thenAnswer(call -> InstanceVO.builder()
+                .name(ResourceOwnershipGuard.requireText(call.getArgument(0), "instanceId")).build());
+        when(guard.topicResource(anyString())).thenCallRealMethod();
+        when(guard.check(any(), any(), eq(true))).thenReturn(new ResourceOwnershipGuard.Ownership(
+                1L, PARENT, "cluster-a", "cluster-a", "LITE"));
+        when(guard.withOwned(any(), any(), any())).thenAnswer(call ->
+                ((java.util.function.Supplier<?>) call.getArgument(2)).get());
+        doAnswer(call -> ((MqAdminExtFactory.AdminAction<?>) call.getArgument(1)).apply(admin))
+                .when(runtime).execute(any(InstanceVO.class), any());
+        provider = new RocketMQLiteTopicProvider(factory, properties, runtime, guard);
     }
 
     @Test
     void isSupportedIsFalseWithoutConfiguredNameServer() {
-        assertThat(new RocketMQLiteTopicProvider(mock(MqAdminExtFactory.class), new RocketMQProperties())
+        assertThat(new RocketMQLiteTopicProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(), runtime, guard)
                 .isSupported()).isFalse();
     }
 
@@ -103,6 +122,60 @@ class RocketMQLiteTopicProviderTest {
         when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(2, 40, 1));
 
         assertThat(provider.isSupported()).isTrue();
+    }
+
+    @Test
+    void isSupportedIsTrueWhenAnyOtherMasterAnswersTheLiteProbe() throws Exception {
+        String legacyMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(legacyMaster, BROKER_A));
+        when(admin.getBrokerLiteInfo(legacyMaster)).thenThrow(new IllegalStateException("unsupported"));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(2, 40, 1));
+
+        assertThat(provider.isSupported()).isTrue();
+    }
+
+    @Test
+    void listLiteTopicsSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
+        String failingMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getBrokerLiteInfo(failingMaster))
+                .thenThrow(new IllegalStateException("broker restarting"));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(consumerConnection("c1", "10.0.0.9:1234"));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1")).thenReturn(clientInfo(2, System.currentTimeMillis()));
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> {
+            assertThat(summary.getTopicPattern()).isEqualTo(PARENT);
+            assertThat(summary.getTopicCount()).isEqualTo(2);
+            assertThat(summary.getTotalBacklog()).isEqualTo(7L);
+        });
+    }
+
+    @Test
+    void quotaSkipsAMasterWhoseLiteInfoFailsInsteadOfFailingThePage() throws Exception {
+        String failingMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(3, 40, 3));
+        when(admin.getBrokerLiteInfo(failingMaster))
+                .thenThrow(new IllegalStateException("broker restarting"));
+        Properties reachableConfig = new Properties();
+        reachableConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(BROKER_A)).thenReturn(reachableConfig);
+        Properties failingConfig = new Properties();
+        failingConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(failingMaster)).thenReturn(failingConfig);
+
+        LiteTopicQuota quota = provider.getQuota(null);
+
+        // Only the reachable master contributed counts, so the ratio is built from it alone.
+        assertThat(quota.getCurrentTopicCount()).isEqualTo(3);
+        assertThat(quota.getMaxTopicCount()).isEqualTo(40);
+        assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
+        assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
     }
 
     @Test
@@ -185,6 +258,64 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void getSessionShouldSurfaceBacklogReadFailureTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1))
+                .thenThrow(new IllegalStateException("backlog unavailable"));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldSurfaceConsumedOffsetReadFailureTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(5));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
+                .thenThrow(new IllegalStateException("offset unavailable"));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldRejectMissingBacklogBodyTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(0, System.currentTimeMillis()));
+
+        assertThatThrownBy(() -> provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getSessionShouldKeepZeroConsumedWhenNoOffsetIsCommittedTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(0));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1))
+                .thenReturn(new GetLiteGroupInfoResponseBody());
+
+        LiteTopicSession session = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+
+        assertThat(session.getPendingMessages()).isZero();
+        assertThat(session.getConsumedMessages()).isZero();
+        assertThat(session.getTotalMessages()).isZero();
+    }
+
+    @Test
     void getSessionFailsWhenNoBrokerReportsTheClient() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(anyString(), anyString(), anyString(), anyString()))
@@ -203,11 +334,33 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void ttlMissingInstanceAndOwnershipConflictStopBeforeClientTest() {
+        assertThatThrownBy(() -> provider.extendTTL(PARENT, 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> provider.extendTTL(" ", PARENT, 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
+        when(guard.check(any(), any(), eq(true))).thenThrow(new BusinessException(409, "Ownership conflict"));
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        org.mockito.Mockito.verifyNoInteractions(runtime, admin);
+    }
+
+    @Test
+    void ttlRejectsIncompleteTopologyTest() throws Exception {
+        ClusterInfo incomplete = cluster(BROKER_A);
+        incomplete.getBrokerAddrTable().get(BROKER_A).setBrokerAddrs(new HashMap<>(Map.of(1L, "slave:10911")));
+        when(admin.examineBrokerClusterInfo()).thenReturn(incomplete);
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, 60_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(409));
+        verify(admin, never()).createAndUpdateTopicConfig(anyString(), any());
+    }
+
+    @Test
     void extendTtlConvertsMillisecondsAndUpdatesTheLiteParentTopic() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
 
-        provider.extendTTL(PARENT, TimeUnit.MINUTES.toMillis(120));
+        provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120));
 
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
@@ -223,7 +376,7 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
 
-        provider.extendTTL(PARENT, TimeUnit.DAYS.toMillis(90));
+        provider.extendTTL("cluster-a", PARENT, TimeUnit.DAYS.toMillis(90));
 
         ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
         verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), captor.capture());
@@ -237,10 +390,39 @@ class RocketMQLiteTopicProviderTest {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(new TopicConfig(PARENT));
 
-        assertThatThrownBy(() -> provider.extendTTL(PARENT, 60_000L))
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getCode()).isEqualTo(404));
         verify(admin, never()).createAndUpdateTopicConfig(anyString(), any());
+    }
+
+    @Test
+    void extendTtlFailsInsteadOfPartiallyUpdatingWhenAMasterCannotBeRead() throws Exception {
+        String unreachableMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, unreachableMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(unreachableMaster, PARENT))
+                .thenThrow(new RemotingTimeoutException("broker restarting"));
+
+        // The extension must fail before any master is written: the alternative is a cluster
+        // with mixed lite.topic.expiration attributes and a console that reports success.
+        assertThatThrownBy(() -> provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120)))
+                .isInstanceOf(RemotingTimeoutException.class);
+        verify(admin, never()).createAndUpdateTopicConfig(anyString(), any());
+    }
+
+    @Test
+    void extendTtlStillUpdatesReachableMastersWhenTheTopicIsAbsentOnAPeer() throws Exception {
+        String peerMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, peerMaster));
+        when(admin.examineTopicConfig(BROKER_A, PARENT)).thenReturn(liteTopicConfig(PARENT, 30));
+        when(admin.examineTopicConfig(peerMaster, PARENT))
+                .thenThrow(new MQBrokerException(ResponseCode.TOPIC_NOT_EXIST, "topic not exist"));
+
+        provider.extendTTL("cluster-a", PARENT, TimeUnit.MINUTES.toMillis(120));
+
+        verify(admin).createAndUpdateTopicConfig(eq(BROKER_A), any(TopicConfig.class));
+        verify(admin, never()).createAndUpdateTopicConfig(eq(peerMaster), any());
     }
 
     @Test
@@ -306,11 +488,14 @@ class RocketMQLiteTopicProviderTest {
         }
         ClusterInfo clusterInfo = new ClusterInfo();
         clusterInfo.setBrokerAddrTable(table);
+        clusterInfo.setClusterAddrTable(Map.of("cluster-a", new HashSet<>(table.keySet())));
         return clusterInfo;
     }
 
     private static BrokerData broker(String masterAddress) {
         BrokerData data = new BrokerData();
+        data.setCluster("cluster-a");
+        data.setBrokerName(masterAddress);
         data.setBrokerAddrs(new HashMap<>(Map.of(0L, masterAddress)));
         return data;
     }

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { theme } from 'antd';
 import { Brain, Sparkle } from '@phosphor-icons/react';
 import { useLang } from '../../../../i18n/LangContext';
@@ -113,4 +113,4 @@ const ThinkingBlock = ({ block, streaming = false, latest = false }: ThinkingBlo
   );
 };
 
-export default ThinkingBlock;
+export default memo(ThinkingBlock);

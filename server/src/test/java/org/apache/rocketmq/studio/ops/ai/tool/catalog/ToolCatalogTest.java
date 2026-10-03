@@ -16,14 +16,20 @@
  */
 package org.apache.rocketmq.studio.ops.ai.tool.catalog;
 
+import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolRiskLevel;
+import org.apache.rocketmq.studio.ops.ai.tool.service.ToolSchemaValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,6 +49,62 @@ class ToolCatalogTest {
         ToolDefinition clusterList = catalog.getDefinition("rmq.cluster.list");
         assertThat(clusterList.riskLevel()).isEqualTo(ToolRiskLevel.L1);
         assertThat(catalog.find("rmq.unknown")).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void messageQueriesAdvertiseBoundedResultsAndOptionalBodiesTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        for (String toolName : new String[]{"rmq.message.query", "rmq.message.query_by_topic"}) {
+            ToolDefinition definition = catalog.getDefinition(toolName);
+            Map<String, Object> inputProperties =
+                    (Map<String, Object>) definition.inputSchema().get("properties");
+            Map<String, Object> outputProperties =
+                    (Map<String, Object>) definition.outputSchema().get("properties");
+
+            assertThat(inputProperties)
+                    .containsKeys("limit", "includeBody")
+                    .doesNotContainKeys("page", "pageSize");
+            assertThat((Map<String, Object>) inputProperties.get("limit"))
+                    .containsEntry("minimum", 1);
+            assertThat(outputProperties)
+                    .containsKeys("items", "resultMayBeTruncated", "skippedCount")
+                    .doesNotContainKeys("total", "page", "pageSize", "size");
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void messageTraceAdvertisesOptionalCustomTraceTopicNameTest() {
+        Map<String, Object> inputSchema = new ToolCatalog(new DefaultResourceLoader())
+                .getDefinition("rmq.message.trace").inputSchema();
+        Map<String, Object> properties = (Map<String, Object>) inputSchema.get("properties");
+
+        assertThat(properties).containsKey("traceTopicName").doesNotContainKey("traceTopic");
+        assertThat((Map<String, Object>) properties.get("traceTopicName"))
+                .containsEntry("type", "string");
+        assertThat((List<String>) inputSchema.get("required"))
+                .doesNotContain("traceTopicName");
+    }
+
+    @Test
+    void rejectsInvalidMessageQueryLimitsAndLegacyPagingThroughTheRuntimeSchemaTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
+        for (String toolName : new String[]{"rmq.message.query", "rmq.message.query_by_topic"}) {
+            ToolDefinition definition = catalog.getDefinition(toolName);
+            for (Map<String, Object> invalid : List.<Map<String, Object>>of(
+                    Map.of("instanceId", "instance-a", "topicName", "TopicA",
+                            "limit", 0),
+                    Map.of("instanceId", "instance-a", "topicName", "TopicA",
+                            "page", Map.of("page", 1, "pageSize", 10)),
+                    Map.of("instanceId", "instance-a", "topicName", "TopicA", "pageSize", 10))) {
+                assertThatThrownBy(() -> validator.validateInput(definition, invalid))
+                        .isInstanceOfSatisfying(ToolExecutionException.class,
+                                error -> assertThat(error.getCode()).isEqualTo(400));
+            }
+        }
     }
 
     @Test

@@ -34,6 +34,7 @@ public class ConsumerGroupVO extends BaseEntity {
     private String instanceId;
     private SubscriptionMode subscriptionMode;
     private ConsumeType consumeType;
+    /** Number of confirmed online clients, or -1 when connection inventory is unavailable. */
     private int onlineInstances;
     private long totalLag;
     private List<String> subscribedTopics = new ArrayList<>();

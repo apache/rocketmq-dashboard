@@ -140,6 +140,15 @@
 | 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 | 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
 | 98 | GET | `/api/topics/page` | Topic 分页列表 |
+| 99 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
+| 100 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
+| 101 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
+| 102 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
+| 103 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
+| 104 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
+| 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
+| 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
+| 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
 
 ## 通用响应格式
 
@@ -319,22 +328,22 @@ GET /api/instances?type={type}&search={keyword}
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | `string` | 否 | 按类型过滤: `PROXY`（全部 Proxy）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
+| `type` | `string` | 否 | 按类型过滤: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
 
 **Response `data`:** `Instance[]`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 实例 ID |
+| `id` | `number` | 实例 ID |
 | `name` | `string` | 实例名称 |
 | `remark` | `string` | 备注 |
-| `type` | `string` | 接入类型: `PROXY`（兼容值）/ `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
+| `type` | `string` | 接入类型: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
 | `topicCount` | `number` | Topic 数量 |
 | `consumerGroupCount` | `number` | 消费组数量 |
-| `createdAt` | `string` | 创建时间 |
-| `updatedAt` | `string` | 更新时间 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 
 ### 3.2 创建实例
 
@@ -347,7 +356,7 @@ POST /api/instances/create
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | Apache 实例使用 `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
+| `type` | `string` | 是 | Apache 实例使用 `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例，手工创建会被拒绝 |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
@@ -364,7 +373,7 @@ POST /api/instances/update
 |------|------|------|------|
 | `id` | `string` | 是 | 实例 ID |
 | `name` | `string` | 是 | 实例名称 |
-| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；旧 `PROXY` 请求归一为 `PROXY_CLUSTER` |
+| `type` | `string` | 是 | `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT`；`CLOUD` 仅用于云厂商代管的实例 |
 | `endpoint` | `string` | 是 | 接入地址 |
 
 **Response `data`:** `Instance`
@@ -638,11 +647,152 @@ POST /api/proxies/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `addr` | `string` | 是 | Proxy 地址 |
+| `clusterId` | `string` | 是 | Proxy 所属集群 ID |
+| `addr` | `string` | 是 | Proxy 地址，如 `127.0.0.1:8081` |
+
+**Response `data`:** `null`
+
+接口先校验集群存在、且该地址在集群登记的 Proxy 列表中，再把动作交给集群 Provider。当前 Provider 尚未实现 Proxy 重启，校验通过后固定抛出 `501`，因此成功分支的 `data` 恒为 `null`，调用方不应依赖任何 `success` 字段。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` 或 `addr` 缺失、为空白 |
+| `404` | 集群不存在，或该地址不在集群登记的 Proxy 列表中 |
+| `501` | 当前集群 Provider 未实现 Proxy 重启 |
+
+### 4.12 获取 Proxy 列表
+
+```
+GET /api/proxies?clusterId={clusterId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 集群 ID |
+
+**Response `data`:** `ProxyVO[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `addr` | `string` | Proxy 地址（`host:grpcPort`） |
+| `status` | `string` | 集群登记状态：`healthy` / `warning` / `error` / `offline` |
+| `connections` | `number` | 连接数 |
+| `grpcPort` | `number` | gRPC 接入端口 |
+| `remotingPort` | `number` | Remoting 接入端口 |
+
+返回的是集群登记信息中的 Proxy 列表（`ClusterVO.proxies`），**不做实时探活**；集群未登记任何 Proxy 时返回空数组。需要实时可达性请使用 §4.13。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` 缺失或为空白 |
+| `404` | 集群既无法从 Provider 刷新，也不在本地登记中 |
+
+### 4.13 Proxy 拓扑与实时探活
+
+```
+GET /api/proxies/topology
+```
+
+无请求参数。
+
+**Response `data`:** `ProxyTopologyVO[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddr` | `string` | 已登记的 Proxy 地址（`host:grpcPort`） |
+| `status` | `string` | `UP` / `PARTIAL` / `DOWN` |
+| `grpcPort` | `number` | 从地址解析出的 gRPC 端口 |
+| `remotingPort` | `number` | 推导出的 Remoting 端口，无法推导时为 `null` |
+| `grpcReachable` | `boolean` | gRPC 端口的 TCP 连接是否成功 |
+| `remotingReachable` | `boolean` | Remoting 端口的 TCP 连接是否成功；`remotingPort` 为 `null` 时恒为 `false` |
+| `latencyMs` | `number` | gRPC 探测的往返耗时（毫秒），不可达时为 `-1` |
+
+探测对象是 **Studio 自身登记的 Proxy 地址列表**（由 §4.14 / §4.15 维护，默认只含 `127.0.0.1:8081`），与 `clusterId` 无关，也不读取集群登记信息。行为约定：
+
+- `status`：gRPC 可达为 `UP`；gRPC 不可达但 Remoting 可达为 `PARTIAL`；两者都不可达为 `DOWN`。
+- Remoting 端口按 RocketMQ 5.0 默认布局推导（`8081 → 8080`、`8080 → 8081`）。其它端口无法假定配对关系，返回 `null`，此时只探测 gRPC 侧。
+- 单个端口探测超时 2 秒，整个接口预算 10 秒。探测并发执行，超出预算仍未完成的按不可达上报，因此少数节点宕机既不会拖垮接口，也不会让它返回 5xx。
+- 不匹配 `host:port` / `[ipv6]:port` 的登记地址会被跳过，只记录服务端日志，不出现在结果中。
+
+### 4.14 添加 Proxy 地址
+
+```
+POST /api/proxies/addresses
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | Proxy 地址，`host:port` 或 `[ipv6]:port` |
+
+**Response `data`:** `ProxyHomeVO`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `proxyAddrList` | `string[]` | 变更后的完整地址列表（按添加顺序） |
+| `currentProxyAddr` | `string` | 当前生效地址 |
+
+地址必须匹配 `host:port` 或 `[ipv6]:port`，端口取值 1-65535，IPv6 字面量还要通过格式校验，否则返回 `400`。重复添加同一地址是幂等的：列表不变，也不重复记审计。当前地址为空时，新地址会成为 `currentProxyAddr`。成功时记录一条 `ADD_PROXY_ADDRESS` 审计。
+
+> 地址列表保存在 Studio 进程内存中，不落库：进程重启后回到默认的 `127.0.0.1:8081`。
+
+### 4.15 删除 Proxy 地址
+
+```
+DELETE /api/proxies/addresses?addr={addr}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `addr` | `string` | 是 | 要删除的 Proxy 地址 |
+
+**Response `data`:** `ProxyHomeVO`（结构同 §4.14）
+
+删除的正是 `currentProxyAddr` 时，当前地址自动切换到剩余列表的第一项；列表被清空时为空字符串。成功记录 `REMOVE_PROXY_ADDRESS` 审计；地址不在列表中时记录一条失败审计并返回 `404`。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | 地址格式非法或端口越界 |
+| `404` | 地址不在已登记列表中 |
+
+### 4.16 热更新 Proxy 配置
+
+```
+POST /api/proxies/config/reload
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | Proxy 所属集群 ID |
+| `addr` | `string` | 是 | Proxy 地址，`host:port` |
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.12 获取 K8s 证书列表
+校验地址格式、并确认该地址属于 `clusterId` 登记的 Proxy 列表后，Studio 向 `http://{addr}/admin/reloadConfig` 发起 POST，触发 Proxy 侧配置热更新。成功返回 `{"success": true}`；失败一律以异常返回，不会出现 `success: false`。成功与失败都会记录 `RELOAD_PROXY_CONFIG` 审计。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | `clusterId` / `addr` 缺失，或地址格式非法 |
+| `404` | 集群不存在，或该地址不在集群登记的 Proxy 列表中 |
+| `502` | Proxy 返回非 2xx，或连接不上 Proxy |
+| `500` | 其它未预期的调用失败 |
+
+### 4.17 获取 K8s 证书列表
 
 K8s 证书接口仅管理 Studio 本地配置记录，不会连接 Kubernetes API，也不会创建、修改或删除集群中的 Secret 或证书资源。
 
@@ -666,7 +816,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.13 添加 K8s 证书
+### 4.18 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -684,7 +834,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 更新 K8s 证书
+### 4.19 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -703,7 +853,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 删除 K8s 证书
+### 4.20 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete
@@ -888,7 +1038,7 @@ POST /api/topics/send
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `msgId` | `string` | 消息 ID |
-| `sendTime` | `string` | 发送时间 (ISO 8601) |
+| `sendTime` | `number` | 发送时间（Unix 毫秒时间戳） |
 | `offsetMsgId` | `string` | 含偏移量的消息 ID |
 
 **示例：**
@@ -909,7 +1059,7 @@ POST /api/topics/send
 // Response
 {
   "msgId": "7F000001234567890000",
-  "sendTime": "2026-07-08T10:30:45.123Z",
+  "sendTime": 1783506645123,
   "offsetMsgId": "7F000001234567890000-0:0:0:0"
 }
 ```
@@ -940,7 +1090,7 @@ GET /api/groups?clusterId={clusterId}&search={keyword}
 | `clusterId` | `string` | 所属集群 ID |
 | `subscriptionMode` | `string` | 订阅模式: `Push` / `Pop` |
 | `consumeType` | `string` | 消费类型: `CLUSTERING` / `BROADCASTING` |
-| `onlineInstances` | `number` | 在线实例数 |
+| `onlineInstances` | `number` | 在线实例数；`-1` 表示连接信息不可用 |
 | `totalLag` | `number` | 总堆积消息数 |
 | `subscribedTopics` | `string[]` | 订阅的 Topic 列表 |
 | `subscriptionDataType` | `string` | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
@@ -967,7 +1117,7 @@ GET /api/groups/:name
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `clientId` | `string` | 客户端 ID |
-| `protocol` | `string` | 协议: `REMOTING` / `GRPC` |
+| `protocol` | `string` | 协议: `gRPC` / `Remoting` |
 | `address` | `string` | 客户端地址 |
 | `subscribedTopics` | `string[]` | 订阅的 Topic |
 | `lastHeartbeat` | `string` | 最后心跳时间 |
@@ -1090,21 +1240,35 @@ GET /api/groups/export?names={name1,name2}
 ### 7.1 获取 ACL 规则列表
 
 ```
-GET /api/acl/rules?clusterId={clusterId}&principal={principal}
+GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&instanceId={instanceId}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `clusterId` | `string` | 否 | 按集群过滤 |
-| `principal` | `string` | 否 | 按用户过滤 |
+| `principal` | `string` | 否 | 按主体过滤 |
+| `resource` | `string` | 否 | 按资源过滤 |
+| `scope` | `string` | 否 | 按作用域过滤 |
+| `decision` | `string` | 否 | 按决策过滤 |
+| `instanceId` | `string` | 否 | 按所属实例过滤 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20` |
 
-**Response `data`:** `AclRule[]`
+**Response `data`:** `PageResult<AclRule>`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 规则 ID |
+| `items` | `AclRule[]` | 当前页规则 |
+| `total` | `number` | 总条数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 当前页大小 |
+
+#### AclRule
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 规则 ID |
 | `principal` | `string` | 主体用户名 |
 | `resource` | `string` | 资源名称/模式 |
 | `resourceType` | `string` | 资源类型: `Topic` / `Group` / `Cluster` |
@@ -1113,7 +1277,7 @@ GET /api/acl/rules?clusterId={clusterId}&principal={principal}
 | `decision` | `string` | 决策: `ALLOW` / `DENY` |
 | `scope` | `string` | 作用域: `cluster` / `namespace` |
 | `aclVersion` | `string` | ACL 版本: `1.0` / `2.0` |
-| `createdAt` | `string` | 创建时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
 
 ### 7.2 创建 ACL 规则
 
@@ -1159,13 +1323,13 @@ GET /api/acl/users
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 用户 ID |
+| `id` | `number` | 用户 ID |
 | `username` | `string` | 用户名 |
 | `accessKey` | `string` | AccessKey（脱敏显示） |
 | `secretKey` | `string` | SecretKey（脱敏显示） |
 | `admin` | `boolean` | 是否管理员 |
 | `clusters` | `string[]` | 授权集群列表 |
-| `createdAt` | `string` | 创建时间 |
+| `gmtCreate` | `string` | 创建时间 |
 
 完整的 AccessKey 和 SecretKey 仅在创建用户的响应中返回一次，后续列表查询和更新响应只返回脱敏值。
 
@@ -1485,11 +1649,11 @@ POST /api/messages/direct-consume
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `consumeResult` | `string` | Broker 返回的直接消费结果 |
-| `remark` | `string` | Broker 返回的说明 |
-| `spentTimeMillis` | `number` | Broker 执行耗时（毫秒） |
-| `order` | `boolean` | 是否为顺序消费 |
-| `autoCommit` | `boolean` | 客户端是否启用自动提交 |
+| `consumeResult` | `string` | 直消费结果；Apache 路径为 Broker 的 `ConsumeMessageDirectlyResult` 名（`CR_SUCCESS` 等），Aliyun 为 `CR_SUCCESS`/`CR_FAILED`，Tencent 因 OpenAPI 不回传消费结果固定为 `REQUEST_ACCEPTED`，实际语义见 `remark` |
+| `remark` | `string` | 结果说明；Apache 路径取自 Broker，云厂商路径取自云 OpenAPI 应答（含 `requestId`） |
+| `spentTimeMillis` | `number` | 执行耗时（毫秒）；云厂商路径为 Studio 侧测得的 OpenAPI 调用耗时 |
+| `order` | `boolean` | 是否为顺序消费（云厂商路径固定 `false`） |
+| `autoCommit` | `boolean` | 客户端是否启用自动提交（云厂商路径固定 `false`） |
 
 ---
 
@@ -1553,6 +1717,120 @@ POST /api/dlq/resend
 | `outcome` | `string` | 结果: `SUCCESS` / `PARTIAL` / `FAILED` / `NO_MESSAGES` |
 | `scanIncomplete` | `boolean` | 是否有部分队列扫描失败 |
 | `failedQueueCount` | `number` | 扫描失败的队列数 |
+| `failures` | `DLQResendFailure[]` | 逐条失败明细，最多 100 条；无失败时为空数组 |
+| `failuresTruncated` | `boolean` | 失败明细是否被截断：失败条数超过 100 时为 `true`，此时 `failed` 仍是真实的失败总数 |
+
+`DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
+Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
+§9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
+
+### 9.3 分页获取死信消息明细
+
+```
+GET /api/dlq/{groupName}/messages?instanceId={instanceId}&startTime={ms}&endTime={ms}&page={page}&pageSize={pageSize}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `groupName` | `string` | 是 | 路径参数，消费组名称，需 URL 编码 |
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `page` | `number` | 否 | 页码，默认 `1`，最小 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20`，范围 `1`–`100` |
+
+**Response `data`:** `PageResult<DLQMessage>`（分页外壳同 §9.1）
+
+#### DLQMessage
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `msgId` | `string` | 消息 ID |
+| `topic` | `string` | 死信 Topic 名称（`%DLQ%{groupName}`） |
+| `queueId` | `number` | 队列 ID |
+| `offset` | `number` | 队列位点 |
+| `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
+| `reconsumeTimes` | `number` | 已重试次数 |
+| `keys` | `string` | 消息 Key，可能为 `null` |
+| `body` | `string` | 按 UTF-8 解码的消息体；消息没有 body 时为 `null` |
+| `bodyBase64` | `string` | 原始字节的 Base64，供二进制消息无损导出；消息没有 body 时为 `null` |
+| `properties` | `Record<string, string>` | 用户属性。已剔除 Broker 系统属性，按 key 排序，最多 `64` 条，单值超过 `1024` 码点时截断并追加 `...` |
+| `propertiesTruncated` | `boolean` | 属性条数或单值长度是否触发了上述截断 |
+
+> **时间窗口**：`startTime` / `endTime` 必须同时提供或同时省略（`DLQService.validateTimeRange`）。消息按存储时间在闭区间 `[startTime, endTime]` 内筛选，包括与 `endTime` 同一毫秒的所有消息。省略时服务端使用 `[endTime - 1 小时, endTime]`，`endTime` 再省略则取服务端当前时间。两者都为正数且 `endTime` 必须严格大于 `startTime`，否则返回 `400`。
+>
+> **扫描上限**：单次扫描最多读取 `5000` 条死信消息（`RocketMQDLQProvider.RESEND_HARD_CAP`），命中该上限或部分队列扫描失败时结果不完整，导出接口通过响应头告知调用方。
+>
+> **仅自建集群**：DLQ 全部接口只对 `vendor=APACHE` 的实例开放，云实例（Aliyun / Tencent）返回 `501 DLQ operations are not supported for cloud instances`，与 `InstanceCapability.DLQ_MANAGEMENT` 的声明一致。
+
+> `total` 是本次扫描命中的条数而非 DLQ Topic 的全量条数：分页在服务端对扫描结果做内存切片，翻到 `5000` 条之后不会返回更多数据。
+
+### 9.4 重发选中的死信消息
+
+```
+POST /api/dlq/resend-selected
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `msgIds` | `string[]` | 是 | 待重投的消息 ID，`1`–`100` 条，元素不可为空白 |
+| `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
+
+**Response `data`:** `DLQResendResult`（结构同 §9.2）
+
+`targetTopic` 走 §9.2 相同的 `validateResendTargetTopic` 校验：必须是合法 Topic 名、不能是 RocketMQ 系统 / Retry / DLQ Topic，且必须已存在于所选实例上（`autoCreateTopicEnable` 也不会替调用者建 Topic），否则返回 `400`。请求体缺失返回 `400 DLQ resend request is required`；`msgIds` 为空或超过 `100` 条由 Bean Validation 拦截。
+
+### 9.5 导出死信消息（JSON）
+
+```
+GET /api/dlq/export?instanceId={instanceId}&groupName={groupName}&startTime={ms}&endTime={ms}&maxCount={n}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `maxCount` | `number` | 否 | 导出条数上限；省略或 `<= 0` 时取 `5000`，否则取 `min(maxCount, 5000)` |
+
+**Response:** 不走统一 `Result` 外壳，直接返回 `DLQMessage[]` 的 JSON 数组（字段见 §9.3 的 `DLQMessage`），`Content-Type: application/json`，`Content-Disposition: attachment; filename="dlq-{groupName}.json"`。序列化失败返回 `500 Failed to serialize DLQ export`。
+
+### 9.6 导出死信消息（Excel）
+
+```
+GET /api/dlq/export-excel?instanceId={instanceId}&groupName={groupName}&startTime={ms}&endTime={ms}&msgIds={id}&msgIds={id}
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（全局唯一字符串） |
+| `groupName` | `string` | 是 | 消费组名称 |
+| `startTime` | `number` | 否 | 起始时间（Unix 毫秒时间戳） |
+| `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
+| `msgIds` | `string[]` | 否 | 只导出选中的消息，最多 `100` 条；省略则导出整个时间窗口 |
+
+**Response:** 不走统一 `Result` 外壳，直接返回 `.xlsx` 字节流，`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`，`Content-Disposition: attachment; filename="dlq-{groupName}.xlsx"`。工作表名 `DLQ`，列为 `Message ID` / `Topic` / `Queue ID` / `Offset` / `Store Time` / `Reconsume Times` / `Keys` / `Body`，其中 `Store Time` 按服务端默认时区格式化为 `yyyy-MM-dd HH:mm:ss`。生成失败返回 `502 Failed to export DLQ messages as Excel`。
+
+`msgIds` 是重复同名参数（`msgIds=a&msgIds=b`），不是 `msgIds[]=a`：Spring 的 `@RequestParam List<String>` 不绑定方括号形式，写成方括号会静默退化为导出整个时间窗口。
+
+> `msgIds` 是在一次上限 `5000` 条的扫描之后再做过滤，因此选中的消息若不在该窗口内不会出现在导出结果里；`X-DLQ-Export-Limit` 恒为 `5000`，不随 `msgIds` 条数变化。
+
+**9.5 / 9.6 共用的导出响应头**
+
+两个导出接口都通过响应头返回扫描完整性元数据（`DlqExportHeaders`），浏览器跨域读取依赖 `CorsConfig` 已把它们列入 `Access-Control-Expose-Headers`：
+
+| 响应头 | 类型 | 说明 |
+|------|------|------|
+| `X-DLQ-Export-Truncated` | `boolean` | 扫描是否命中条数上限而未读完 |
+| `X-DLQ-Export-FailedQueues` | `number` | 扫描失败的队列数，`> 0` 表示结果不完整 |
+| `X-DLQ-Export-Limit` | `number` | 本次扫描实际生效的条数上限 |
+
+文件名中的 `"`、反斜杠、控制字符与 `0x7F` 会被替换为 `_`；含非 ASCII 字符时按 RFC 5987 追加 `filename*` 参数，避免浏览器丢失原始字符。
 
 ---
 
@@ -1622,6 +1900,14 @@ GET /api/producer/connection
 |------|------|------|
 | `connectionSet` | `ProducerConnection[]` | 匹配的 Producer 连接 |
 | `summary` | `ProducerConnectionSummary` | 连接完整性和分布摘要 |
+| `complete` | `boolean` | 是否覆盖全部可发现的 Broker 与 Producer Group |
+| `failedBrokers` | `string[]` | Producer Group 发现失败的 Broker 地址；完整扫描时为空 |
+| `failedProducerGroups` | `string[]` | 连接查询失败的 Producer Group；完整扫描时为空 |
+
+省略 `producerGroup` 的 Topic 聚合查询采用部分成功语义：只要至少一个 Broker 可查询，且并非
+所有已发现的 Producer Group 都查询失败，就返回可用连接；覆盖缺口通过 `complete=false` 和
+失败列表公开。所有 Broker 或所有已发现 Group 都无法查询时仍返回 `502`。显式
+`producerGroup` 查询保持原有语义。
 
 #### ProducerConnection
 
@@ -1646,7 +1932,7 @@ GET /api/producer/connection
 | `languages` | `{ value: string, count: number }[]` | 按客户端语言统计的分布 |
 | `versions` | `{ value: string, count: number }[]` | 按客户端版本统计的分布 |
 | `duplicateClientIds` | `string[]` | 重复出现的客户端 ID |
-| `warnings` | `string[]` | `NO_CONNECTIONS` / `DUPLICATE_CLIENT_ID` / `MIXED_CLIENT_VERSION` / `INCOMPLETE_CLIENT_METADATA` |
+| `warnings` | `string[]` | `NO_CONNECTIONS` / `DUPLICATE_CLIENT_ID` / `MIXED_CLIENT_VERSION` / `INCOMPLETE_CLIENT_METADATA` / `INCOMPLETE_SCAN` |
 | `readiness` | `string` | `READY` / `WARNING` / `UNAVAILABLE` |
 
 ---
@@ -1850,7 +2136,7 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `target` | `string \| null` | 操作对象，无操作对象时为 `null` |
 | `clusterId` | `string \| null` | 所属集群 ID，无集群上下文时为 `null` |
 | `detail` | `string` | 详细描述 |
-| `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `FAILURE` / `PARTIAL` |
+| `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `PARTIAL` |
 | `errorMessage` | `string` | 失败或部分成功时的错误信息 |
 
 ### 13.2 获取审计日志筛选项
@@ -1920,7 +2206,7 @@ GET /api/settings/general
 | `notifySound` | `boolean` | 通知声音 |
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是否需要登录 |
-| `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `ollama` / `qwen` |
+| `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
 | `baseUrl` | `string` | Base URL |
@@ -2832,13 +3118,13 @@ GET /api/metrics/grafana/dashboards/export
 | **消费类型** | `CLUSTERING`, `BROADCASTING` |
 | **订阅模式** | `Push`, `Pop` |
 | **协议** | `gRPC`, `Remoting` |
-| **客户端语言** | `Java`, `Go`, `Python`, `Rust`, `C++`, `C#`, `Node.js`, `PHP` |
+| **客户端语言** | `Java`, `Go`, `Python`, `Rust`, `Cpp`, `CSharp`, `NodeJS`, `PHP` |
 | **ACL 资源类型** | `Topic`, `Group`, `Cluster` |
 | **ACL 匹配模式** | `LITERAL`, `PREFIX` |
 | **ACL 操作** | `PUB`, `SUB`, `ALL` |
 | **ACL 决策** | `ALLOW`, `DENY` |
 | **告警级别** | `error`, `warning`, `info` |
-| **审计结果** | `success`, `failure` |
+| **审计结果** | `SUCCESS`, `FAILED`, `PARTIAL` |
 | **投递状态** | `success`, `failed`, `pending` |
 | **证书状态** | `valid`, `expiring`, `expired` |
 | **证书类型** | `TLS`, `mTLS`, `ServiceAccount` |
@@ -2846,7 +3132,7 @@ GET /api/metrics/grafana/dashboards/export
 | **集群类型** | `V4_DIRECT`, `V5_PROXY_LOCAL`, `V5_PROXY_CLUSTER` |
 | **顺序类型** | `PARTITON_ORDER`, `MESSAGES_ORDER` |
 | **通知渠道** | `dingtalk`, `email`, `sms` |
-| **LLM 提供商** | `openai`, `azure`, `ollama`, `qwen` |
+| **LLM 提供商** | `openai`, `azure`, `anthropic`, `deepseek`, `tongyi`, `ollama`, `bedrock` |
 | **数据源类型** | `Prometheus`, `VictoriaMetrics`, `Thanos`, `Mimir`, `Cortex`, `ARMS` |
 | **AI 会话模式** | `chat`, `diagnose`, `manage`, `query` |
 | **AI 引擎** | `http`, `claude-code`, `qoder` |

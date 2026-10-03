@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+import { useLang } from '../i18n/LangContext';
+
 interface MiniBarProps {
   data: number[];
   color?: string;
@@ -24,9 +26,15 @@ interface MiniBarProps {
 }
 
 const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: MiniBarProps) => {
+  const { lang, t } = useLang();
+
   if (!data.length) {
     return (
-      <span aria-label={label || '暂无趋势数据'} style={{ color: '#8c8c8c' }}>
+      <span
+        role="img"
+        aria-label={label || t('charts.noTrendData')}
+        style={{ color: '#8c8c8c' }}
+      >
         —
       </span>
     );
@@ -38,7 +46,9 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
   return (
     <div
       role="img"
-      aria-label={label || `趋势数据：${data.join('、')}`}
+      aria-label={
+        label || t('charts.trendData', { values: data.join(lang === 'zh' ? '、' : ', ') })
+      }
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',

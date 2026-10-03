@@ -512,6 +512,35 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void unknownUserLoginBurnsDummyHashToPreventTimingSideChannelTest() {
+        PasswordHasher hasherSpy = mock(PasswordHasher.class);
+        SettingsRepository repository = mock(SettingsRepository.class);
+        when(repository.loadGeneralSettings())
+                .thenReturn(GeneralSettingsVO.builder().sessionTimeout(30).build());
+        authService = new AuthService(new AuthProperties(), repository,
+                Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC), userMapper,
+                sessionMapper, hasherSpy);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("no-such-user");
+        request.setPassword("any-password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception ->
+                        assertThat(((BusinessException) exception).getCode()).isEqualTo(401))
+                .hasMessage("Invalid username or password");
+        // The dummy PBKDF2 derivation must run even when the user is not found, so the
+        // response timing is indistinguishable from a wrong-password attempt on a real
+        // account. Without this, an attacker could enumerate valid usernames by measuring
+        // the response time difference between "user not found" and "wrong password".
+        verify(hasherSpy, times(1)).matches(anyString(), argThat(hash ->
+                hash != null && hash.startsWith("pbkdf2$210000$")));
+    }
+
+    @Test
     void enabledAccountsWithWrongPasswordsGetTheUniformInvalidCredentialsResponse() {
         when(userMapper.selectCount(isNull())).thenReturn(1L);
         when(userMapper.selectOne(any(Wrapper.class)))
@@ -549,6 +578,54 @@ class AuthServiceDatabaseTest {
                 .satisfies(exception ->
                         assertThat(((BusinessException) exception).getCode()).isEqualTo(429))
                 .hasMessageStartingWith("Too many failed login attempts");
+    }
+
+    /**
+     * Every other username entry point bounds the value at 128 characters: {@code
+     * CreateStudioUserDTO} and {@link AuthService#validateUsername} both reject longer names and the
+     * column is {@code VARCHAR(128)}. Login accepted any length, issued the lookup with it and kept
+     * it as an in-memory rate-limiter key.
+     */
+    @Test
+    void loginShouldRejectAnOverlongUsernameBeforeTouchingTheDatabase() {
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("u".repeat(129));
+        request.setPassword("password-1");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
+                        .isEqualTo(400))
+                .hasMessage("Username must contain 1 to 128 characters");
+
+        verifyNoInteractions(userMapper, sessionMapper);
+    }
+
+    /**
+     * The rate limiter bounds how many usernames it tracks, never how long they are: an
+     * unauthenticated caller could park arbitrarily large keys in it (and in the retry window of
+     * the surrounding map) by failing a login with an oversized name.
+     */
+    @Test
+    void anOverlongUsernameIsNeverRetainedAsARateLimiterKey() {
+        Clock clock = Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC);
+        SettingsRepository databaseSettingsRepository = mock(SettingsRepository.class);
+        when(databaseSettingsRepository.loadGeneralSettings())
+                .thenReturn(GeneralSettingsVO.builder().sessionTimeout(30).build());
+        LoginRateLimiter rateLimiter = new LoginRateLimiter(clock);
+        authService = new AuthService(new AuthProperties(), databaseSettingsRepository, clock,
+                userMapper, sessionMapper, passwordHasher, rateLimiter);
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("u".repeat(4_096));
+        request.setPassword("password-1");
+
+        assertThatThrownBy(() -> authService.login(request)).isInstanceOf(BusinessException.class);
+
+        assertThat(rateLimiter.trackedUsernameCount()).isZero();
     }
 
     private RmqStudioSession activeSession(Long id, Long userId, LocalDateTime lastSeenAt) {

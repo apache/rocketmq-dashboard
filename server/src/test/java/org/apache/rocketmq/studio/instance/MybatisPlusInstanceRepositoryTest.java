@@ -171,6 +171,32 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void findAllShouldDefaultALegacyNullVendorToApacheTest() {
+        // vendor is a nullable column: a row written before the column existed carries no
+        // vendor, and every reader in the codebase treats that as APACHE.
+        RmqInstance legacy = entity(5L, "instance-legacy", InstanceType.DIRECT);
+        legacy.setVendor(null);
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(legacy));
+
+        List<InstanceVO> result = repository.findAll();
+
+        assertThat(result).singleElement()
+                .satisfies(instance -> assertThat(instance.getVendor()).isEqualTo(InstanceVendor.APACHE));
+    }
+
+    @Test
+    void findByIdShouldDefaultABlankVendorToApacheTest() {
+        RmqInstance legacy = entity(6L, "instance-legacy-blank", InstanceType.PROXY_LOCAL);
+        legacy.setVendor("");
+        when(instanceMapper.selectById(6L)).thenReturn(legacy);
+
+        Optional<InstanceVO> result = repository.findById(6L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getVendor()).isEqualTo(InstanceVendor.APACHE);
+    }
+
+    @Test
     void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
         when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
 

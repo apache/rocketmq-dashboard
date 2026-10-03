@@ -143,13 +143,32 @@ const sortedEntries = (labels: Record<string, string>) =>
 export const stableLabelsText = (labels: Record<string, string>) =>
   JSON.stringify(Object.fromEntries(sortedEntries(labels)));
 
-export const metricSeriesLabel = (series: MetricSeries, fallback: string) => {
+// Only the first few labels fit the compact legend row. The complete set stays
+// available through metricSeriesFullLabel and metricSeriesIdentity.
+const METRIC_SERIES_LABEL_LIMIT = 3;
+
+export const metricSeriesLabel = (
+  series: MetricSeries,
+  fallback: string,
+  limit: number = METRIC_SERIES_LABEL_LIMIT,
+) => {
   const labels = sortedEntries(series.labels)
     .filter(([key]) => key !== '__name__')
-    .slice(0, 3)
+    .slice(0, limit)
     .map(([key, value]) => `${key}=${value}`);
   return labels.length > 0 ? labels.join(' / ') : series.labels.__name__ || fallback;
 };
+
+// The whole label set in the same compact notation, for places where two series
+// must stay tellable apart: the legend hover tooltip.
+export const metricSeriesFullLabel = (series: MetricSeries, fallback: string) =>
+  metricSeriesLabel(series, fallback, Number.POSITIVE_INFINITY);
+
+// A rendering identity that is unique per original series. The display label is
+// not: it drops every label past the limit, so two series differing only in a
+// later label share one display label.
+export const metricSeriesIdentity = (series: MetricSeries, seriesIndex: number) =>
+  `${seriesIndex}-${stableLabelsText(series.labels)}`;
 
 const sortMetricSamples = (samples: NumericMetricSample[]) =>
   samples
@@ -316,7 +335,7 @@ export const buildMetricSeriesDetailRows = (
     const { samples, fromHistogram } = toMetricSeriesSamples(series);
     const latest = samples[samples.length - 1];
     return {
-      key: `${seriesIndex}-${stableLabelsText(series.labels)}`,
+      key: metricSeriesIdentity(series, seriesIndex),
       seriesIndex: seriesIndex + 1,
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),

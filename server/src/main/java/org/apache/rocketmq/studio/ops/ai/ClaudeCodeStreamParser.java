@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.ThinkingSource;
@@ -167,7 +168,7 @@ final class ClaudeCodeStreamParser {
     static final String RAW_INPUT_KEY = "_raw";
 
     /** Ceiling for a short human-readable reason: a tool error, or the provider's own message. */
-    private static final int MAX_REASON_CHARS = 512;
+    private static final int MAX_REASON_CODE_POINTS = 512;
 
     /** How many denied tool names a permission-denial notice lists before it says "and N more". */
     private static final int MAX_DENIED_NAMES = 5;
@@ -220,6 +221,9 @@ final class ClaudeCodeStreamParser {
 
     /** True once the terminal {@code result} frame arrived. */
     private boolean resultFrameSeen;
+
+    /** Subtype of that frame, resolved by {@link #resolveSubtype}; null while none has arrived. */
+    private String resultSubtype;
 
     /** Session id from the most recent frame that carried one; the init frame is the first. */
     private String runtimeSessionId;
@@ -286,6 +290,15 @@ final class ClaudeCodeStreamParser {
     /** Whether the terminal {@code result} frame arrived, i.e. whether the run explained itself. */
     boolean resultFrameSeen() {
         return resultFrameSeen;
+    }
+
+    /**
+     * The subtype of that frame, or null when none arrived. One half of the lost-resume signal: the
+     * caller pairs it with the exit code and the stderr, because a subtype alone cannot tell a
+     * vanished {@code --resume} session from a failure no retry can fix.
+     */
+    String resultSubtype() {
+        return resultSubtype;
     }
 
     /**
@@ -503,7 +516,7 @@ final class ClaudeCodeStreamParser {
             boolean failed = block.path("is_error").asBoolean(false);
             String output = normaliseToolResult(block.path("content"));
             events.add(new AgentEvent.ToolDone(id, displayName(id, null), output, !failed, null,
-                    failed ? abbreviate(output, MAX_REASON_CHARS) : null));
+                    failed ? abbreviate(output, MAX_REASON_CODE_POINTS) : null));
         }
         return events;
     }
@@ -558,10 +571,11 @@ final class ClaudeCodeStreamParser {
             }
         }
         resultFrameSeen = true;
+        resultSubtype = resolveSubtype(node);
         JsonNode usage = node.path("usage");
         events.add(new AgentEvent.ResultMeta(runtimeSessionId, longOrNull(node, "duration_ms"),
                 intOrNull(usage, "input_tokens"), intOrNull(usage, "output_tokens"),
-                resolveSubtype(node)));
+                resultSubtype));
         return events;
     }
 
@@ -593,7 +607,7 @@ final class ClaudeCodeStreamParser {
             return Optional.empty();
         }
         return Optional.of(new AgentEvent.ProviderNotice(AgentEventProjector.LEVEL_ERROR,
-                "provider reported: " + abbreviate(String.join("; ", messages), MAX_REASON_CHARS)));
+                "provider reported: " + abbreviate(String.join("; ", messages), MAX_REASON_CODE_POINTS)));
     }
 
     /**
@@ -677,11 +691,13 @@ final class ClaudeCodeStreamParser {
         return value.isNumber() ? value.asInt() : null;
     }
 
-    private static String abbreviate(String value, int maxChars) {
+    private static String abbreviate(String value, int maxCodePoints) {
         if (value == null) {
             return "";
         }
-        return value.length() <= maxChars ? value : value.substring(0, maxChars) + "...";
+        // These reasons quote tool results, i.e. message bodies an end user wrote, so the cut has to
+        // land on a code point boundary rather than between the two chars of an emoji.
+        return TextBounds.truncate(value, maxCodePoints, "...");
     }
 
     /** A tool call whose arguments are still arriving: its id, its sanitised name, its buffer. */

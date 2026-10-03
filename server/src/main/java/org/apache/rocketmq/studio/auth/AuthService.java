@@ -76,6 +76,7 @@ public class AuthService {
     private static final Duration STALE_SESSION_THRESHOLD = Duration.ofMinutes(15);
     private static final int MAX_USER_PAGE_SIZE = 100;
     private static final int MAX_USER_SEARCH_LENGTH = 128;
+    private static final int MAX_USERNAME_LENGTH = 128;
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String EXPIRING_SOON_CUTOFF_PARAM = "expiringSoonCutoff";
     private static final String STALE_CUTOFF_PARAM = "staleCutoff";
@@ -343,12 +344,24 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Replacing the hash and revoking the account's sessions are one logical change: a failure
+     * between the two writes would leave the account on its new password while its existing
+     * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements
+     * therefore run in one transaction, the same guarantee {@link #setUserEnabled} gives its own
+     * update-and-revoke pair.
+     */
+    @Transactional
     public void changePassword(Long userId, String currentPassword, String newPassword,
                                boolean requireCurrentPassword) {
         requireDatabaseBacked();
         RmqStudioUser user = getUser(userId);
         if (requireCurrentPassword && !passwordHasher.matches(currentPassword, user.getPasswordHash())) {
-            throw new BusinessException(401, "Current password is incorrect");
+            // The request is already authenticated; this is a payload problem, not a session one.
+            // 401 is what the Studio client reads as "the session is gone" and answers by clearing
+            // the session and redirecting to the login page, and the same field already answers 400
+            // when it is blank (ChangePasswordDTO validation).
+            throw new BusinessException(400, "Current password is incorrect");
         }
         validatePassword(newPassword);
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
@@ -369,8 +382,16 @@ public class AuthService {
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
         ensureBootstrapUsers();
-        RmqStudioUser user = findUserByUsername(request.getUsername())
-                .orElseThrow(() -> new BusinessException(401, "Invalid username or password"));
+        Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
+        if (found.isEmpty()) {
+            // Burn one dummy derivation so the response timing matches the wrong-password path
+            // on an existing account. Without this, an attacker could distinguish "user not
+            // found" (fast) from "user found but wrong password" (slow PBKDF2) and enumerate
+            // valid usernames by measuring response time.
+            passwordHasher.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            throw new BusinessException(401, "Invalid username or password");
+        }
+        RmqStudioUser user = found.get();
         if (!Boolean.TRUE.equals(user.getEnabled())) {
             // Answer exactly like a wrong password on an enabled account: burn one dummy
             // derivation so the response timing matches, and never touch this account's
@@ -561,11 +582,17 @@ public class AuthService {
         if (request.getPassword() == null || request.getPassword().isBlank()) {
             throw new BusinessException(400, "Password is required");
         }
+        if (request.getUsername().trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
+        }
     }
 
     private void validateUsername(String username) {
-        if (username == null || username.isBlank() || username.trim().length() > 128) {
-            throw new BusinessException(400, "Username must contain 1 to 128 characters");
+        if (username == null || username.isBlank()
+                || username.trim().length() > MAX_USERNAME_LENGTH) {
+            throw new BusinessException(400,
+                    "Username must contain 1 to " + MAX_USERNAME_LENGTH + " characters");
         }
     }
 

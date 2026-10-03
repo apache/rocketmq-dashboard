@@ -35,6 +35,7 @@ import {
   Flex,
   Progress,
   Statistic,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -53,6 +54,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import MessageProperties from '../../components/MessageProperties';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -68,8 +70,11 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
+import { formatBytes, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -78,38 +83,29 @@ import { tableScrollX } from '../../utils/table';
 import {
   analyzeMessageTrace,
   type MessageTraceDiagnostics,
+  type TraceDiagnosticIssue,
   type TraceDiagnosticStatus,
 } from '../../utils/messageTraceDiagnostics';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
-const DEFAULT_QUERY_ERROR = '消息查询失败，请稍后重试';
-const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
 
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
+type DirectConsumeCapabilityStatus = 'loading' | 'supported' | 'unsupported' | 'unavailable';
 
 const QUERY_OPTIONS = [
-  { value: 'topic' as const, label: '按 Topic 查询' },
-  { value: 'key' as const, label: '按 Message Key' },
-  { value: 'msgid' as const, label: '按 Message ID' },
-  { value: 'queue' as const, label: '按队列浏览' },
+  { value: 'topic' as const },
+  { value: 'key' as const },
+  { value: 'msgid' as const },
+  { value: 'queue' as const },
 ];
 
-const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  success: { label: '成功', color: 'green' },
-  failed: { label: '失败', color: 'red' },
-  pending: { label: '等待中', color: 'gold' },
+const DELIVERY_STATUS_MAP: Record<string, { labelKey: string; color: string }> = {
+  success: { labelKey: 'common.success', color: 'green' },
+  failed: { labelKey: 'common.failure', color: 'red' },
+  pending: { labelKey: 'messagePage.deliveryStatusPending', color: 'gold' },
 };
 
 const TOPIC_TAG_COLORS: Record<string, string> = {
@@ -124,19 +120,6 @@ const TOPIC_TAG_COLORS: Record<string, string> = {
 const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startOf('day'), dayjs()];
 
 /* ─── Helpers ─── */
-
-const formatSize = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
-
-const formatTimeMs = (value: number | string): string => {
-  if (!value) return '-';
-  const d = new Date(value);
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
-};
 
 const formatBody = (body: string): string => {
   try {
@@ -153,10 +136,14 @@ const formatDurationMs = (value: number | null): string => {
   return `${value} ms`;
 };
 
-const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
-  if (!params.topic?.trim()) return '请选择 Topic';
-  if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
-  if (mode === 'msgid' && !params.msgId?.trim()) return '请输入 Message ID';
+const getQueryValidationError = (
+  mode: QueryMode,
+  params: MessageQuery,
+  t: (key: string) => string,
+): string | null => {
+  if (!params.topic?.trim()) return t('messagePage.selectTopicRequired');
+  if (mode === 'key' && !params.key?.trim()) return t('messagePage.enterMessageKeyRequired');
+  if (mode === 'msgid' && !params.msgId?.trim()) return t('messagePage.enterMessageIdRequired');
   return null;
 };
 
@@ -187,31 +174,20 @@ const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQu
   return commonParams;
 };
 
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
-};
-
 const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
   healthy: 'success',
   warning: 'warning',
   critical: 'error',
 };
 
-const diagnosticStatusText: Record<TraceDiagnosticStatus, string> = {
-  healthy: '健康',
-  warning: '关注',
-  critical: '异常',
+const diagnosticStatusKey: Record<TraceDiagnosticStatus, string> = {
+  healthy: 'clients.healthStatusHealthy',
+  warning: 'clients.healthStatusWarning',
+  critical: 'messagePage.traceStatusCritical',
 };
 
 const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagnostics }) => {
+  const { t } = useLang();
   const issueData = diagnostics.issues.slice(0, 8);
 
   return (
@@ -221,11 +197,11 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
         type={diagnostics.statusColor}
         message={
           <Flex gap={8} align="center" wrap>
-            <span>轨迹诊断</span>
-            <Tag color={diagnosticTagColor[diagnostics.status]}>{diagnostics.statusText}</Tag>
+            <span>{t('messagePage.traceDiagnostics')}</span>
+            <Tag color={diagnosticTagColor[diagnostics.status]}>{t(diagnostics.statusKey)}</Tag>
             {issueData.map((issue) => (
               <Tag key={issue.id} color={diagnosticTagColor[issue.severity]}>
-                {issue.title}
+                {t(issue.titleKey, issue.params)}
               </Tag>
             ))}
           </Flex>
@@ -233,24 +209,24 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
       />
       <Flex gap={16} wrap>
         <div style={{ minWidth: 160 }}>
-          <div style={{ color: '#8c8c8c', marginBottom: 6 }}>健康分</div>
+          <div style={{ color: '#8c8c8c', marginBottom: 6 }}>{t('messagePage.healthScore')}</div>
           <Progress
             percent={diagnostics.score}
             status={diagnostics.status === 'critical' ? 'exception' : 'normal'}
             strokeColor={diagnostics.status === 'healthy' ? '#52c41a' : undefined}
           />
         </div>
-        <Statistic title="轨迹阶段" value={diagnostics.summary.nodeCount} />
+        <Statistic title={t('messagePage.traceStageCount')} value={diagnostics.summary.nodeCount} />
         <Statistic
-          title="端到端耗时"
+          title={t('messagePage.endToEndLatency')}
           value={formatDurationMs(diagnostics.summary.endToEndLatencyMs)}
         />
         <Statistic
-          title="阶段耗时合计"
+          title={t('messagePage.totalStageDuration')}
           value={formatDurationMs(diagnostics.summary.totalNodeCostMs)}
         />
         <Statistic
-          title="消费成功率"
+          title={t('messagePage.consumeSuccessRate')}
           value={
             diagnostics.summary.successfulConsumerRate == null
               ? '-'
@@ -260,37 +236,45 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
       </Flex>
       {diagnostics.summary.slowestNode && (
         <Typography.Text type="secondary">
-          最慢阶段：{diagnostics.summary.slowestNode.title}，
-          {formatDurationMs(diagnostics.summary.slowestNode.valueMs)}
           {diagnostics.summary.slowestGap
-            ? `；最大阶段间隔：${diagnostics.summary.slowestGap.title}，${formatDurationMs(
-                diagnostics.summary.slowestGap.valueMs,
-              )}`
-            : ''}
+            ? t('messagePage.slowestStageWithGap', {
+                title: diagnostics.summary.slowestNode.title,
+                duration: formatDurationMs(diagnostics.summary.slowestNode.valueMs),
+                gapTitle: diagnostics.summary.slowestGap.title,
+                gapDuration: formatDurationMs(diagnostics.summary.slowestGap.valueMs),
+              })
+            : t('messagePage.slowestStage', {
+                title: diagnostics.summary.slowestNode.title,
+                duration: formatDurationMs(diagnostics.summary.slowestNode.valueMs),
+              })}
         </Typography.Text>
       )}
       {issueData.length > 0 && (
         <Table
           columns={[
             {
-              title: '级别',
+              title: t('messagePage.diagSeverity'),
               dataIndex: 'severity',
               key: 'severity',
               width: 90,
               render: (severity: TraceDiagnosticStatus) => (
-                <Tag color={diagnosticTagColor[severity]}>{diagnosticStatusText[severity]}</Tag>
+                <Tag color={diagnosticTagColor[severity]}>{t(diagnosticStatusKey[severity])}</Tag>
               ),
             },
             {
-              title: '风险',
-              dataIndex: 'title',
-              key: 'title',
+              title: t('messagePage.diagRisk'),
+              dataIndex: 'titleKey',
+              key: 'titleKey',
               width: 150,
+              render: (_: string, record: TraceDiagnosticIssue) =>
+                t(record.titleKey, record.params),
             },
             {
-              title: '说明',
-              dataIndex: 'description',
-              key: 'description',
+              title: t('messagePage.diagDescription'),
+              dataIndex: 'descriptionKey',
+              key: 'descriptionKey',
+              render: (_: string, record: TraceDiagnosticIssue) =>
+                t(record.descriptionKey, record.params),
             },
           ]}
           dataSource={issueData}
@@ -299,11 +283,11 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
           size="small"
         />
       )}
-      {diagnostics.recommendations.length > 0 && (
+      {diagnostics.recommendationCodes.length > 0 && (
         <Space direction="vertical" size={4}>
-          {diagnostics.recommendations.slice(0, 4).map((recommendation) => (
-            <Typography.Text key={recommendation} type="secondary">
-              {recommendation}
+          {diagnostics.recommendationCodes.slice(0, 4).map((code) => (
+            <Typography.Text key={code} type="secondary">
+              {t(`messagePage.issue.${code}.recommendation`)}
             </Typography.Text>
           ))}
         </Space>
@@ -319,10 +303,13 @@ type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
+  instancesFailed: boolean;
+  reloadInstances: () => void;
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -332,6 +319,8 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      instancesFailed={instancesFailed}
+      reloadInstances={reloadInstances}
     />
   );
 };
@@ -343,6 +332,8 @@ const MessagePageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instancesFailed,
+  reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
@@ -367,11 +358,11 @@ const MessagePageContent = ({
       setTopicOptions(nextTopics.map((topic) => topic.name));
     } catch (error: unknown) {
       if (requestId !== topicRequestId.current) return;
-      setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
+      setTopicError(error instanceof Error ? error.message : t('messagePage.loadTopicsFailed'));
     } finally {
       if (requestId === topicRequestId.current) setTopicLoading(false);
     }
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, t]);
 
   useEffect(() => {
     void Promise.resolve().then(loadTopicOptions);
@@ -408,6 +399,10 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const [directConsumeCapability, setDirectConsumeCapability] = useState<{
+    instanceId: string;
+    status: DirectConsumeCapabilityStatus;
+  } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
@@ -425,6 +420,49 @@ const MessagePageContent = ({
   );
 
   useEffect(() => {
+    const instanceId = selectedInstanceId;
+    if (!instanceId) return;
+
+    let active = true;
+    void getInstanceCapabilities(instanceId)
+      .then((result) => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({
+            instanceId,
+            status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
+              ? 'supported'
+              : 'unsupported',
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({ instanceId, status: 'unavailable' });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const directConsumeCapabilityStatus =
+    directConsumeCapability !== null && directConsumeCapability.instanceId === selectedInstanceId
+      ? directConsumeCapability.status
+      : 'loading';
+  const directConsumeSupported = directConsumeCapabilityStatus === 'supported';
+  const directConsumeDisabledReason = !selectedInstanceId
+    ? t('message.directConsumeSelectInstance')
+    : directConsumeCapabilityStatus === 'unavailable'
+      ? t('message.directConsumeCapabilityUnavailable')
+      : directConsumeCapabilityStatus === 'unsupported'
+        ? t('message.directConsumeUnsupported')
+        : directConsumeCapabilityStatus === 'loading'
+          ? t('message.directConsumeCapabilityLoading')
+          : undefined;
+
+  useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
   }, [customTraceTopic, selectedInstanceId]);
 
@@ -434,13 +472,13 @@ const MessagePageContent = ({
       : queryMode === 'key'
         ? { topic: selectedTopic, key: keyInput || undefined }
         : { topic: selectedTopic, msgId: msgIdInput || undefined };
-  const queryValidationError = getQueryValidationError(queryMode, currentQueryParams);
+  const queryValidationError = getQueryValidationError(queryMode, currentQueryParams, t);
   const queryDisabledReason = !selectedInstanceId
-    ? '请先选择实例'
+    ? t('messagePage.selectInstanceFirst')
     : topicLoading
-      ? '正在加载 Topic 列表'
+      ? t('messagePage.loadingTopics')
       : topicError
-        ? 'Topic 列表加载失败，请先重试'
+        ? t('messagePage.topicLoadFailedRetry')
         : queryValidationError;
 
   /* ─── Handlers ─── */
@@ -479,12 +517,12 @@ const MessagePageContent = ({
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     if (!selectedInstanceId) {
-      setQueryError('请先选择实例后再查询消息');
+      setQueryError(t('messagePage.selectInstanceBeforeQuery'));
       setQueryLoading(false);
       return;
     }
     const normalizedParams = normalizeMessageQuery(mode, params);
-    const validationError = getQueryValidationError(mode, normalizedParams);
+    const validationError = getQueryValidationError(mode, normalizedParams, t);
     if (validationError) {
       setQueryError(validationError);
       setQueryLoading(false);
@@ -509,10 +547,10 @@ const MessagePageContent = ({
       setMessagePageSize(result.size);
       setResultMayBeTruncated(result.resultMayBeTruncated);
       setQueryError(null);
-      message.success(`查询完成，共 ${result.total} 条`);
+      message.success(t('messagePage.queryCompleted', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
+        setQueryError(describeThrownMessage(error) || t('messagePage.queryFailed'));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -563,7 +601,7 @@ const MessagePageContent = ({
   };
 
   const handleVerifyConsume = () => {
-    message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
+    message.warning(t('messagePage.verifyNotAvailable'));
   };
   const loadMessageTrace = async (record: MessageRecord) => {
     const requestGeneration = traceGenerationRef.current + 1;
@@ -600,7 +638,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -608,6 +646,10 @@ const MessagePageContent = ({
       }
     }
   };
+
+  // Both tabs render halves of the trace payload — Trace draws the nodes, Verify draws the
+  // consumerStatus table — so a modal opened or switched straight onto either one must fetch it.
+  const rendersTracePayload = (tab: string) => tab === 'trace' || tab === 'consumer';
 
   const openDetail = (record: MessageRecord, tab = 'content') => {
     traceGenerationRef.current += 1;
@@ -617,12 +659,12 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
-    if (tab === 'trace') void loadMessageTrace(record);
+    if (rendersTracePayload(tab)) void loadMessageTrace(record);
   };
 
   const handleModalTabChange = (tab: string) => {
     setModalTab(tab);
-    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
+    if (rendersTracePayload(tab) && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
@@ -634,7 +676,11 @@ const MessagePageContent = ({
       // finally block will never reset traceLoading — stop it here instead.
       setTraceData(null);
       setTraceLoading(false);
-      setTraceError(traceQueryMode === 'key' ? '请输入 Message Key' : '请输入 Message ID');
+      setTraceError(
+        traceQueryMode === 'key'
+          ? t('messagePage.enterMessageKeyRequired')
+          : t('messagePage.enterMessageIdRequired'),
+      );
       return;
     }
     setTraceData(null);
@@ -655,7 +701,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -672,6 +718,7 @@ const MessagePageContent = ({
   };
 
   const openDirectConsume = () => {
+    if (!directConsumeSupported) return;
     setDirectConsumeGroup('');
     setDirectConsumeClientId('');
     setDirectConsumeOpen(true);
@@ -684,7 +731,7 @@ const MessagePageContent = ({
       !directConsumeGroup.trim() ||
       !directConsumeClientId.trim()
     ) {
-      message.warning('请填写目标消费组和在线客户端 ID');
+      message.warning(t('messagePage.directConsumeRequired'));
       return;
     }
     setDirectConsumeSubmitting(true);
@@ -697,19 +744,24 @@ const MessagePageContent = ({
         clientId: directConsumeClientId.trim(),
       });
       const detail = [result.consumeResult, result.remark].filter(Boolean).join('：');
-      message.info(`Broker 返回 ${detail || 'UNKNOWN'}，耗时 ${result.spentTimeMillis} ms`);
+      message.info(
+        t('messagePage.directConsumeResult', {
+          detail: detail || 'UNKNOWN',
+          time: result.spentTimeMillis,
+        }),
+      );
       setDirectConsumeOpen(false);
     } catch (error) {
-      message.error(getErrorMessage(error, '直接消费请求失败，请检查消费组和客户端是否在线'));
+      message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
     } finally {
       setDirectConsumeSubmitting(false);
     }
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob([record.body], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
-    message.success('消息下载成功');
+    message.success(t('messagePage.downloadSuccess'));
   };
 
   /* ─── Table Columns ─── */
@@ -761,7 +813,7 @@ const MessagePageContent = ({
       ),
     },
     {
-      title: '存储时间',
+      title: t('messagePage.storeTime'),
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 185,
@@ -773,15 +825,15 @@ const MessagePageContent = ({
       ),
     },
     {
-      title: '大小',
+      title: t('messagePage.size'),
       dataIndex: 'size',
       key: 'size',
       width: 80,
       align: 'right',
-      render: (size: number) => formatSize(size),
+      render: (size: number) => formatBytes(size),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 260,
       render: (_: unknown, record: MessageRecord) => (
@@ -792,7 +844,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => void openDetail(record, 'content')}
           >
-            详情
+            {t('common.detail')}
           </Button>
           <Button
             size="small"
@@ -800,7 +852,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#722ed1', color: '#722ed1' }}
             onClick={() => void openDetail(record, 'trace')}
           >
-            轨迹
+            {t('messagePage.trace')}
           </Button>
           <Button
             size="small"
@@ -808,7 +860,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
             onClick={handleVerifyConsume}
           >
-            验证
+            {t('messagePage.verify')}
           </Button>
           <Button
             size="small"
@@ -816,7 +868,7 @@ const MessagePageContent = ({
             style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
             onClick={() => handleDownload(record)}
           >
-            下载
+            {t('messagePage.download')}
           </Button>
         </Flex>
       ),
@@ -830,25 +882,25 @@ const MessagePageContent = ({
     retryCount: number;
   }> = [
     {
-      title: '消费者组',
+      title: t('topic.consumerGroup'),
       dataIndex: 'group',
       key: 'group',
       render: (g: string) => <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{g}</span>,
     },
     {
-      title: '投递状态',
+      title: t('messagePage.deliveryStatus'),
       dataIndex: 'deliveryStatus',
       key: 'deliveryStatus',
       render: (status: string) => {
         const s = DELIVERY_STATUS_MAP[(status ?? '').toLowerCase()] || {
-          label: status,
+          labelKey: status,
           color: 'default',
         };
-        return <Tag color={s.color}>{s.label}</Tag>;
+        return <Tag color={s.color}>{t(s.labelKey)}</Tag>;
       },
     },
     {
-      title: '消费时间',
+      title: t('messagePage.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
       render: (time: string) =>
@@ -859,7 +911,7 @@ const MessagePageContent = ({
         ),
     },
     {
-      title: '重试次数',
+      title: t('messagePage.retryCount'),
       dataIndex: 'retryCount',
       key: 'retryCount',
       align: 'center',
@@ -873,7 +925,7 @@ const MessagePageContent = ({
   const modalTabs = [
     {
       key: 'content',
-      label: '消息内容',
+      label: t('messagePage.tabContent'),
       children: selectedMsg && (
         <>
           <Descriptions column={2} size="small" style={{ marginBottom: 24 }}>
@@ -893,8 +945,10 @@ const MessagePageContent = ({
             <Descriptions.Item label="Key">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
-            <Descriptions.Item label="大小">{formatSize(selectedMsg.size)}</Descriptions.Item>
-            <Descriptions.Item label="重投次数">
+            <Descriptions.Item label={t('messagePage.size')}>
+              {formatBytes(selectedMsg.size)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
             </Descriptions.Item>
             <Descriptions.Item label="Born Host">
@@ -903,7 +957,7 @@ const MessagePageContent = ({
             <Descriptions.Item label="Store Host">
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.storeHost}</span>
             </Descriptions.Item>
-            <Descriptions.Item label="存储时间" span={2}>
+            <Descriptions.Item label={t('messagePage.storeTime')} span={2}>
               <span style={{ fontFamily: 'monospace' }}>{formatTimeMs(selectedMsg.storeTime)}</span>
             </Descriptions.Item>
             <Descriptions.Item label="Broker">
@@ -917,10 +971,26 @@ const MessagePageContent = ({
             </Descriptions.Item>
           </Descriptions>
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
-            消息体
+            {t('topic.messageBody')}
           </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t('messagePage.bodyTruncatedWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          {selectedMsg.bodyEncoding === 'BASE64' && (
+            <Alert
+              showIcon
+              type="info"
+              message={t('messagePage.bodyBinaryWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Paragraph
-            copyable
+            copyable={{ text: selectedMsg.body }}
             style={{
               background: '#f5f5f5',
               padding: '12px 16px',
@@ -935,20 +1005,24 @@ const MessagePageContent = ({
           >
             {formatBody(selectedMsg.body)}
           </Paragraph>
+          <MessageProperties
+            properties={selectedMsg.properties}
+            propertiesTruncated={selectedMsg.propertiesTruncated}
+          />
         </>
       ),
     },
     {
       key: 'trace',
-      label: '消息轨迹',
+      label: t('messagePage.tabTrace'),
       children: (
         <>
           <Space wrap size={8} style={{ marginBottom: 16 }}>
             <Segmented
               size="small"
               options={[
-                { value: 'msgid', label: '按 Message ID' },
-                { value: 'key', label: '按 Message Key' },
+                { value: 'msgid', label: t('messagePage.queryMode.msgid') },
+                { value: 'key', label: t('messagePage.queryMode.key') },
               ]}
               value={traceQueryMode}
               onChange={(value) => setTraceQueryMode(value as 'msgid' | 'key')}
@@ -957,7 +1031,9 @@ const MessagePageContent = ({
               size="small"
               style={{ width: 300 }}
               placeholder={
-                traceQueryMode === 'key' ? '输入 Message Key' : '消息 ID（默认当前消息）'
+                traceQueryMode === 'key'
+                  ? t('messagePage.inputKeyPlaceholder')
+                  : t('messagePage.traceMsgIdPlaceholder')
               }
               value={traceQueryValue}
               onChange={(event) => setTraceQueryValue(event.target.value)}
@@ -965,7 +1041,7 @@ const MessagePageContent = ({
             <Input
               size="small"
               style={{ width: 260 }}
-              placeholder="轨迹 Topic（留空使用默认）"
+              placeholder={t('messagePage.traceTopicPlaceholder')}
               value={customTraceTopic}
               onChange={(event) => setCustomTraceTopic(event.target.value)}
               allowClear
@@ -976,11 +1052,11 @@ const MessagePageContent = ({
               icon={<SearchOutlined />}
               onClick={() => void runTraceQuery()}
             >
-              查询轨迹
+              {t('messagePage.queryTrace')}
             </Button>
           </Space>
           {traceLoading ? (
-            <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
+            <Typography.Text type="secondary">{t('messagePage.loadingTrace')}</Typography.Text>
           ) : traceError ? (
             <Alert showIcon type="warning" message={traceError} />
           ) : traceData?.nodes?.length ? (
@@ -997,7 +1073,9 @@ const MessagePageContent = ({
                         {formatTimeMs(node.timestamp)}
                       </div>
                       <div style={{ marginTop: 2 }}>{node.description}</div>
-                      <div style={{ color: '#9CA3AF', fontSize: 14 }}>耗时 {node.costTime}ms</div>
+                      <div style={{ color: '#9CA3AF', fontSize: 14 }}>
+                        {t('messagePage.nodeCost', { time: node.costTime })}
+                      </div>
                     </div>
                   ),
                   status: node.status,
@@ -1005,14 +1083,14 @@ const MessagePageContent = ({
               />
             </Space>
           ) : (
-            <Typography.Text type="secondary">暂无轨迹数据</Typography.Text>
+            <Typography.Text type="secondary">{t('messagePage.noTraceData')}</Typography.Text>
           )}
         </>
       ),
     },
     {
       key: 'consumer',
-      label: '验证',
+      label: t('messagePage.verify'),
       children: (
         <Table
           columns={consumerStatusColumns}
@@ -1030,7 +1108,7 @@ const MessagePageContent = ({
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
+      <PageHeader title={t('message.title')} subtitle={t('messagePage.subtitle')} />
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>
@@ -1041,9 +1119,14 @@ const MessagePageContent = ({
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
+              failed={instancesFailed}
+              onRetry={reloadInstances}
             />
             <Segmented
-              options={QUERY_OPTIONS}
+              options={QUERY_OPTIONS.map(({ value }) => ({
+                value,
+                label: t(`messagePage.queryMode.${value}`),
+              }))}
               value={queryMode}
               onChange={(v) => handleQueryModeChange(v as QueryMode)}
             />
@@ -1054,7 +1137,7 @@ const MessagePageContent = ({
               {queryMode === 'topic' && (
                 <>
                   <Select
-                    placeholder="选择 Topic"
+                    placeholder={t('messagePage.topicPlaceholder')}
                     style={{ width: 360 }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
@@ -1083,7 +1166,7 @@ const MessagePageContent = ({
               {queryMode === 'key' && (
                 <>
                   <Select
-                    placeholder="选择 Topic"
+                    placeholder={t('messagePage.topicPlaceholder')}
                     style={{ width: 360 }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
@@ -1097,7 +1180,7 @@ const MessagePageContent = ({
                     }))}
                   />
                   <Input
-                    placeholder="输入 Message Key"
+                    placeholder={t('messagePage.inputKeyPlaceholder')}
                     style={{ width: 240 }}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
@@ -1108,7 +1191,7 @@ const MessagePageContent = ({
               {queryMode === 'msgid' && (
                 <>
                   <Select
-                    placeholder="选择 Topic"
+                    placeholder={t('messagePage.topicPlaceholder')}
                     style={{ width: 360 }}
                     value={selectedTopic}
                     onChange={setSelectedTopic}
@@ -1122,7 +1205,7 @@ const MessagePageContent = ({
                     }))}
                   />
                   <Input
-                    placeholder="输入 Message ID"
+                    placeholder={t('messagePage.inputMsgIdPlaceholder')}
                     style={{ width: 400 }}
                     value={msgIdInput}
                     onChange={(e) => setMsgIdInput(e.target.value)}
@@ -1139,13 +1222,13 @@ const MessagePageContent = ({
                   void handleQuery();
                 }}
               >
-                查询
+                {t('messagePage.query')}
               </Button>
               <Button icon={<ReloadOutlined />} onClick={handleReset}>
-                重置
+                {t('common.reset')}
               </Button>
               <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
-                服务端历史
+                {t('messagePage.serverHistory')}
               </Button>
             </Space>
           )}
@@ -1167,11 +1250,11 @@ const MessagePageContent = ({
         <Alert
           showIcon
           type="error"
-          message="Topic 列表加载失败"
+          message={t('messagePage.topicLoadFailed')}
           description={topicError}
           action={
             <Button size="small" onClick={() => void loadTopicOptions()}>
-              重试
+              {t('common.retry')}
             </Button>
           }
           style={{ marginBottom: 16 }}
@@ -1192,7 +1275,7 @@ const MessagePageContent = ({
         <Alert
           showIcon
           type="warning"
-          message="查询结果达到服务端扫描上限，当前总数可能不完整。"
+          message={t('messagePage.truncatedWarning')}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -1210,7 +1293,7 @@ const MessagePageContent = ({
               pageSize: messagePageSize,
               total: messageTotal,
               showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条消息`,
+              showTotal: (total) => t('messagePage.totalMessages', { total }),
               onChange: (page, pageSize) => {
                 const committed = committedQueryRef.current;
                 if (!committed) return;
@@ -1226,22 +1309,26 @@ const MessagePageContent = ({
 
       {/* ── Message Detail Modal ── */}
       <Modal
-        title="消息详情"
+        title={t('message.detail')}
         width={800}
         open={modalOpen}
         onCancel={closeDetail}
         destroyOnHidden
         footer={
           <Flex justify="flex-end" gap={8}>
-            <Button onClick={closeDetail}>关闭</Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!selectedInstanceId || !selectedMsg}
-              onClick={openDirectConsume}
-            >
-              直接消费
-            </Button>
+            <Button onClick={closeDetail}>{t('common.close')}</Button>
+            <Tooltip title={directConsumeDisabledReason}>
+              <span>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  disabled={!directConsumeSupported || !selectedInstanceId || !selectedMsg}
+                  onClick={openDirectConsume}
+                >
+                  {t('messagePage.directConsume')}
+                </Button>
+              </span>
+            </Tooltip>
           </Flex>
         }
       >
@@ -1249,19 +1336,19 @@ const MessagePageContent = ({
       </Modal>
 
       <Modal
-        title="直接消费消息"
-        open={directConsumeOpen}
+        title={t('messagePage.directConsumeTitle')}
+        open={directConsumeOpen && directConsumeSupported}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}
-        okText="执行"
+        okText={t('messagePage.execute')}
         destroyOnHidden
       >
         <Alert
           showIcon
           type="warning"
-          message="Broker 会请求指定在线客户端立即消费该消息。"
-          description="这不是向 Topic 重新发送消息；Broker 返回的消费结果会原样显示。"
+          message={t('messagePage.directConsumeHint')}
+          description={t('messagePage.directConsumeNote')}
           style={{ marginBottom: 16 }}
         />
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1270,13 +1357,13 @@ const MessagePageContent = ({
           <Input
             value={directConsumeGroup}
             onChange={(event) => setDirectConsumeGroup(event.target.value)}
-            placeholder="目标消费者组"
+            placeholder={t('messagePage.consumerGroupPlaceholder')}
             addonBefore="Consumer group"
           />
           <Input
             value={directConsumeClientId}
             onChange={(event) => setDirectConsumeClientId(event.target.value)}
-            placeholder="在线客户端 ID"
+            placeholder={t('messagePage.clientIdPlaceholder')}
             addonBefore="Client ID"
           />
         </Space>

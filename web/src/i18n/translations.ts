@@ -68,6 +68,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.export': { zh: '导出', en: 'Export' },
   'common.detail': { zh: '详情', en: 'Detail' },
   'common.close': { zh: '关闭', en: 'Close' },
+  'common.open': { zh: '打开', en: 'Open' },
   'common.noData': { zh: '暂无数据', en: 'No Data' },
   'common.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
   'common.liveRefresh': { zh: '实时刷新', en: 'Live Refresh' },
@@ -75,9 +76,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
   'common.unavailable': { zh: '不可用', en: 'Unavailable' },
+  'common.unknown': { zh: '未知', en: 'Unknown' },
 
   // ─── Global layout controls ───
   'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.noMatchingPage': { zh: '未找到匹配页面', en: 'No matching pages' },
+  'layout.shortcutNavigate': { zh: '切换', en: 'Navigate' },
   'layout.goHome': { zh: '返回首页', en: 'Go to home' },
   'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
   'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
@@ -116,6 +120,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  // ─── Shared mini charts ───
+  'charts.noTrendData': { zh: '暂无趋势数据', en: 'No trend data yet' },
+  'charts.trendData': { zh: '趋势数据：{values}', en: 'Trend: {values}' },
   'dashboardTraffic.title': { zh: '流量洞察', en: 'Traffic Insights' },
   'dashboardTraffic.activeClusters': { zh: '活跃集群', en: 'Active Clusters' },
   'dashboardTraffic.topClusterShare': { zh: '最高流量占比', en: 'Top Traffic Share' },
@@ -512,6 +519,313 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
   'message.title': { zh: '消息查询', en: 'Message Search' },
 
+  // ─── Message Page ───
+  'messagePage.subtitle': {
+    zh: '按 Topic、Key 或 Message ID 检索消息',
+    en: 'Search messages by Topic, Key, or Message ID',
+  },
+  'messagePage.queryMode.topic': { zh: '按 Topic 查询', en: 'Query by Topic' },
+  'messagePage.queryMode.key': { zh: '按 Message Key', en: 'Query by Message Key' },
+  'messagePage.queryMode.msgid': { zh: '按 Message ID', en: 'Query by Message ID' },
+  'messagePage.queryMode.queue': { zh: '按队列浏览', en: 'Browse by Queue' },
+  'messagePage.topicPlaceholder': { zh: '选择 Topic', en: 'Select a topic' },
+  'messagePage.inputKeyPlaceholder': { zh: '输入 Message Key', en: 'Enter message key' },
+  'messagePage.inputMsgIdPlaceholder': { zh: '输入 Message ID', en: 'Enter message ID' },
+  'messagePage.query': { zh: '查询', en: 'Query' },
+  'messagePage.serverHistory': { zh: '服务端历史', en: 'Server History' },
+  'messagePage.selectTopicRequired': { zh: '请选择 Topic', en: 'Please select a topic' },
+  'messagePage.enterMessageKeyRequired': {
+    zh: '请输入 Message Key',
+    en: 'Please enter a message key',
+  },
+  'messagePage.enterMessageIdRequired': {
+    zh: '请输入 Message ID',
+    en: 'Please enter a message ID',
+  },
+  'messagePage.selectInstanceFirst': { zh: '请先选择实例', en: 'Select an instance first' },
+  'messagePage.loadingTopics': { zh: '正在加载 Topic 列表', en: 'Loading topic list' },
+  'messagePage.topicLoadFailedRetry': {
+    zh: 'Topic 列表加载失败，请先重试',
+    en: 'Failed to load topic list, please retry first',
+  },
+  'messagePage.topicLoadFailed': { zh: 'Topic 列表加载失败', en: 'Failed to load topic list' },
+  'messagePage.loadTopicsFailed': { zh: '加载 Topic 列表失败', en: 'Could not load topic list' },
+  'messagePage.selectInstanceBeforeQuery': {
+    zh: '请先选择实例后再查询消息',
+    en: 'Select an instance before querying messages',
+  },
+  'messagePage.queryCompleted': {
+    zh: '查询完成，共 {total} 条',
+    en: 'Query completed, {total} messages in total',
+  },
+  'messagePage.totalMessages': { zh: '共 {total} 条消息', en: '{total} messages in total' },
+  'messagePage.truncatedWarning': {
+    zh: '查询结果达到服务端扫描上限，当前总数可能不完整。',
+    en: 'The query reached the server-side scan limit; the total count may be incomplete.',
+  },
+  'messagePage.bodyTruncatedWarning': {
+    zh: '消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。',
+    en: 'The body exceeds the server display limit and was truncated, so what is shown and downloaded here is incomplete.',
+  },
+  'messagePage.bodyBinaryWarning': {
+    zh: '消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。',
+    en: 'The body is not UTF-8 text and the server returned it BASE64-encoded; below is the encoded form.',
+  },
+  'messagePage.queryFailed': {
+    zh: '消息查询失败，请稍后重试',
+    en: 'Failed to query messages, please try again later',
+  },
+  'messagePage.traceLoadFailed': {
+    zh: '消息轨迹加载失败，请稍后重试',
+    en: 'Failed to load message trace, please try again later',
+  },
+  'messagePage.verifyNotAvailable': {
+    zh: '消费验证接口尚未接入，无法确认该消息的真实消费状态',
+    en: 'Consume verification is not available yet; the actual consume status of this message cannot be confirmed.',
+  },
+  'messagePage.deliveryStatusPending': { zh: '等待中', en: 'Pending' },
+  'messagePage.traceStatusCritical': { zh: '异常', en: 'Critical' },
+  'messagePage.traceDiagnostics': { zh: '轨迹诊断', en: 'Trace Diagnostics' },
+  'messagePage.healthScore': { zh: '健康分', en: 'Health Score' },
+  'messagePage.traceStageCount': { zh: '轨迹阶段', en: 'Trace Stages' },
+  'messagePage.endToEndLatency': { zh: '端到端耗时', en: 'End-to-End Latency' },
+  'messagePage.totalStageDuration': { zh: '阶段耗时合计', en: 'Total Stage Duration' },
+  'messagePage.consumeSuccessRate': { zh: '消费成功率', en: 'Consume Success Rate' },
+  'messagePage.slowestStage': {
+    zh: '最慢阶段：{title}，{duration}',
+    en: 'Slowest stage: {title}, {duration}',
+  },
+  'messagePage.slowestStageWithGap': {
+    zh: '最慢阶段：{title}，{duration}；最大阶段间隔：{gapTitle}，{gapDuration}',
+    en: 'Slowest stage: {title}, {duration}; largest stage gap: {gapTitle}, {gapDuration}',
+  },
+  'messagePage.diagSeverity': { zh: '级别', en: 'Severity' },
+  'messagePage.diagRisk': { zh: '风险', en: 'Risk' },
+  'messagePage.diagDescription': { zh: '说明', en: 'Description' },
+  'messagePage.traceStatusHealthy': { zh: '轨迹健康', en: 'Trace Healthy' },
+  'messagePage.traceStatusWarning': { zh: '需要关注', en: 'Needs Attention' },
+  'messagePage.traceStatusDeliveryCritical': { zh: '投递异常', en: 'Delivery Critical' },
+  'messagePage.issue.NO_TRACE_NODES.title': { zh: '缺少轨迹节点', en: 'No trace stages' },
+  'messagePage.issue.NO_TRACE_NODES.description': {
+    zh: '当前消息没有返回可展示的轨迹阶段。',
+    en: 'The message returned no trace stages to display.',
+  },
+  'messagePage.issue.NO_TRACE_NODES.recommendation': {
+    zh: '确认消息轨迹已开启，并检查是否需要指定自定义轨迹 Topic。',
+    en: 'Confirm message tracing is enabled and check whether a custom trace topic needs to be specified.',
+  },
+  'messagePage.issue.FAILED_TRACE_NODE.title': { zh: '轨迹阶段失败', en: 'Trace stage failed' },
+  'messagePage.issue.FAILED_TRACE_NODE.description': {
+    zh: '{phase} 阶段返回失败状态。',
+    en: 'The {phase} stage returned a failed status.',
+  },
+  'messagePage.issue.FAILED_TRACE_NODE.recommendation': {
+    zh: '优先查看失败阶段对应的生产者、Broker 或消费者日志，确认失败返回码和异常堆栈。',
+    en: 'Check the producer, broker, or consumer logs for the failed stage first to confirm the failure code and exception stack.',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.title': {
+    zh: '轨迹阶段未完成',
+    en: 'Trace stage not finished',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.description': {
+    zh: '{phase} 阶段仍处于等待或处理中状态。',
+    en: 'The {phase} stage is still waiting or being processed.',
+  },
+  'messagePage.issue.WAITING_TRACE_NODE.recommendation': {
+    zh: '等待或处理中阶段需要结合消费者在线状态和堆积情况确认是否仍在推进。',
+    en: 'For waiting or in-progress stages, check consumer availability and backlog to confirm whether progress is being made.',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.title': {
+    zh: '轨迹时间不可用',
+    en: 'Trace time unavailable',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.description': {
+    zh: '{phase} 阶段没有可解析的时间戳。',
+    en: 'The {phase} stage has no parsable timestamp.',
+  },
+  'messagePage.issue.INVALID_TRACE_TIMESTAMP.recommendation': {
+    zh: '检查生产者、Broker 与消费者机器时间，避免时钟漂移影响轨迹判断。',
+    en: 'Check the clocks on producers, brokers, and consumers to avoid clock drift affecting trace analysis.',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.title': {
+    zh: '轨迹时间发生回退',
+    en: 'Trace time regressed',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.description': {
+    zh: '{phase} 比上一阶段早 {gap} ms。',
+    en: 'The {phase} stage is {gap} ms earlier than the previous stage.',
+  },
+  'messagePage.issue.TRACE_TIMESTAMP_REGRESSION.recommendation': {
+    zh: '轨迹时间出现回退时，先确认各节点 NTP 同步和跨机房时间源配置。',
+    en: 'When trace time regresses, first verify NTP sync and cross-datacenter time source configuration.',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.title': {
+    zh: '阶段耗时不可用',
+    en: 'Stage cost unavailable',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.description': {
+    zh: '{phase} 阶段返回了无效耗时。',
+    en: 'The {phase} stage returned an invalid cost time.',
+  },
+  'messagePage.issue.INVALID_TRACE_COST.recommendation': {
+    zh: '忽略异常耗时值后再判断链路瓶颈，并核对服务端轨迹采集字段是否完整。',
+    en: 'Ignore the abnormal cost value before judging bottlenecks and verify the server-side trace fields are complete.',
+  },
+  'messagePage.issue.SLOW_TRACE_NODE.title': { zh: '阶段耗时偏高', en: 'High stage cost' },
+  'messagePage.issue.SLOW_TRACE_NODE.description': {
+    zh: '{phase} 阶段耗时 {cost} ms。',
+    en: 'The {phase} stage took {cost} ms.',
+  },
+  'messagePage.issue.SLOW_TRACE_NODE.recommendation': {
+    zh: '对耗时最高的阶段做分段排查，区分发送、存储和消费处理时间。',
+    en: 'Break down the slowest stage to separate send, storage, and consumption processing time.',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.title': {
+    zh: '相邻阶段间隔偏高',
+    en: 'High gap between stages',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.description': {
+    zh: '{phase} 与上一阶段相隔 {gap} ms。',
+    en: 'The {phase} stage started {gap} ms after the previous stage.',
+  },
+  'messagePage.issue.SLOW_TRACE_GAP.recommendation': {
+    zh: '相邻阶段间隔过大时，检查 Broker 拉取、客户端长轮询和消费线程池排队。',
+    en: 'When the gap between stages is large, check broker pulls, client long polling, and consumer thread pool queuing.',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.title': {
+    zh: '端到端轨迹耗时偏高',
+    en: 'High end-to-end trace latency',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.description': {
+    zh: '首尾轨迹阶段相隔 {latency} ms。',
+    en: 'The first and last trace stages are {latency} ms apart.',
+  },
+  'messagePage.issue.SLOW_END_TO_END_TRACE.recommendation': {
+    zh: '端到端耗时过高时，结合 Topic 队列分布、Consumer Group 进度和客户端负载一起排查。',
+    en: 'For high end-to-end latency, investigate topic queue distribution, consumer group progress, and client load together.',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.title': {
+    zh: '缺少消费状态',
+    en: 'Missing consumer status',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.description': {
+    zh: '轨迹中没有返回任何消费组的投递状态。',
+    en: 'The trace returned no delivery status for any consumer group.',
+  },
+  'messagePage.issue.MISSING_CONSUMER_STATUS.recommendation': {
+    zh: '缺少消费状态时，可用直接消费或 Consumer Group 进度进一步确认消息是否可达。',
+    en: 'When consumer status is missing, use direct consumption or consumer group progress to confirm deliverability.',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.title': {
+    zh: '消费投递失败',
+    en: 'Consumer delivery failed',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.description': {
+    zh: '{group} 返回失败消费状态。',
+    en: '{group} returned a failed consumption status.',
+  },
+  'messagePage.issue.FAILED_CONSUMER_DELIVERY.recommendation': {
+    zh: '失败消费组需要检查消费异常、重试 Topic 和业务幂等处理。',
+    en: 'For failed consumer groups, check consumption errors, retry topics, and business idempotency.',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.title': {
+    zh: '消费投递等待中',
+    en: 'Consumer delivery pending',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.description': {
+    zh: '{group} 尚未完成消费。',
+    en: '{group} has not finished consuming.',
+  },
+  'messagePage.issue.PENDING_CONSUMER_DELIVERY.recommendation': {
+    zh: '等待中的消费组需要确认客户端是否在线、订阅是否匹配以及是否存在明显堆积。',
+    en: 'For pending consumer groups, confirm the client is online, the subscription matches, and there is no significant backlog.',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.title': {
+    zh: '消费状态未知',
+    en: 'Unknown consumer status',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.description': {
+    zh: '{group} 返回未识别状态 {status}。',
+    en: '{group} returned an unrecognized status {status}.',
+  },
+  'messagePage.issue.UNKNOWN_CONSUMER_DELIVERY.recommendation': {
+    zh: '未知消费状态需要回查服务端返回值，避免把未识别状态误判为成功。',
+    en: 'For unknown consumer status, check the server response to avoid mistaking unrecognized states for success.',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.title': {
+    zh: '消费发生重试',
+    en: 'Consumer delivery retried',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.description': {
+    zh: '{group} 已重试 {retry} 次。',
+    en: '{group} has retried {retry} times.',
+  },
+  'messagePage.issue.RETRIED_CONSUMER_DELIVERY.recommendation': {
+    zh: '存在重试时，检查消费耗时、异常类型和重试次数是否符合预期。',
+    en: 'When retries occur, check whether consumption latency, error types, and retry counts are expected.',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.title': {
+    zh: '消费时间不可用',
+    en: 'Consume time unavailable',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.description': {
+    zh: '{group} 没有可解析的消费时间。',
+    en: '{group} has no parsable consume time.',
+  },
+  'messagePage.issue.INVALID_CONSUME_TIME.recommendation': {
+    zh: '消费时间不可解析时，检查 trace 数据生成端是否返回了完整时间字段。',
+    en: 'When consume time cannot be parsed, check whether the trace producer returns complete time fields.',
+  },
+  'messagePage.storeTime': { zh: '存储时间', en: 'Store Time' },
+  'messagePage.size': { zh: '大小', en: 'Size' },
+  'messagePage.trace': { zh: '轨迹', en: 'Trace' },
+  'messagePage.verify': { zh: '验证', en: 'Verify' },
+  'messagePage.download': { zh: '下载', en: 'Download' },
+  'messagePage.deliveryStatus': { zh: '投递状态', en: 'Delivery Status' },
+  'messagePage.consumeTime': { zh: '消费时间', en: 'Consume Time' },
+  'messagePage.retryCount': { zh: '重试次数', en: 'Retry Count' },
+  'messagePage.tabContent': { zh: '消息内容', en: 'Message Content' },
+  'messagePage.reconsumeTimes': { zh: '重投次数', en: 'Reconsume Times' },
+  'messagePage.tabTrace': { zh: '消息轨迹', en: 'Message Trace' },
+  'messagePage.traceMsgIdPlaceholder': {
+    zh: '消息 ID（默认当前消息）',
+    en: 'Message ID (defaults to current message)',
+  },
+  'messagePage.traceTopicPlaceholder': {
+    zh: '轨迹 Topic（留空使用默认）',
+    en: 'Trace topic (leave empty to use default)',
+  },
+  'messagePage.queryTrace': { zh: '查询轨迹', en: 'Query Trace' },
+  'messagePage.loadingTrace': { zh: '正在加载轨迹数据…', en: 'Loading trace data…' },
+  'messagePage.nodeCost': { zh: '耗时 {time}ms', en: 'Duration {time}ms' },
+  'messagePage.noTraceData': { zh: '暂无轨迹数据', en: 'No trace data' },
+  'messagePage.directConsume': { zh: '直接消费', en: 'Consume Directly' },
+  'messagePage.directConsumeTitle': { zh: '直接消费消息', en: 'Consume Message Directly' },
+  'messagePage.execute': { zh: '执行', en: 'Execute' },
+  'messagePage.directConsumeHint': {
+    zh: 'Broker 会请求指定在线客户端立即消费该消息。',
+    en: 'The broker will ask the specified online client to consume this message immediately.',
+  },
+  'messagePage.directConsumeNote': {
+    zh: '这不是向 Topic 重新发送消息；Broker 返回的消费结果会原样显示。',
+    en: 'This does not resend the message to the topic; the consume result returned by the broker is displayed as-is.',
+  },
+  'messagePage.directConsumeRequired': {
+    zh: '请填写目标消费组和在线客户端 ID',
+    en: 'Enter the target consumer group and an online client ID',
+  },
+  'messagePage.directConsumeResult': {
+    zh: 'Broker 返回 {detail}，耗时 {time} ms',
+    en: 'Broker returned {detail}, took {time} ms',
+  },
+  'messagePage.directConsumeFailed': {
+    zh: '直接消费请求失败，请检查消费组和客户端是否在线',
+    en: 'Direct consume request failed; check that the consumer group and client are online',
+  },
+  'messagePage.downloadSuccess': { zh: '消息下载成功', en: 'Message downloaded' },
+  'messagePage.consumerGroupPlaceholder': { zh: '目标消费者组', en: 'Target consumer group' },
+  'messagePage.clientIdPlaceholder': { zh: '在线客户端 ID', en: 'Online client ID' },
+
   // ─── Message Query History ───
   'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
   'messageHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
@@ -534,6 +848,22 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Dead Letter Queue ───
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
+  'dlq.resendPartialSummary': {
+    zh: '重投部分完成：成功 {resent}，失败 {failed}',
+    en: 'Resend partially completed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.resendFailedSummary': {
+    zh: '重投失败：成功 {resent}，失败 {failed}',
+    en: 'Resend failed: {resent} succeeded, {failed} failed',
+  },
+  'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
+  'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
+  'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },
+  'dlq.failureReason': { zh: '失败原因', en: 'Failure reason' },
+  'dlq.failureDetailsTruncated': {
+    zh: '失败明细较多，仅显示前 100 条。',
+    en: 'Only the first 100 failure details are shown.',
+  },
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
@@ -583,6 +913,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Configure business-flow alert rules for consumer lag, DLQ, and notification channels',
   },
   'alerts.totalRules': { zh: '规则总数', en: 'Total Rules' },
+  'alerts.totalRulesWithCount': { zh: '共 {count} 条规则', en: '{count} rules total' },
   'alerts.enabled': { zh: '已启用', en: 'Enabled' },
   'alerts.disabled': { zh: '已禁用', en: 'Disabled' },
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },
@@ -862,9 +1193,17 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.allChannels': { zh: '全部通道', en: 'All channels' },
   'deliveries.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'deliveries.allInstances': { zh: '全部实例', en: 'All instances' },
+  'deliveries.search': { zh: '搜索告警标题或失败原因', en: 'Search alert title or error' },
+  'deliveries.timeRange': { zh: '投递时间范围', en: 'Delivery time range' },
+  'deliveries.startTime': { zh: '投递开始时间', en: 'Delivery start time' },
+  'deliveries.endTime': { zh: '投递结束时间', en: 'Delivery end time' },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
+  },
+  'deliveries.instancesLoadFailed': {
+    zh: '实例列表加载失败，实例筛选暂时不可用',
+    en: 'Failed to load the instance list; the instance filter is unavailable',
   },
   'deliveries.retryQueued': { zh: '已加入重新投递队列', en: 'Added to the redelivery queue.' },
   'deliveries.retryFailed': {
@@ -1254,6 +1593,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
+  'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
+  'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },
+  'audit.summaryTopOperations': { zh: '高频操作', en: 'Top Operations' },
+  'audit.summaryResourceTypes': { zh: '资源类型分布', en: 'Resource Type Distribution' },
   'auditInsights.title': { zh: '审计风险洞察', en: 'Audit Risk Insights' },
   'auditInsights.level.healthy': { zh: '健康', en: 'Healthy' },
   'auditInsights.level.notice': { zh: '提示', en: 'Notice' },
@@ -1353,6 +1697,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.list.openAria': { zh: '打开会话 {title}', en: 'Open conversation {title}' },
   'ai.list.columnAction': { zh: '操作', en: 'Action' },
   'ai.list.deleteAria': { zh: '删除会话 {title}', en: 'Delete conversation {title}' },
+  'ai.list.archiveAria': { zh: '归档会话 {title}', en: 'Archive conversation {title}' },
+  'ai.list.unarchiveAria': { zh: '取消归档 {title}', en: 'Unarchive conversation {title}' },
+  'ai.list.archivedToast': { zh: '会话已归档', en: 'Conversation archived' },
+  'ai.list.unarchivedToast': {
+    zh: '会话已恢复到进行中',
+    en: 'Conversation moved back to active',
+  },
+  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2281,6 +2633,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.writeQueues': { zh: '写队列数', en: 'Write Queues' },
   'cluster.readQueues': { zh: '读队列数', en: 'Read Queues' },
   'cluster.brokerPermission': { zh: 'Broker 权限', en: 'Broker Permission' },
+  'cluster.permRW': { zh: '读写（6）', en: 'Read/Write (6)' },
+  'cluster.permR': { zh: '只读（4）', en: 'Read-only (4)' },
+  'cluster.permW': { zh: '只写（2）', en: 'Write-only (2)' },
+  'cluster.permNone': { zh: '无权限（0）', en: 'Disabled (0)' },
+  'cluster.queueMatchHint': {
+    zh: 'Broker 默认 Topic 的读写队列数需保持一致，否则会出现不可读/不可写队列',
+    en: 'RocketMQ Broker uses one default Topic queue count; read and write values must match',
+  },
   'cluster.viewDetail': { zh: '查看详情: {addr}', en: 'View detail: {addr}' },
   'cluster.proxyDetailTitle': { zh: 'Proxy 详情 - {addr}', en: 'Proxy Detail - {addr}' },
   'cluster.restartProxyConfirm': {
@@ -2398,6 +2758,119 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── User Menu ───
   'user.profile': { zh: '个人中心', en: 'Profile' },
   'user.logout': { zh: '退出登录', en: 'Logout' },
+  'user.logoutFailed': {
+    zh: '服务端退出失败，已清除本地登录状态',
+    en: 'Signing out on the server failed. The local session has been cleared.',
+  },
+
+  // ─── User Management ───
+  'userMgmt.title': { zh: '用户管理', en: 'User Management' },
+  'userMgmt.subtitle': {
+    zh: 'Studio 本地账号、会话与密码管理',
+    en: 'Studio local accounts, sessions and password management',
+  },
+  'userMgmt.createUser': { zh: '新建用户', en: 'Create User' },
+  'userMgmt.notAdminTitle': {
+    zh: '当前账号不是管理员',
+    en: 'Current account is not an administrator',
+  },
+  'userMgmt.notAdminDescription': {
+    zh: '你可以修改自己的密码；用户列表和账号状态仅对管理员开放。',
+    en: 'You can change your own password; the user list and account status are only available to administrators.',
+  },
+  'userMgmt.myAccount': { zh: '我的账号', en: 'My Account' },
+  'userMgmt.changeMyPassword': { zh: '修改我的密码', en: 'Change My Password' },
+  'userMgmt.sessionOverview': { zh: '会话概览', en: 'Session Overview' },
+  'userMgmt.activeSessions': { zh: '活跃会话', en: 'Active Sessions' },
+  'userMgmt.activeUsers': { zh: '活跃用户', en: 'Active Users' },
+  'userMgmt.expiringWithin': {
+    zh: '未来 {minutes} 分钟过期',
+    en: 'Expiring within {minutes} minutes',
+  },
+  'userMgmt.idleMinutes': { zh: '{minutes} 分钟未活跃', en: 'Idle for {minutes} minutes' },
+  'userMgmt.searchPlaceholder': { zh: '搜索用户名', en: 'Search username' },
+  'userMgmt.filterByRole': { zh: '按权限筛选', en: 'Filter by role' },
+  'userMgmt.allRoles': { zh: '全部权限', en: 'All roles' },
+  'userMgmt.roleAdmin': { zh: '管理员', en: 'Administrator' },
+  'userMgmt.roleUser': { zh: '普通用户', en: 'Regular user' },
+  'userMgmt.filterByStatus': { zh: '按状态筛选', en: 'Filter by status' },
+  'userMgmt.allStatuses': { zh: '全部状态', en: 'All statuses' },
+  'userMgmt.totalUsers': { zh: '共 {count} 个用户', en: '{count} users in total' },
+  'userMgmt.sessionId': { zh: '会话 ID', en: 'Session ID' },
+  'userMgmt.lastActive': { zh: '最近活跃', en: 'Last Active' },
+  'userMgmt.idleFor': { zh: '已空闲', en: 'Idle For' },
+  'userMgmt.expiresAt': { zh: '过期时间', en: 'Expires At' },
+  'userMgmt.remainingValidity': { zh: '剩余有效期', en: 'Remaining Validity' },
+  'userMgmt.createdAt': { zh: '创建时间', en: 'Created At' },
+  'userMgmt.username': { zh: '用户名', en: 'Username' },
+  'userMgmt.userId': { zh: '用户 ID', en: 'User ID' },
+  'userMgmt.role': { zh: '权限', en: 'Role' },
+  'userMgmt.nearestExpiry': { zh: '最近过期', en: 'Nearest Expiry' },
+  'userMgmt.changePassword': { zh: '改密', en: 'Password' },
+  'userMgmt.sessions': { zh: '会话', en: 'Sessions' },
+  'userMgmt.revokeConfirm': {
+    zh: '注销 {username} 的活跃会话？',
+    en: 'Revoke active sessions of {username}?',
+  },
+  'userMgmt.revokeDescription': {
+    zh: '用户需要重新登录，账号状态不会改变。',
+    en: 'The user will need to sign in again; the account status is unchanged.',
+  },
+  'userMgmt.revoke': { zh: '注销', en: 'Revoke' },
+  'userMgmt.enable': { zh: '启用', en: 'Enable' },
+  'userMgmt.disable': { zh: '禁用', en: 'Disable' },
+  'userMgmt.userSessions': { zh: '用户会话', en: 'User Sessions' },
+  'userMgmt.sessionsOf': { zh: '{username} 的会话', en: 'Sessions of {username}' },
+  'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
+  'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
+  'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
+  'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
+  'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
+  'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
+  'userMgmt.passwordMinLength': {
+    zh: '密码至少 8 位',
+    en: 'Password must be at least 8 characters',
+  },
+  'userMgmt.adminAccess': { zh: '管理员权限', en: 'Administrator Access' },
+  'userMgmt.resetPasswordOf': {
+    zh: '重置 {username} 的密码',
+    en: 'Reset password of {username}',
+  },
+  'userMgmt.currentPassword': { zh: '当前密码', en: 'Current Password' },
+  'userMgmt.newPassword': { zh: '新密码', en: 'New Password' },
+  'userMgmt.tagActive': { zh: '活跃', en: 'Active' },
+  'userMgmt.tagExpiringSoon': { zh: '即将过期', en: 'Expiring Soon' },
+  'userMgmt.tagStale': { zh: '长时间未活跃', en: 'Inactive' },
+  'userMgmt.loadFailed': { zh: '加载用户列表失败', en: 'Failed to load users' },
+  'userMgmt.loadSessionsFailed': { zh: '加载用户会话失败', en: 'Failed to load user sessions' },
+  'userMgmt.userCreated': { zh: '用户已创建', en: 'User created' },
+  'userMgmt.createFailed': { zh: '创建用户失败', en: 'Failed to create user' },
+  'userMgmt.userEnabled': { zh: '用户已启用', en: 'User enabled' },
+  'userMgmt.userDisabled': {
+    zh: '用户已禁用，全部会话已注销',
+    en: 'User disabled, all sessions revoked',
+  },
+  'userMgmt.updateStatusFailed': { zh: '更新用户状态失败', en: 'Failed to update user status' },
+  'userMgmt.passwordChanged': {
+    zh: '密码已修改，请使用新密码重新登录',
+    en: 'Password changed, please sign in with the new password',
+  },
+  'userMgmt.passwordReset': {
+    zh: '密码已重置，用户的现有会话已注销',
+    en: "Password reset, the user's existing sessions have been revoked",
+  },
+  'userMgmt.changePasswordFailed': { zh: '修改密码失败', en: 'Failed to change password' },
+  'userMgmt.revokedCount': {
+    zh: '已注销 {count} 个活跃会话',
+    en: 'Revoked {count} active sessions',
+  },
+  'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
+  'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
+  'userMgmt.exportFailed': {
+    zh: '导出用户列表失败，请稍后重试',
+    en: 'Failed to export users, please try again later',
+  },
 
   // ─── Login ───
   'login.title': { zh: '登录', en: 'Login' },
@@ -2440,6 +2913,11 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Please input a new NameServer address',
   },
   'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
+  'ops.unavailableTitle': { zh: '运行时配置不可用', en: 'Runtime configuration unavailable' },
+  'ops.unavailableDescription': {
+    zh: '当前集群不支持读取或更新 Ops 配置。',
+    en: 'This cluster does not support reading or updating Ops configuration.',
+  },
 
   // ─── Alert Management ───
   'alertMgmt.title': { zh: '告警规则管理', en: 'Alert Management' },
@@ -2505,6 +2983,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
   // ─── Alert rule templates ───
   'alertAssets.title': { zh: '业务告警', en: 'Business Alerts' },
+  'alertAssets.subtitle': {
+    zh: '可复用的业务告警规则模板资产',
+    en: 'Reusable business alert rule template assets',
+  },
   'alertAssets.name': { zh: '名称', en: 'Name' },
   'alertAssets.group': { zh: '规则组', en: 'Group' },
   'alertAssets.ruleCount': { zh: '规则数', en: 'Rules' },
@@ -2604,6 +3086,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.detail': { zh: '消息详情', en: 'Message Detail' },
   'message.body': { zh: '消息主体', en: 'Message Body' },
   'message.properties': { zh: '消息属性', en: 'Message Properties' },
+  'message.propertiesTruncated': {
+    zh: '属性过多或单值过长，服务端已截断展示',
+    en: 'Some properties were shortened by the server',
+  },
   'message.info': { zh: '消息信息', en: 'Message Info' },
   'message.tracking': { zh: '消息追踪', en: 'Message Tracking' },
   'message.showAll': { zh: '显示全部内容', en: 'Show All Content' },
@@ -2632,6 +3118,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.batchResend': { zh: '批量重发', en: 'Batch Resend' },
   'message.batchExport': { zh: '批量导出', en: 'Batch Export' },
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
+  'message.directConsumeSelectInstance': {
+    zh: '请先选择实例',
+    en: 'Select an instance first',
+  },
+  'message.directConsumeCapabilityLoading': {
+    zh: '正在确认当前实例是否支持直接消费',
+    en: 'Checking whether this instance supports direct consumption',
+  },
+  'message.directConsumeUnsupported': {
+    zh: '当前实例不支持直接消费',
+    en: 'This instance does not support direct consumption',
+  },
+  'message.directConsumeCapabilityUnavailable': {
+    zh: '无法获取实例能力，直接消费暂不可用',
+    en: 'Instance capabilities are unavailable; direct consumption is disabled',
+  },
 
   // ─── DLQ (detailed) ───
   'dlq.subtitle': {
@@ -2869,6 +3371,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'producer.warningIncompleteMetadata': {
     zh: '连接元数据不完整',
     en: 'Incomplete connection metadata',
+  },
+  'producer.warningIncompleteScan': {
+    zh: '扫描结果不完整',
+    en: 'Incomplete scan',
+  },
+  'producer.failedBroker': {
+    zh: 'Broker 失败：{name}',
+    en: 'Broker failed: {name}',
+  },
+  'producer.failedGroup': {
+    zh: '生产者组失败：{name}',
+    en: 'Producer group failed: {name}',
   },
 
   // ─── Namespace ───

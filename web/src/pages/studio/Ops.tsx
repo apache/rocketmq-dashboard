@@ -61,6 +61,13 @@ const OpsPage: React.FC = () => {
   const tlsUpdateInFlight = useRef(false);
   const [configurationAvailable, setConfigurationAvailable] = useState(false);
   const [unavailableReason, setUnavailableReason] = useState('');
+  /**
+   * A third state apart from "available" and "not supported". Until the load answers the page knows
+   * nothing, and rendering that as "this cluster does not support reading or updating the Ops
+   * configuration" is a claim it cannot make — and with no retry, since the failure is invisible.
+   */
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const [reloadKey, setReloadKey] = useState(0);
   const writeOperationEnabled = configurationAvailable && (!userId || admin === true);
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
@@ -75,13 +82,20 @@ const OpsPage: React.FC = () => {
           setNamesrvAddrList(data.namesvrAddrList);
           setUseVIPChannel(data.useVIPChannel);
           setUseTLS(data.useTLS);
-          setSelectedNamesrv(data.currentNamesrv);
+          // The effect re-runs when the display language changes (it feeds a localized error
+          // message); an unsaved selection that is still in the freshly loaded list must survive
+          // that re-run instead of snapping back to the stored current NameServer.
+          setSelectedNamesrv((current) =>
+            current && data.namesvrAddrList.includes(current) ? current : data.currentNamesrv,
+          );
           setCurrentNamesrv(data.currentNamesrv);
           setConfigurationAvailable(data.configurationAvailable);
           setUnavailableReason(data.unavailableReason || '');
+          setLoadState('ready');
         }
       } catch {
         if (!cancelled) {
+          setLoadState('failed');
           message.error(fetchFailedMessage);
         }
       }
@@ -92,7 +106,12 @@ const OpsPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [fetchFailedMessage, message]);
+  }, [fetchFailedMessage, message, reloadKey]);
+
+  const handleReload = () => {
+    setLoadState('loading');
+    setReloadKey((key) => key + 1);
+  };
 
   const handleUpdateNameSvrAddr = async () => {
     if (namesrvMutationInFlight.current) return;
@@ -191,12 +210,25 @@ const OpsPage: React.FC = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      {!configurationAvailable && (
+      {loadState === 'failed' && (
+        <Alert
+          type="warning"
+          showIcon
+          message={fetchFailedMessage}
+          action={
+            <Button size="small" onClick={handleReload}>
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 24 }}
+        />
+      )}
+      {loadState === 'ready' && !configurationAvailable && (
         <Alert
           type="info"
           showIcon
-          message="运行时配置不可用"
-          description={unavailableReason || '当前集群不支持读取或更新 Ops 配置。'}
+          message={t('ops.unavailableTitle')}
+          description={unavailableReason || t('ops.unavailableDescription')}
           style={{ marginBottom: 24 }}
         />
       )}

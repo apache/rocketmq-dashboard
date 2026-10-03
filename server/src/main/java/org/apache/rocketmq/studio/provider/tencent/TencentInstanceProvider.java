@@ -46,6 +46,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
@@ -55,12 +57,15 @@ import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.Pagination;
+import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -93,6 +98,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
@@ -149,6 +155,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 InstanceCapability.MESSAGE_QUERY,
                 InstanceCapability.MESSAGE_TRACE,
                 InstanceCapability.MESSAGE_SEND,
+                InstanceCapability.DIRECT_MESSAGE_CONSUME,
                 InstanceCapability.ACL_MANAGEMENT);
     }
 
@@ -222,11 +229,15 @@ public class TencentInstanceProvider implements InstanceProvider {
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeTopicListResponse response = describeTopics(context, type, search, offset, PAGE_SIZE);
             TopicItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("topic", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             topics.addAll(toTopics(data, instanceId, context, enrichTimes));
-            if (hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount()) || data.length < PAGE_SIZE) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
@@ -280,12 +291,20 @@ public class TencentInstanceProvider implements InstanceProvider {
         return topics;
     }
 
-    private static boolean hasFetchedAll(long offset, int pageSize, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && offset + pageSize >= totalCount;
+    private static void requireCompletePage(String resource, long offset, int returned, Long totalCount) {
+        if (totalCount != null && totalCount >= 0L
+                && returned < PAGE_SIZE && offset + returned < totalCount) {
+            throw new BusinessException(502,
+                    "Tencent Cloud returned an incomplete " + resource + " page");
+        }
     }
 
-    private static boolean hasFetchedAll(long fetched, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && fetched >= totalCount;
+    private static boolean hasFetchedAll(long offset, int returned, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + returned >= totalCount;
+    }
+
+    private static boolean isUnknownTotalCount(Long totalCount) {
+        return totalCount == null || totalCount < 0L;
     }
 
     private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
@@ -429,7 +448,10 @@ public class TencentInstanceProvider implements InstanceProvider {
             DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeConsumerGroupList(request));
             ConsumeGroupItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("consumer group", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             for (ConsumeGroupItem item : data) {
@@ -444,7 +466,8 @@ public class TencentInstanceProvider implements InstanceProvider {
                     groups.add(group);
                 }
             }
-            if (data.length < PAGE_SIZE || hasFetchedAll(offset, PAGE_SIZE, response.getTotalCount())) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
@@ -518,8 +541,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                     .topic(subscription.getTopic())
                     .broker("topic:" + subscription.getTopic())
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    // The Tencent API reports the lag per topic, so this row carries no queue
+                    // offsets; report the unknown sentinel instead of a zero that the console
+                    // would render as a real measurement next to the real lag.
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
                     .build());
         }
@@ -664,6 +690,36 @@ public class TencentInstanceProvider implements InstanceProvider {
             }
         }
         return mayBeTruncated ? MessageQueryResult.truncated(result) : MessageQueryResult.complete(result);
+    }
+
+    @Override
+    public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
+        Context context = resolve(request.getInstanceId());
+        VerifyMessageConsumptionRequest verifyRequest = new VerifyMessageConsumptionRequest();
+        verifyRequest.setInstanceId(context.cloudInstanceId());
+        verifyRequest.setTopic(request.getTopic());
+        verifyRequest.setMsgId(request.getMsgId());
+        verifyRequest.setConsumerGroup(request.getConsumerGroup());
+        verifyRequest.setClientId(request.getClientId());
+        long startedAt = System.nanoTime();
+        VerifyMessageConsumptionResponse response = clientFactory.call(
+                context.credentialId(), context.regionId(), client -> client.VerifyMessageConsumption(verifyRequest));
+        long spentTimeMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+        if (response == null) {
+            throw new BusinessException(502, "Tencent direct consume returned an empty response");
+        }
+        String requestId = response.getRequestId();
+        String acknowledgement = "Tencent accepted the verification request; "
+                + "the consumption outcome is not returned";
+        return DirectConsumeMessageResultVO.builder()
+                .consumeResult("REQUEST_ACCEPTED")
+                .remark(StringUtils.hasText(requestId)
+                        ? acknowledgement + " (requestId=" + requestId + ")"
+                        : acknowledgement)
+                .spentTimeMillis(spentTimeMillis)
+                .order(false)
+                .autoCommit(false)
+                .build();
     }
 
     @Override
@@ -882,7 +938,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static String toTraceStatus(int status) {
-        return status == 0 ? "finish" : "failed";
+        return status == 0 ? "finish" : "error";
     }
 
     private static String toConsumeTraceStatus(int status) {
@@ -987,7 +1043,6 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private List<SubscriptionData> listTopicSubscriptionsByGroup(Context context, String groupName) {
         List<SubscriptionData> all = new ArrayList<>();
-        long fetched = 0L;
         for (long offset = 0L; ; offset += PAGE_SIZE) {
             DescribeTopicListByGroupRequest request = new DescribeTopicListByGroupRequest();
             request.setInstanceId(context.cloudInstanceId());
@@ -997,12 +1052,15 @@ public class TencentInstanceProvider implements InstanceProvider {
             DescribeTopicListByGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeTopicListByGroup(request));
             SubscriptionData[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            requireCompletePage("consumer group subscription", offset, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
-            fetched += data.length;
             all.addAll(Arrays.asList(data));
-            if (data.length < PAGE_SIZE || hasFetchedAll(fetched, response.getTotalCount())) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
@@ -1015,7 +1073,7 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .expression(subscription.getSubString())
                 .type(subscription.getExpressionType())
                 .filterMode(subscription.getExpressionType())
-                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .consistency(SubscriptionConsistency.fromCode(subscription.getConsistency()))
                 .build();
     }
 

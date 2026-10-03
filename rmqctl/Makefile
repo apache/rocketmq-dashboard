@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+.DEFAULT_GOAL := build
 GO ?= go
-VERSION ?= 1.0.0
+VERSION ?= 3.0.0
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILD_DIR ?= $(CURDIR)/bin
@@ -32,7 +33,7 @@ CATALOG_GENERATOR := ./internal/catalog/generate
 CATALOG_MARKDOWN := ../docs/generated/rmq-tools.md
 CATALOG_SDK := ../docs/generated/rmq-tools.json
 
-.PHONY: build build-all package checksum release clean catalog-generate catalog-verify test test-race vet lint fmt verify ci completion install
+.PHONY: build build-all package checksum release clean catalog-generate catalog-verify test test-race vet lint fmt verify ci completion install license-binary
 
 catalog-generate:
 	$(GO) run $(CATALOG_GENERATOR) -input-dir $(CATALOG_SOURCE) -output $(CATALOG_GENERATED) \
@@ -65,6 +66,8 @@ ci: fmt test-race vet build-all
 build: catalog-verify
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl main.go
+	$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native
+	$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native -check
 
 build-all: catalog-verify
 	@mkdir -p $(BUILD_DIR)
@@ -74,18 +77,27 @@ build-all: catalog-verify
 	CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl-linux-arm64     main.go
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl-windows-amd64.exe main.go
 	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl-windows-arm64.exe main.go
+	# Generate per target; Windows-only dependencies must not reuse the Linux license manifest.
+	@set -e; for target in $(TARGETS); do \
+		os=$${target%%_*}; arch=$${target##*_}; suffix=; \
+		if [ "$$os" = "windows" ]; then suffix=.exe; fi; \
+		$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target; \
+		$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target -check; \
+	done
 
-package: build-all
+license-binary: build-all
+
+package: license-binary
 	@rm -rf $(PACKAGE_DIR)
 	@mkdir -p $(PACKAGE_DIR)
-	@for target in $(TARGETS); do \
+	@set -e; for target in $(TARGETS); do \
 		os=$${target%%_*}; arch=$${target##*_}; \
 		if [ "$$os" = "windows" ]; then \
 			binary=$(BUILD_DIR)/rmqctl-$$os-$$arch.exe; \
 		else \
 			binary=$(BUILD_DIR)/rmqctl-$$os-$$arch; \
 		fi; \
-		bash scripts/package-release.sh "$$binary" "$$os" "$$arch" "$(VERSION)" "$(LEGAL_DIR)" "$(PACKAGE_DIR)"; \
+		GO="$(GO)" bash scripts/package-release.sh "$$binary" "$$os" "$$arch" "$(VERSION)" "$(LEGAL_DIR)/$$target" "$(PACKAGE_DIR)"; \
 	done
 
 checksum: package
@@ -103,6 +115,9 @@ completion: build
 install: build
 	@mkdir -p $(DESTDIR)/usr/local/bin
 	cp $(BUILD_DIR)/rmqctl $(DESTDIR)/usr/local/bin/rmqctl
+	@mkdir -p $(DESTDIR)/usr/local/share/licenses/rmqctl/legal
+	cp $(LEGAL_DIR)/native/LICENSE $(LEGAL_DIR)/native/NOTICE $(DESTDIR)/usr/local/share/licenses/rmqctl/
+	cp -R $(LEGAL_DIR)/native/. $(DESTDIR)/usr/local/share/licenses/rmqctl/legal/
 
 clean:
 	rm -rf $(BUILD_DIR)

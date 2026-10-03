@@ -80,6 +80,8 @@ const ProducerPage = () => {
   const [connectionSummary, setConnectionSummary] = useState<ProducerConnectionSummary | null>(
     null,
   );
+  const [failedBrokers, setFailedBrokers] = useState<string[]>([]);
+  const [failedProducerGroups, setFailedProducerGroups] = useState<string[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -92,6 +94,8 @@ const ProducerPage = () => {
 
   const producerGroupRequestIdRef = useRef(0);
   const selectedTopic = Form.useWatch('selectedTopic', form);
+  // Instance whose scope the form was last cleared for; see the topic-list effect below.
+  const lastResetInstanceRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +130,8 @@ const ProducerPage = () => {
     queryInFlightRef.current = null;
     setConnectionList([]);
     setConnectionSummary(null);
+    setFailedBrokers([]);
+    setFailedProducerGroups([]);
     setLoading(false);
   };
 
@@ -146,7 +152,14 @@ const ProducerPage = () => {
       };
     }
 
-    form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
+    // The topic list belongs to the instance, so the picked topic and producer group are
+    // dropped when the instance changes. The effect also re-runs when the display
+    // language changes (it feeds a localized error message), and clearing the form there
+    // too silently discarded the scope the operator had just selected.
+    if (lastResetInstanceRef.current !== selectedInstanceId) {
+      lastResetInstanceRef.current = selectedInstanceId;
+      form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
+    }
 
     void fetchTopicList(selectedInstanceId)
       .then((topics) => {
@@ -205,6 +218,8 @@ const ProducerPage = () => {
     queryInFlightRef.current = requestId;
     setConnectionList([]);
     setConnectionSummary(null);
+    setFailedBrokers([]);
+    setFailedProducerGroups([]);
     setLoading(true);
     try {
       const result = await queryProducerConnection(
@@ -216,7 +231,9 @@ const ProducerPage = () => {
       const connections = result.connectionSet;
       setConnectionList(connections);
       setConnectionSummary(result.summary);
-      if (connections.length === 0) {
+      setFailedBrokers(result.failedBrokers);
+      setFailedProducerGroups(result.failedProducerGroups);
+      if (connections.length === 0 && result.complete) {
         message.info(t('producer.noConnections'));
       }
     } catch {
@@ -267,6 +284,7 @@ const ProducerPage = () => {
     DUPLICATE_CLIENT_ID: t('producer.warningDuplicateClientId'),
     MIXED_CLIENT_VERSION: t('producer.warningMixedVersion'),
     INCOMPLETE_CLIENT_METADATA: t('producer.warningIncompleteMetadata'),
+    INCOMPLETE_SCAN: t('producer.warningIncompleteScan'),
   };
 
   const renderDistribution = (items: ProducerConnectionSummary['languages']) =>
@@ -398,6 +416,16 @@ const ProducerPage = () => {
                   {connectionSummary.warnings.map((warning) => (
                     <Tag key={warning} color="warning">
                       {warningLabel[warning] ?? warning}
+                    </Tag>
+                  ))}
+                  {failedBrokers.map((broker) => (
+                    <Tag key={`broker:${broker}`} color="error">
+                      {t('producer.failedBroker', { name: broker })}
+                    </Tag>
+                  ))}
+                  {failedProducerGroups.map((group) => (
+                    <Tag key={`group:${group}`} color="error">
+                      {t('producer.failedGroup', { name: group })}
                     </Tag>
                   ))}
                 </Flex>

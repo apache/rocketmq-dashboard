@@ -5,7 +5,7 @@
 --       全新数据卷由 server/src/main/resources/db/schema.sql 直接带上 uk_nameserver_name。
 -- 幂等：可重复执行。
 --
--- ⚠️ 会删除同名重复记录（保留 created_at 最早的一条）。执行前可先用下面的查询核对重复：
+-- ⚠️ 会删除同名重复记录（保留 gmt_create 最早的一条）。执行前可先用下面的查询核对重复：
 --   SELECT name, COUNT(*) FROM rmq_nameserver GROUP BY name HAVING COUNT(*) > 1;
 --
 -- 用法（远程容器内执行）：
@@ -13,12 +13,12 @@
 
 SET NAMES utf8mb4;
 
--- 1. 清理同名重复（保留 created_at 最早，id 最小作为并列时的决胜）
+-- 1. 清理同名重复（保留 gmt_create 最早，id 最小作为并列时的决胜）
 DELETE i FROM rmq_nameserver i
 JOIN rmq_nameserver k
   ON k.name = i.name
- AND (k.created_at < i.created_at
-      OR (k.created_at = i.created_at AND k.id < i.id));
+ AND (k.gmt_create < i.gmt_create
+      OR (k.gmt_create = i.gmt_create AND k.id < i.id));
 
 -- 2. 追加唯一键（仅当不存在时）
 SET @uk_exists := (

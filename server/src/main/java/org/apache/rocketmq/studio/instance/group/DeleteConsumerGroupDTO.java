@@ -30,5 +30,6 @@ public class DeleteConsumerGroupDTO {
     @NotBlank(message = "name is required")
     private String name;
 
+    @NotBlank(message = "instanceId is required")
     private String instanceId;
 }

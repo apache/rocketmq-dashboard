@@ -18,12 +18,19 @@ package org.apache.rocketmq.studio.instance.message;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -34,11 +41,16 @@ public class MessageService {
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
     private static final int MAX_PAGE_SIZE = 200;
     private static final int TOPIC_QUERY_RESULT_LIMIT = 200;
+    private static final Comparator<MessageRecordVO> PAGE_ORDER = Comparator
+            .comparingLong(MessageRecordVO::getStoreTime)
+            .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo))
+            .reversed();
 
     private final MessageProvider messageProvider;
     private final InstanceProviderRegistry providerRegistry;
     private final QueryHistoryService queryHistoryService;
     private final OperationAuditService operationAuditService;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
@@ -70,8 +82,12 @@ public class MessageService {
         if (!StringUtils.hasText(uniqueKey)) {
             throw new BusinessException(400, "uniqueKey is required");
         }
+        validateProvidedTimeWindow(startTime, endTime);
         log.info("Querying message by unique key: topic={}, uniqueKey={}", topic, uniqueKey);
-        return messageProvider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessageByUniqueKey(instanceId, topic, uniqueKey, startTime, endTime))
+                .orElseGet(() -> messageProvider.queryMessageByUniqueKey(
+                        instanceId, topic, uniqueKey, startTime, endTime));
     }
 
     public MessageQueryPageVO queryMessagesPage(String instanceId, String topic, String msgId, String tag,
@@ -86,7 +102,8 @@ public class MessageService {
         // tell the user when deeper pages may be empty.
         MessageQueryResult queryResult = queryMessagesDetailed(
                 instanceId, topic, msgId, tag, key, startTime, endTime, page == 1);
-        List<MessageRecordVO> result = queryResult.messages();
+        // Each page re-queries the provider; broker response order must not move rows across page boundaries.
+        List<MessageRecordVO> result = queryResult.messages().stream().sorted(PAGE_ORDER).toList();
         long offset = (long) (page - 1) * pageSize;
         int from = (int) Math.min(offset, result.size());
         int to = Math.min(from + pageSize, result.size());
@@ -113,7 +130,9 @@ public class MessageService {
         if (!StringUtils.hasText(topic)) {
             throw new BusinessException(400, "topic is required");
         }
-        return messageProvider.getQueueOffsets(instanceId, topic);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.getQueueOffsets(instanceId, topic))
+                .orElseGet(() -> messageProvider.getQueueOffsets(instanceId, topic));
     }
 
     public MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
@@ -130,18 +149,77 @@ public class MessageService {
         if (offset < 0) {
             throw new BusinessException(400, "offset must not be negative");
         }
-        return messageProvider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.pullMessageAtOffset(instanceId, topic, brokerName, queueId, offset))
+                .orElseGet(() -> messageProvider.pullMessageAtOffset(
+                        instanceId, topic, brokerName, queueId, offset));
     }
 
     public DirectConsumeMessageResultVO consumeMessageDirectly(DirectConsumeMessageDTO request) {
-        DirectConsumeMessageResultVO result = providerRegistry.byInstanceId(request.getInstanceId())
-                .map(provider -> provider.consumeMessageDirectly(request))
-                .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
-        operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(), request.getInstanceId(),
-                "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
-                        + ", clientId=" + request.getClientId() + ", result=" + result.getConsumeResult(),
-                "SUCCESS", null);
-        return result;
+        if (request == null) {
+            throw new BusinessException(400, "Direct consume request must not be null");
+        }
+        var instance = ownershipGuard.requireInstance(request.getInstanceId());
+        request.setInstanceId(instance.getName());
+        request.setTopic(ResourceOwnershipGuard.requireText(request.getTopic(), "topicName"));
+        request.setConsumerGroup(ResourceOwnershipGuard.requireText(request.getConsumerGroup(), "groupName"));
+        request.setClientId(ResourceOwnershipGuard.requireText(request.getClientId(), "clientId"));
+        request.setMsgId(ResourceOwnershipGuard.requireText(request.getMsgId(), "msgId"));
+        // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
+        boolean apache = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
+        List<Resource> resources = List.of(new Resource(Kind.GROUP, request.getConsumerGroup()),
+                ownershipGuard.topicResource(request.getTopic()));
+        if (apache) {
+            resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+            ownershipGuard.requireSupportedProvider(instance);
+        }
+        String detail = "topic=" + request.getTopic() + ", consumerGroup=" + request.getConsumerGroup()
+                + ", clientId=" + request.getClientId();
+        try {
+            DirectConsumeMessageResultVO result = apache
+                    ? ownershipGuard.withOwned(instance, resources, () ->
+                            providerRegistry.byInstanceId(request.getInstanceId())
+                                    .map(provider -> consumeDirectlyThrough(provider, request))
+                                    .orElseGet(() -> messageProvider.consumeMessageDirectly(request)))
+                    : providerRegistry.byInstanceId(request.getInstanceId())
+                            .map(provider -> consumeDirectlyThrough(provider, request))
+                            .orElseGet(() -> messageProvider.consumeMessageDirectly(request));
+            recordDirectConsumeAudit(request, detail + ", result=" + result.getConsumeResult(),
+                    auditResult(result.getConsumeResult()), null);
+            return result;
+        } catch (RuntimeException e) {
+            recordDirectConsumeAudit(request, detail, "FAILED", e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
+     * Gate the registered-provider path on the advertised capability so a vendor without a
+     * direct-consume API answers 501 (see {@code GlobalExceptionHandler}) instead of letting the
+     * call fall through to an implementation that cannot honour it.
+     */
+    private static DirectConsumeMessageResultVO consumeDirectlyThrough(InstanceProvider provider,
+                                                                       DirectConsumeMessageDTO request) {
+        if (!provider.capabilities().contains(InstanceCapability.DIRECT_MESSAGE_CONSUME)) {
+            throw new UnsupportedOperationException(
+                    "Direct message consumption is not supported by this instance");
+        }
+        return provider.consumeMessageDirectly(request);
+    }
+
+    /** consumeResult mirrors the broker-side CMResult enum, where only CR_SUCCESS means consumed. */
+    private static String auditResult(String consumeResult) {
+        return "CR_SUCCESS".equals(consumeResult) ? "SUCCESS" : "FAILED";
+    }
+
+    private void recordDirectConsumeAudit(DirectConsumeMessageDTO request, String detail,
+                                          String result, String errorInfo) {
+        try {
+            operationAuditService.record("DIRECT_CONSUME_MESSAGE", "MESSAGE", request.getMsgId(),
+                    request.getInstanceId(), detail, result, errorInfo);
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record direct-consume audit: {}", auditFailure.getMessage());
+        }
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic, String traceTopic) {
@@ -204,6 +282,27 @@ public class MessageService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * Rejects a supplied window that cannot describe a real lookup, for the two lookups whose
+     * window is optional and therefore not covered by {@link #validateTopicQueryWindow}: the key
+     * branch of {@code queryMessages} and {@code queryMessageByUniqueKey}. Both used to forward a
+     * negated or inverted window to the provider, which either rejected it with a message of its
+     * own or passed it on to the broker / cloud API, so a malformed request had no single
+     * documented answer. No length bound is applied: the documented seven-day maximum belongs to
+     * topic scans only.
+     */
+    private static void validateProvidedTimeWindow(Long startTime, Long endTime) {
+        if (startTime != null && startTime < 0) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
+        }
+        if (endTime != null && endTime < 0) {
+            throw new BusinessException(400, "message query timestamps must not be negative");
+        }
+        if (startTime != null && endTime != null && startTime >= endTime) {
+            throw new BusinessException(400, "startTime must be before endTime");
+        }
+    }
+
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
         boolean hasTopic = StringUtils.hasText(topic);
         boolean hasMessageId = StringUtils.hasText(msgId);
@@ -218,6 +317,11 @@ public class MessageService {
             throw new BusinessException(400, "topic or msgId is required");
         }
         if (hasMessageId || hasKey) {
+            // A message id is a point lookup and never needs a window. A key query may carry an
+            // explicit one, so it is validated here without the topic-scan length bound.
+            if (hasKey) {
+                validateProvidedTimeWindow(startTime, endTime);
+            }
             return;
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;

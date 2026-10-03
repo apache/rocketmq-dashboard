@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai.tool.filter;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolInvocation;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -24,6 +25,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ToolAuditFilter implements ToolExecutionFilter {
 
     private final AuditService auditService;
@@ -48,13 +50,18 @@ public class ToolAuditFilter implements ToolExecutionFilter {
     }
 
     private void record(ToolExecutionContext context, String result, String errorMessage) {
-        auditService.record(context.operationType(),
-                context.resourceType(),
-                context.definition().name(),
-                context.instanceId(),
-                errorMessage,
-                result
-        );
+        try {
+            auditService.record(context.operationType(),
+                    context.resourceType(),
+                    context.definition().name(),
+                    context.instanceId(),
+                    errorMessage,
+                    result
+            );
+        } catch (RuntimeException auditFailure) {
+            log.warn("Failed to record tool audit result={} tool={} instance={}: {}",
+                    result, context.definition().name(), context.instanceId(), auditFailure.getMessage());
+        }
     }
 
 }

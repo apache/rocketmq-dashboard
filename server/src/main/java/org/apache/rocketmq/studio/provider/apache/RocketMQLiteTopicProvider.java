@@ -16,10 +16,12 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.attribute.TopicMessageType;
 import org.apache.rocketmq.common.lite.LiteUtil;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
@@ -30,6 +32,8 @@ import org.apache.rocketmq.remoting.protocol.body.GetLiteGroupInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.GetParentTopicInfoResponseBody;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
@@ -98,6 +102,8 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     // ─── Capability ───────────────────────────────────────────────────
 
@@ -108,8 +114,22 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
         try {
             return Boolean.TRUE.equals(adminFactory.execute(properties.getNamesrvAddr(), null, admin -> {
-                List<String> masters = masterAddresses(admin);
-                return !masters.isEmpty() && admin.getBrokerLiteInfo(masters.get(0)) != null;
+                // Probe every master and report supported when any of them answers the lite
+                // admin RPC: the iteration order of examineBrokerClusterInfo is arbitrary,
+                // so probing only the first master would disable the whole console on a
+                // mixed-version cluster (or while that one master restarts) even though
+                // the feature stays reachable through its peers.
+                for (String master : masterAddresses(admin)) {
+                    try {
+                        if (admin.getBrokerLiteInfo(master) != null) {
+                            return true;
+                        }
+                    } catch (Exception probeFailure) {
+                        log.debug("LiteTopic capability probe failed on {}: {}",
+                                master, probeFailure.getMessage());
+                    }
+                }
+                return false;
             }));
         } catch (Exception probeFailure) {
             // An older broker answers the lite RPC with an unsupported-code error; that is the
@@ -156,7 +176,16 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             throws Exception {
         Map<String, ParentTopicAccumulator> parents = new LinkedHashMap<>();
         for (String master : masters) {
-            GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+            final GetBrokerLiteInfoResponseBody info;
+            try {
+                info = admin.getBrokerLiteInfo(master);
+            } catch (Exception failure) {
+                // Every other per-master read in this provider degrades instead of failing
+                // the page; a single unreachable (or pre-lite) master must not turn the
+                // whole list into a 502 when its peers still answer.
+                log.warn("Skipping master {} for the LiteTopic list: {}", master, failure.getMessage());
+                continue;
+            }
             if (info == null || info.getTopicMeta() == null) {
                 continue;
             }
@@ -275,7 +304,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 .toList();
         session.setLiteTopics(new LinkedHashSet<>(liteTopics));
 
-        long pending = groupLag(admin, located.master, group);
+        long pending = sessionGroupLag(admin, located.master, group);
         long consumed = consumedMessages(admin, located.master, group, liteTopics);
         session.setPendingMessages(pending);
         session.setConsumedMessages(consumed);
@@ -317,7 +346,10 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                     consumed += wrapper.getConsumerOffset();
                 }
             } catch (Exception failure) {
-                log.debug("Failed to read lite offset for {}|{}: {}", group, liteTopic, failure.getMessage());
+                restoreInterrupt(failure);
+                throw new BusinessException(502,
+                        "Failed to read LiteTopic consumed offset for " + group + "|" + liteTopic
+                                + ": " + failure.getMessage());
             }
         }
         return consumed;
@@ -326,22 +358,37 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     // ─── TTL update ───────────────────────────────────────────────────
 
     @Override
-    public void extendTTL(String topicPattern, long ttlMillis) {
-        requireAdmin();
-        if (!StringUtils.hasText(topicPattern)) {
-            throw new BusinessException(400, "topicPattern is required");
+    public void extendTTL(String instanceId, String rawTopicPattern, long ttlMillis) {
+        var instance = ownershipGuard.requireInstance(instanceId);
+        String topicPattern = ResourceOwnershipGuard.requireText(rawTopicPattern, "topicPattern");
+        var resource = ownershipGuard.topicResource(topicPattern);
+        ownershipGuard.check(instance, resource, true);
+        ownershipGuard.requireSupportedProvider(instance);
+        if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
+            throw new BusinessException(409, "TTL can only be updated for a registered Lite parent topic");
         }
         if (ttlMillis <= 0) {
             throw new BusinessException(400, "newTTL must be positive");
         }
         long minutes = Math.min(Math.max(Math.round(ttlMillis / 60000.0), 1), MAX_LITE_TTL_MINUTES);
-        execute(admin -> {
-            int updated = 0;
-            for (String master : masterAddresses(admin)) {
-                TopicConfig config = liteTopicConfig(admin, master, topicPattern);
-                if (config == null) {
-                    continue;
+        ownershipGuard.withOwned(instance, List.of(resource), () -> runtimeAdminClientResolver.execute(instance, admin -> {
+            var owner = ownershipGuard.check(instance, resource, true);
+            var target = ApacheWriteTargetResolver.resolve(admin, instance, owner.clusterId());
+            // Read every master's config before writing any of them: a master that cannot be
+            // examined must fail the request up front instead of being silently skipped, which
+            // would leave the cluster with mixed lite.topic.expiration attributes while the
+            // console reports a fully successful extension.
+            Map<String, TopicConfig> pending = new LinkedHashMap<>();
+            for (String master : target.masters().stream().sorted().toList()) {
+                TopicConfig config = liteParentTopicConfig(admin, master, topicPattern);
+                if (config != null) {
+                    pending.put(master, config);
                 }
+            }
+            if (pending.isEmpty()) {
+                throw new BusinessException(404, "Lite parent topic not found: " + topicPattern);
+            }
+            for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
                 // Attributes read back from the broker use bare keys ("lite.topic.expiration"),
                 // while the update protocol only accepts change entries ("+key=value"); a bare
                 // key is rejected with "add/alter attribute format is wrong". The broker merges
@@ -350,30 +397,37 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                 // Only the TTL is altered.
                 Map<String, String> change = new HashMap<>();
                 change.put("+lite.topic.expiration", String.valueOf(minutes));
-                config.setAttributes(change);
-                admin.createAndUpdateTopicConfig(master, config);
-                updated++;
-            }
-            if (updated == 0) {
-                throw new BusinessException(404, "Lite parent topic not found: " + topicPattern);
+                entry.getValue().setAttributes(change);
+                admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
             }
             log.info("Extended LiteTopic TTL to {}ms ({} min) for parent topic {} on {} broker(s)",
-                    ttlMillis, minutes, topicPattern, updated);
+                    ttlMillis, minutes, topicPattern, pending.size());
             return null;
-        });
+        }));
     }
 
-    private TopicConfig liteTopicConfig(MQAdminExt admin, String brokerAddr, String topic) {
+    /**
+     * Reads the parent topic's config for the TTL update loop, distinguishing the outcomes the
+     * loop must treat differently: a topic that is absent on this master (or not a LITE topic)
+     * is a legitimate skip, while any other read failure propagates so the update cannot be
+     * applied to only part of the cluster and still report success.
+     */
+    private TopicConfig liteParentTopicConfig(MQAdminExt admin, String brokerAddr, String topic)
+            throws Exception {
+        TopicConfig config;
         try {
-            TopicConfig config = admin.examineTopicConfig(brokerAddr, topic);
-            if (config == null || !TopicMessageType.LITE.equals(config.getTopicMessageType())) {
+            config = admin.examineTopicConfig(brokerAddr, topic);
+        } catch (MQBrokerException failure) {
+            if (failure.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+                log.debug("Parent topic {} is not configured on {}", topic, brokerAddr);
                 return null;
             }
-            return config;
-        } catch (Exception failure) {
-            log.debug("Parent topic {} is not configured on {}: {}", topic, brokerAddr, failure.getMessage());
+            throw failure;
+        }
+        if (config == null || !TopicMessageType.LITE.equals(config.getTopicMessageType())) {
             return null;
         }
+        return config;
     }
 
     // ─── Quota ────────────────────────────────────────────────────────
@@ -391,7 +445,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             long currentSessions = 0;
             long maxSessions = 0;
             for (String master : masters) {
-                GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+                final GetBrokerLiteInfoResponseBody info;
+                try {
+                    info = admin.getBrokerLiteInfo(master);
+                } catch (Exception failure) {
+                    // Same per-master degradation as the list path: one unreachable or
+                    // pre-lite master must not fail the whole quota page with a 502.
+                    log.warn("Skipping master {} for the LiteTopic quota: {}", master, failure.getMessage());
+                    continue;
+                }
                 if (info == null) {
                     // Skip the master entirely: adding its session cap without its current
                     // counts would build the ratio out of two different master sets.
@@ -519,6 +581,28 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             }
         }
         return null;
+    }
+
+    private long sessionGroupLag(MQAdminExt admin, String brokerAddr, String group) {
+        try {
+            GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, null, 1);
+            if (body == null) {
+                throw new BusinessException(502, "Broker returned no LiteTopic backlog for group " + group);
+            }
+            return Math.max(body.getTotalLagCount(), 0);
+        } catch (BusinessException failure) {
+            throw failure;
+        } catch (Exception failure) {
+            restoreInterrupt(failure);
+            throw new BusinessException(502,
+                    "Failed to read LiteTopic backlog for group " + group + ": " + failure.getMessage());
+        }
+    }
+
+    private static void restoreInterrupt(Exception failure) {
+        if (failure instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private long groupLag(MQAdminExt admin, String brokerAddr, String group) {

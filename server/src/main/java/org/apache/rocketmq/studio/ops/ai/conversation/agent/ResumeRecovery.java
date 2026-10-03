@@ -46,8 +46,20 @@ import org.springframework.util.StringUtils;
  * </ol>
  * Losing the earlier turns' context is the price; without the retry the conversation is permanently
  * broken, because every subsequent turn would resume the same missing id.
+ *
+ * <p>The signal is detected where the exit code and the stderr are still in scope — the provider that
+ * spawned the CLI — and travels to the caller as {@link #RESUME_LOST_CODE} on a
+ * {@code LlmGatewayException}, because the frames alone cannot express it: the command that has to
+ * drop {@code --resume} is the provider's to build.
  */
 public final class ResumeRecovery {
+
+    /**
+     * The error code a provider reports when a run could not resume the session its conversation
+     * remembers. The caller that sees it owns the recovery: retry the turn once without
+     * {@code --resume}, after clearing {@code conversation.runtime_session_id}.
+     */
+    public static final String RESUME_LOST_CODE = "llm.provider.resume_lost";
 
     /** The CLI's stderr line, matched as a prefix of the first non-blank content. */
     static final String SESSION_NOT_FOUND_PREFIX = "No conversation found with session ID:";

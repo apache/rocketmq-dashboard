@@ -150,6 +150,43 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
                 });
     }
 
+    @Test
+    void preservesUnknownQueueLagInMetricsAvailabilityTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", ConsumerLagResolver.UNKNOWN);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(
+                QueueProgressVO.builder().topic("known-topic").diffTotal(12).build(),
+                QueueProgressVO.builder().topic("unknown-topic").diffTotal(ConsumerLagResolver.UNKNOWN).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_LAG_MAX_QUEUE))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.clusterId()).isEqualTo("cluster-a");
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                        ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL)
+                        && "known-topic".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+                    assertThat(sample.value()).isEqualTo(12D);
+                });
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                        ApacheRocketMqBusinessMetricsCollector.TOPIC_BACKLOG_TOTAL)
+                        && "unknown-topic".equals(sample.labels().get("topic")))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.clusterId()).isEqualTo("cluster-a");
+                });
+    }
+
     private static ConsumerGroupVO group(String name, String clusterId, long lag) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);

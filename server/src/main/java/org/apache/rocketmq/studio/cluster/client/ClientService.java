@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.client;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -30,6 +31,7 @@ import java.util.List;
 public class ClientService {
 
     private final ClientProvider clientProvider;
+    private final NameserverRegistryService nameserverRegistryService;
 
     public List<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type) {
         log.info("Listing client connections, instanceId={}, clusterId={}, type={}", instanceId, clusterId, type);
@@ -41,7 +43,8 @@ public class ClientService {
         if (!StringUtils.hasText(namesrvAddr)) {
             throw new BusinessException(400, "namesrvAddr is required");
         }
-        return clientProvider.findConnectionsAt(namesrvAddr.trim(), normalizeFilter(clusterId), normalizeFilter(type));
+        String registeredAddress = nameserverRegistryService.requireRegisteredAddress(namesrvAddr);
+        return clientProvider.findConnectionsAt(registeredAddress, normalizeFilter(clusterId), normalizeFilter(type));
     }
 
     private String requireInstanceId(String instanceId) {

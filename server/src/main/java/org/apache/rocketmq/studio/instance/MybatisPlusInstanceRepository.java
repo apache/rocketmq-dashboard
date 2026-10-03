@@ -192,9 +192,16 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     private InstanceVendor parseVendor(Long instanceId, String vendor) {
+        if (vendor == null || vendor.isBlank()) {
+            // vendor is an optional column and every writer stores a name, so a missing value is
+            // a row written before the column existed. Every reader treats that as APACHE
+            // (InstanceService, InstanceCapabilityService, the metrics collectors), so only a
+            // value that names no vendor at all is a corrupt row.
+            return InstanceVendor.APACHE;
+        }
         try {
             return InstanceVendor.valueOf(vendor);
-        } catch (IllegalArgumentException | NullPointerException ex) {
+        } catch (IllegalArgumentException ex) {
             throw invalidPersistedValue(instanceId, "vendor", vendor);
         }
     }

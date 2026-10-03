@@ -7,32 +7,68 @@
  * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import static org.mockito.ArgumentMatchers.any;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class MessageServiceTest {
+
+    private ResourceOwnershipGuard ownershipGuard() {
+        ResourceOwnershipGuard guard = mock(ResourceOwnershipGuard.class);
+        when(guard.requireInstance(any())).thenAnswer(call -> InstanceVO.builder()
+                .name(ResourceOwnershipGuard.requireText(call.getArgument(0), "instanceId")).build());
+        when(guard.topicResource(any())).thenCallRealMethod();
+        when(guard.withOwned(any(), any(), any())).thenAnswer(call ->
+                call.<java.util.function.Supplier<Object>>getArgument(2).get());
+        return guard;
+    }
+
+    @Test
+    void directConsumeRejectsMissingInstanceBeforeProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        assertThatThrownBy(() -> service.consumeMessageDirectly(new DirectConsumeMessageDTO()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(provider, registry);
+    }
 
     @Test
     void rejectsNegativeQueueCoordinatesBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
-                mock(QueryHistoryService.class), mock(OperationAuditService.class));
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.pullMessageAtOffset("instance-a", "TopicA", "broker-a", -1, 0))
                 .isInstanceOf(BusinessException.class)
@@ -48,7 +84,7 @@ class MessageServiceTest {
     void rejectsKeyQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessages(null, null, null, null, "order-1", null, null))
                 .isInstanceOf(BusinessException.class)
@@ -61,7 +97,7 @@ class MessageServiceTest {
     void rejectsMessageIdQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessages(null, null, "msg-001", null, null, null, null))
                 .isInstanceOf(BusinessException.class)
@@ -74,7 +110,7 @@ class MessageServiceTest {
     void rejectsBlankMessageTraceIdBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  ", null))
                 .isInstanceOf(BusinessException.class)
@@ -87,7 +123,7 @@ class MessageServiceTest {
     void rejectsReversedTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
@@ -100,7 +136,7 @@ class MessageServiceTest {
     void rejectsTopicQueryWindowLongerThanSevenDaysBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 0L,
                 8L * 24 * 60 * 60 * 1000))
@@ -116,7 +152,7 @@ class MessageServiceTest {
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class), ownershipGuard());
         when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
         when(provider.queryMessagesDetailed("cloud-instance", "orders", null, null, "ORDER-1", null, null))
                 .thenReturn(MessageQueryResult.complete(
@@ -144,8 +180,9 @@ class MessageServiceTest {
         DirectConsumeMessageResultVO expected = DirectConsumeMessageResultVO.builder()
                 .consumeResult("CR_SUCCESS").build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
         when(provider.consumeMessageDirectly(request)).thenReturn(expected);
-        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
 
         org.assertj.core.api.Assertions.assertThat(service.consumeMessageDirectly(request)).isSameAs(expected);
 
@@ -156,10 +193,93 @@ class MessageServiceTest {
     }
 
     @Test
+    void auditsDirectConsumeFailureWhenConsumeResultIsNotSuccessTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
+        when(provider.consumeMessageDirectly(request)).thenReturn(DirectConsumeMessageResultVO.builder()
+                .consumeResult("CR_ROLLBACK").build());
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
+
+        service.consumeMessageDirectly(request);
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void auditsDirectConsumeFailureWhenProviderThrowsTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.DIRECT_MESSAGE_CONSUME));
+        when(provider.consumeMessageDirectly(request)).thenThrow(new IllegalStateException("client offline"));
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
+
+        assertThatThrownBy(() -> service.consumeMessageDirectly(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("client offline");
+
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("instance-a"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.eq("client offline"));
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void rejectsDirectConsumptionWhenSelectedProviderDoesNotAdvertiseCapabilityTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId("cloud-instance");
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.capabilities()).thenReturn(Set.of(InstanceCapability.MESSAGE_QUERY));
+        MessageService service = new MessageService(
+                fallback, registry, mock(QueryHistoryService.class), audit, ownershipGuard());
+
+        assertThatThrownBy(() -> service.consumeMessageDirectly(request))
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessage("Direct message consumption is not supported by this instance");
+
+        verify(provider, never()).consumeMessageDirectly(request);
+        verifyNoInteractions(fallback);
+        verify(audit).record(org.mockito.ArgumentMatchers.eq("DIRECT_CONSUME_MESSAGE"),
+                org.mockito.ArgumentMatchers.eq("MESSAGE"), org.mockito.ArgumentMatchers.eq("msg-1"),
+                org.mockito.ArgumentMatchers.eq("cloud-instance"), org.mockito.ArgumentMatchers.contains("billing"),
+                org.mockito.ArgumentMatchers.eq("FAILED"), org.mockito.ArgumentMatchers.contains("not supported"));
+    }
+
+    @Test
     void rejectsOverflowingTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null,
                 0L, Long.MAX_VALUE))
@@ -170,11 +290,83 @@ class MessageServiceTest {
     }
 
     @Test
+    void keyQueryRejectsNegativeTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", -1000L, 2000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                -1000L, 2000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("message query timestamps must not be negative");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void keyQueryRejectsInvalidTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 2000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 1000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                2000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, "order-1",
+                1000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void keyQueryKeepsASingleSidedTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        service.queryMessages("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null);
+
+        verify(provider).queryMessagesDetailed("instance-a", "TopicA", null, "PAID", "order-1", 5000L, null);
+    }
+
+    @Test
+    void messageIdLookupStillIgnoresTheTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L))
+                .thenReturn(MessageQueryResult.complete(List.of()));
+
+        service.queryMessages("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L);
+
+        verify(provider).queryMessagesDetailed("instance-a", "TopicA", "msg-001", null, null, 2000L, 1000L);
+    }
+
+    @Test
     void pageQuerySlicesProviderResultAndSignalsBoundedTopicResult() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class), ownershipGuard());
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
                 .thenReturn(MessageQueryResult.complete(java.util.stream.IntStream.range(0, 200)
@@ -189,12 +381,57 @@ class MessageServiceTest {
         assertThat(page.isResultMayBeTruncated()).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void pageQueryKeepsStableOrderAcrossChangingProviderResultsTest(boolean registeredProvider) {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO newest = MessageRecordVO.builder().msgId("newest").storeTime(3000L).build();
+        MessageRecordVO sameTimeA = MessageRecordVO.builder().msgId("a").storeTime(2000L).build();
+        MessageRecordVO sameTimeB = MessageRecordVO.builder().msgId("b").storeTime(2000L).build();
+        MessageRecordVO missingId = MessageRecordVO.builder().storeTime(2000L).build();
+        MessageRecordVO oldest = MessageRecordVO.builder().msgId("oldest").storeTime(1000L).build();
+        MessageQueryResult firstResult = MessageQueryResult.truncated(
+                List.of(oldest, sameTimeA, missingId, newest, sameTimeB));
+        MessageQueryResult secondResult = MessageQueryResult.truncated(
+                List.of(sameTimeB, newest, oldest, missingId, sameTimeA));
+        when(registry.byInstanceId("instance-a")).thenReturn(
+                registeredProvider ? Optional.of(provider) : Optional.empty());
+        if (registeredProvider) {
+            when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        } else {
+            when(fallback.queryMessagesDetailed("instance-a", "TopicA", null, null, "key-1", null, null))
+                    .thenReturn(firstResult, secondResult, firstResult);
+        }
+
+        MessageQueryPageVO firstPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 1, 2);
+        MessageQueryPageVO secondPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 2, 2);
+        MessageQueryPageVO thirdPage = service.queryMessagesPage(
+                "instance-a", "TopicA", null, null, "key-1", null, null, 3, 2);
+
+        assertThat(firstPage.getItems()).containsExactly(newest, sameTimeB);
+        assertThat(secondPage.getItems()).containsExactly(sameTimeA, missingId);
+        assertThat(thirdPage.getItems()).containsExactly(oldest);
+        assertThat(List.of(firstPage, secondPage, thirdPage)).allSatisfy(page -> {
+            assertThat(page.getTotal()).isEqualTo(5);
+            assertThat(page.isResultMayBeTruncated()).isTrue();
+        });
+        assertThat(firstResult.messages()).containsExactly(oldest, sameTimeA, missingId, newest, sameTimeB);
+        assertThat(secondResult.messages()).containsExactly(sameTimeB, newest, oldest, missingId, sameTimeA);
+    }
+
     @Test
     void pageQueryPropagatesProviderTruncationBelowTheGenericTopicThreshold() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class), ownershipGuard());
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
                 .thenReturn(MessageQueryResult.truncated(
@@ -214,7 +451,7 @@ class MessageServiceTest {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class), ownershipGuard());
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "order-1", 1000L, 2000L))
                 .thenReturn(MessageQueryResult.truncated(List.of(
@@ -231,7 +468,7 @@ class MessageServiceTest {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class), ownershipGuard());
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, null, 1000L, 2000L))
                 .thenReturn(MessageQueryResult.complete(
@@ -253,7 +490,7 @@ class MessageServiceTest {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class));
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
         when(provider.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(trace);
@@ -273,7 +510,7 @@ class MessageServiceTest {
         InstanceProvider provider = mock(InstanceProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class), ownershipGuard());
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
         when(provider.getMessageTrace("instance-a", "msg-001", "orders", "CUSTOM_TRACE"))
@@ -292,7 +529,7 @@ class MessageServiceTest {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class), ownershipGuard());
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(fallback.getMessageTraceByKey("instance-a", "ORDER-1", "orders", null)).thenReturn(trace);
@@ -311,7 +548,7 @@ class MessageServiceTest {
         MessageProvider fallback = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         QueryHistoryService history = mock(QueryHistoryService.class);
-        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class));
+        MessageService service = new MessageService(fallback, registry, history, mock(OperationAuditService.class), ownershipGuard());
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
         when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
         when(fallback.getMessageTraceByKey("instance-a", "ORDER-1", "orders", "CUSTOM_TRACE"))
@@ -328,7 +565,7 @@ class MessageServiceTest {
     void rejectsBlankUniqueKeyQueryBeforeCallingProviderTest() {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
-                mock(QueryHistoryService.class), mock(OperationAuditService.class));
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
 
         assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", null, "uniq-1", null, null))
                 .isInstanceOf(BusinessException.class)
@@ -341,10 +578,68 @@ class MessageServiceTest {
     }
 
     @Test
+    void uniqueKeyQueryRejectsInvertedTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1",
+                2000L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startTime must be before endTime");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void uniqueKeyQueryRejectsNegativeTimeWindowBeforeCallingProviderTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1",
+                -1L, 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("message query timestamps must not be negative");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void uniqueKeyQueryKeepsTheTimeWindowOptionalTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null))
+                .thenReturn(List.of(record));
+
+        assertThat(service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null))
+                .containsExactly(record);
+
+        verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", null, null);
+    }
+
+    @Test
+    void uniqueKeyQueryAcceptsASingleSidedTimeWindowTest() {
+        MessageProvider provider = mock(MessageProvider.class);
+        MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null))
+                .thenReturn(List.of(record));
+
+        assertThat(service.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null))
+                .containsExactly(record);
+
+        verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 5000L, null);
+    }
+
+    @Test
     void delegatesUniqueKeyQueryToMessageProviderTest() {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider, mock(InstanceProviderRegistry.class),
-                mock(QueryHistoryService.class), mock(OperationAuditService.class));
+                mock(QueryHistoryService.class), mock(OperationAuditService.class), ownershipGuard());
         MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
         when(provider.queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L))
                 .thenReturn(List.of(record));
@@ -353,5 +648,53 @@ class MessageServiceTest {
                 .containsExactly(record);
 
         verify(provider).queryMessageByUniqueKey("instance-a", "TopicA", "uniq-1", 100L, 200L);
+    }
+
+    @Test
+    void instanceScopedMessageOperationsResolveTheSelectedProviderBeforeFallbackTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        BusinessException unsupported = new BusinessException(501,
+                "Selected instance does not support this message operation");
+        when(registry.byInstanceId("cloud-instance")).thenThrow(unsupported);
+
+        assertThatThrownBy(() -> service.queryMessageByUniqueKey(
+                "cloud-instance", "TopicA", "uniq-1", null, null))
+                .isSameAs(unsupported);
+        assertThatThrownBy(() -> service.getQueueOffsets("cloud-instance", "TopicA"))
+                .isSameAs(unsupported);
+        assertThatThrownBy(() -> service.pullMessageAtOffset(
+                "cloud-instance", "TopicA", "broker-a", 0, 0))
+                .isSameAs(unsupported);
+
+        verify(registry, org.mockito.Mockito.times(3)).byInstanceId("cloud-instance");
+        verifyNoInteractions(fallback);
+    }
+
+    @Test
+    void instanceScopedMessageOperationsUseTheSelectedProviderResultsTest() {
+        MessageProvider fallback = mock(MessageProvider.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallback, registry, mock(QueryHistoryService.class),
+                mock(OperationAuditService.class), ownershipGuard());
+        MessageRecordVO record = MessageRecordVO.builder().msgId("msg-1").build();
+        QueueOffsetVO queue = QueueOffsetVO.builder().brokerName("broker-a").queueId(0).build();
+        when(registry.byInstanceId("cloud-instance")).thenReturn(Optional.of(provider));
+        when(provider.queryMessageByUniqueKey("cloud-instance", "TopicA", "uniq-1", 100L, 200L))
+                .thenReturn(List.of(record));
+        when(provider.getQueueOffsets("cloud-instance", "TopicA")).thenReturn(List.of(queue));
+        when(provider.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .thenReturn(record);
+
+        assertThat(service.queryMessageByUniqueKey("cloud-instance", "TopicA", "uniq-1", 100L, 200L))
+                .containsExactly(record);
+        assertThat(service.getQueueOffsets("cloud-instance", "TopicA")).containsExactly(queue);
+        assertThat(service.pullMessageAtOffset("cloud-instance", "TopicA", "broker-a", 0, 7L))
+                .isSameAs(record);
+
+        verifyNoInteractions(fallback);
     }
 }

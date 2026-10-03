@@ -29,11 +29,11 @@ import {
   Typography,
   message,
 } from 'antd';
-import { Trash } from '@phosphor-icons/react';
+import { Archive, TrayArrowUp, Trash } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../../i18n/LangContext';
 import type { AiConversationListItemVO, RunStatus } from '../../../api/aiEvents';
-import { deleteConversation } from '../../../api/aiConversations';
+import { deleteConversation, updateConversation } from '../../../api/aiConversations';
 import { useConversationList } from '../hooks/useConversationList';
 import { formatUtcDateTime } from '../../../utils/format';
 import { tableScrollX } from '../../../utils/table';
@@ -119,7 +119,7 @@ const COLUMN_WIDTHS = {
   instance: 120,
   status: 106,
   updatedAt: 176,
-  action: 56,
+  action: 88,
 } as const;
 
 const TABLE_SCROLL_X = tableScrollX(
@@ -169,11 +169,34 @@ const ConversationListPanel = ({
   const list = useConversationList();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
   const [deletingIds, setDeletingIds] = useState<readonly number[]>([]);
+  const [archivingIds, setArchivingIds] = useState<readonly number[]>([]);
   const deleting = deletingIds.length > 0;
   // Pulled out of `list` for the callback below: the hook returns a fresh object every render, so
   // depending on it would rebuild `columns` — and with it every cell — on each one.
-  const { items, page, setPage, reload } = list;
+  const { items, page, setPage, reload, archived } = list;
   const rowCount = items.length;
+
+  /**
+   * Flips the row's archived flag (PATCH) and reloads the scope: an archived conversation leaves
+   * the active list and the other way round, so the row disappearing IS the feedback — the toast
+   * only names what happened. Archiving the conversation currently on screen is allowed: the
+   * transcript stays open, the flag only files it out of the active list.
+   */
+  const toggleArchive = useCallback(
+    async (id: number) => {
+      setArchivingIds((ids) => [...ids, id]);
+      try {
+        await updateConversation(id, { archived: !archived });
+        message.success(archived ? t('ai.list.unarchivedToast') : t('ai.list.archivedToast'));
+        reload();
+      } catch {
+        message.error(t('ai.list.archiveFailed'));
+      } finally {
+        setArchivingIds((ids) => ids.filter((entry) => entry !== id));
+      }
+    },
+    [archived, reload, t],
+  );
 
   /**
    * Hard-deletes conversations one request at a time.
@@ -331,28 +354,48 @@ const ConversationListPanel = ({
         key: 'action',
         width: COLUMN_WIDTHS.action,
         render: (_: unknown, row) => (
-          <Popconfirm
-            title={t('ai.list.deleteConfirm')}
-            description={t('ai.list.deleteHint')}
-            okText={t('common.delete')}
-            cancelText={t('common.cancel')}
-            okButtonProps={{ danger: true }}
-            onConfirm={() => void remove([row.id])}
-          >
+          <Flex align="center" gap={0}>
             <Button
               type="text"
               size="small"
-              danger
-              loading={deletingIds.includes(row.id)}
-              aria-label={t('ai.list.deleteAria', { title: row.title })}
-              data-testid={`ai-conversation-row-delete-${row.id}`}
-              icon={<Trash size={16} />}
+              loading={archivingIds.includes(row.id)}
+              aria-label={
+                archived
+                  ? t('ai.list.unarchiveAria', { title: row.title })
+                  : t('ai.list.archiveAria', { title: row.title })
+              }
+              title={
+                archived
+                  ? t('ai.list.unarchiveAria', { title: row.title })
+                  : t('ai.list.archiveAria', { title: row.title })
+              }
+              data-testid={`ai-conversation-row-archive-${row.id}`}
+              icon={archived ? <TrayArrowUp size={16} /> : <Archive size={16} />}
+              onClick={() => void toggleArchive(row.id)}
             />
-          </Popconfirm>
+            <Popconfirm
+              title={t('ai.list.deleteConfirm')}
+              description={t('ai.list.deleteHint')}
+              okText={t('common.delete')}
+              cancelText={t('common.cancel')}
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void remove([row.id])}
+            >
+              <Button
+                type="text"
+                size="small"
+                danger
+                loading={deletingIds.includes(row.id)}
+                aria-label={t('ai.list.deleteAria', { title: row.title })}
+                data-testid={`ai-conversation-row-delete-${row.id}`}
+                icon={<Trash size={16} />}
+              />
+            </Popconfirm>
+          </Flex>
         ),
       },
     ],
-    [activeConversationId, deletingIds, onSelect, remove, t],
+    [activeConversationId, archivingIds, archived, deletingIds, onSelect, remove, t, toggleArchive],
   );
 
   return (

@@ -134,6 +134,23 @@ describe('AI prompt templates', () => {
     expect(catalog.customCount).toBe(MAX_CUSTOM_PROMPT_TEMPLATES);
   });
 
+  it('repairs corrupt stored JSON instead of treating storage as unavailable', () => {
+    localStorage.setItem(PROMPT_TEMPLATE_STORAGE_KEY, '{"broken":');
+
+    expect(loadPromptTemplateCatalog()).toMatchObject({
+      customCount: 0,
+      storageAvailable: true,
+    });
+    expect(saveCustomPromptTemplate({ title: 'Recovery', body: 'Recovery body' })).toMatchObject({
+      ok: true,
+    });
+    expect(loadPromptTemplateCatalog()).toMatchObject({
+      customCount: 1,
+      storageAvailable: true,
+    });
+    expect(localStorage.getItem(PROMPT_TEMPLATE_STORAGE_KEY)).toContain('Recovery');
+  });
+
   it('bounds custom template count and body size', () => {
     for (let index = 0; index < MAX_CUSTOM_PROMPT_TEMPLATES + 2; index += 1) {
       saveCustomPromptTemplate({

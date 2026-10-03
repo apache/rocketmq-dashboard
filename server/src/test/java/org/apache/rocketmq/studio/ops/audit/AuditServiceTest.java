@@ -34,6 +34,8 @@ import java.util.TimeZone;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
@@ -264,5 +266,50 @@ class AuditServiceTest {
 
         assertThat(deleted).isEqualTo(500);
         verify(auditRepository).deleteBefore(any(LocalDateTime.class), eq(500), eq(20));
+    }
+
+    @Test
+    void queryLogsShouldTrimSearchTermBeforeDelegating() {
+        auditService.queryLogs(1, 10, "  ops  ", null, null, null, null, false,
+                null, null, null);
+
+        ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
+        verify(auditRepository).findPage(search.capture(), isNull(), isNull(), isNull(),
+                isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(10));
+        assertThat(search.getValue()).isEqualTo("ops");
+    }
+
+    @Test
+    void queryLogsShouldTreatWhitespaceOnlySearchAsAbsent() {
+        auditService.queryLogs(1, 10, "   ", null, null, null, null, false,
+                null, null, null);
+
+        ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
+        verify(auditRepository).findPage(search.capture(), isNull(), isNull(), isNull(),
+                isNull(), eq(false), isNull(), isNull(), isNull(), eq(1), eq(10));
+        assertThat(search.getValue()).isNull();
+    }
+
+    @Test
+    void exportLogsShouldTrimSearchTermBeforeDelegating() {
+        when(auditRepository.findPage(any(), any(), any(), any(), any(), anyBoolean(),
+                any(), any(), any(), anyInt(), anyInt())).thenReturn(PageResult.empty(1, 10));
+
+        auditService.exportLogs("  50% off  ", null, null, null, null, false, null, null, null);
+
+        ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
+        verify(auditRepository).findPage(search.capture(), any(), any(), any(), any(), anyBoolean(),
+                any(), any(), any(), anyInt(), anyInt());
+        assertThat(search.getValue()).isEqualTo("50% off");
+    }
+
+    @Test
+    void summarizeShouldTrimSearchTermBeforeDelegating() {
+        auditService.summarize("  ops  ", null, null, null, null, null, null);
+
+        ArgumentCaptor<String> search = ArgumentCaptor.forClass(String.class);
+        verify(auditRepository).summarize(search.capture(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), isNull());
+        assertThat(search.getValue()).isEqualTo("ops");
     }
 }

@@ -89,7 +89,13 @@ public class TencentCatalogService implements CloudCatalogProvider {
             DescribeInstanceListResponse response = clientFactory.call(credentialId, regionId,
                     client -> client.DescribeInstanceList(request));
             InstanceItem[] data = response == null ? null : response.getData();
-            if (data == null || data.length == 0) {
+            Long totalCount = response == null ? null : response.getTotalCount();
+            int returned = data == null ? 0 : data.length;
+            if (isIncompletePage(offset, returned, totalCount)) {
+                throw new BusinessException(502,
+                        "Tencent Cloud RocketMQ instance catalog returned an incomplete page");
+            }
+            if (returned == 0) {
                 break;
             }
             for (InstanceItem item : data) {
@@ -101,15 +107,24 @@ public class TencentCatalogService implements CloudCatalogProvider {
                     instances.add(option);
                 }
             }
-            if (data.length < PAGE_SIZE || hasFetchedAll(offset, response.getTotalCount())) {
+            if (hasFetchedAll(offset, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < PAGE_SIZE) {
                 break;
             }
         }
         return instances;
     }
 
-    private static boolean hasFetchedAll(long offset, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && offset + PAGE_SIZE >= totalCount;
+    private static boolean isIncompletePage(long offset, int returned, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + returned < totalCount && returned < PAGE_SIZE;
+    }
+
+    private static boolean hasFetchedAll(long offset, int returned, Long totalCount) {
+        return totalCount != null && totalCount >= 0L && offset + returned >= totalCount;
+    }
+
+    private static boolean isUnknownTotalCount(Long totalCount) {
+        return totalCount == null || totalCount < 0L;
     }
 
     @Override

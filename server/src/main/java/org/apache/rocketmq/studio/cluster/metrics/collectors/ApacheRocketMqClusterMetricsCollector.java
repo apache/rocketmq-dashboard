@@ -113,16 +113,14 @@ public class ApacheRocketMqClusterMetricsCollector implements ClusterMetricsColl
                 return;
             }
             samples.add(available(BROKER_AVAILABILITY, instance, clusterId, labels, 1D, collectedAt));
-            parseDiskUsage(runtime.getTable().get("commitLogDiskRatio"))
-                    .ifPresent(value -> samples.add(available(BROKER_DISK_USAGE_RATIO, instance, clusterId,
-                            labels, value, collectedAt)));
-            parseHeapUsage(runtime.getTable().get("jvmMemoryHeapUsed"), runtime.getTable().get("jvmMemoryHeapMax"))
-                    .ifPresent(value -> samples.add(available(BROKER_JVM_HEAP_USAGE_RATIO, instance, clusterId,
-                            labels, value, collectedAt)));
-            parseUsageRatio(runtime.getTable().get("sendThreadPoolQueueSize"),
-                    runtime.getTable().get("sendThreadPoolQueueCapacity"))
-                    .ifPresent(value -> samples.add(available(BROKER_SEND_QUEUE_USAGE_RATIO, instance, clusterId,
-                            labels, value, collectedAt)));
+            samples.add(metricOrUnavailable(BROKER_DISK_USAGE_RATIO, instance, clusterId, labels,
+                    parseDiskUsage(runtime.getTable().get("commitLogDiskRatio")), collectedAt));
+            samples.add(metricOrUnavailable(BROKER_JVM_HEAP_USAGE_RATIO, instance, clusterId, labels,
+                    parseHeapUsage(runtime.getTable().get("jvmMemoryHeapUsed"),
+                            runtime.getTable().get("jvmMemoryHeapMax")), collectedAt));
+            samples.add(metricOrUnavailable(BROKER_SEND_QUEUE_USAGE_RATIO, instance, clusterId, labels,
+                    parseUsageRatio(runtime.getTable().get("sendThreadPoolQueueSize"),
+                            runtime.getTable().get("sendThreadPoolQueueCapacity")), collectedAt));
         } catch (Exception error) {
             log.warn("Failed to collect runtime metrics for broker {} on instance {}: {}", brokerName,
                     instance.getName(), error.getMessage());
@@ -161,6 +159,12 @@ public class ApacheRocketMqClusterMetricsCollector implements ClusterMetricsColl
         } catch (RuntimeException ignored) {
             return java.util.Optional.empty();
         }
+    }
+
+    private static MetricSample metricOrUnavailable(String key, InstanceVO instance, String clusterId,
+            Map<String, String> labels, java.util.Optional<Double> value, Instant collectedAt) {
+        return value.map(metric -> available(key, instance, clusterId, labels, metric, collectedAt))
+                .orElseGet(() -> unavailable(key, instance, clusterId, labels, collectedAt));
     }
 
     private static MetricSample available(String key, InstanceVO instance, String clusterId,

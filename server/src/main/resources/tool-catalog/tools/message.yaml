@@ -4,7 +4,7 @@ tools:
     cli:
       resource: message
       verb: query
-    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths."
+    description: "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. Results are limited to 20 by default; values above the server-side cap of 100 are reduced to 100. Breaking output change: message bodies are omitted by default, so callers that read items[].body must set includeBody=true."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -41,10 +41,19 @@ tools:
         endTime:
           type: integer
           description: Epoch milliseconds; only applies to the uniqueKey and key paths.
+        limit:
+          type: integer
+          description: Maximum rows to return; defaults to 20 and values above 100 are capped at 100.
+          minimum: 1
+        includeBody:
+          type: boolean
+          description: Include body, bodyEncoding and bodyTruncated; defaults to false.
     outputSchema:
       type: object
       required:
         - items
+        - resultMayBeTruncated
+        - skippedCount
       additionalProperties: false
       properties:
         items:
@@ -55,7 +64,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -81,13 +89,19 @@ tools:
                 type: boolean
               size:
                 type: integer
+        resultMayBeTruncated:
+          type: boolean
+          description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
+        skippedCount:
+          type: integer
+          description: Rows omitted by limit from the provider-bounded result; more may exist when resultMayBeTruncated is true.
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_topic
     cli:
       resource: message
       verb: query-by-topic
-    description: Query RocketMQ messages by topic and optional time range in one Studio Instance.
+    description: "Query RocketMQ messages by topic and optional time range in one Studio Instance. Results are limited to 20 by default; values above the server-side cap of 100 are reduced to 100. Breaking output change: message bodies are omitted by default, so callers that read items[].body must set includeBody=true."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -112,10 +126,19 @@ tools:
           type: integer
         endTime:
           type: integer
+        limit:
+          type: integer
+          description: Maximum rows to return; defaults to 20 and values above 100 are capped at 100.
+          minimum: 1
+        includeBody:
+          type: boolean
+          description: Include body, bodyEncoding and bodyTruncated; defaults to false.
     outputSchema:
       type: object
       required:
         - items
+        - resultMayBeTruncated
+        - skippedCount
       additionalProperties: false
       properties:
         items:
@@ -126,7 +149,6 @@ tools:
               - msgId
               - topic
               - storeTime
-              - bodyTruncated
               - size
             additionalProperties: false
             properties:
@@ -152,13 +174,19 @@ tools:
                 type: boolean
               size:
                 type: integer
+        resultMayBeTruncated:
+          type: boolean
+          description: True when rows were omitted by limit or the provider may have stopped at its own scan bound.
+        skippedCount:
+          type: integer
+          description: Rows omitted by limit from the provider-bounded result; more may exist when resultMayBeTruncated is true.
     viewHint: table
     deprecated: false
   - name: rmq.message.query_by_offset
     cli:
       resource: message
       verb: query-by-offset
-    description: "Fetch the message stored at one physical queue offset (admin queryMsgByOffset); returns empty items when the offset is out of range or the CommitLog entry was already cleaned. Pair it with the queueStats block of rmq.topic.detail."
+    description: "Fetch the message stored at one physical queue offset (admin queryMsgByOffset); returns empty items when the offset is out of range or the CommitLog entry was already cleaned. Unlike rmq.message.query and rmq.message.query_by_topic, this single-message tool always includes body, bodyEncoding and bodyTruncated and has no includeBody flag. Pair it with the queueStats block of rmq.topic.detail."
     riskLevel: L1
     permission: message:read
     requiredCapabilities:
@@ -351,6 +379,9 @@ tools:
         msgId:
           type: string
           minLength: 1
+        traceTopicName:
+          type: string
+          description: Optional custom trace Topic name; blank or absent uses provider defaults.
     outputSchema:
       type: object
       required:

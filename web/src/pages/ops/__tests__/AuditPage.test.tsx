@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -191,6 +191,25 @@ describe('Audit page', () => {
     renderWithProviders(<AuditPage />);
 
     await user.click(await screen.findByRole('button', { name: '查看 topic-a 操作时间线' }));
+
+    expect(await screen.findByText('资源操作时间线')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenCalledWith({
+        page: 1,
+        pageSize: 20,
+        resourceType: 'TOPIC',
+        target: 'topic-a',
+        clusterId: 'prod-cn',
+      }),
+    );
+  });
+
+  it('opens a resource timeline from the keyboard on a non-empty audit target', async () => {
+    renderWithProviders(<AuditPage />);
+
+    const target = await screen.findByRole('button', { name: '查看 topic-a 操作时间线' });
+    target.focus();
+    fireEvent.keyDown(target, { key: 'Enter' });
 
     expect(await screen.findByText('资源操作时间线')).toBeInTheDocument();
     await waitFor(() =>

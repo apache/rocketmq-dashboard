@@ -31,6 +31,7 @@ import org.apache.rocketmq.remoting.protocol.header.GetConsumerConnectionListReq
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerRunningInfoRequestHeader;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -80,30 +81,55 @@ public class ProxyConsumerResolver {
      * reachable.
      */
     public ConsumerConnection resolveConsumerConnection(String instanceId, String group) {
-        for (String addr : discoverProxyAddresses(instanceId)) {
+        return resolveConsumerConnectionStatus(instanceId, group).connection();
+    }
+
+    public ConsumerConnectionResolution resolveConsumerConnectionStatus(String instanceId, String group) {
+        ProxyAddressResolution discovery = discoverProxyAddressesStatus(instanceId);
+        if (!discovery.available()) {
+            return ConsumerConnectionResolution.unavailable();
+        }
+        if (discovery.addresses().isEmpty()) {
+            return ConsumerConnectionResolution.available(null);
+        }
+        boolean queryUnavailable = false;
+        for (String addr : discovery.addresses()) {
             try {
-                ConsumerConnection connection = queryProxy(addr, group);
-                if (connection != null) {
-                    return connection;
+                ProxyQueryResolution result = queryProxyStatus(addr, group);
+                if (!result.available()) {
+                    queryUnavailable = true;
+                    continue;
+                }
+                if (result.connection() != null) {
+                    return ConsumerConnectionResolution.available(result.connection());
                 }
             } catch (Exception e) {
-                log.debug("Proxy consumer connection query failed for {} via {}: {}",
-                        group, addr, e.getMessage());
+                queryUnavailable = true;
+                log.debug("Proxy consumer connection query failed for {} via {}: {}", group, addr, e.getMessage());
             }
         }
-        return null;
+        return queryUnavailable ? ConsumerConnectionResolution.unavailable() : ConsumerConnectionResolution.available(null);
     }
 
     ConsumerConnection queryProxy(String proxyAddr, String group) throws Exception {
+        return queryProxyStatus(proxyAddr, group).connection();
+    }
+
+    private ProxyQueryResolution queryProxyStatus(String proxyAddr, String group) throws Exception {
         GetConsumerConnectionListRequestHeader header = new GetConsumerConnectionListRequestHeader();
         header.setConsumerGroup(group);
-        RemotingCommand request =
-                RemotingCommand.createRequestCommand(RequestCode.GET_CONSUMER_CONNECTION_LIST, header);
+        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_CONSUMER_CONNECTION_LIST, header);
         RemotingCommand response = remotingClient().invokeSync(proxyAddr, request, PROXY_QUERY_TIMEOUT_MILLIS);
-        if (response == null || response.getCode() != ResponseCode.SUCCESS || response.getBody() == null) {
-            return null;
+        if (response == null) {
+            return ProxyQueryResolution.unavailable();
         }
-        return ConsumerConnection.decode(response.getBody(), ConsumerConnection.class);
+        if (response.getCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+            return ProxyQueryResolution.available(null);
+        }
+        if (response.getCode() != ResponseCode.SUCCESS || response.getBody() == null) {
+            return ProxyQueryResolution.unavailable();
+        }
+        return ProxyQueryResolution.available(ConsumerConnection.decode(response.getBody(), ConsumerConnection.class));
     }
 
     /**
@@ -148,16 +174,19 @@ public class ProxyConsumerResolver {
     }
 
     List<String> discoverProxyAddresses(String instanceId) {
+        return discoverProxyAddressesStatus(instanceId).addresses();
+    }
+
+    private ProxyAddressResolution discoverProxyAddressesStatus(String instanceId) {
         String cacheKey = StringUtils.hasText(instanceId) ? instanceId : DEFAULT_INSTANCE_KEY;
         CachedProxyAddresses cached = proxyAddressCache.get(cacheKey);
         if (cached != null && cached.expiresAtMillis() > System.currentTimeMillis()) {
-            return cached.addresses();
+            return ProxyAddressResolution.available(cached.addresses());
         }
         Set<String> ips = new LinkedHashSet<>();
         try {
             executeAdmin(instanceId, admin -> {
-                ConsumerConnection connection =
-                        admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
+                ConsumerConnection connection = admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
                 if (connection != null && connection.getConnectionSet() != null) {
                     for (Connection conn : connection.getConnectionSet()) {
                         String clientAddr = conn.getClientAddr();
@@ -171,17 +200,17 @@ public class ProxyConsumerResolver {
                 return null;
             });
         } catch (Exception e) {
-            log.debug("Proxy discovery via heartbeat syncer failed for instance {}: {}",
-                    instanceId, e.getMessage());
-            // A failed lookup is transient and must not suppress discovery for the full cache TTL.
-            return List.of();
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE, ResponseCode.TOPIC_NOT_EXIST)) {
+                // A known absent heartbeat-syncer group means no proxy address is currently observable.
+                // Do not cache the empty result: a Proxy may register immediately afterwards.
+                return ProxyAddressResolution.available(List.of());
+            }
+            log.debug("Proxy discovery via heartbeat syncer failed for instance {}: {}", instanceId, e.getMessage());
+            return ProxyAddressResolution.unavailable();
         }
-        List<String> addresses = ips.stream()
-                .map(ip -> ip + ":" + PROXY_REMOTING_PORT)
-                .toList();
-        proxyAddressCache.put(cacheKey,
-                new CachedProxyAddresses(addresses, System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS));
-        return addresses;
+        List<String> addresses = ips.stream().map(ip -> ip + ":" + PROXY_REMOTING_PORT).toList();
+        proxyAddressCache.put(cacheKey, new CachedProxyAddresses(addresses, System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS));
+        return ProxyAddressResolution.available(addresses);
     }
 
     private <T> T executeAdmin(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
@@ -217,6 +246,21 @@ public class ProxyConsumerResolver {
     void setRemotingClientForTest(NettyRemotingClient client) {
         this.remotingClient = client;
         clientStarted.set(true);
+    }
+
+    public record ConsumerConnectionResolution(ConsumerConnection connection, boolean available) {
+        static ConsumerConnectionResolution available(ConsumerConnection connection) { return new ConsumerConnectionResolution(connection, true); }
+        static ConsumerConnectionResolution unavailable() { return new ConsumerConnectionResolution(null, false); }
+    }
+
+    private record ProxyAddressResolution(List<String> addresses, boolean available) {
+        static ProxyAddressResolution available(List<String> addresses) { return new ProxyAddressResolution(addresses, true); }
+        static ProxyAddressResolution unavailable() { return new ProxyAddressResolution(List.of(), false); }
+    }
+
+    private record ProxyQueryResolution(ConsumerConnection connection, boolean available) {
+        static ProxyQueryResolution available(ConsumerConnection connection) { return new ProxyQueryResolution(connection, true); }
+        static ProxyQueryResolution unavailable() { return new ProxyQueryResolution(null, false); }
     }
 
     private record CachedProxyAddresses(List<String> addresses, long expiresAtMillis) {

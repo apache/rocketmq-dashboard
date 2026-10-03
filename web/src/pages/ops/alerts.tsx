@@ -368,6 +368,17 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     })
       .then((result) => {
         if (!cancelled) {
+          // A deletion (or filter change) can leave the current page past the last valid one.
+          // Re-query the final page instead of rendering a permanently empty table, matching
+          // the audit page's clamp. Skip storing the empty result so the rows only ever come
+          // from the clamped page; setPage triggers the follow-up request.
+          if (result.items.length === 0 && result.total > 0 && page > 1) {
+            const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+            if (lastPage < page) {
+              setPage(lastPage);
+              return;
+            }
+          }
           setRules(result.items);
           setTotalRules(result.total);
           setSelectedRuleIds((selected) =>
@@ -485,6 +496,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRule(rule);
+    setTestResult(null);
     form.setFieldsValue({
       ...rule,
       metric: normalizeMetric(rule.metric),
@@ -613,8 +625,10 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           const succeeded = new Set(result.succeededIds);
           const failedIds = Object.keys(result.failures);
           if (succeeded.size > 0) {
-            if (rules.length === succeeded.size && page > 1) setPage((current) => current - 1);
-            else refreshRules();
+            // rules.length === succeeded.size means "the deleted rules filled this page", not
+            // "this page is now empty" — the server may still have enough rows for the page.
+            // Refresh the current page and let the refreshed total drive the pagination.
+            refreshRules();
           }
           setSelectedRuleIds(failedIds.map(Number));
           if (failedIds.length === 0) message.success(t('alerts.bulkDeleteSuccess'));
@@ -1032,7 +1046,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             pageSize={pageSize}
             total={totalRules}
             showSizeChanger
-            showTotal={(total) => t('alerts.totalRules', { count: total })}
+            showTotal={(total) => t('alerts.totalRulesWithCount', { count: total })}
             pageSizeOptions={[10, 20, 50, 100]}
             onChange={(nextPage, nextPageSize) => {
               setPage(nextPage);

@@ -75,20 +75,20 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
                 }
                 if (!group.isConsumeStatsAvailable()) {
                     Map<String, String> labels = Map.of("consumerGroup", group.getName());
-                    samples.add(unavailable(CONSUMER_LAG_TOTAL, instance, labels, collectedAt,
+                    samples.add(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, collectedAt,
                             "CONSUMER_STATS_UNAVAILABLE"));
-                    samples.add(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt,
+                    samples.add(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt,
                             "CONSUMER_STATS_UNAVAILABLE"));
-                    samples.add(unavailable(CONSUMER_DELAY_SECONDS, instance, labels, collectedAt,
+                    samples.add(unavailable(CONSUMER_DELAY_SECONDS, instance, group.getClusterId(), labels, collectedAt,
                             "CONSUMER_STATS_UNAVAILABLE"));
-                    samples.add(unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt,
+                    samples.add(unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), labels, collectedAt,
                             "CONSUMER_STATS_UNAVAILABLE"));
                     continue;
                 }
                 if (group.getTotalLag() == ConsumerLagResolver.UNKNOWN) {
                     // totalLag now carries the -1 unknown sentinel; do not clamp it into a fabricated
                     // zero-lag AVAILABLE sample that would feed consumer.lag.total alerts a fake 0.
-                    samples.add(unavailable(CONSUMER_LAG_TOTAL, instance,
+                    samples.add(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(),
                             Map.of("consumerGroup", group.getName()), collectedAt, "CONSUMER_LAG_UNKNOWN"));
                 } else {
                     samples.add(totalLagSample(instance, group, collectedAt));
@@ -129,32 +129,52 @@ public class ApacheRocketMqBusinessMetricsCollector implements BusinessMetricsCo
         Map<String, String> labels = Map.of("consumerGroup", group.getName());
         try {
             List<QueueProgressVO> progress = provider.getGroupProgress(instance.getName(), group.getName());
-            long maxLag = progress.stream().mapToLong(QueueProgressVO::getDiffTotal)
-                    .map(value -> Math.max(0, value)).max().orElse(0);
+            boolean lagUnknown = progress.stream()
+                    .anyMatch(row -> row.getDiffTotal() == ConsumerLagResolver.UNKNOWN);
             List<MetricSample> samples = new ArrayList<>();
-            samples.add(new MetricSample(CONSUMER_LAG_MAX_QUEUE, AlertDomain.BUSINESS, instance.getName(),
-                    group.getClusterId(), labels, (double) maxLag, MetricAvailability.AVAILABLE, collectedAt));
+            if (lagUnknown) {
+                samples.add(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt,
+                        "CONSUMER_LAG_UNKNOWN"));
+            } else {
+                long maxLag = progress.stream().mapToLong(QueueProgressVO::getDiffTotal).max().orElse(0);
+                samples.add(new MetricSample(CONSUMER_LAG_MAX_QUEUE, AlertDomain.BUSINESS, instance.getName(),
+                        group.getClusterId(), labels, (double) maxLag, MetricAvailability.AVAILABLE, collectedAt));
+            }
             progress.stream().filter(row -> row.getTopic() != null && !row.getTopic().isBlank())
-                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic,
-                            java.util.stream.Collectors.summingLong(
-                                    row -> Math.max(0, row.getDiffTotal()))))
-                    .forEach((topic, lag) -> samples.add(new MetricSample(TOPIC_BACKLOG_TOTAL, AlertDomain.BUSINESS,
-                            instance.getName(), group.getClusterId(), Map.of("consumerGroup", group.getName(),
-                            "topic", topic), (double) lag, MetricAvailability.AVAILABLE, collectedAt)));
+                    .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic))
+                    .forEach((topic, rows) -> addTopicBacklogSample(samples, instance, group, topic, rows, collectedAt));
             return samples;
         } catch (RuntimeException error) {
             log.warn("Failed to collect queue lag for group {} on instance {}: {}", group.getName(),
                     instance.getName(), error.getMessage());
-            return List.of(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt,
+            return List.of(unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt,
                     "CONSUMER_PROGRESS_UNAVAILABLE"),
-                    unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt,
+                    unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), labels, collectedAt,
                             "CONSUMER_PROGRESS_UNAVAILABLE"));
         }
     }
 
+    private static void addTopicBacklogSample(List<MetricSample> samples, InstanceVO instance,
+            ConsumerGroupVO group, String topic, List<QueueProgressVO> rows, Instant collectedAt) {
+        Map<String, String> topicLabels = Map.of("consumerGroup", group.getName(), "topic", topic);
+        if (rows.stream().anyMatch(row -> row.getDiffTotal() == ConsumerLagResolver.UNKNOWN)) {
+            samples.add(unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), topicLabels, collectedAt,
+                    "CONSUMER_LAG_UNKNOWN"));
+            return;
+        }
+        long lag = rows.stream().mapToLong(QueueProgressVO::getDiffTotal).sum();
+        samples.add(new MetricSample(TOPIC_BACKLOG_TOTAL, AlertDomain.BUSINESS, instance.getName(),
+                group.getClusterId(), topicLabels, (double) lag, MetricAvailability.AVAILABLE, collectedAt));
+    }
+
     private static MetricSample unavailable(String metric, InstanceVO instance, Map<String, String> labels,
             Instant collectedAt, String reason) {
-        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), null, labels, null,
+        return unavailable(metric, instance, null, labels, collectedAt, reason);
+    }
+
+    private static MetricSample unavailable(String metric, InstanceVO instance, String clusterId,
+            Map<String, String> labels, Instant collectedAt, String reason) {
+        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), clusterId, labels, null,
                 MetricAvailability.UNAVAILABLE, collectedAt, reason);
     }
 }

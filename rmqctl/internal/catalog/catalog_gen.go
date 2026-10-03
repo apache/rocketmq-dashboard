@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "bc0da0891d07f943db08439900892d21984c27d873f00bee3cc2923a35a3dd8f",
+	Digest:               "098b84cd35cfe2dde3b71a1d4381863a54e187517564bbe004b6ea329e8f1814",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -370,9 +370,53 @@ var defaultDocument = Document{
 			ViewHint: "object",
 		},
 		{
+			Name:                 "rmq.litetopic.list",
+			CLI:                  CLI{Resource: "litetopic", Verb: "list"},
+			Description:          "List LiteTopic pattern aggregates served by the configured default cluster's broker lite admin API (studio.rocketmq.namesrv-addr): per pattern the topic count, consumer count, total backlog, average TTL, TTL status, last active time and session ids. Optional pattern prefix and namespace filters. Absent statistics mean the broker could not report them, not zero. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "pattern", Flag: "pattern", Description: "LiteTopic pattern/prefix filter, e.g. \"chat/sess-\".", Kind: StringField, MinLength: 1},
+					{Name: "namespace", Flag: "namespace", Description: "Namespace filter.", Kind: StringField, MinLength: 1},
+				},
+			},
+			ViewHint:     "table",
+			TableDataKey: "items",
+		},
+		{
+			Name:                 "rmq.litetopic.session",
+			CLI:                  CLI{Resource: "litetopic", Verb: "session"},
+			Description:          "Describe one LiteTopic session on the configured default cluster: owning client, parent topic, consumer group, create/last-active time, TTL and remaining TTL, message and Pop progress counters, and the session's individual lite topics. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "sessionId", Flag: "session-id", Description: "Session id as listed by rmq.litetopic.list.", Kind: StringField, Required: true, MinLength: 1},
+				},
+			},
+			ViewHint: "object",
+		},
+		{
+			Name:                 "rmq.litetopic.quota",
+			CLI:                  CLI{Resource: "litetopic", Verb: "quota"},
+			Description:          "Read the LiteTopic quota watermark of the configured default cluster: current/max topic, session and creation-rate counts, usage rates, default/max TTL, remaining quota and consumer density, optionally filtered by namespace. Every field is optional — brokers may report only part of the watermark. Fails with 501 when the cluster does not support LiteTopic.",
+			RiskLevel:            "L1",
+			Permission:           "litetopic:read",
+			RequiredCapabilities: []string{},
+			InputSchema: InputSchema{
+				Fields: []Field{
+					{Name: "namespace", Flag: "namespace", Description: "Namespace filter.", Kind: StringField, MinLength: 1},
+				},
+			},
+			ViewHint: "object",
+		},
+		{
 			Name:                 "rmq.message.query",
 			CLI:                  CLI{Resource: "message", Verb: "query"},
-			Description:          "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths.",
+			Description:          "Query RocketMQ messages by identifier: the first non-empty value among msgId, uniqueKey and key (in this order) selects the query path, and at least one of them must be provided. The startTime/endTime window only applies to the uniqueKey and key paths. Results are limited to 20 by default; values above the server-side cap of 100 are reduced to 100. Breaking output change: message bodies are omitted by default, so callers that read items[].body must set includeBody=true.",
 			RiskLevel:            "L1",
 			Permission:           "message:read",
 			RequiredCapabilities: []string{"MESSAGE_QUERY"},
@@ -385,6 +429,8 @@ var defaultDocument = Document{
 					{Name: "key", Flag: "key", Description: "Business key (key index, 0..n messages).", Kind: StringField, MinLength: 1},
 					{Name: "startTime", Flag: "start-time", Description: "Epoch milliseconds; only applies to the uniqueKey and key paths.", Kind: IntegerField},
 					{Name: "endTime", Flag: "end-time", Description: "Epoch milliseconds; only applies to the uniqueKey and key paths.", Kind: IntegerField},
+					{Name: "limit", Flag: "limit", Description: "Maximum rows to return; defaults to 20 and values above 100 are capped at 100.", Kind: IntegerField, Minimum: 1, HasMinimum: true},
+					{Name: "includeBody", Flag: "include-body", Description: "Include body, bodyEncoding and bodyTruncated; defaults to false.", Kind: BooleanField},
 				},
 			},
 			ViewHint:     "table",
@@ -393,7 +439,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.message.query_by_topic",
 			CLI:                  CLI{Resource: "message", Verb: "query-by-topic"},
-			Description:          "Query RocketMQ messages by topic and optional time range in one Studio Instance.",
+			Description:          "Query RocketMQ messages by topic and optional time range in one Studio Instance. Results are limited to 20 by default; values above the server-side cap of 100 are reduced to 100. Breaking output change: message bodies are omitted by default, so callers that read items[].body must set includeBody=true.",
 			RiskLevel:            "L1",
 			Permission:           "message:read",
 			RequiredCapabilities: []string{"MESSAGE_QUERY"},
@@ -404,6 +450,8 @@ var defaultDocument = Document{
 					{Name: "tag", Flag: "tag", Kind: StringField},
 					{Name: "startTime", Flag: "start-time", Kind: IntegerField},
 					{Name: "endTime", Flag: "end-time", Kind: IntegerField},
+					{Name: "limit", Flag: "limit", Description: "Maximum rows to return; defaults to 20 and values above 100 are capped at 100.", Kind: IntegerField, Minimum: 1, HasMinimum: true},
+					{Name: "includeBody", Flag: "include-body", Description: "Include body, bodyEncoding and bodyTruncated; defaults to false.", Kind: BooleanField},
 				},
 			},
 			ViewHint:     "table",
@@ -412,7 +460,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.message.query_by_offset",
 			CLI:                  CLI{Resource: "message", Verb: "query-by-offset"},
-			Description:          "Fetch the message stored at one physical queue offset (admin queryMsgByOffset); returns empty items when the offset is out of range or the CommitLog entry was already cleaned. Pair it with the queueStats block of rmq.topic.detail.",
+			Description:          "Fetch the message stored at one physical queue offset (admin queryMsgByOffset); returns empty items when the offset is out of range or the CommitLog entry was already cleaned. Unlike rmq.message.query and rmq.message.query_by_topic, this single-message tool always includes body, bodyEncoding and bodyTruncated and has no includeBody flag. Pair it with the queueStats block of rmq.topic.detail.",
 			RiskLevel:            "L1",
 			Permission:           "message:read",
 			RequiredCapabilities: []string{"MESSAGE_QUERY"},
@@ -469,6 +517,7 @@ var defaultDocument = Document{
 					{Name: "instanceId", Flag: "instance-id", Description: "Studio Instance identifier.", Kind: StringField, Required: true, MinLength: 1},
 					{Name: "topicName", Flag: "topic-name", Kind: StringField},
 					{Name: "msgId", Flag: "msg-id", Kind: StringField, Required: true, MinLength: 1},
+					{Name: "traceTopicName", Flag: "trace-topic-name", Description: "Optional custom trace Topic name; blank or absent uses provider defaults.", Kind: StringField},
 				},
 			},
 			ViewHint: "object",
@@ -577,7 +626,7 @@ var defaultDocument = Document{
 			Description:          "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability.",
 			RiskLevel:            "L1",
 			Permission:           "proxy:read",
-			RequiredCapabilities: []string{"PROXY_DISCOVERY"},
+			RequiredCapabilities: []string{},
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "clusterName", Flag: "cluster-name", Description: "Physical RocketMQ cluster name.", Kind: StringField, MinLength: 1},
@@ -592,7 +641,7 @@ var defaultDocument = Document{
 			Description:          "Read the Proxy configuration and reachability snapshot for one physical cluster, with an optional addr filter (read-only; configuration reload is not exposed through MCP).",
 			RiskLevel:            "L1",
 			Permission:           "proxy:read",
-			RequiredCapabilities: []string{"PROXY_DISCOVERY"},
+			RequiredCapabilities: []string{},
 			InputSchema: InputSchema{
 				Fields: []Field{
 					{Name: "clusterName", Flag: "cluster-name", Description: "Physical RocketMQ cluster name.", Kind: StringField, Required: true, MinLength: 1},

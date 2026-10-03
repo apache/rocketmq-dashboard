@@ -30,7 +30,11 @@ export interface ProducerConnection {
 export type ProducerReadiness = 'READY' | 'WARNING' | 'UNAVAILABLE';
 
 export type ProducerConnectionWarning =
-  'NO_CONNECTIONS' | 'DUPLICATE_CLIENT_ID' | 'MIXED_CLIENT_VERSION' | 'INCOMPLETE_CLIENT_METADATA';
+  | 'NO_CONNECTIONS'
+  | 'DUPLICATE_CLIENT_ID'
+  | 'MIXED_CLIENT_VERSION'
+  | 'INCOMPLETE_CLIENT_METADATA'
+  | 'INCOMPLETE_SCAN';
 
 export interface ProducerConnectionSummaryItem {
   value: string;
@@ -53,6 +57,9 @@ export interface ProducerConnectionSummary {
 export interface ProducerConnectionResult {
   connectionSet: ProducerConnection[];
   summary: ProducerConnectionSummary;
+  complete: boolean;
+  failedBrokers: string[];
+  failedProducerGroups: string[];
 }
 
 interface TopicRecord {
@@ -67,6 +74,9 @@ interface TopicListResponse {
 interface ProducerConnectionResponse {
   connectionSet?: ProducerConnection[];
   summary?: ProducerConnectionSummary;
+  complete?: boolean;
+  failedBrokers?: string[];
+  failedProducerGroups?: string[];
 }
 
 // ─── API ────────────────────────────────────────────────────────
@@ -102,6 +112,7 @@ const distribution = (
 
 export function buildProducerConnectionSummary(
   connections: ProducerConnection[],
+  complete = true,
 ): ProducerConnectionSummary {
   const duplicateClientIds = [
     ...connections.reduce((counts, connection) => {
@@ -134,6 +145,7 @@ export function buildProducerConnectionSummary(
       warnings.push('INCOMPLETE_CLIENT_METADATA');
     }
   }
+  if (!complete) warnings.push('INCOMPLETE_SCAN');
 
   return {
     totalConnections: connections.length,
@@ -145,7 +157,13 @@ export function buildProducerConnectionSummary(
     versions,
     duplicateClientIds,
     warnings,
-    readiness: connections.length === 0 ? 'UNAVAILABLE' : warnings.length > 0 ? 'WARNING' : 'READY',
+    readiness: !complete
+      ? 'WARNING'
+      : connections.length === 0
+        ? 'UNAVAILABLE'
+        : warnings.length > 0
+          ? 'WARNING'
+          : 'READY',
   };
 }
 
@@ -186,8 +204,22 @@ export async function queryProducerConnection(
     params: { instanceId, topic, producerGroup },
   });
   const connectionSet = res.data?.connectionSet ?? [];
+  const complete = res.data?.complete ?? true;
+  const backendSummary = res.data?.summary;
+  const summary = backendSummary ?? buildProducerConnectionSummary(connectionSet, complete);
+  const normalizedSummary =
+    !complete && !summary.warnings.includes('INCOMPLETE_SCAN')
+      ? {
+          ...summary,
+          warnings: [...summary.warnings, 'INCOMPLETE_SCAN' as const],
+          readiness: 'WARNING' as const,
+        }
+      : summary;
   return {
     connectionSet,
-    summary: res.data?.summary ?? buildProducerConnectionSummary(connectionSet),
+    summary: normalizedSummary,
+    complete,
+    failedBrokers: res.data?.failedBrokers ?? [],
+    failedProducerGroups: res.data?.failedProducerGroups ?? [],
   };
 }

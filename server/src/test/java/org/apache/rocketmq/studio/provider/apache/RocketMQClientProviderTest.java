@@ -29,8 +29,10 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
+import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +46,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,6 +115,30 @@ class RocketMQClientProviderTest {
         assertThat(connections).hasSize(1);
         assertThat(connections.get(0).getVersion())
                 .isEqualTo(org.apache.rocketmq.common.MQVersion.getVersionDesc(500));
+    }
+
+    @Test
+    void connectionScanShouldReportEveryStudioClientLanguageTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        List<LanguageCode> languageCodes = List.of(
+                LanguageCode.JAVA, LanguageCode.GO, LanguageCode.PYTHON, LanguageCode.RUST,
+                LanguageCode.CPP, LanguageCode.DOTNET, LanguageCode.PHP, LanguageCode.NODE_JS);
+        List<ProducerInfo> producers = IntStream.range(0, languageCodes.size())
+                .mapToObj(index -> new ProducerInfo("client-" + index, "10.0.0.2" + index + ":49152",
+                        languageCodes.get(index), 500, 1000L))
+                .toList();
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-language", producers);
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(new ProducerTableInfo(data));
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("10.0.1.31:9876", null, "Producer");
+
+        assertThat(connections).hasSize(languageCodes.size());
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getLanguage)
+                .containsExactlyInAnyOrder(ClientLanguage.values());
     }
 
     @Test
@@ -263,6 +290,21 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerGroupSelectorKeepsBestEffortResultsWhenOneBrokerFailsTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+
+        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 20);
+
+        assertThat(groups).containsExactly("pg-payment");
+    }
+
+    @Test
     void exactProducerQueryPassesNonBlankGroupToAdminApi() throws Exception {
         ProducerConnection producerConnection = new ProducerConnection();
         producerConnection.setConnectionSet(new HashSet<>(List.of(
@@ -313,26 +355,80 @@ class RocketMQClientProviderTest {
     }
 
     @Test
-    void producerQueryWithoutGroupReturnsPartialResultsWhenOneGroupFails() throws Exception {
+    void producerQueryWithoutGroupReturnsPartialResultWhenOneGroupQueryFailsTest() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
         when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-order", List.of(producerInfo("producer-order", "10.0.0.1:1000")),
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
         ProducerConnection paymentConnection = new ProducerConnection();
         paymentConnection.setConnectionSet(new HashSet<>(List.of(
                 connection("producer-payment", "10.0.0.2:1000"))));
-        when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
-                .thenThrow(new IllegalStateException("broker unavailable"));
         when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
                 .thenReturn(paymentConnection);
 
-        List<ClientConnectionVO> connections = provider.findProducerConnections("instance-a", "TopicA", null);
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
 
-        assertThat(connections).singleElement().satisfies(connection -> {
+        assertThat(result.connections()).singleElement().satisfies(connection ->
+                assertThat(connection.getProducerGroup()).isEqualTo("pg-payment"));
+        assertThat(result.complete()).isFalse();
+        assertThat(result.failedBrokers()).isEmpty();
+        assertThat(result.failedProducerGroups()).containsExactly("pg-order");
+    }
+
+    @Test
+    void producerQueryWithoutGroupReturnsPartialResultWhenOneBrokerGroupDiscoveryFailsTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
+
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(result.connections()).singleElement().satisfies(connection ->
+                assertThat(connection.getProducerGroup()).isEqualTo("pg-payment"));
+        assertThat(result.complete()).isFalse();
+        assertThat(result.failedBrokers()).containsExactly("127.0.0.1:10911");
+        assertThat(result.failedProducerGroups()).isEmpty();
+    }
+
+    @Test
+    void producerQueryWithoutGroupTreatsOfflineGroupAsCompleteEmptyResultTest() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-offline", List.of(producerInfo("offline-producer", "10.0.0.1:1000")),
+                        "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
+        when(adminExt.examineProducerConnectionInfo("pg-offline", "TopicA"))
+                .thenThrow(new MQClientException("Not found the producer group connection", null));
+        ProducerConnection paymentConnection = new ProducerConnection();
+        paymentConnection.setConnectionSet(new HashSet<>(List.of(
+                connection("producer-payment", "10.0.0.2:1000"))));
+        when(adminExt.examineProducerConnectionInfo("pg-payment", "TopicA"))
+                .thenReturn(paymentConnection);
+
+        ProducerConnectionScanResult result =
+                provider.scanProducerConnections("instance-a", "TopicA", null);
+
+        assertThat(result.connections()).singleElement().satisfies(connection -> {
             assertThat(connection.getClientId()).isEqualTo("producer-payment");
             assertThat(connection.getProducerGroup()).isEqualTo("pg-payment");
         });
+        assertThat(result.complete()).isTrue();
+        assertThat(result.failedBrokers()).isEmpty();
+        assertThat(result.failedProducerGroups()).isEmpty();
     }
 
     @Test

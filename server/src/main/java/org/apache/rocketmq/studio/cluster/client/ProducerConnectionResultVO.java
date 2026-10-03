@@ -26,9 +26,24 @@ import java.util.List;
 public class ProducerConnectionResultVO {
     private List<ProducerConnectionVO> connectionSet;
     private ProducerConnectionSummaryVO summary;
+    private boolean complete = true;
+    private List<String> failedBrokers = List.of();
+    private List<String> failedProducerGroups = List.of();
 
     public ProducerConnectionResultVO(List<ProducerConnectionVO> connectionSet) {
-        this.connectionSet = connectionSet == null ? List.of() : connectionSet;
-        this.summary = ProducerConnectionSummaryVO.from(this.connectionSet);
+        this(connectionSet, true, List.of(), List.of());
+    }
+
+    public ProducerConnectionResultVO(
+            List<ProducerConnectionVO> connectionSet,
+            boolean complete,
+            List<String> failedBrokers,
+            List<String> failedProducerGroups) {
+        this.connectionSet = connectionSet == null ? List.of() : List.copyOf(connectionSet);
+        this.complete = complete;
+        this.failedBrokers = failedBrokers == null ? List.of() : List.copyOf(failedBrokers);
+        this.failedProducerGroups = failedProducerGroups == null
+                ? List.of() : List.copyOf(failedProducerGroups);
+        this.summary = ProducerConnectionSummaryVO.from(this.connectionSet, complete);
     }
 }

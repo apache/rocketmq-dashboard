@@ -40,6 +40,7 @@ public record GroupDetailOutput(
         String group,
         SubscriptionMode subscriptionMode,
         ConsumeType consumeType,
+        /** Confirmed online clients, or -1 when the connection inventory is unavailable. */
         int onlineInstances,
         long totalLag,
         List<String> subscribedTopics,
@@ -161,6 +162,7 @@ public record GroupDetailOutput(
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record QueueProgress(
+            String topic,
             String broker,
             int queueId,
             long brokerOffset,
@@ -169,6 +171,7 @@ public record GroupDetailOutput(
 
         static QueueProgress from(QueueProgressVO source) {
             return new QueueProgress(
+                    source.getTopic(),
                     source.getBroker(),
                     source.getQueueId(),
                     source.getBrokerOffset(),

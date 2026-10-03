@@ -44,6 +44,8 @@ import com.tencentcloudapi.trocket.v20230308.models.SendMessageRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SendMessageResponse;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionRequest;
+import com.tencentcloudapi.trocket.v20230308.models.VerifyMessageConsumptionResponse;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
@@ -60,6 +62,8 @@ import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
+import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -131,6 +135,7 @@ class TencentInstanceProviderTest {
                 .contains(InstanceCapability.TOPIC_MANAGEMENT,
                         InstanceCapability.MESSAGE_QUERY,
                         InstanceCapability.MESSAGE_SEND,
+                        InstanceCapability.DIRECT_MESSAGE_CONSUME,
                         InstanceCapability.ACL_MANAGEMENT)
                 .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
@@ -175,6 +180,42 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void consumeMessageDirectlyShouldCallTencentVerifyApiTest() throws Exception {
+        VerifyMessageConsumptionResponse response = new VerifyMessageConsumptionResponse();
+        response.setRequestId("tencent-request-1");
+        when(client.VerifyMessageConsumption(any())).thenReturn(response);
+
+        DirectConsumeMessageResultVO result = provider.consumeMessageDirectly(directConsumeRequest());
+
+        ArgumentCaptor<VerifyMessageConsumptionRequest> captor =
+                ArgumentCaptor.forClass(VerifyMessageConsumptionRequest.class);
+        verify(client).VerifyMessageConsumption(captor.capture());
+        VerifyMessageConsumptionRequest request = captor.getValue();
+        assertThat(request.getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(request.getTopic()).isEqualTo("orders");
+        assertThat(request.getMsgId()).isEqualTo("msg-1");
+        assertThat(request.getConsumerGroup()).isEqualTo("billing");
+        assertThat(request.getClientId()).isEqualTo("client-a");
+        assertThat(result.getConsumeResult()).isEqualTo("REQUEST_ACCEPTED");
+        assertThat(result.getRemark())
+                .contains("verification request", "outcome is not returned", "tencent-request-1");
+        assertThat(result.getSpentTimeMillis()).isNotNegative();
+        assertThat(result.isOrder()).isFalse();
+        assertThat(result.isAutoCommit()).isFalse();
+    }
+
+    @Test
+    void consumeMessageDirectlyShouldRejectEmptyTencentResponseTest() throws Exception {
+        when(client.VerifyMessageConsumption(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.consumeMessageDirectly(directConsumeRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Tencent direct consume returned an empty response")
+                .extracting("code")
+                .isEqualTo(502);
+    }
+
+    @Test
     void countTopicsShouldClampOversizedTotals() throws Exception {
         DescribeTopicListResponse response = new DescribeTopicListResponse();
         response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
@@ -211,6 +252,18 @@ class TencentInstanceProviderTest {
 
         assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(501);
         verify(client, times(1)).DescribeTopicList(any());
+    }
+
+    @Test
+    void listTopicsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setTotalCount(2L);
+        response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -563,6 +616,20 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_partial");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount(2L);
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void listConsumerGroupsShouldClampOversizedRetryCounts() throws Exception {
         ConsumeGroupItem item = new ConsumeGroupItem();
         item.setConsumerGroup("GID_test");
@@ -679,6 +746,48 @@ class TencentInstanceProviderTest {
         assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
         assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
         assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("consistent");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldMapInconsistentAndUnknownConsistencyTest() throws Exception {
+        SubscriptionData inconsistent = new SubscriptionData();
+        inconsistent.setTopic("orders");
+        inconsistent.setSubString("*");
+        inconsistent.setExpressionType("TAG");
+        inconsistent.setConsistency(1L);
+        SubscriptionData unknown = new SubscriptionData();
+        unknown.setTopic("payments");
+        unknown.setSubString("tag-a");
+        unknown.setExpressionType("TAG");
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{inconsistent, unknown});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test");
+
+        assertThat(subscriptions).hasSize(2);
+        assertThat(subscriptions.get(0).getConsistency()).isEqualTo("inconsistent");
+        assertThat(subscriptions.get(1).getConsistency()).isNull();
+    }
+
+    @Test
+    void getGroupProgressShouldReportUnknownQueueOffsetsTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setConsumerLag(42L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        // The Tencent API exposes the lag per topic and no per-queue offsets, so the row must not
+        // claim offsets of zero next to the real lag.
+        assertThat(provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test")).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getDiffTotal()).isEqualTo(42L);
+                });
     }
 
     @Test
@@ -702,6 +811,18 @@ class TencentInstanceProviderTest {
                 .containsExactly("Provider does not expose per-queue target offset preview; confirm with current lag only");
         assertThat(preview.getQueues().get(0).getTargetOffset()).isEqualTo(-1L);
         assertThat(preview.getQueues().get(0).getRiskLevel()).isEqualTo("WARNING");
+    }
+
+    @Test
+    void getGroupSubscriptionsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setTotalCount(2L);
+        response.setData(new SubscriptionData[]{subscription("orders")});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
     @Test
@@ -1096,6 +1217,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceMarksFailedProduceAsErrorTest() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"Status\":3,\"Duration\":2}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-3", "orders");
+
+        assertThat(trace.getNodes()).hasSize(1);
+        assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("error");
+    }
+
+    @Test
     void getMessageTraceMarksInFlightConsumeAsProcessNotFailed() throws Exception {
         MessageTraceItem consume = new MessageTraceItem();
         consume.setStage("consume");
@@ -1113,5 +1249,15 @@ class TencentInstanceProviderTest {
         assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("process");
         assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.pending);
+    }
+
+    private DirectConsumeMessageDTO directConsumeRequest() {
+        DirectConsumeMessageDTO request = new DirectConsumeMessageDTO();
+        request.setInstanceId(STUDIO_INSTANCE_ID);
+        request.setTopic("orders");
+        request.setMsgId("msg-1");
+        request.setConsumerGroup("billing");
+        request.setClientId("client-a");
+        return request;
     }
 }

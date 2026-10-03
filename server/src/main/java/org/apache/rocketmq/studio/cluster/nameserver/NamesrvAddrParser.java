@@ -65,7 +65,11 @@ public final class NamesrvAddrParser {
             if (!isValidIpv6Literal(ipv6)) {
                 throw new BusinessException(400, "namesrvAddr segment has a malformed IPv6 literal: " + segment);
             }
-            normalizedHost = "[" + ipv6.toLowerCase(Locale.ROOT) + "]";
+            int zoneStart = ipv6.indexOf('%');
+            String address = zoneStart < 0 ? ipv6 : ipv6.substring(0, zoneStart);
+            // Named zones identify local interfaces and must retain their exact spelling.
+            String zone = zoneStart < 0 ? "" : ipv6.substring(zoneStart);
+            normalizedHost = "[" + address.toLowerCase(Locale.ROOT) + zone + "]";
         } else {
             if (host.isEmpty()) {
                 throw new BusinessException(400, "namesrvAddr segment is missing a host: " + segment);
