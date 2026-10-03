@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.persistence.entity.RmqStudioUser;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -102,5 +103,11 @@ public class StudioUserController {
                 .userId(userId)
                 .revokedSessionCount(revokedSessionCount)
                 .build());
+    }
+
+    @DeleteMapping("/{userId}")
+    public Result<Void> deleteUser(@PathVariable Long userId) {
+        authService.deleteUser(userId);
+        return Result.ok();
     }
 }

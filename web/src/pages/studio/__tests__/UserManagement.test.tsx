@@ -21,6 +21,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as downloadStudioUsers,
   listStudioUserSessions,
@@ -40,6 +41,7 @@ import UserManagementPage from '../UserManagement';
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
+  deleteStudioUser: vi.fn(),
   getStudioUserSessionOverview: vi.fn(),
   listAllStudioUsers: vi.fn(),
   listStudioUserSessions: vi.fn(),
@@ -448,6 +450,40 @@ describe('UserManagementPage', () => {
     await user.click(roleSwitch);
 
     await waitFor(() => expect(setStudioUserRole).toHaveBeenCalledWith(7, false));
+  });
+
+  it('deletes a user after row confirmation and reloads the page', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '删除' }));
+
+    await screen.findByText('删除用户 operator？');
+    expect(screen.getByText('该账号及其全部会话将被永久删除，此操作不可恢复。')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.ant-popover')).toBeTruthy());
+    const popover = document.querySelector('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(deleteStudioUser).toHaveBeenCalledWith(7));
+    expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not offer deletion for the current account row', async () => {
+    vi.mocked(listStudioUsers).mockResolvedValue({
+      ...studioUserPage,
+      items: [{ ...studioUserPage.items[0], id: 1, username: 'self' }],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('self');
+    const deleteButton = screen.getByRole('button', { name: '删除' });
+    expect(deleteButton).toBeDisabled();
+    await user.click(deleteButton);
+
+    expect(document.querySelector('.ant-popover')).toBeNull();
+    expect(deleteStudioUser).not.toHaveBeenCalled();
   });
 
   it('renders the page in English when the stored language preference is en', async () => {
