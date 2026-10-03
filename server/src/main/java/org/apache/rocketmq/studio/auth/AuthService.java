@@ -295,6 +295,21 @@ public class AuthService {
         return revokeUserSessions(userId);
     }
 
+    /**
+     * Currently locked logins, sorted by remaining lock time. Read-only visibility into the
+     * brute-force limiter: locks always lift by themselves, and the snapshot reflects this
+     * instance only (the limiter is in-memory like every other login-protection state).
+     */
+    public List<StudioLoginLockoutVO> listLoginLockouts() {
+        requireDatabaseBacked();
+        return loginRateLimiter.activeLockouts().stream()
+                .map(lockout -> StudioLoginLockoutVO.builder()
+                        .username(lockout.username())
+                        .remainingSeconds(lockout.remainingSeconds())
+                        .build())
+                .toList();
+    }
+
     public RmqStudioUser createUser(String username, String password, boolean admin) {
         requireDatabaseBacked();
         validateUsername(username);
@@ -308,6 +323,9 @@ public class AuthService {
         user.setAdmin(admin);
         user.setEnabled(true);
         user.setPasswordChangedAt(now());
+        // The initial password was chosen by the creator, not the owner: the owner rotates it
+        // at first login.
+        user.setPasswordMustChange(true);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -345,6 +363,70 @@ public class AuthService {
     }
 
     /**
+     * Grants or revokes the administrator role for an existing user. Revoking from the last
+     * enabled administrator is refused with the same row-locking guard as disabling, so two
+     * concurrent revokes cannot strip every administrator at once. Any role change revokes the
+     * user's sessions: the authenticated session snapshots the admin flag, and forcing a
+     * re-login is the only way the new role takes effect immediately.
+     */
+    @Transactional
+    public RmqStudioUser setUserAdmin(Long userId, boolean admin) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        if (Boolean.valueOf(admin).equals(user.getAdmin())) {
+            return user;
+        }
+        if (!admin && Boolean.TRUE.equals(user.getAdmin())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillAdmin = enabledAdmins.stream()
+                    .anyMatch(candidate -> userId.equals(candidate.getId()));
+            if (targetStillAdmin && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot lose the role");
+            }
+        }
+        RmqStudioUser update = new RmqStudioUser();
+        update.setId(user.getId());
+        update.setAdmin(admin);
+        userMapper.updateById(update);
+        revokeUserSessions(user.getId());
+        user.setAdmin(admin);
+        return user;
+    }
+
+    /**
+     * Deletes a studio account and its sessions. The operator's own account cannot be deleted
+     * (the session would turn into a confusing mid-request failure — disable it instead), and
+     * the last enabled administrator is protected by the same row-locking guard the disable
+     * path uses. Sessions are removed in the same transaction: the table has no foreign key,
+     * so rows would otherwise linger as unreachable tokens.
+     */
+    @Transactional
+    public void deleteUser(Long userId) {
+        requireDatabaseBacked();
+        RmqStudioUser user = getUser(userId);
+        String currentUserId = AuthenticatedUserContext.currentUserId();
+        if (currentUserId != null && currentUserId.equals(String.valueOf(userId))) {
+            throw new BusinessException(400, "The current account cannot delete itself; disable it instead");
+        }
+        if (Boolean.TRUE.equals(user.getAdmin()) && Boolean.TRUE.equals(user.getEnabled())) {
+            List<RmqStudioUser> enabledAdmins = userMapper.selectList(new QueryWrapper<RmqStudioUser>()
+                    .eq("admin", true)
+                    .eq("enabled", true)
+                    .last("FOR UPDATE"));
+            boolean targetStillEnabled = enabledAdmins.stream()
+                    .anyMatch(admin -> userId.equals(admin.getId()));
+            if (targetStillEnabled && enabledAdmins.size() <= 1) {
+                throw new BusinessException(409, "The last enabled administrator cannot be deleted");
+            }
+        }
+        sessionMapper.delete(new QueryWrapper<RmqStudioSession>().eq("user_id", userId));
+        userMapper.deleteById(userId);
+    }
+
+    /**
      * Replacing the hash and revoking the account's sessions are one logical change: a failure
      * between the two writes would leave the account on its new password while its existing
      * sessions - possibly the ones the change was meant to invalidate - stay valid. Both statements
@@ -367,7 +449,10 @@ public class AuthService {
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", now())
+                // A password chosen by its owner needs no rotation; one handed out by an
+                // administrator does, until the owner replaces it.
+                .set("password_must_change", !requireCurrentPassword));
         revokeUserSessions(user.getId());
     }
 
@@ -616,7 +701,12 @@ public class AuthService {
     }
 
     private LoginVO.UserInfo userInfo(RmqStudioUser user) {
-        return userInfo(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getAdmin()));
+        return LoginVO.UserInfo.builder()
+                .userId(user.getId())
+                .username(user.getUsername())
+                .admin(Boolean.TRUE.equals(user.getAdmin()))
+                .mustChangePassword(Boolean.TRUE.equals(user.getPasswordMustChange()))
+                .build();
     }
 
     private LoginVO.UserInfo userInfo(Long userId, String username, boolean admin) {

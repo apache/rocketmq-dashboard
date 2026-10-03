@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS rmq_studio_user (
   admin TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否管理员',
   enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
   password_changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近修改密码时间',
+  password_must_change TINYINT(1) NOT NULL DEFAULT 0 COMMENT '当前密码由他人设定（初始/管理员重置），所有者下次登录必须修改',
   PRIMARY KEY (`id`),
   UNIQUE KEY uk_studio_user_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -31,6 +31,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -41,6 +42,7 @@ import {
   ListBullets,
   Plus,
   SignOut,
+  Trash,
 } from '@phosphor-icons/react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
@@ -48,13 +50,17 @@ import InfoBanner from '../../components/InfoBanner';
 import { changePassword } from '../../api/auth';
 import {
   createStudioUser,
+  deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as exportStudioUsers,
+  listStudioLoginLockouts,
   listStudioUserSessions,
   listStudioUsers,
   resetStudioUserPassword,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  setStudioUserRole,
+  type StudioLoginLockout,
   type StudioUser,
   type StudioUserSessionDetail,
   type StudioUserSessionOverview,
@@ -131,6 +137,7 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
+  const [loginLockouts, setLoginLockouts] = useState<StudioLoginLockout[]>([]);
   const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
@@ -155,6 +162,7 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      setLoginLockouts([]);
       setSessionDrawerUser(null);
       setSessionDetails([]);
       return;
@@ -164,7 +172,7 @@ const UserManagementPage = () => {
       if (requestId === requestSeqRef.current) setLoading(true);
     });
     try {
-      const [result, overview] = await Promise.all([
+      const [result, overview, lockouts] = await Promise.all([
         listStudioUsers({
           search: debouncedSearch || undefined,
           admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
@@ -173,9 +181,11 @@ const UserManagementPage = () => {
           pageSize,
         }),
         getStudioUserSessionOverview().catch(() => null),
+        listStudioLoginLockouts().catch(() => []),
       ]);
       if (requestId !== requestSeqRef.current) return;
       setSessionOverview(overview);
+      setLoginLockouts(lockouts);
       if (result.items.length === 0 && result.total > 0 && page > 1) {
         const lastPage = Math.max(1, Math.ceil(result.total / result.size));
         if (page > lastPage) {
@@ -293,6 +303,30 @@ const UserManagementPage = () => {
       t('userMgmt.updateStatusFailed'),
     );
 
+  const setRole = (record: StudioUser, admin: boolean) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await setStudioUserRole(record.id, admin);
+        message.success(admin ? t('userMgmt.roleGranted') : t('userMgmt.roleRevoked'));
+        await loadUsers();
+      },
+      t('userMgmt.updateRoleFailed'),
+    );
+
+  const confirmRoleChange = (record: StudioUser, admin: boolean) => {
+    Modal.confirm({
+      title: admin
+        ? t('userMgmt.grantRoleConfirmTitle', { username: record.username })
+        : t('userMgmt.revokeRoleConfirmTitle', { username: record.username }),
+      content: t('userMgmt.roleChangeConfirmBody'),
+      okText: admin ? t('userMgmt.roleAdmin') : t('userMgmt.roleUser'),
+      cancelText: t('common.cancel'),
+      okButtonProps: admin ? undefined : { danger: true },
+      onOk: () => setRole(record, admin),
+    });
+  };
+
   const updatePassword = async () => {
     if (!passwordTarget) return;
     const values = await passwordForm.validateFields();
@@ -334,6 +368,20 @@ const UserManagementPage = () => {
         await loadUsers();
       },
       t('userMgmt.revokeFailed'),
+    );
+
+  const deleteUser = (record: StudioUser) =>
+    runUserMutation(
+      record.id,
+      async () => {
+        await deleteStudioUser(record.id);
+        message.success(t('userMgmt.deleted', { username: record.username }));
+        if (sessionDrawerUser?.id === record.id) {
+          setSessionDrawerUser(null);
+        }
+        await loadUsers();
+      },
+      t('userMgmt.deleteFailed'),
     );
 
   const openCreateUserModal = () => setCreateOpen(true);
@@ -412,8 +460,18 @@ const UserManagementPage = () => {
       title: t('userMgmt.role'),
       dataIndex: 'admin',
       width: 88,
-      render: (value: boolean) =>
-        value ? (
+      // The role is fixed at creation unless an administrator changes it here; readers keep
+      // the read-only tag so the mutation surface stays admin-only like every other action.
+      render: (value: boolean, record: StudioUser) =>
+        admin ? (
+          <Switch
+            checked={value}
+            loading={mutatingUserIds.has(record.id)}
+            checkedChildren={t('userMgmt.roleAdmin')}
+            unCheckedChildren={t('userMgmt.roleUser')}
+            onChange={(next: boolean) => confirmRoleChange(record, next)}
+          />
+        ) : value ? (
           <Tag color="blue">{t('userMgmt.roleAdmin')}</Tag>
         ) : (
           <Tag>{t('userMgmt.roleUser')}</Tag>
@@ -422,13 +480,21 @@ const UserManagementPage = () => {
     {
       title: t('common.status'),
       dataIndex: 'enabled',
-      width: 88,
-      render: (value: boolean) =>
-        value ? (
-          <Tag color="green">{t('common.enabled')}</Tag>
-        ) : (
-          <Tag color="default">{t('common.disabled')}</Tag>
-        ),
+      width: 150,
+      render: (value: boolean, record) => (
+        <>
+          {value ? (
+            <Tag color="green">{t('common.enabled')}</Tag>
+          ) : (
+            <Tag color="default">{t('common.disabled')}</Tag>
+          )}
+          {record.passwordMustChange && (
+            <Tooltip title={t('userMgmt.passwordMustChangeHelp')}>
+              <Tag color="orange">{t('userMgmt.passwordMustChange')}</Tag>
+            </Tooltip>
+          )}
+        </>
+      ),
     },
     {
       title: t('userMgmt.activeSessions'),
@@ -502,6 +568,25 @@ const UserManagementPage = () => {
             unCheckedChildren={t('userMgmt.disable')}
             onChange={(enabled) => void setEnabled(record, enabled)}
           />
+          <Popconfirm
+            title={t('userMgmt.deleteConfirm', { username: record.username })}
+            description={t('userMgmt.deleteDescription')}
+            okText={t('common.delete')}
+            cancelText={t('common.cancel')}
+            okButtonProps={{ danger: true }}
+            disabled={record.id === userId}
+            onConfirm={() => void deleteUser(record)}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<Trash size={14} />}
+              disabled={record.id === userId}
+              loading={mutatingUserIds.has(record.id)}
+            >
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -576,7 +661,25 @@ const UserManagementPage = () => {
               })}
               value={sessionOverview.staleSessionCount}
             />
+            <Statistic title={t('userMgmt.loginLockouts')} value={loginLockouts.length} />
           </Flex>
+          {loginLockouts.length > 0 && (
+            <Flex gap={8} wrap style={{ marginTop: 8 }}>
+              {loginLockouts.map((lockout) => (
+                <Tooltip
+                  key={lockout.username}
+                  title={t('userMgmt.loginLockoutHelp')}
+                  placement="top"
+                >
+                  <Tag color="red">
+                    {lockout.username} · {t('userMgmt.loginLockoutRemaining', {
+                      seconds: lockout.remainingSeconds,
+                    })}
+                  </Tag>
+                </Tooltip>
+              ))}
+            </Flex>
+          )}
         </Card>
       )}
       {admin && (

@@ -14,40 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
 
+/**
+ * A currently locked login: the normalized username that exhausted its failed-attempt budget
+ * and the seconds until the lock lifts by itself. The state is per-instance, like the
+ * in-memory limiter that produces it.
+ */
 @Data
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
-    @ToString.Exclude
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String token;
-    private int expiresIn;
-    private UserInfo user;
+public class StudioLoginLockoutVO {
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInfo {
-        private Long userId;
-        private String username;
-        private boolean admin;
-        /**
-         * The current password was chosen by someone other than the owner (an administrator's
-         * reset or the account's initial password); the login flow must make the owner rotate
-         * it before proceeding. Always false for properties-based (in-memory) users.
-         */
-        private boolean mustChangePassword;
-    }
+    private String username;
+    private long remainingSeconds;
 }

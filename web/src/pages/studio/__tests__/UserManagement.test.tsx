@@ -15,18 +15,21 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as downloadStudioUsers,
+  listStudioLoginLockouts,
   listStudioUserSessions,
   listStudioUsers,
   revokeStudioUserSessions,
   setStudioUserEnabled,
+  setStudioUserRole,
   type StudioUser,
   type StudioUserSessionDetail,
 } from '../../../api/studioUsers';
@@ -39,13 +42,16 @@ import UserManagementPage from '../UserManagement';
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
   createStudioUser: vi.fn(),
+  deleteStudioUser: vi.fn(),
   getStudioUserSessionOverview: vi.fn(),
   listAllStudioUsers: vi.fn(),
+  listStudioLoginLockouts: vi.fn(),
   listStudioUserSessions: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
   revokeStudioUserSessions: vi.fn(),
   setStudioUserEnabled: vi.fn(),
+  setStudioUserRole: vi.fn(),
 }));
 
 vi.mock('../../../stores/authStore', () => ({
@@ -68,6 +74,7 @@ const studioUserPage = {
       username: 'operator',
       admin: false,
       enabled: true,
+      passwordMustChange: true,
       activeSessionCount: 2,
       lastSessionSeenAt: '2026-08-22T09:30:00',
       nearestSessionExpiresAt: '2026-08-22T10:00:00',
@@ -164,10 +171,30 @@ describe('UserManagementPage', () => {
     });
     vi.mocked(downloadStudioUsers).mockResolvedValue(studioUserPage.items);
     vi.mocked(listStudioUserSessions).mockResolvedValue(sessionDetails);
+    vi.mocked(listStudioLoginLockouts).mockResolvedValue([]);
     vi.mocked(revokeStudioUserSessions).mockResolvedValue({
       userId: 7,
       revokedSessionCount: 2,
     });
+  });
+
+  it('shows currently locked logins on the session overview', async () => {
+    vi.mocked(listStudioLoginLockouts).mockResolvedValue([
+      { username: 'contractor', remainingSeconds: 240 },
+    ]);
+    renderPage();
+
+    await screen.findByText('operator');
+    expect(screen.getByText('登录锁定')).toBeInTheDocument();
+    expect(screen.getByText('contractor · 240 秒后自动解锁')).toBeInTheDocument();
+  });
+
+  it('renders a zero login-lockout statistic without any lock tags', async () => {
+    renderPage();
+
+    await screen.findByText('operator');
+    expect(screen.getByText('登录锁定')).toBeInTheDocument();
+    expect(screen.queryByText(/秒后自动解锁/)).not.toBeInTheDocument();
   });
 
   it('loads a bounded first page and renders the server total', async () => {
@@ -185,6 +212,7 @@ describe('UserManagementPage', () => {
     expect(getStudioUserSessionOverview).toHaveBeenCalledTimes(1);
     expect(screen.getAllByText('活跃会话').length).toBeGreaterThan(0);
     expect(screen.getByText('未来 5 分钟过期')).toBeInTheDocument();
+    expect(screen.getByText('待改密')).toBeInTheDocument();
   });
 
   it('debounces username search and sends role and status filters', async () => {
@@ -372,13 +400,16 @@ describe('UserManagementPage', () => {
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
 
     // Revocation and status updates share one in-flight guard, so the row is blocked meanwhile.
-    const toggle = screen.getByRole('switch');
+    // The row exposes two switches (role and status); the status one carries 启用/停用 copy.
+    const toggle = screen.getAllByRole('switch').find((element) =>
+      element.textContent?.includes('启用'),
+    )!;
     expect(toggle).toBeDisabled();
     fireEvent.click(toggle);
     expect(setStudioUserEnabled).not.toHaveBeenCalled();
 
     await act(async () => resolveRevoke());
-    await waitFor(() => expect(screen.getByRole('switch')).not.toBeDisabled());
+    await waitFor(() => expect(toggle).not.toBeDisabled());
     expect(setStudioUserEnabled).not.toHaveBeenCalled();
   });
 
@@ -392,13 +423,91 @@ describe('UserManagementPage', () => {
     );
     renderPage();
 
-    const toggle = await screen.findByRole('switch');
+    const toggle = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('启用'))!);
     fireEvent.click(toggle);
     fireEvent.click(toggle);
 
     expect(setStudioUserEnabled).toHaveBeenCalledTimes(1);
     expect(setStudioUserEnabled).toHaveBeenCalledWith(7, false);
     await act(async () => resolveUpdate());
+  });
+
+  it('grants the administrator role after a confirmation', async () => {
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(setStudioUserRole).mockResolvedValue({ ...studioUserPage.items[0], admin: true });
+    vi.mocked(listStudioUsers).mockResolvedValue(studioUserPage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    // The role switch carries the 管理员/普通用户 copy in the Role column.
+    const roleSwitch = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('普通用户'))!);
+    await user.click(roleSwitch);
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(setStudioUserRole).toHaveBeenCalledWith(7, true));
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+  });
+
+  it('revokes the administrator role after a danger confirmation', async () => {
+    vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const adminRow = { ...studioUserPage.items[0], admin: true };
+    vi.mocked(listStudioUsers).mockResolvedValue({ ...studioUserPage, items: [adminRow] });
+    vi.mocked(setStudioUserRole).mockResolvedValue({ ...adminRow, admin: false });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    const roleSwitch = await screen
+      .findAllByRole('switch')
+      .then((switches) => switches.find((element) => element.textContent?.includes('管理员'))!);
+    await user.click(roleSwitch);
+
+    await waitFor(() => expect(setStudioUserRole).toHaveBeenCalledWith(7, false));
+  });
+
+  it('deletes a user after row confirmation and reloads the page', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '删除' }));
+
+    await screen.findByText('删除用户 operator？');
+    expect(screen.getByText('该账号及其全部会话将被永久删除，此操作不可恢复。')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.ant-popover')).toBeTruthy());
+    const popover = document.querySelector('.ant-popover') as HTMLElement;
+    await user.click(within(popover).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(deleteStudioUser).toHaveBeenCalledWith(7));
+    expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not offer deletion for the current account row', async () => {
+    vi.mocked(listStudioUsers).mockResolvedValue({
+      ...studioUserPage,
+      items: [{ ...studioUserPage.items[0], id: 1, username: 'self' }],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('self');
+    const deleteButton = screen.getByRole('button', { name: '删除' });
+    expect(deleteButton).toBeDisabled();
+    await user.click(deleteButton);
+
+    expect(document.querySelector('.ant-popover')).toBeNull();
+    expect(deleteStudioUser).not.toHaveBeenCalled();
   });
 
   it('renders the page in English when the stored language preference is en', async () => {
