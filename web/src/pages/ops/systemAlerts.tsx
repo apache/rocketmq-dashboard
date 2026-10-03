@@ -460,6 +460,7 @@ const SystemAlertsPage = () => {
   };
 
   const deleteSilence = async (id: number) => {
+    if (deletingSilenceId !== null) return;
     setDeletingSilenceId(id);
     try {
       await deleteAlertSilence(id);

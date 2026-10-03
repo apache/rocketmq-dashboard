@@ -228,9 +228,15 @@ export const CloudCredentialTab = () => {
     }
   };
 
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(() => new Set());
+  const deletingIdsRef = useRef(new Set<number>());
+
   const handleDelete = async (credential: CloudCredential) => {
     if (loading || loadFailed || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey)
       return;
+    if (deletingIdsRef.current.has(credential.id)) return;
+    deletingIdsRef.current.add(credential.id);
+    setDeletingIds(new Set(deletingIdsRef.current));
     try {
       await deleteCloudCredential(credential.id);
       const remainingOnPage = credentials.length - 1;
@@ -242,6 +248,9 @@ export const CloudCredentialTab = () => {
       message.success(t('settings.credentialDeleted'));
     } catch {
       message.error(t('settings.credentialDeleteFailed'));
+    } finally {
+      deletingIdsRef.current.delete(credential.id);
+      setDeletingIds(new Set(deletingIdsRef.current));
     }
   };
 
@@ -286,13 +295,16 @@ export const CloudCredentialTab = () => {
             onConfirm={() => void handleDelete(record)}
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
+            okButtonProps={{ loading: deletingIds.has(record.id) }}
           >
             <Button
               type="link"
               size="small"
               danger
               icon={<DeleteOutlined />}
-              disabled={staleActionsDisabled}
+              disabled={
+                staleActionsDisabled || (deletingIds.size > 0 && !deletingIds.has(record.id))
+              }
             >
               {t('common.delete')}
             </Button>
