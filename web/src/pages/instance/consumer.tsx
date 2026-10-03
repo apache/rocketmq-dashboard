@@ -162,6 +162,33 @@ const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): Con
   return data;
 };
 
+// The subscription filter mode arrives in three value domains: the mock data
+// uses Chinese labels, the Apache/Aliyun converters normalize to
+// SubscriptionFilterModes values (TAG/SQL/CLASS_FILTER), and Tencent sends the
+// raw SDK values (TAG/SQL92). Map all of them; labelKey null keeps the raw
+// value as the label.
+export const filterModeMeta = (
+  mode?: string | null,
+): { color: string; labelKey: string | null } => {
+  const key = (mode ?? '').trim();
+  switch (key) {
+    case 'TAG':
+    case 'Tag 过滤':
+      return { color: 'blue', labelKey: 'consumer.filterTag' };
+    case 'SQL':
+    case 'SQL92':
+    case 'SQL92 过滤':
+      return { color: 'purple', labelKey: 'consumer.filterSql92' };
+    case 'CLASS_FILTER':
+      return { color: 'cyan', labelKey: null };
+    case '':
+    case '全量':
+      return { color: 'default', labelKey: 'consumer.filterAll' };
+    default:
+      return { color: 'default', labelKey: null };
+  }
+};
+
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
 const isConsistentValue = (value?: string | null): boolean =>
@@ -1118,12 +1145,12 @@ const ConsumerPageContent = ({
       key: 'filterMode',
       width: 120,
       render: (mode: string) => {
-        const colorMap: Record<string, string> = {
-          全量: 'default',
-          'Tag 过滤': 'blue',
-          'SQL92 过滤': 'purple',
-        };
-        return <Tag color={colorMap[mode] || 'default'}>{mode}</Tag>;
+        const meta = filterModeMeta(mode);
+        return (
+          <Tag color={meta.color}>
+            {meta.labelKey ? t(meta.labelKey) : mode || t('consumer.filterAll')}
+          </Tag>
+        );
       },
     },
     {
