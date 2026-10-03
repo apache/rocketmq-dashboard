@@ -48,6 +48,34 @@ describe('LlmSettingsPage', () => {
     });
   });
 
+  it('usesTheCallerFallbackWhenTheResponseIsUndefinedTest', () => {
+    expect(buildLlmFailureResult(undefined, 'Unable to reach the provider')).toEqual({
+      success: false,
+      msg: 'Unable to reach the provider',
+      code: undefined,
+      hint: undefined,
+    });
+  });
+
+  it.each([undefined, ''])('preservesDiagnosticsWhenTheErrorMessageIs%jTest', (errMsg) => {
+    expect(
+      buildLlmFailureResult(
+        {
+          status: 1,
+          errMsg,
+          code: 'llm.provider.unavailable',
+          hint: 'Check the provider endpoint and retry.',
+        },
+        'Unable to reach the provider',
+      ),
+    ).toEqual({
+      success: false,
+      msg: 'Unable to reach the provider',
+      code: 'llm.provider.unavailable',
+      hint: 'Check the provider endpoint and retry.',
+    });
+  });
+
   it('keeps provider fallback models available before config is saved', () => {
     expect(fallbackModelOptions('openai')).toEqual([
       { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol' },
