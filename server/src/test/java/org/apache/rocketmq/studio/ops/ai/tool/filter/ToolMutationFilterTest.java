@@ -58,7 +58,7 @@ class ToolMutationFilterTest {
         assertThat(output.plan().after()).containsEntry("topic", " orders ");
         assertThat(handler.executions).isEqualTo(1);
         assertThat(handler.previews).isEqualTo(1);
-        verify(tokens).verify(context);
+        verify(tokens).verifyAndConsume(context);
         verifyNoMoreInteractions(tokens);
     }
 
@@ -110,14 +110,14 @@ class ToolMutationFilterTest {
         assertThat(handler.executionContext).isSameAs(context);
         assertThat(handler.previews).isEqualTo(1);
         assertThat(handler.executions).isEqualTo(1);
-        verify(tokens).verify(context);
+        verify(tokens).verifyAndConsume(context);
     }
 
     @Test
     void invalidTokenPreventsPlanGenerationAndExecution() {
         ToolExecutionContext context = context(ToolRiskLevel.L2, Map.of("topic", "orders", "confirm_token", "invalid"));
         var failure = ToolError.CONFIRMATION_TOKEN_INVALID.exception("rmq.topic.update");
-        doThrow(failure).when(tokens).verify(context);
+        doThrow(failure).when(tokens).verifyAndConsume(context);
 
         assertThatThrownBy(() -> chain.execute(new ToolInvocation(context, handler))).isSameAs(failure);
         assertThat(handler.previews).isZero();
