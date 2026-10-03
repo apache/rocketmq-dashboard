@@ -880,6 +880,32 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void messageFailureCarriesTheConfigurationReasonTest() {
+        NotificationOutboxService service = new NotificationOutboxService(
+                mock(RmqAlertNotificationOutboxMapper.class), mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class));
+
+        // No dingtalk webhook is configured: the reason must reach the client as a business
+        // error carrying the configuration reason, not as a generic 500 "Internal Server Error".
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.sendTestMessage("dingtalk"))
+                .isInstanceOfSatisfying(org.apache.rocketmq.studio.common.exception.BusinessException.class,
+                        error -> {
+                            org.assertj.core.api.Assertions.assertThat(error.getCode()).isEqualTo(502);
+                            org.assertj.core.api.Assertions.assertThat(error.getMessage())
+                                    .contains("webhook");
+                        });
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.sendTestMessage("fax"))
+                .isInstanceOfSatisfying(org.apache.rocketmq.studio.common.exception.BusinessException.class,
+                        error -> {
+                            org.assertj.core.api.Assertions.assertThat(error.getCode()).isEqualTo(400);
+                            org.assertj.core.api.Assertions.assertThat(error.getMessage())
+                                    .contains("fax");
+                        });
+    }
+
+    @Test
     void messageNamesTheChannelItExercisesTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         SettingsRepository settings = mock(SettingsRepository.class);
