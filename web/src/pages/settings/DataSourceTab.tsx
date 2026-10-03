@@ -167,6 +167,10 @@ export const DataSourceTab = () => {
         setTotal(result.total);
       } catch {
         if (requestId === requestSeqRef.current) {
+          // A failed reload must not leave the previous search/type filter's data sources
+          // listed under the new filter.
+          setDataSources([]);
+          setTotal(0);
           message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {

@@ -387,7 +387,14 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         }
       })
       .catch(() => {
-        if (!cancelled) message.error(t('alerts.ruleLoadFailed'));
+        if (!cancelled) {
+          // A failed reload must not leave the previous filter's rules (and their selection)
+          // listed under the new search/enabled filter.
+          setRules([]);
+          setTotalRules(0);
+          setSelectedRuleIds([]);
+          message.error(t('alerts.ruleLoadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

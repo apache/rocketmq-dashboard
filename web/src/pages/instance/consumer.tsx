@@ -343,7 +343,13 @@ const ConsumerPageContent = ({
         }
         return requestId === groupRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        if (requestId === groupRequestIdRef.current) {
+          // A failed reload must not leave the previous query's groups listed under the
+          // new search/scope — the same discipline the instance page enforces.
+          setGroups([]);
+          setTotalGroups(0);
+          message.error(t('consumer.fetchListFailed'));
+        }
         return undefined;
       } finally {
         if (requestId === groupRequestIdRef.current) setLoading(false);

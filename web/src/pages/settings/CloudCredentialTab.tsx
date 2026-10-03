@@ -106,6 +106,10 @@ export const CloudCredentialTab = () => {
         setTotal(result.total);
       } catch {
         if (requestId === requestSeqRef.current) {
+          // A failed reload must not leave the previous vendor/search filter's credentials
+          // listed under the new filter.
+          setCredentials([]);
+          setTotal(0);
           message.error(t('settings.credentialLoadFailed'));
         }
       } finally {
