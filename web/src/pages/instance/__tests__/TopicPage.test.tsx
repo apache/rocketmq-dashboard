@@ -113,6 +113,18 @@ const selectedInstance = {
   gmtModified: '2026-01-01T00:00:00Z',
 };
 
+const healthyBrokerRoute: BrokerRoute = {
+  brokerName: 'broker-a',
+  brokerAddr: '10.0.0.1:10911',
+  masterAddr: '10.0.0.1:10911',
+  writeQueues: 8,
+  readQueues: 8,
+  perm: 'RW',
+  readable: true,
+  writable: true,
+  replicaCount: 1,
+};
+
 const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
     <App>
@@ -1381,12 +1393,66 @@ describe('TopicPage', () => {
       resolveSecond([healthyRoute]);
       await secondCheck;
     });
-    expect(screen.getByText(/所有 Topic 在 Broker 上均有路由/)).toBeInTheDocument();
+    // The check only looks at the rows of the current page and filter, so the verdict must say so
+    // instead of declaring the whole inventory healthy.
+    expect(
+      screen.getByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由.*只覆盖当前页与当前筛选/),
+    ).toBeInTheDocument();
 
     await act(async () => {
       resolveFirst([]);
       await firstCheck;
     });
     expect(screen.queryByText('缺失路由')).not.toBeInTheDocument();
+  });
+
+  it('reports a failed route check instead of claiming every topic has a route', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(1));
+    topicServiceMocks.getTopicRoutes.mockRejectedValue(new Error('blip'));
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    // A lookup that threw proves nothing about that topic, so the empty state must not fall back
+    // to the healthy verdict: nothing was verified, and the transient toast is long gone by the
+    // time anyone reads the dialog.
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('counts only the topics whose route check succeeded', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(2));
+    topicServiceMocks.getTopicRoutes.mockImplementation(async (name: string) => {
+      if (name === 'topic-02') throw new Error('blip');
+      return [healthyBrokerRoute];
+    });
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/2 个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+  });
+
+  it('scopes the sync verdict to the rows the list actually shows', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    // Rows belonging to another instance are still in state while an instance switch is in
+    // flight, and the table hides them; the verdict must not count topics nobody can see.
+    mockTopicsList([buildTopics(1)[0], { ...buildTopics(2)[1], instanceId: 'instance-other' }]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([healthyBrokerRoute]);
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    expect(screen.queryByText('topic-02')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(
+      await screen.findByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由/),
+    ).toBeInTheDocument();
   });
 });

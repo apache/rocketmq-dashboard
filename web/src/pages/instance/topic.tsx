@@ -376,6 +376,8 @@ const TopicPageContent = ({
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncChecking, setSyncChecking] = useState(false);
   const [syncMissing, setSyncMissing] = useState<Topic[]>([]);
+  const [syncCheckedCount, setSyncCheckedCount] = useState(0);
+  const [syncFailedCount, setSyncFailedCount] = useState(0);
   const [syncedTopics, setSyncedTopics] = useState<Set<string>>(() => new Set());
   const [syncingKeys, setSyncingKeys] = useState<Set<string>>(() => new Set());
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -614,10 +616,14 @@ const TopicPageContent = ({
     setSyncModalOpen(true);
     setSyncChecking(true);
     setSyncMissing([]);
+    setSyncCheckedCount(0);
+    setSyncFailedCount(0);
     setSyncedTopics(new Set());
     try {
+      // Scan the rendered list rather than the raw page: the verdict below quotes a count, and the
+      // table hides rows the client-side filter dropped, so both must cover the same set.
       const results = await Promise.all(
-        topics.map(async (topic) => {
+        filteredTopics.map(async (topic) => {
           const instanceId = topic.instanceId || selectedInstanceId || undefined;
           try {
             return { topic, routes: await getTopicRoutes(topic.name, instanceId) };
@@ -628,6 +634,10 @@ const TopicPageContent = ({
       );
       if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
+      // A failed lookup proves nothing about that topic, so the counts are what the empty state has
+      // to quote - iterating the list would report topics as verified that were never resolved.
+      setSyncCheckedCount(checked.length);
+      setSyncFailedCount(results.length - checked.length);
       if (checked.length < results.length) {
         message.error('部分 Topic 路由校验失败，请稍后重试');
       }
@@ -645,6 +655,22 @@ const TopicPageContent = ({
       if (syncRequestIdRef.current === requestId) setSyncChecking(false);
     }
   };
+
+  const renderSyncFailureAlert = () =>
+    syncFailedCount === 0 ? null : (
+      <Alert
+        type="error"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={`路由校验失败：${syncFailedCount} 个 Topic 未能校验`}
+        description="这些 Topic 无法判断是否缺失路由，请重试后再确认是否需要同步。"
+        action={
+          <Button size="small" onClick={() => void openSyncModal()}>
+            重试
+          </Button>
+        }
+      />
+    );
 
   const syncTopicToBroker = async (topic: Topic) => {
     const instanceId = topic.instanceId || selectedInstanceId || undefined;
@@ -2109,10 +2135,19 @@ const TopicPageContent = ({
           </Flex>
         ) : syncMissing.length === 0 ? (
           <div style={{ padding: '16px 0' }}>
-            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+            {syncFailedCount > 0 ? (
+              renderSyncFailureAlert()
+            ) : (
+              <Text type="secondary">
+                当前列表中的 {syncCheckedCount} 个 Topic 在 Broker
+                上均有路由，无需同步（本次校验只覆盖当前页与当前筛选，翻页或清除筛选可校验其他
+                Topic）。
+              </Text>
+            )}
           </div>
         ) : (
           <>
+            {renderSyncFailureAlert()}
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
               Broker（按元数据记录的队列数重建）。
