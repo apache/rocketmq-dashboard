@@ -2856,7 +2856,6 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '该账号的当前密码由他人设定（创建或管理员重置），所有者下次登录时必须修改。',
     en: 'The current password was chosen by someone else (creation or admin reset); its owner must replace it at the next login.',
   },
-  },
   'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
   'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
   'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
