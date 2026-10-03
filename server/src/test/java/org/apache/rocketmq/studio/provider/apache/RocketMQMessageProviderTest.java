@@ -783,6 +783,52 @@ class RocketMQMessageProviderTest {
         assertThat(record.isBodyTruncated()).isTrue();
     }
 
+    @Test
+    void getMessageTraceJoinsSubBeforeRetryTimesIntoConsumerStatus() throws Exception {
+        // SubBefore (RocketMQ 5.5.0 TraceDataEncoder) = type, timeStamp, regionId, groupName,
+        // requestId, msgId, retryTimes. The retry count lives ONLY in SubBefore; SubAfter
+        // reports the attempt result and shares the requestId, so they join on it.
+        String subBefore = traceContext("SubBefore", "2900", "cn", "cons-group", "req-1",
+                "msg-retry", "3");
+        String subAfter = traceContext("SubAfter", "req-1", "msg-retry", "20", "false", "key1",
+                "3", "3000", "cons-group");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(subBefore, subAfter).getBytes(StandardCharsets.UTF_8));
+        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(queryResult);
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-retry", "orders");
+
+        assertThat(record.getConsumerStatus()).hasSize(1);
+        assertThat(record.getConsumerStatus().get(0).getGroup()).isEqualTo("cons-group");
+        assertThat(record.getConsumerStatus().get(0).getDeliveryStatus()).isEqualTo(DeliveryStatus.failed);
+        assertThat(record.getConsumerStatus().get(0).getRetryCount()).isEqualTo(3);
+    }
+
+    @Test
+    void getMessageTraceJoinsRetryAcrossSeparateTraceMessages() throws Exception {
+        // SubBefore and SubAfter of one attempt may be flushed into different trace
+        // messages; the join must survive across the query result, not just one body.
+        String subBefore = traceContext("SubBefore", "2900", "cn", "cons-group", "req-9",
+                "msg-x", "2");
+        String subAfter = traceContext("SubAfter", "req-9", "msg-x", "10", "true", "k", "0",
+                "3100", "cons-group");
+        MessageExt first = new MessageExt();
+        first.setBody(traceBody(subBefore).getBytes(StandardCharsets.UTF_8));
+        MessageExt second = new MessageExt();
+        second.setBody(traceBody(subAfter).getBytes(StandardCharsets.UTF_8));
+        QueryResult queryResult = new QueryResult(0L, List.of(first, second));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(queryResult);
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-x", "orders");
+
+        assertThat(record.getConsumerStatus()).hasSize(1);
+        assertThat(record.getConsumerStatus().get(0).getRetryCount()).isEqualTo(2);
+    }
+
+    @Test
     void getMessageTraceParsesBatchedPubAndSubAfterContexts() throws Exception {
         // Field order follows RocketMQ 5.5.0 TraceDataEncoder:
         // Pub = type, time, region, group,
