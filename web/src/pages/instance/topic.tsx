@@ -668,6 +668,10 @@ const TopicPageContent = ({
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
+            // Drop the deleted row from the selection: a checked row that disappears would
+            // otherwise keep the batch delete armed with a name that no longer exists, and its
+            // failure path re-seeds that same selection - leaving nothing to uncheck.
+            setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
             await reloadTopicPage();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
