@@ -43,6 +43,11 @@ public class GeneralSettingsUpdateDTO {
     @Min(5)
     @Max(1440)
     private Integer sessionTimeout;
+    // Optional so clients written before the field existed keep their stored value;
+    // 0 disables the idle deadline. Values below the server minimum are raised to it.
+    @Min(0)
+    @Max(1440)
+    private Integer sessionIdleTimeout;
     @NotNull
     private Boolean requireLogin;
     @NotBlank
@@ -72,6 +77,7 @@ public class GeneralSettingsUpdateDTO {
                 .desktopNotify(desktopNotify)
                 .notifySound(notifySound)
                 .sessionTimeout(sessionTimeout)
+                .sessionIdleTimeout(sessionIdleTimeout)
                 .requireLogin(requireLogin)
                 .llmProvider(llmProvider)
                 .llmEngine(llmEngine)

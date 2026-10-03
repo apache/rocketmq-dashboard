@@ -207,6 +207,56 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void saveGeneralSettingsShouldCarryTheSessionIdleTimeoutTest() throws Exception {
+        doNothing().when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
+        mockMvc.perform(post("/api/settings/general/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "theme": "light",
+                                  "compact": false,
+                                  "desktopNotify": true,
+                                  "notifySound": false,
+                                  "sessionTimeout": 60,
+                                  "sessionIdleTimeout": 0,
+                                  "requireLogin": true,
+                                  "llmProvider": "openai",
+                                  "model": "gpt-4",
+                                  "baseUrl": ""
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // 0 is the explicit opt-out and must survive binding instead of being dropped.
+        verify(settingsService).saveGeneralSettings(argThat(settings ->
+                Integer.valueOf(0).equals(settings.getSessionIdleTimeout())));
+    }
+
+    @Test
+    void saveGeneralSettingsShouldRejectOutOfRangeSessionIdleTimeoutTest() throws Exception {
+        mockMvc.perform(post("/api/settings/general/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "theme": "light",
+                                  "compact": false,
+                                  "desktopNotify": true,
+                                  "notifySound": false,
+                                  "sessionTimeout": 60,
+                                  "sessionIdleTimeout": 1441,
+                                  "requireLogin": true,
+                                  "llmProvider": "openai",
+                                  "model": "gpt-4",
+                                  "baseUrl": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void listDataSourcesShouldReturnAllSourcesTest() throws Exception {
         DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("Prometheus")
                 .url("prod:9876").status("connected").build();

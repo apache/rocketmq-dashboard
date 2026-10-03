@@ -56,6 +56,7 @@ import static org.mockito.Mockito.when;
 class AuthServiceDatabaseTest {
 
     private AuthService authService;
+    private SettingsRepository settingsRepository;
     private RmqStudioUserMapper userMapper;
     private RmqStudioSessionMapper sessionMapper;
     private PasswordHasher passwordHasher;
@@ -63,7 +64,7 @@ class AuthServiceDatabaseTest {
     @BeforeEach
     void setUp() {
         AuthProperties authProperties = new AuthProperties();
-        SettingsRepository settingsRepository = mock(SettingsRepository.class);
+        settingsRepository = mock(SettingsRepository.class);
         GeneralSettingsVO settings = GeneralSettingsVO.builder().sessionTimeout(30).build();
         when(settingsRepository.loadGeneralSettings()).thenReturn(settings);
         userMapper = mock(RmqStudioUserMapper.class);
@@ -402,6 +403,114 @@ class AuthServiceDatabaseTest {
         assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
 
         verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void idleExpiredSessionsAreRejectedAndRevokedTest() {
+        // Last seen 60 minutes ago with the 30-minute default idle window, while the absolute
+        // expiry (2026-08-14) is still a day away: only the idle deadline can reject it.
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:00:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isFalse();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+    }
+
+    @Test
+    void sessionsSeenWithinTheIdleWindowStayAuthenticatedTest() {
+        // Ten minutes old: inside the 30-minute idle window but past the throttled
+        // last-seen interval, so the session survives and only its last_seen_at refreshes.
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:50:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("last_seen_at")
+                .doesNotContain("revoked_at");
+    }
+
+    @Test
+    void configuredIdleWindowShortensTheDeadlineTest() {
+        GeneralSettingsVO configured = GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(15)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(configured);
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T23:45:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // Twenty minutes unused: inside the default window but past the configured one.
+        assertThat(authService.isAuthenticated("Bearer token-1")).isFalse();
+
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void zeroIdleTimeoutDisablesTheIdleDeadlineTest() {
+        GeneralSettingsVO configured = GeneralSettingsVO.builder()
+                .sessionTimeout(30)
+                .sessionIdleTimeout(0)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(configured);
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L,
+                LocalDateTime.parse("2026-08-12T22:00:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        // Two hours unused: only the absolute expiry (tomorrow) may reject this token.
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("last_seen_at")
+                .doesNotContain("revoked_at");
+    }
+
+    @Test
+    void missingLastSeenSessionsFallBackToTheAbsoluteDeadlineTest() {
+        // Rows written before the column existed have no last_seen_at; the idle deadline
+        // must not guess one from gmt_create and lock their owners out.
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession(10L, 1L, LocalDateTime.parse("2026-08-13T00:00:00"));
+        session.setLastSeenAt(null);
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void scheduledPurgeRevokesIdleExpiredSessionsTest() {
+        authService.purgeExpiredSessions();
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at");
+        assertThat(updateCaptor.getValue().getSqlSegment())
+                .contains("revoked_at", "last_seen_at", "expires_at");
+        // The absolute-expiry cleanup keeps running alongside the idle revocation.
+        verify(sessionMapper).delete(any(Wrapper.class));
     }
 
     @Test
