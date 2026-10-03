@@ -24,6 +24,7 @@ import {
   deleteStudioUser,
   getStudioUserSessionOverview,
   listAllStudioUsers as downloadStudioUsers,
+  listStudioLoginLockouts,
   listStudioUserSessions,
   listStudioUsers,
   revokeStudioUserSessions,
@@ -44,6 +45,7 @@ vi.mock('../../../api/studioUsers', () => ({
   deleteStudioUser: vi.fn(),
   getStudioUserSessionOverview: vi.fn(),
   listAllStudioUsers: vi.fn(),
+  listStudioLoginLockouts: vi.fn(),
   listStudioUserSessions: vi.fn(),
   listStudioUsers: vi.fn(),
   resetStudioUserPassword: vi.fn(),
@@ -168,10 +170,30 @@ describe('UserManagementPage', () => {
     });
     vi.mocked(downloadStudioUsers).mockResolvedValue(studioUserPage.items);
     vi.mocked(listStudioUserSessions).mockResolvedValue(sessionDetails);
+    vi.mocked(listStudioLoginLockouts).mockResolvedValue([]);
     vi.mocked(revokeStudioUserSessions).mockResolvedValue({
       userId: 7,
       revokedSessionCount: 2,
     });
+  });
+
+  it('shows currently locked logins on the session overview', async () => {
+    vi.mocked(listStudioLoginLockouts).mockResolvedValue([
+      { username: 'contractor', remainingSeconds: 240 },
+    ]);
+    renderPage();
+
+    await screen.findByText('operator');
+    expect(screen.getByText('登录锁定')).toBeInTheDocument();
+    expect(screen.getByText('contractor · 240 秒后自动解锁')).toBeInTheDocument();
+  });
+
+  it('renders a zero login-lockout statistic without any lock tags', async () => {
+    renderPage();
+
+    await screen.findByText('operator');
+    expect(screen.getByText('登录锁定')).toBeInTheDocument();
+    expect(screen.queryByText(/秒后自动解锁/)).not.toBeInTheDocument();
   });
 
   it('loads a bounded first page and renders the server total', async () => {

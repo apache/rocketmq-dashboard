@@ -45,6 +45,11 @@ public class StudioUserController {
         return Result.ok(authService.getSessionOverview());
     }
 
+    @GetMapping("/login-lockouts")
+    public Result<List<StudioLoginLockoutVO>> listLoginLockouts() {
+        return Result.ok(authService.listLoginLockouts());
+    }
+
     @GetMapping("/{userId}/sessions")
     public Result<List<StudioUserSessionDetailVO>> listActiveSessions(@PathVariable Long userId) {
         return Result.ok(authService.listActiveSessionsForUser(userId));
