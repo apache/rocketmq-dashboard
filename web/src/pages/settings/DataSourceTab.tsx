@@ -272,7 +272,13 @@ export const DataSourceTab = () => {
     }
   };
 
+  const [deletingKeys, setDeletingKeys] = useState<Set<string>>(() => new Set());
+  const deletingKeysRef = useRef(new Set<string>());
+
   const handleDelete = async (dataSource: DataSource) => {
+    if (deletingKeysRef.current.has(dataSource.key)) return;
+    deletingKeysRef.current.add(dataSource.key);
+    setDeletingKeys(new Set(deletingKeysRef.current));
     try {
       await deleteDataSource(dataSource.key);
       if (dataSources.length === 1 && page > 1) {
@@ -283,6 +289,9 @@ export const DataSourceTab = () => {
       message.success(t('settings.dataSourceDeleted'));
     } catch {
       message.error(t('settings.dataSourceDeleteFailed'));
+    } finally {
+      deletingKeysRef.current.delete(dataSource.key);
+      setDeletingKeys(new Set(deletingKeysRef.current));
     }
   };
 
@@ -381,8 +390,15 @@ export const DataSourceTab = () => {
             onConfirm={() => void handleDelete(record)}
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
+            okButtonProps={{ loading: deletingKeys.has(record.key) }}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={deletingKeys.size > 0 && !deletingKeys.has(record.key)}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
