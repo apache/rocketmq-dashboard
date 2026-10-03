@@ -1403,6 +1403,12 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '维护窗口结束失败，请稍后重试',
     en: 'Failed to end maintenance window. Please try again later.',
   },
+  'sysAlerts.exportSilences': { zh: '导出维护窗口', en: 'Export windows' },
+  'sysAlerts.silenceExportSuccess': { zh: '维护窗口已导出', en: 'Maintenance windows exported.' },
+  'sysAlerts.silenceExportFailed': {
+    zh: '维护窗口导出失败，请稍后重试',
+    en: 'Failed to export maintenance windows. Please try again later.',
+  },
   'sysAlerts.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
   'sysAlerts.maintenanceWindows': { zh: '维护窗口', en: 'Maintenance windows' },
   'sysAlerts.business': { zh: '业务告警', en: 'Business alerts' },
