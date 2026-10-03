@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
@@ -44,6 +45,7 @@ public class AuthController {
     private final AuthService authService;
     private final AuthProperties authProperties;
     private final SettingsRepository settingsRepository;
+    private final OperationAuditService operationAuditService;
 
     @GetMapping("/status")
     public ResponseEntity<Result<AuthStatusVO>> status(
@@ -75,7 +77,19 @@ public class AuthController {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
-        LoginVO login = authService.login(request);
+        LoginVO login;
+        try {
+            login = authService.login(request);
+        } catch (BusinessException failure) {
+            // The attempted username is the security-relevant actor; the recorded message is
+            // whatever the service answered, so the uniform 401 never leaks account state
+            // here either. Audit failures must not change the response (record() swallows).
+            operationAuditService.record(request.getUsername(), "LOGIN", "USER", request.getUsername(),
+                    null, null, "FAILURE", failure.getMessage());
+            throw failure;
+        }
+        operationAuditService.record(request.getUsername(), "LOGIN", "USER", request.getUsername(),
+                null, null, "SUCCESS", null);
         if (AuthCookie.requestsBearerToken(servletRequest)) {
             return Result.ok(login);
         }
@@ -88,6 +102,7 @@ public class AuthController {
     public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
         authService.logout(AuthCookie.authorization(request, authProperties));
         AuthCookie.clear(response, authProperties);
+        operationAuditService.record("LOGOUT", "USER", null, null, null, "SUCCESS", null);
         return Result.ok();
     }
 
@@ -101,6 +116,8 @@ public class AuthController {
             throw new BusinessException(503, "Studio user management is not initialized");
         }
         authService.changePassword(user.getUserId(), request.getCurrentPassword(), request.getNewPassword(), true);
+        operationAuditService.record("UPDATE_OWN_PASSWORD", "USER", user.getUsername(),
+                null, null, "SUCCESS", null);
         return Result.ok();
     }
 }

@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -42,10 +43,12 @@ public class AuditService {
     private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final int CLEANUP_BATCH_SIZE = 500;
     private static final int CLEANUP_MAX_BATCHES = 20;
+    private static final int MAX_CLEANUP_DAYS = 365;
     private static final String CSV_COLUMNS =
             "operator,operationType,resourceType,target,clusterId,detail,result,errorMessage";
 
     private final AuditRepository auditRepository;
+    private final AuditProperties auditProperties;
 
 
     public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
@@ -144,12 +147,38 @@ public class AuditService {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");
         }
-        if (beforeDays > 365) {
-            throw new BusinessException(400, "beforeDays must not exceed 365");
+        if (beforeDays > MAX_CLEANUP_DAYS) {
+            throw new BusinessException(400, "beforeDays must not exceed " + MAX_CLEANUP_DAYS);
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
         return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+    }
+
+    /**
+     * Hourly retention sweep over the same bounded delete the manual cleanup endpoint uses.
+     * Disabled unless {@code studio.audit.retention-days} is set: audit rows are compliance
+     * evidence, so the default keeps them forever and operators opt in per deployment.
+     */
+    @Scheduled(fixedDelayString = "${studio.audit.cleanup-interval:PT1H}")
+    public void scheduledCleanup() {
+        int retentionDays = auditProperties.getRetentionDays();
+        if (retentionDays <= 0) {
+            return;
+        }
+        if (retentionDays > MAX_CLEANUP_DAYS) {
+            log.warn("Clamping configured audit retention of {} days down to {}", retentionDays, MAX_CLEANUP_DAYS);
+            retentionDays = MAX_CLEANUP_DAYS;
+        }
+        try {
+            int deleted = cleanupLogs(retentionDays);
+            if (deleted > 0) {
+                log.info("Scheduled audit cleanup removed {} records older than {} days", deleted, retentionDays);
+            }
+        } catch (RuntimeException exception) {
+            // Retention is hygiene: a failed sweep must not surface as an application error.
+            log.warn("Scheduled audit cleanup failed: {}", exception.getMessage());
+        }
     }
 
     private void validatePagination(int page, int pageSize) {

@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -39,6 +41,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +49,9 @@ class AuditServiceTest {
 
     @Mock
     private AuditRepository auditRepository;
+
+    @Spy
+    private AuditProperties auditProperties = new AuditProperties();
 
     @InjectMocks
     private AuditService auditService;
@@ -266,6 +272,51 @@ class AuditServiceTest {
 
         assertThat(deleted).isEqualTo(500);
         verify(auditRepository).deleteBefore(any(LocalDateTime.class), eq(500), eq(20));
+    }
+
+    @Test
+    void scheduledCleanupSkipsWhenRetentionIsDisabledTest() {
+        // The default: audit rows are compliance evidence, so nothing is deleted unless a
+        // retention window is explicitly configured.
+        auditService.scheduledCleanup();
+
+        verifyNoInteractions(auditRepository);
+    }
+
+    @Test
+    void scheduledCleanupDeletesRecordsOlderThanTheConfiguredWindowTest() {
+        auditProperties.setRetentionDays(90);
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(7);
+
+        auditService.scheduledCleanup();
+
+        ArgumentCaptor<LocalDateTime> cutoffCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).deleteBefore(cutoffCaptor.capture(), eq(500), eq(20));
+        assertThat(cutoffCaptor.getValue()).isBeforeOrEqualTo(LocalDateTime.now().minusDays(90));
+        assertThat(cutoffCaptor.getValue()).isAfter(LocalDateTime.now().minusDays(91));
+    }
+
+    @Test
+    void scheduledCleanupClampsRetentionBeyondTheMaximumTest() {
+        auditProperties.setRetentionDays(3650);
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(0);
+
+        auditService.scheduledCleanup();
+
+        ArgumentCaptor<LocalDateTime> cutoffCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).deleteBefore(cutoffCaptor.capture(), eq(500), eq(20));
+        // A decade is clamped to the 365-day maximum the manual endpoint enforces.
+        assertThat(cutoffCaptor.getValue()).isAfter(LocalDateTime.now().minusDays(366));
+    }
+
+    @Test
+    void scheduledCleanupSurvivesRepositoryFailuresTest() {
+        auditProperties.setRetentionDays(30);
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20)))
+                .thenThrow(new RuntimeException("database unavailable"));
+
+        // Retention is hygiene: the sweep must never surface as an application error.
+        assertThatCode(() -> auditService.scheduledCleanup()).doesNotThrowAnyException();
     }
 
     @Test
