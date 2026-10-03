@@ -711,6 +711,39 @@ describe('TopicPage', () => {
     expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
   });
 
+  it('drops a deleted topic from the selection so the batch delete cannot re-submit it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const topic = buildTopics(1)[0];
+    let call = 0;
+    topicServiceMocks.listTopicsPage.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? { items: [topic], total: 1, page: 1, size: 20 }
+        : { items: [], total: 0, page: 1, size: 20 };
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    // The row is gone, so a selection still holding its name can only fail on the next batch
+    // delete - and that failure re-seeds the same unusable selection.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument(),
+    );
+  });
+
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
