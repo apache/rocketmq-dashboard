@@ -24,6 +24,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
@@ -120,10 +121,13 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     public PageResult<AclUserVO> findUserPage(String keyword, int page, int pageSize) {
         String search = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase(Locale.ROOT) : null;
+        // Match the keyword literally: an access key or username containing _ (a common RocketMQ
+        // spelling) would otherwise be treated as a single-character wildcard.
+        String searchPattern = LikePatterns.escape(search);
         QueryWrapper<RmqAclUser> query = new QueryWrapper<RmqAclUser>()
                 .and(search != null, w -> w
-                        .like("username", search)
-                        .or().like("access_key", search))
+                        .like("username", searchPattern)
+                        .or().like("access_key", searchPattern))
                 .orderByDesc("gmt_create")
                 .orderByDesc("id");
         IPage<RmqAclUser> mapperPage = userMapper.selectPage(new Page<>(page, pageSize), query);
@@ -414,9 +418,11 @@ public class MybatisPlusAclRepository implements AclRepository {
 
     private static QueryWrapper<RmqAclRule> ruleQuery(String principal, String resource, String scope,
             String decision, String aclVersion) {
+        // Principal and resource are free-text filters over names that routinely contain _ or a
+        // %DLQ%-style prefix; match them literally instead of as LIKE patterns.
         return new QueryWrapper<RmqAclRule>()
-                .like(StringUtils.hasText(principal), "principal", principal)
-                .like(StringUtils.hasText(resource), "resource", resource)
+                .like(StringUtils.hasText(principal), "principal", LikePatterns.escape(principal))
+                .like(StringUtils.hasText(resource), "resource", LikePatterns.escape(resource))
                 .eq(StringUtils.hasText(scope), "scope", scope)
                 .eq(StringUtils.hasText(decision), "decision", decision)
                 .eq(StringUtils.hasText(aclVersion), "acl_version", aclVersion)
