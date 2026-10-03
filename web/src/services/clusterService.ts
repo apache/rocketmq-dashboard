@@ -245,11 +245,28 @@ export async function deleteK8sCert(id: number): Promise<void> {
   return clusterApi.deleteK8sCert(id);
 }
 
+// writeQueueNums and readQueueNums both map to the single broker property
+// defaultTopicQueueNums, so the backend (ClusterService.requireMatchingDefaultQueueNums)
+// rejects a request carrying conflicting values. Mock mode must simulate the
+// same contract instead of silently letting one side overwrite the other.
+function requireMatchingQueueNums(data: Partial<ClusterConfig>): void {
+  if (
+    data.writeQueueNums !== undefined &&
+    data.readQueueNums !== undefined &&
+    data.writeQueueNums !== data.readQueueNums
+  ) {
+    throw new Error(
+      'RocketMQ broker default queue count requires matching writeQueueNums and readQueueNums',
+    );
+  }
+}
+
 export async function updateClusterConfig(
   data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
 ) {
   if (isMockMode()) {
     const { id } = data;
+    requireMatchingQueueNums(data);
     const config = pickClusterConfig(data);
     const cluster = getMockCluster(id);
     Object.assign(cluster.config, config);
@@ -268,6 +285,7 @@ export async function previewClusterConfig(
 ): Promise<ClusterConfigPreviewResult> {
   if (isMockMode()) {
     const { id } = data;
+    requireMatchingQueueNums(data);
     const config = pickClusterConfig(data);
     const cluster = getMockCluster(id);
     const currentConfig = { ...cluster.config };
