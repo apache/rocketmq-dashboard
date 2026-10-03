@@ -164,11 +164,18 @@ const visibleConsumerGroups = (groups: ConsumerGroup[], modeFilter: string): Con
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
+// Three producers, three value domains: Apache "consistent"/"inconsistent",
+// Aliyun String.valueOf(Boolean) "true"/"false", Tencent String.valueOf(Long)
+// "1"/"0" — all must be recognized in both the health check and the tag
+// color mapping below.
+const CONSISTENT_VALUES = ['consistent', 'true', '1', '一致'];
+const INCONSISTENT_VALUES = ['inconsistent', 'false', '0', '不一致'];
+
 const isConsistentValue = (value?: string | null): boolean =>
-  ['consistent', '一致'].includes(normalizedConsistency(value));
+  CONSISTENT_VALUES.includes(normalizedConsistency(value));
 
 const isInconsistentValue = (value?: string | null): boolean =>
-  ['inconsistent', '不一致'].includes(normalizedConsistency(value));
+  INCONSISTENT_VALUES.includes(normalizedConsistency(value));
 
 const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
   isConsistentValue(subscription.consistency);
