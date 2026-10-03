@@ -46,6 +46,7 @@ import {
   Eye,
   EyeSlash,
   Key,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -59,6 +60,7 @@ import {
   createAndUpdatePlainAccessConfig,
   deleteAclRule,
   deleteAclUser,
+  exportAclUsers,
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
@@ -70,6 +72,7 @@ import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../.
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
 import { analyzeAclRisk, type AclRiskIssue } from '../../utils/aclRiskDiagnostics';
+import { downloadBlob } from '../../utils/download';
 
 type AclEntityId = AclRule['id'];
 type AclRuleFormValues = Pick<
@@ -147,6 +150,7 @@ const AclPageContent = ({
   const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
+  const [usersExporting, setUsersExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
@@ -398,6 +402,23 @@ const AclPageContent = ({
     userForm.resetFields();
     userForm.setFieldsValue({ admin: false, clusters: [] });
     setUserModalOpen(true);
+  };
+
+  const exportUsers = async () => {
+    if (usersExporting) return;
+    setUsersExporting(true);
+    try {
+      const blob = await exportAclUsers({
+        instanceId: selectedInstanceId,
+        keyword: userKeyword || undefined,
+      });
+      downloadBlob(blob, 'acl-users.csv');
+      message.success(t('acl.userExportSuccess'));
+    } catch {
+      message.error(t('acl.userExportFailed'));
+    } finally {
+      setUsersExporting(false);
+    }
   };
 
   const openEditUserModal = (user: NormalizedAclUser) => {
@@ -1241,6 +1262,13 @@ const AclPageContent = ({
                         onClick={openAddUserModal}
                       >
                         {t('acl.addUser')}
+                      </Button>
+                      <Button
+                        icon={<DownloadSimple size={14} />}
+                        loading={usersExporting}
+                        onClick={() => void exportUsers()}
+                      >
+                        {t('acl.exportUsers')}
                       </Button>
                       <Input.Search
                         value={userKeyword}
