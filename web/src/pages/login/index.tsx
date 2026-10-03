@@ -27,7 +27,7 @@ import { App, Button, Form, Input, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
-import { login as loginApi } from '../../api/auth';
+import { login as loginApi, changePassword } from '../../api/auth';
 import { useTheme } from '../../theme/useTheme';
 import './index.css';
 
@@ -38,15 +38,30 @@ interface LoginFormValues {
   password: string;
 }
 
+interface PasswordChangeFormValues {
+  newPassword: string;
+  confirmPassword: string;
+}
+
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const loginInFlightRef = useRef(false);
+  // Set when the just-authenticated account must rotate its password (initial or admin-reset
+  // credential) before the session may proceed.
+  const [rotation, setRotation] = useState<{ username: string; password: string } | null>(null);
   const [form] = Form.useForm<LoginFormValues>();
+  const [rotationForm] = Form.useForm<PasswordChangeFormValues>();
   const { t } = useLang();
   const { message } = App.useApp();
   const navigate = useNavigate();
   const authLogin = useAuthStore((s) => s.login);
   const { darkMode, toggleTheme } = useTheme();
+
+  const enterApp = (user: { username: string; userId: number | null; admin: boolean }) => {
+    authLogin(user.username, user.userId, user.admin);
+    message.success(t('login.success'));
+    navigate('/', { replace: true });
+  };
 
   const onFinish = async (values: LoginFormValues) => {
     // React state is applied on the next render, so it cannot prevent two submit
@@ -56,12 +71,36 @@ const LoginPage = () => {
     setLoading(true);
     try {
       const data = await loginApi(values.username, values.password);
-      authLogin(data.user.username, data.user.userId, data.user.admin);
-      message.success(t('login.success'));
-      navigate('/', { replace: true });
+      if (data.user.mustChangePassword) {
+        // The credential was chosen by someone else; the owner replaces it before entering.
+        // The change revokes this session, so completion signs in again with the new password.
+        message.info(t('login.mustChangePrompt'));
+        setRotation({ username: values.username, password: values.password });
+        return;
+      }
+      enterApp(data.user);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : t('login.failed');
       message.error(errorMsg);
+    } finally {
+      loginInFlightRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const onRotationFinish = async (values: PasswordChangeFormValues) => {
+    if (loginInFlightRef.current || !rotation) return;
+    loginInFlightRef.current = true;
+    setLoading(true);
+    try {
+      await changePassword(rotation.password, values.newPassword);
+      const data = await loginApi(rotation.username, values.newPassword);
+      setRotation(null);
+      enterApp(data.user);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : t('login.changeFailed');
+      message.error(errorMsg);
+      setRotation(null);
     } finally {
       loginInFlightRef.current = false;
       setLoading(false);
@@ -174,6 +213,59 @@ const LoginPage = () => {
         </div>
 
         <div className="login-form-shell">
+          {rotation ? (
+            <Form
+              form={rotationForm}
+              name="password_rotation_form"
+              layout="vertical"
+              onFinish={onRotationFinish}
+              initialValues={{ newPassword: '', confirmPassword: '' }}
+            >
+              <Typography.Paragraph className="login-headline-description">
+                {t('login.rotationDescription', { username: rotation.username })}
+              </Typography.Paragraph>
+              <Form.Item
+                label={t('login.newPassword')}
+                name="newPassword"
+                rules={[
+                  { required: true, message: t('login.newPasswordRequired') },
+                  { min: 8, message: t('userMgmt.passwordMinLength') },
+                ]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  placeholder={t('login.newPasswordPlaceholder')}
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('login.confirmNewPassword')}
+                name="confirmPassword"
+                dependencies={['newPassword']}
+                rules={[
+                  { required: true, message: t('login.confirmNewPasswordRequired') },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      return !value || getFieldValue('newPassword') === value
+                        ? Promise.resolve()
+                        : Promise.reject(new Error(t('login.passwordMismatch')));
+                    },
+                  }),
+                ]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  placeholder={t('login.confirmNewPasswordPlaceholder')}
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+              <Form.Item className="login-submit-item">
+                <Button type="primary" htmlType="submit" block loading={loading}>
+                  {t('login.rotationSubmit')}
+                </Button>
+              </Form.Item>
+            </Form>
+          ) : (
           <Form
             form={form}
             name="login_form"
@@ -211,6 +303,7 @@ const LoginPage = () => {
               </Button>
             </Form.Item>
           </Form>
+          )}
         </div>
 
         <div className="login-card-footer">

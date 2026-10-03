@@ -23,6 +23,8 @@ export interface StudioUser {
   username: string;
   admin: boolean;
   enabled: boolean;
+  /** The account's password awaits rotation by its owner (set by creation or admin reset). */
+  passwordMustChange?: boolean;
   activeSessionCount: number;
   lastSessionSeenAt?: string | null;
   nearestSessionExpiresAt?: string | null;

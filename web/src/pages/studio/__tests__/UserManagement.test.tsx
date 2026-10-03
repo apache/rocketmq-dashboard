@@ -74,6 +74,7 @@ const studioUserPage = {
       username: 'operator',
       admin: false,
       enabled: true,
+      passwordMustChange: true,
       activeSessionCount: 2,
       lastSessionSeenAt: '2026-08-22T09:30:00',
       nearestSessionExpiresAt: '2026-08-22T10:00:00',
@@ -211,6 +212,7 @@ describe('UserManagementPage', () => {
     expect(getStudioUserSessionOverview).toHaveBeenCalledTimes(1);
     expect(screen.getAllByText('活跃会话').length).toBeGreaterThan(0);
     expect(screen.getByText('未来 5 分钟过期')).toBeInTheDocument();
+    expect(screen.getByText('待改密')).toBeInTheDocument();
   });
 
   it('debounces username search and sends role and status filters', async () => {

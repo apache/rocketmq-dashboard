@@ -480,13 +480,21 @@ const UserManagementPage = () => {
     {
       title: t('common.status'),
       dataIndex: 'enabled',
-      width: 88,
-      render: (value: boolean) =>
-        value ? (
-          <Tag color="green">{t('common.enabled')}</Tag>
-        ) : (
-          <Tag color="default">{t('common.disabled')}</Tag>
-        ),
+      width: 150,
+      render: (value: boolean, record) => (
+        <>
+          {value ? (
+            <Tag color="green">{t('common.enabled')}</Tag>
+          ) : (
+            <Tag color="default">{t('common.disabled')}</Tag>
+          )}
+          {record.passwordMustChange && (
+            <Tooltip title={t('userMgmt.passwordMustChangeHelp')}>
+              <Tag color="orange">{t('userMgmt.passwordMustChange')}</Tag>
+            </Tooltip>
+          )}
+        </>
+      ),
     },
     {
       title: t('userMgmt.activeSessions'),
