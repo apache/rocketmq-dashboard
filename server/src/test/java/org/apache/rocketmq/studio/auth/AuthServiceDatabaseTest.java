@@ -248,6 +248,45 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void databaseLoginAttributesTheSessionToTheRequestingClientTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request, "203.0.113.7", "M".repeat(300));
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getClientIp()).isEqualTo("203.0.113.7");
+        // Overlong agents are truncated to the column width instead of failing the insert.
+        assertThat(captor.getValue().getUserAgent()).hasSize(255);
+    }
+
+    @Test
+    void databaseLoginWithoutClientAttributionKeepsTheColumnsNullTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request);
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getClientIp()).isNull();
+        assertThat(captor.getValue().getUserAgent()).isNull();
+    }
+
+    @Test
     void passwordChangeRevokesExistingSessions() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         when(userMapper.selectById(1L)).thenReturn(user);

@@ -92,6 +92,8 @@ const sessionDetails: StudioUserSessionDetail[] = [
     idleSeconds: 60,
     expiringSoon: true,
     stale: false,
+    clientIp: '203.0.113.7',
+    userAgent: 'Mozilla/5.0 (Macintosh) StudioTestAgent/1.0',
   },
   {
     id: 20,
@@ -103,6 +105,7 @@ const sessionDetails: StudioUserSessionDetail[] = [
     idleSeconds: 1500,
     expiringSoon: false,
     stale: true,
+    // No attribution: a session created before the columns existed.
   },
 ];
 
@@ -276,6 +279,9 @@ describe('UserManagementPage', () => {
     expect(within(drawer).getByText('5分钟')).toBeInTheDocument();
     expect(within(drawer).getByText('1分钟')).toBeInTheDocument();
     expect(within(drawer).queryByText(/token/i)).not.toBeInTheDocument();
+    // The attributed session shows its origin; the legacy row without attribution renders a dash.
+    expect(within(drawer).getByText('203.0.113.7')).toBeInTheDocument();
+    expect(within(drawer).getAllByText('-').length).toBeGreaterThan(0);
   });
 
   it('revokes sessions after row confirmation', async () => {
