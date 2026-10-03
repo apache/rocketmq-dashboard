@@ -123,6 +123,33 @@ class ApacheRocketMqClusterMetricsCollectorTest {
                 .isEmpty();
     }
 
+    @Test
+    void emitsUnavailableSamplesForEveryRuntimeMetricWhenTheStatsCallFailsTest() throws Exception {
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        MQAdminExt admin = mock(MQAdminExt.class);
+        InstanceVO instance = apacheInstance();
+        ClusterInfo topology = new ClusterInfo();
+        topology.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
+                new HashMap<>(Map.of(0L, "broker-a:10911")))));
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+        when(admin.fetchBrokerRuntimeStats("broker-a:10911"))
+                .thenThrow(new IllegalStateException("broker restarting"));
+        when(resolver.execute(eq(instance), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(admin));
+
+        List<MetricSample> samples = new ApacheRocketMqClusterMetricsCollector(resolver).collect(instance);
+
+        // Without a sample of its own, an active disk/JVM/send-queue alert is reconciled as cleared
+        // by the very collection that failed to read the value.
+        assertUnavailableBrokerMetric(samples, "broker.disk.usage_ratio");
+        assertUnavailableBrokerMetric(samples, "broker.jvm.heap.usage_ratio");
+        assertUnavailableBrokerMetric(samples, "broker.send_queue.usage_ratio");
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals("broker.availability"))
+                .singleElement().satisfies(sample ->
+                        assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE));
+    }
+
     private static void assertUnavailableBrokerMetric(List<MetricSample> samples, String metricKey) {
         assertThat(samples).filteredOn(sample -> sample.metricKey().equals(metricKey))
                 .singleElement().satisfies(sample -> {
