@@ -55,7 +55,7 @@ import {
 import { matchesClientSearch } from './clientsSearch';
 
 const { Text } = Typography;
-const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
+const DEFAULT_LOAD_ERROR = 'clients.loadFailed';
 
 /* ─── Helpers ─── */
 
@@ -221,7 +221,7 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
+        setLoadError(describeThrownMessage(error) || t(DEFAULT_LOAD_ERROR));
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
@@ -253,7 +253,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
+          setLoadError(describeThrownMessage(error) || t(DEFAULT_LOAD_ERROR));
         }
       })
       .finally(() => {
@@ -712,7 +712,7 @@ const ClientsPage = () => {
                 setConnectionLoadKey((key) => key + 1);
               }}
             >
-              重试
+              {t('common.retry')}
             </Button>
           }
         />
