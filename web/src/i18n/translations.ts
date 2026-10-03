@@ -1344,6 +1344,14 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── System Alerts ───
   'sysAlerts.title': { zh: '系统告警', en: 'System Alerts' },
   'sysAlerts.clearAcked': { zh: '清除已确认', en: 'Clear Acknowledged' },
+  'sysAlerts.clearAckedConfirm': {
+    zh: '清除所有已确认告警？',
+    en: 'Clear every acknowledged alert?',
+  },
+  'sysAlerts.clearAckedConfirmDesc': {
+    zh: '会永久删除全部已确认的系统告警及其通知投递记录，无法撤销。',
+    en: 'Permanently deletes every acknowledged system alert and its notification delivery records. This cannot be undone.',
+  },
   'sysAlerts.acknowledge': { zh: '确认', en: 'Acknowledge' },
   'sysAlerts.severe': { zh: '严重', en: 'Critical' },
   'sysAlerts.warning': { zh: '警告', en: 'Warning' },
@@ -1704,7 +1712,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
