@@ -95,11 +95,59 @@ describe('GeneralSettingsTab', () => {
     await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
   });
 
-  it('keeps the session timeout field bound when displaying its unit', async () => {
+  it('keeps the session timeout fields bound when displaying their unit', async () => {
     renderTab();
 
-    expect(await screen.findByDisplayValue('30')).toBeInTheDocument();
+    const timeoutInputs = await screen.findAllByDisplayValue('30');
+    expect(timeoutInputs).toHaveLength(2);
     expect(screen.getByLabelText('会话超时单位')).toHaveValue('分钟');
+    expect(screen.getByLabelText('会话空闲超时单位')).toHaveValue('分钟');
+  });
+
+  it('saves the session idle timeout from the security form', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    vi.mocked(getGeneralSettings).mockResolvedValue({
+      theme: 'system',
+      compact: false,
+      desktopNotify: false,
+      notifySound: false,
+      sessionTimeout: 30,
+      sessionIdleTimeout: 15,
+      requireLogin: true,
+      llmProvider: 'openai',
+      apiKeyConfigured: false,
+      model: 'test-model',
+      baseUrl: 'https://example.test/v1',
+    });
+    renderTab();
+
+    const idleInput = await waitFor(() => {
+      const input = document.getElementById('sessionIdleTimeout') as HTMLInputElement | null;
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    expect(idleInput).toHaveValue('15');
+    fireEvent.change(idleInput, { target: { value: '45' } });
+
+    const saveButtons = await screen.findAllByRole('button', { name: '保存设置' });
+    fireEvent.submit(saveButtons[0].closest('form')!);
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionTimeout: 30, sessionIdleTimeout: 45 }),
+      ),
+    );
+  });
+
+  it('defaults the idle timeout to the server default when the field is absent', async () => {
+    renderTab();
+
+    const idleInput = await waitFor(() => {
+      const input = document.getElementById('sessionIdleTimeout') as HTMLInputElement | null;
+      expect(input).not.toBeNull();
+      return input!;
+    });
+    expect(idleInput).toHaveValue('30');
   });
 
   it('shows appearance preferences but keeps desktop notification options hidden', async () => {

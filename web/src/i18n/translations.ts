@@ -1264,6 +1264,13 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'settings.sessionTimeoutRequired': { zh: '请输入会话超时时长', en: 'Enter a session timeout.' },
   'settings.sessionTimeoutUnit': { zh: '会话超时单位', en: 'Session timeout unit' },
+  'settings.sessionIdleTimeout': { zh: '会话空闲超时', en: 'Session idle timeout' },
+  'settings.sessionIdleTimeoutHelp': {
+    zh: '令牌连续未使用的时长超过该值后会话即失效；0 表示仅按绝对超时判定，低于 10 分钟按 10 分钟生效。',
+    en: 'A session whose token stays unused longer than this is revoked; 0 keeps only the absolute timeout, and values below 10 minutes apply as 10.',
+  },
+  'settings.sessionIdleTimeoutRequired': { zh: '请输入会话空闲超时时长', en: 'Enter a session idle timeout.' },
+  'settings.sessionIdleTimeoutUnit': { zh: '会话空闲超时单位', en: 'Session idle timeout unit' },
   'settings.minutes': { zh: '分钟', en: 'minutes' },
   'settings.saveSettings': { zh: '保存设置', en: 'Save settings' },
   'settings.loginRequiredHelp': {
@@ -2822,8 +2829,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.userSessions': { zh: '用户会话', en: 'User Sessions' },
   'userMgmt.sessionsOf': { zh: '{username} 的会话', en: 'Sessions of {username}' },
   'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
+  'userMgmt.revokeSession': { zh: '注销会话', en: 'Revoke session' },
+  'userMgmt.revokeSessionConfirm': {
+    zh: '注销会话 #{id}？该用户的其他会话不受影响。',
+    en: 'Revoke session #{id}? Other sessions of this user stay active.',
+  },
+  'userMgmt.sessionRevoked': { zh: '已注销会话 #{id}', en: 'Revoked session #{id}' },
   'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
   'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
+  'userMgmt.clientOrigin': { zh: '来源', en: 'Origin' },
   'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
   'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
   'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
@@ -2866,6 +2880,23 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
   'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.revokeAllSessions': { zh: '注销全部会话', en: 'Revoke all sessions' },
+  'userMgmt.revokeAllConfirmTitle': {
+    zh: '注销其他全部用户的活跃会话？',
+    en: 'Revoke all other active sessions?',
+  },
+  'userMgmt.revokeAllConfirmDescription': {
+    zh: '所有用户（你自己除外）都会被退出登录并需要重新登录。此操作用于疑似凭据泄露时的事件响应。',
+    en: 'Every user except you is signed out and must log in again. Use this to respond to a suspected credential leak.',
+  },
+  'userMgmt.revokedAllCount': {
+    zh: '已注销 {count} 个活跃会话（不含你自己的）',
+    en: 'Revoked {count} active sessions (your own were kept)',
+  },
+  'userMgmt.revokeAllFailed': {
+    zh: '注销全部会话失败',
+    en: 'Failed to revoke all sessions',
+  },
   'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
   'userMgmt.exportFailed': {
     zh: '导出用户列表失败，请稍后重试',
