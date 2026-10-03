@@ -74,6 +74,10 @@ export function useAiSend(
   const { conversationId, ready, send } = options;
   const navigate = useNavigate();
   const pendingSendRef = useRef<{ conversationId: number; request: AiMessageRequest } | null>(null);
+  // Guards the bare-route creation window (createConversation + withDefaultInstance +
+  // navigation settling): a second send in that window would create a second conversation
+  // and overwrite the armed entry, silently dropping the first prompt.
+  const createInFlightRef = useRef(false);
 
   // Callbacks arrive as fresh closures on every render; the ref keeps `startRun` referentially
   // stable so callers can put it in dependency arrays without re-firing anything.
@@ -85,6 +89,9 @@ export function useAiSend(
   const conversationIdRef = useRef(conversationId);
   useEffect(() => {
     conversationIdRef.current = conversationId;
+    // The route settling on any conversation ends the creation window; from here on sends
+    // take the existing-conversation path (it has its own in-flight guard downstream).
+    if (conversationId !== null) createInFlightRef.current = false;
   }, [conversationId]);
 
   useEffect(() => {
@@ -110,11 +117,18 @@ export function useAiSend(
         void optionsRef.current.send(current, request);
         return current;
       }
+      // Double-submit guard, the create-phase twin of startStream's: a second send while
+      // the first conversation is still being created must not admit a second conversation
+      // (the armed entry is a single slot the second create would overwrite). Returning
+      // null hands the suppressed prompt back to the caller, same as a failed create.
+      if (createInFlightRef.current) return null;
+      createInFlightRef.current = true;
       let createdId: number;
       try {
         const created = await createConversation(await withDefaultInstance(createBody));
         createdId = created.id;
       } catch (error) {
+        createInFlightRef.current = false;
         optionsRef.current.onError(error);
         return null;
       }
