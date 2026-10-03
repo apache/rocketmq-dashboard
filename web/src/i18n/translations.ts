@@ -2793,6 +2793,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.allRoles': { zh: '全部权限', en: 'All roles' },
   'userMgmt.roleAdmin': { zh: '管理员', en: 'Administrator' },
   'userMgmt.roleUser': { zh: '普通用户', en: 'Regular user' },
+  'userMgmt.roleGranted': { zh: '已授予管理员权限', en: 'Administrator role granted' },
+  'userMgmt.roleRevoked': { zh: '已撤销管理员权限', en: 'Administrator role revoked' },
+  'userMgmt.updateRoleFailed': {
+    zh: '修改权限失败，请稍后重试',
+    en: 'Failed to change the role. Please try again later.',
+  },
+  'userMgmt.grantRoleConfirmTitle': {
+    zh: '将「{username}」提升为管理员？',
+    en: 'Grant the administrator role to "{username}"?',
+  },
+  'userMgmt.revokeRoleConfirmTitle': {
+    zh: '撤销「{username}」的管理员权限？',
+    en: 'Revoke the administrator role from "{username}"?',
+  },
+  'userMgmt.roleChangeConfirmBody': {
+    zh: '该用户的所有会话将被注销，需要重新登录后新权限才会生效。',
+    en: 'All of this user\'s sessions will be signed out; the new role takes effect after they sign in again.',
+  },
   'userMgmt.filterByStatus': { zh: '按状态筛选', en: 'Filter by status' },
   'userMgmt.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'userMgmt.totalUsers': { zh: '共 {count} 个用户', en: '{count} users in total' },

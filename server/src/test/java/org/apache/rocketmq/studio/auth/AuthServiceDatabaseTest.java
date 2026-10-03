@@ -340,6 +340,63 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void grantingTheAdministratorRoleUpdatesTheFlagAndRevokesSessionsTest() {
+        RmqStudioUser operator = user(2L, "operator", false, true, "password-1");
+        when(userMapper.selectById(2L)).thenReturn(operator);
+
+        RmqStudioUser result = authService.setUserAdmin(2L, true);
+
+        assertThat(result.getAdmin()).isTrue();
+        // Granting needs no last-admin guard, but the sessions must be revoked so the
+        // re-login picks up the elevated role.
+        verify(userMapper, never()).selectList(any(Wrapper.class));
+        verify(userMapper).updateById(argThat((RmqStudioUser update) -> update.getId().equals(2L)
+                && Boolean.TRUE.equals(update.getAdmin())));
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingTheRoleFromTheLastEnabledAdministratorIsRejectedTest() {
+        RmqStudioUser admin = user(1L, "solo-admin", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(admin);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(admin));
+
+        assertThatThrownBy(() -> authService.setUserAdmin(1L, false))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("The last enabled administrator cannot lose the role");
+
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void revokingTheRoleKeepsTheOtherEnabledAdministratorTest() {
+        RmqStudioUser target = user(1L, "admin-one", true, true, "password-1");
+        RmqStudioUser other = user(2L, "admin-two", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(target, other));
+
+        RmqStudioUser result = authService.setUserAdmin(1L, false);
+
+        assertThat(result.getAdmin()).isFalse();
+        verify(userMapper).updateById(argThat((RmqStudioUser update) -> update.getId().equals(1L)
+                && Boolean.FALSE.equals(update.getAdmin())));
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void settingTheCurrentRoleShouldBeIdempotentTest() {
+        RmqStudioUser admin = user(1L, "admin", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(admin);
+
+        assertThat(authService.setUserAdmin(1L, true)).isSameAs(admin);
+
+        verify(userMapper, never()).selectList(any(Wrapper.class));
+        verify(userMapper, never()).updateById(any(RmqStudioUser.class));
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
     void databaseAuthenticationThrottlesLastSeenWrites() {
         RmqStudioUser user = user(1L, "operator", false, true, "password-1");
         RmqStudioSession session = activeSession(10L, 1L,
