@@ -177,7 +177,7 @@ export const mockAlertRuleAssets: MockAlertRuleAsset[] = [
       'rocketmq-dlq-resend-high',
       'rocketmq-errors.rules',
       'RocketMQDLQResendHigh',
-      'rate(rocketmq_dlq_resend_count[5m]) > 10',
+      'increase(rocketmq_dlq_resend_count[5m]) > 10',
       'warning',
     ),
   },

@@ -73,7 +73,7 @@ RULES = [
      'rate(rocketmq_broker_exception_count[5m]) > 0', "5m", "critical", "broker",
      "Broker exceptions", "Broker runtime exceptions have been observed."),
     ("rocketmq-dlq-resend-high", "RocketMQDLQResendHigh", "rocketmq-errors.rules",
-     'rate(rocketmq_dlq_resend_count[5m]) > 10', "5m", "warning", "consumer",
+     'increase(rocketmq_dlq_resend_count[5m]) > 10', "5m", "warning", "consumer",
      "DLQ resends high", "More than 10 dead-letter queue resends occurred in 5 minutes."),
     ("rocketmq-threadpool-reject", "RocketMQThreadPoolReject", "rocketmq-broker.rules",
      'increase(rocketmq_threadpool_reject_count[5m]) > 0', "5m", "critical", "broker",
