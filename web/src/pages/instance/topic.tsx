@@ -453,8 +453,14 @@ const TopicPageContent = ({
         }
         return requestId === topicRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === topicRequestIdRef.current)
+        if (requestId === topicRequestIdRef.current) {
+          // A failed reload must not leave the previous filter's topics listed under the
+          // new type/search filter (the client-side visibleTopics mask does not cover
+          // type-filter changes or pagination).
+          setTopics([]);
+          setTotalTopics(0);
           message.error('Topic 列表加载失败，请稍后重试');
+        }
         return undefined;
       } finally {
         if (requestId === topicRequestIdRef.current) setLoading(false);

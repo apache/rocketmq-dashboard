@@ -148,7 +148,13 @@ const NotificationDeliveriesPage = () => {
         setTotal(result.total);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('deliveries.loadFailed'));
+        if (!cancelled) {
+          // A failed reload must not leave the previous filter's deliveries listed under
+          // the new channel/status/instance filter.
+          setItems([]);
+          setTotal(0);
+          message.error(t('deliveries.loadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

@@ -163,6 +163,10 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
+          // A failed reload must not leave the previous filter's records and total listed
+          // under the new filters.
+          setRecords([]);
+          setTotal(0);
           message.error('审计日志加载失败，请稍后重试');
         }
       })
