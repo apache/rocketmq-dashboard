@@ -799,8 +799,16 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      // The notification-template preview trims these same scope fields before rendering
+      // (lines ~271-285); the saved rule must match what the user confirmed there, so
+      // trim at the submit boundary too — a padded scope value would make the rule
+      // select nothing while the preview showed the trimmed name.
       const payload = {
         ...attachThresholdUnit(values),
+        consumerGroup: values.consumerGroup?.trim(),
+        topic: values.topic?.trim(),
+        clusterName: values.clusterName?.trim(),
+        brokerName: values.brokerName?.trim(),
         ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
       setSubmitting(true);
