@@ -552,10 +552,11 @@ public class MetadataService {
 
     public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
                                                            long timestamp, String topic) {
-        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
-        return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        requireWriteInstance(target, ownershipGuard.topicResource(topicName), true);
+        return resolve(target).previewResetOffset(target, groupName, timestamp, topicName);
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
