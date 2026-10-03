@@ -172,6 +172,20 @@ class AlertRuleAssetServiceTest {
         assertTrue(service.getAssetYaml("duplicate").contains("FirstRule"));
     }
 
+    @Test
+    void dlqResendAlertShouldCountResendsOverTheDocumentedWindow() {
+        PrometheusAlertRule rule = service.loadDefaultRules().stream()
+                .filter(candidate -> "RocketMQDLQResendHigh".equals(candidate.alert()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("bundled RocketMQDLQResendHigh rule missing"));
+
+        // The annotation promises "More than 10 dead-letter queue resends occurred in 5 minutes",
+        // and the sibling rebalance rule expresses the same "more than N in 5 minutes" contract
+        // with increase(...[5m]) > N. A rate(...) > 10 threshold instead means 10 resends per
+        // *second* (about 3000 per window), so a queue quietly re-driving resends stays silent.
+        assertEquals("increase(rocketmq_dlq_resend_count[5m]) > 10", rule.expr());
+    }
+
     private static AlertRuleAssetService serviceWithResources(Resource... resources) {
         return new AlertRuleAssetService() {
             @Override
