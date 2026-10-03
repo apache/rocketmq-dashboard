@@ -982,6 +982,7 @@ POST /api/topics/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | Topic 名称 |
+| `instanceId` | `string` | 是 | 实例 ID（`DeleteTopicDTO` 校验非空） |
 
 **Response `data`:** `null`
 
@@ -1027,6 +1028,7 @@ POST /api/topics/send
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（消息写入该实例） |
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
@@ -1186,6 +1188,7 @@ POST /api/groups/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
+| `instanceId` | `string` | 是 | 实例 ID（`DeleteConsumerGroupDTO` 校验非空） |
 
 **Response `data`:** `null`
 
@@ -1200,8 +1203,9 @@ POST /api/groups/reset-offset
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
-| `timestamp` | `string` | 是 | 重置到指定时间 (ISO 8601) |
-| `topic` | `string` | 否 | 指定 Topic，不传则全部重置 |
+| `instanceId` | `string` | 是 | 实例 ID |
+| `timestamp` | `number` | 是 | 重置到的时间（Unix 毫秒时间戳，必须为正数） |
+| `topic` | `string` | 是 | 要重置的 Topic；本接口没有「全部重置」分支，必须显式指定 |
 
 **Response `data`:** `null`
 
@@ -1211,11 +1215,12 @@ POST /api/groups/reset-offset
 POST /api/groups/import
 ```
 
-**Request Body:** `multipart/form-data`
+**Request Body:** `application/json`
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `file` | `File` | JSON 配置文件 |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 目标实例 ID |
+| `groups` | `CreateConsumerGroupDTO[]` | 是 | 待导入的消费组，单次最多 100 条 |
 
 **Response `data`:**
 
@@ -1223,7 +1228,8 @@ POST /api/groups/import
 |------|------|------|
 | `imported` | `number` | 成功导入数量 |
 | `failed` | `number` | 失败数量 |
-| `errors` | `string[]` | 错误信息列表 |
+| `groups` | `ConsumerGroupVO[]` | 成功导入的消费组 |
+| `failures` | `{ index, name, message }[]` | 每条失败的原始下标、消费组名称与原因 |
 
 ### 6.9 导出消费组配置
 
