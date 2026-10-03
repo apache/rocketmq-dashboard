@@ -1364,8 +1364,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.acknowledged': { zh: '告警已确认', en: 'Alert Acknowledged' },
   'sysAlerts.cleared': { zh: '已清除所有已确认告警', en: 'Cleared all acknowledged alerts' },
   'sysAlerts.subtitle': {
-    zh: '集群运行告警监控，当前 {n} 条未确认',
-    en: 'Cluster alert monitoring, {n} unacknowledged',
+    zh: '集群运行告警监控，本页 {n} 条未确认',
+    en: 'Cluster alert monitoring, {n} unacknowledged on this page',
   },
   'sysAlerts.firing': { zh: '触发中', en: 'Firing' },
   'sysAlerts.resolved': { zh: '已恢复', en: 'Resolved' },
