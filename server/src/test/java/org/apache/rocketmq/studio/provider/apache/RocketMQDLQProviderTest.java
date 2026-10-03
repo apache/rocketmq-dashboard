@@ -36,6 +36,7 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -295,6 +296,60 @@ class RocketMQDLQProviderTest {
 
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
         verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendRejectsATargetTopicThatResolvesToAnotherClusterTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        // One NameServer can serve several clusters, so the target exists on the endpoint while
+        // belonging to a different cluster than the dead-letter topic it would be replayed from.
+        // The producer routes by topic name and would publish into that other cluster silently.
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("target-topic")).thenReturn(routeInCluster("cluster-b"));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(409);
+                    assertThat(exception.getMessage()).contains("different cluster");
+                });
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    private static TopicRouteData routeInCluster(String cluster) {
+        BrokerData broker = new BrokerData();
+        broker.setCluster(cluster);
+        broker.setBrokerName("broker-a");
+        broker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        TopicRouteData route = new TopicRouteData();
+        route.setBrokerDatas(List.of(broker));
+        return route;
+    }
+
+    @Test
+    void resendLeavesAnUnresolvableDlqRouteToTheScanNotFoundTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        // Only a resolvable route can prove a cluster mismatch, so a dead-letter topic that has no
+        // route yet must fall through to the scan's precise 404 instead of a route-verification 502.
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenThrow(new MQClientException(
+                "No topic route info in name server for the topic: " + dlqTopic, null));
+        when(adminExt.examineTopicRouteInfo("target-topic")).thenReturn(routeInCluster("cluster-b"));
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
     @Test
