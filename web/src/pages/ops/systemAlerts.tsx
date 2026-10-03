@@ -30,6 +30,7 @@ import {
   Modal,
   Form,
   Input,
+  Popconfirm,
 } from 'antd';
 import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -479,14 +480,22 @@ const SystemAlertsPage = () => {
               {t('sysAlerts.exportCsv')}
             </Button>
             <Button onClick={openSilences}>{t('sysAlerts.maintenanceWindows')}</Button>
-            <Button
-              icon={<Trash size={14} />}
-              onClick={handleClearAcked}
-              disabled={!alerts.some((a) => a.acknowledged)}
-              loading={clearing}
+            <Popconfirm
+              title={t('sysAlerts.clearAckedConfirm')}
+              description={t('sysAlerts.clearAckedConfirmDesc')}
+              onConfirm={() => void handleClearAcked()}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
             >
-              {t('sysAlerts.clearAcked')}
-            </Button>
+              <Button
+                icon={<Trash size={14} />}
+                danger
+                disabled={!alerts.some((a) => a.acknowledged)}
+                loading={clearing}
+              >
+                {t('sysAlerts.clearAcked')}
+              </Button>
+            </Popconfirm>
           </Flex>
         }
       />
