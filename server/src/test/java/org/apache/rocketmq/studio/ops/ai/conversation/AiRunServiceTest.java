@@ -320,12 +320,14 @@ class AiRunServiceTest {
             service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("a long answer"));
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(registry.isLive(RUN_ID)).isTrue();
+            // Capture the handle before stopping: stop() cancels the worker, and the worker's own
+            // finalisation removes the registration, so looking it up again afterwards races with
+            // that cleanup and is legitimately empty on a loaded machine.
+            AgentRunHandle handle = registry.handle(RUN_ID).orElseThrow();
 
             RmqAiRun stopped = service.stop(RUN_ID);
 
-            assertThat(registry.handle(RUN_ID))
-                    .get()
-                    .satisfies(handle -> assertThat(handle.abortReason()).contains(AbortReason.USER_STOP));
+            assertThat(handle.abortReason()).contains(AbortReason.USER_STOP);
             release.countDown();
             assertThat(stopped.getId()).isEqualTo(RUN_ID);
             assertThat(awaitRunStatus(RunStatus.STOPPED, Duration.ofSeconds(5))).isTrue();
