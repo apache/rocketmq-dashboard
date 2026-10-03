@@ -209,6 +209,43 @@ describe('SystemAlertsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('scopes the header unacknowledged count to the page it counted', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          level: 'warning',
+          title: 'Disk recovered',
+          description: 'disk usage returned to normal',
+          time: '2026-08-23T10:35:38.590731',
+          transition: 'RESOLVED',
+          acknowledged: true,
+          acknowledgedBy: 'admin',
+          acknowledgedAt: '2026-08-23T10:40:00.000000',
+        },
+        {
+          id: 10,
+          level: 'error',
+          title: 'Broker down',
+          description: 'no heartbeat',
+          time: '2026-08-23T10:36:00.000000',
+          transition: 'FIRING',
+          acknowledged: false,
+          acknowledgedBy: null,
+          acknowledgedAt: null,
+        },
+      ],
+      total: 60,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    // The feed is paged, so the header can only count what this page holds: "当前 n 条未确认" reads
+    // as a feed-wide backlog that changes as the operator pages.
+    expect(await screen.findByText(/本页 1 条未确认/)).toBeInTheDocument();
+  });
+
   it('filters backend alert levels case-insensitively', async () => {
     vi.mocked(listSystemAlertsPage).mockReset();
     vi.mocked(listSystemAlertsPage)
