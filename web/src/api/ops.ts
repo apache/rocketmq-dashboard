@@ -367,6 +367,16 @@ export async function listAlertDeliveriesPage(params: NotificationDeliveryQuery 
   return res.data.data;
 }
 
+export async function exportAlertDeliveries(
+  params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
+) {
+  const res = await client.get<Blob>('/system-alerts/deliveries/export', {
+    params,
+    responseType: 'blob',
+  });
+  return res.data;
+}
+
 export async function listAlertSilences() {
   const res = await client.get<{ data: AlertSilence[] }>('/alert-silences');
   return res.data.data;
@@ -377,6 +387,11 @@ export async function listAlertSilencesPage(params: AlertSilenceQuery = {}) {
     params,
   });
   return res.data.data;
+}
+
+export async function exportAlertSilences() {
+  const res = await client.get<Blob>('/alert-silences/export', { responseType: 'blob' });
+  return res.data;
 }
 
 export async function createAlertSilence(data: CreateAlertSilence) {

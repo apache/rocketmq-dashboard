@@ -710,6 +710,27 @@ const MessagePageContent = ({
     }
   };
 
+  const handleExportTrace = () => {
+    if (!traceData) return;
+    const identity = (traceQueryValue.trim() || selectedMsg?.msgId || 'trace').replace(
+      /[^\w.-]/g,
+      '_',
+    );
+    const payload = {
+      mode: traceQueryMode,
+      query: traceQueryValue.trim() || selectedMsg?.msgId || null,
+      topic: selectedMsg?.topic ?? null,
+      traceTopic: customTraceTopic.trim() || null,
+      instanceId: selectedInstanceId ?? null,
+      exportedAt: new Date().toISOString(),
+      nodes: traceData.nodes,
+      consumerStatus: traceData.consumerStatus,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    downloadBlob(blob, `trace-${identity}.json`);
+    message.success(t('messagePage.downloadSuccess'));
+  };
+
   const closeDetail = () => {
     traceGenerationRef.current += 1;
     setModalOpen(false);
@@ -1053,6 +1074,14 @@ const MessagePageContent = ({
               onClick={() => void runTraceQuery()}
             >
               {t('messagePage.queryTrace')}
+            </Button>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              disabled={!traceData}
+              onClick={handleExportTrace}
+            >
+              {t('messagePage.exportTrace')}
             </Button>
           </Space>
           {traceLoading ? (

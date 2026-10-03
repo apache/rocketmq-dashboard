@@ -293,6 +293,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'instance.proxyClusterMode': { zh: 'Proxy Cluster 模式', en: 'Proxy Cluster Mode' },
   'instance.directMode': { zh: 'Direct 模式', en: 'Direct Mode' },
   'instance.addInstance': { zh: '添加实例', en: 'Add Instance' },
+  'instance.exportInstances': { zh: '导出实例', en: 'Export instances' },
+  'instance.exportSuccess': { zh: '实例清单已导出', en: 'Instance inventory exported.' },
+  'instance.exportFailed': {
+    zh: '实例清单导出失败，请稍后重试',
+    en: 'Failed to export the instance inventory. Please try again later.',
+  },
   'instance.editInstanceTitle': { zh: '编辑实例 — {name}', en: 'Edit Instance — {name}' },
   'instance.instanceName': { zh: '实例 ID', en: 'Instance ID' },
   'instance.namePlaceholder': { zh: '例：rocketmq-production', en: 'e.g. rocketmq-production' },
@@ -796,6 +802,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Trace topic (leave empty to use default)',
   },
   'messagePage.queryTrace': { zh: '查询轨迹', en: 'Query Trace' },
+  'messagePage.exportTrace': { zh: '导出轨迹', en: 'Export Trace' },
   'messagePage.loadingTrace': { zh: '正在加载轨迹数据…', en: 'Loading trace data…' },
   'messagePage.nodeCost': { zh: '耗时 {time}ms', en: 'Duration {time}ms' },
   'messagePage.noTraceData': { zh: '暂无轨迹数据', en: 'No trace data' },
@@ -1197,6 +1204,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.timeRange': { zh: '投递时间范围', en: 'Delivery time range' },
   'deliveries.startTime': { zh: '投递开始时间', en: 'Delivery start time' },
   'deliveries.endTime': { zh: '投递结束时间', en: 'Delivery end time' },
+  'deliveries.exportFailed': {
+    zh: '导出告警投递记录失败，请稍后重试',
+    en: 'Failed to export alert deliveries. Please try again later.',
+  },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
@@ -1398,6 +1409,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.silenceEndFailed': {
     zh: '维护窗口结束失败，请稍后重试',
     en: 'Failed to end maintenance window. Please try again later.',
+  },
+  'sysAlerts.exportSilences': { zh: '导出维护窗口', en: 'Export windows' },
+  'sysAlerts.silenceExportSuccess': { zh: '维护窗口已导出', en: 'Maintenance windows exported.' },
+  'sysAlerts.silenceExportFailed': {
+    zh: '维护窗口导出失败，请稍后重试',
+    en: 'Failed to export maintenance windows. Please try again later.',
   },
   'sysAlerts.exportCsv': { zh: '导出 CSV', en: 'Export CSV' },
   'sysAlerts.maintenanceWindows': { zh: '维护窗口', en: 'Maintenance windows' },
@@ -2029,6 +2046,12 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'acl.addRule': { zh: '添加规则', en: 'Add Rule' },
   'acl.addUser': { zh: '添加用户', en: 'Add User' },
+  'acl.exportUsers': { zh: '导出用户', en: 'Export users' },
+  'acl.userExportSuccess': { zh: 'ACL 用户已导出', en: 'ACL users exported.' },
+  'acl.userExportFailed': {
+    zh: 'ACL 用户导出失败，请稍后重试',
+    en: 'Failed to export ACL users. Please try again later.',
+  },
   'acl.ruleTab': { zh: 'ACL 规则', en: 'ACL Rules' },
   'acl.userTab': { zh: '用户管理', en: 'Users' },
   'acl.principal': { zh: '主体', en: 'Principal' },
