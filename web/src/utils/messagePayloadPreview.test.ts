@@ -134,7 +134,8 @@ describe('messagePayloadPreview', () => {
       severity: 'error',
       names: ['traceId'],
     });
-    expect(result.issues[0].description).toContain('仅保留第一个值');
+    expect(result.issues[0].descriptionKey).toBe('sendCheck.duplicatePropertyKey.desc');
+    expect(result.issues[0].params).toEqual({ names: 'traceId' });
   });
 
   it('reports form property values that do not have a key', () => {
