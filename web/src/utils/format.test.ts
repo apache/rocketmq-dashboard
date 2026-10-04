@@ -10,6 +10,7 @@ import {
   formatPercent,
   formatRelativeTime,
   formatTimeOfDay,
+  formatTimeMs,
 } from './format';
 
 describe('formatBytes', () => {
@@ -34,6 +35,22 @@ describe('formatBytes', () => {
     expect(formatBytes(1024 * 1024 - 1, 0)).toBe('1 MB');
     expect(formatBytes(1024 * 1024 * 1024 - 1, 2)).toBe('1.00 GB');
     expect(formatBytes(1024 ** 6)).toBe('1024.0 PB');
+  });
+
+  it('keeps scaling past megabytes instead of capping at MB', () => {
+    expect(formatBytes(5 * 1024 ** 3)).toBe('5.0 GB');
+    expect(formatBytes(2 * 1024 ** 4)).toBe('2.0 TB');
+  });
+
+  it('renders whole bytes because a byte count has no fraction', () => {
+    expect(formatBytes(1)).toBe('1 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(512, 2)).toBe('512 B');
+    expect(formatBytes(-2048)).toBe('-2.0 KB');
+  });
+
+  it('promotes a sub-kilobyte value that only rounds up at whole-byte width', () => {
+    expect(formatBytes(1023.6)).toBe('1.0 KB');
   });
   it('handles non-finite input', () => {
     expect(formatBytes(Number.NaN)).toBe('-');
@@ -79,5 +96,30 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('formatTimeMs', () => {
+  const shape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
+
+  it('preserves the Unix epoch timestamp', () => {
+    expect(formatTimeMs(0)).not.toBe('-');
+    expect(formatTimeMs(0)).toMatch(shape);
+  });
+
+  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY, null, undefined, ''])(
+    'returns a placeholder for an unusable timestamp %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+    },
+  );
+
+  it('renders epoch milliseconds in the console-wide timestamp format', () => {
+    const timestamp = Date.parse('2026-07-31T00:00:00.123Z');
+    expect(formatTimeMs(timestamp)).toBe(`${formatDateTime(new Date(timestamp))}.123`);
+  });
+
+  it('accepts the formatted strings cloud providers return', () => {
+    expect(formatTimeMs('2026-07-31T00:00:00Z')).toMatch(shape);
   });
 });

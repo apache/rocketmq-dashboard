@@ -87,8 +87,9 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv } from '../../utils/download';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatBytes, formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeTopicRoutes,
@@ -305,12 +306,6 @@ const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
 };
 
 const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
-
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
 
 const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
   empty: '空 Body',
@@ -976,7 +971,7 @@ const TopicPageContent = ({
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? (
+        record.metricsAvailable === false || !isLagAvailable(n) ? (
           <Text type="secondary">不可用</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
