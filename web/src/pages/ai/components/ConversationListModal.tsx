@@ -266,10 +266,18 @@ const ConversationListPanel = ({
           ) : (
             <Typography.Text
               strong
+              role="button"
+              tabIndex={0}
               style={{ fontSize: 14, cursor: 'pointer' }}
               title={title}
               data-testid={`ai-conversation-link-${row.id}`}
               onClick={() => onSelect(row.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect(row.id);
+                }
+              }}
             >
               {title}
             </Typography.Text>
