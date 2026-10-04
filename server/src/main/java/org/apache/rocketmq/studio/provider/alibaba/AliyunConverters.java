@@ -256,7 +256,7 @@ final class AliyunConverters {
                 nodes.add(TraceNodeVO.builder()
                         .title("Producer")
                         .timestamp(parseTimeMillis(record.getProduceTime()))
-                        .status(record.getProduceStatus())
+                        .status(toTraceNodeStatus(record.getProduceStatus()))
                         .costTime(record.getProduceDuration() == null ? 0L : record.getProduceDuration())
                         .description(joinParts(", ", record.getClientHost(), record.getMessageSource()))
                         .build());
@@ -282,7 +282,7 @@ final class AliyunConverters {
                     String status = consumerInfo.getConsumeStatus();
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
-                            .status(status)
+                            .status(toTraceNodeStatus(status))
                             .build());
                     consumerStatuses.add(consumerStatus(
                             consumerInfo.getConsumerGroupId(), status, 0L));
@@ -297,7 +297,7 @@ final class AliyunConverters {
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
                             .timestamp(consumeTime)
-                            .status(record.getConsumeStatus())
+                            .status(toTraceNodeStatus(record.getConsumeStatus()))
                             .description(joinParts(", ", record.getClientHost(), record.getUserName()))
                             .build());
                     consumerStatuses.add(consumerStatus(
@@ -320,6 +320,20 @@ final class AliyunConverters {
                 .map(GetTraceResponseBody.RecordsOperations::getOperateTime)
                 .findFirst()
                 .orElse(null);
+    }
+
+    // The frontend TraceNode.status domain is finish/failed/process/error/wait
+    // (mapTraceNodeStatus maps anything else to 'wait'): normalize the raw cloud
+    // statuses so a failed consume renders as error instead of waiting.
+    static String toTraceNodeStatus(String rawStatus) {
+        String normalized = rawStatus == null ? "" : rawStatus.toUpperCase(Locale.ROOT);
+        if (normalized.contains("SUCCESS") || normalized.contains("OK")) {
+            return "finish";
+        }
+        if (normalized.contains("FAIL")) {
+            return "failed";
+        }
+        return "process";
     }
 
     private static ConsumerStatusVO consumerStatus(String group, String rawStatus, long consumeTime) {
