@@ -1704,7 +1704,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -3549,6 +3552,15 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
+  // ─── Time zone conversion errors (thrown as TimeFormatError; the page translates) ───
+  'timeZone.invalidLocalDateTime': {
+    zh: '本地时间格式无效：{value}',
+    en: 'Invalid local date time: {value}',
+  },
+  'timeZone.nonexistentLocalDateTime': {
+    zh: '本地时间 {value} 在时区 {timeZone} 不存在',
+    en: 'Local date time does not exist in {timeZone}: {value}',
+  },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.logout': { zh: '退出', en: 'Logout' },
   'common.submit': { zh: '提交', en: 'Submit' },

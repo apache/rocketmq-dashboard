@@ -79,7 +79,6 @@ interface PasswordFormValues {
 // Studio user and session APIs serialize UTC LocalDateTime values without an offset,
 // so the timestamps have to be parsed as UTC before rendering in the viewer's zone.
 const dateTime = (value?: string | null) => formatUtcDateTime(value);
-const durationText = (value?: number | null) => (value == null ? '-' : formatDelay(value));
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 type RoleFilter = 'admin' | 'reader';
@@ -116,7 +115,10 @@ const SessionStatusTags = ({ session }: { session: StudioUserSessionDetail }) =>
 };
 
 const UserManagementPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  // formatDelay defaults to zh when no lang is passed, so the session table's durations
+  // must follow the console language explicitly.
+  const durationText = (value?: number | null) => (value == null ? '-' : formatDelay(value, lang));
   const navigate = useNavigate();
   const admin = useAuthStore((state) => state.admin);
   const userId = useAuthStore((state) => state.userId);
