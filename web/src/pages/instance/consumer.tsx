@@ -1218,21 +1218,21 @@ const ConsumerPageContent = ({
     },
     {
       title: '诊断项',
-      dataIndex: 'title',
-      key: 'title',
+      dataIndex: 'titleKey',
+      key: 'titleKey',
       width: 180,
-      render: (title: string, record) => (
+      render: (_: string, record) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{title}</Text>
+          <Text strong>{t(record.titleKey, record.params)}</Text>
           {record.subject && <Text type="secondary">{record.subject}</Text>}
         </Space>
       ),
     },
     {
       title: '说明',
-      dataIndex: 'description',
-      key: 'description',
-      render: (description: string) => <Text>{description}</Text>,
+      dataIndex: 'descriptionKey',
+      key: 'descriptionKey',
+      render: (_: string, record) => <Text>{t(record.descriptionKey, record.params)}</Text>,
     },
   ];
 
@@ -1889,7 +1889,7 @@ const ConsumerPageContent = ({
                       <Space direction="vertical" size={2}>
                         <Space>
                           <Tag color={healthStatusTagColor(selectedGroupHealth.status)}>
-                            {selectedGroupHealth.statusText}
+                            {t(selectedGroupHealth.statusKey)}
                           </Tag>
                           <Text type="secondary">
                             汇总订阅、队列进度和在线客户端，定位消费风险。
@@ -2020,15 +2020,15 @@ const ConsumerPageContent = ({
                       <Alert type="success" showIcon message="未发现消费组健康风险" />
                     )}
 
-                    {selectedGroupHealth.recommendations.length > 0 && (
+                    {selectedGroupHealth.recommendationKeys.length > 0 && (
                       <Alert
                         type="info"
                         showIcon
                         message="处理建议"
                         description={
                           <Space direction="vertical" size={4}>
-                            {selectedGroupHealth.recommendations.map((recommendation) => (
-                              <Text key={recommendation}>{recommendation}</Text>
+                            {selectedGroupHealth.recommendationKeys.map((recommendationKey) => (
+                              <Text key={recommendationKey}>{t(recommendationKey)}</Text>
                             ))}
                           </Space>
                         }
