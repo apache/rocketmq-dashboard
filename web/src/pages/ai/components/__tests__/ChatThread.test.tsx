@@ -81,6 +81,8 @@ function renderThread(props: {
   resetKey?: number;
   pendingUserText?: string | null;
   liveBlocks?: RenderBlock[];
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   return render(
     <LangProvider>
@@ -90,12 +92,30 @@ function renderThread(props: {
         resetKey={props.resetKey}
         pendingUserText={props.pendingUserText}
         liveBlocks={props.liveBlocks}
+        hasMore={props.hasMore}
+        onLoadMore={props.onLoadMore}
       />
     </LangProvider>,
   );
 }
 
 describe('ChatThread', () => {
+  it('labels the load-more affordance as remaining events, not earlier ones', () => {
+    /** loadMore 继续前向游标、把最新的尾巴追加在末尾——按钮文案必须是
+     * "加载剩余内容"且位于记录末尾，不得声称"加载更早的内容"（初始加载
+     * 本就从 seq 0 前向走页，未加载的是最新一侧）。 */
+    renderThread({
+      bubbles: [userBubble('检查集群状态'), assistantBubble('集群正常')],
+      hasMore: true,
+      onLoadMore: () => undefined,
+    });
+
+    expect(
+      screen.getByRole('button', { name: /加载剩余内容|Load remaining/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/加载更早的内容|Load earlier/i)).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     scrollIntoView.mockClear();
     localStorage.clear();
@@ -121,7 +141,11 @@ describe('ChatThread', () => {
     placeReader(0);
     rerender(
       <LangProvider>
-        <ChatThread bubbles={[userBubble('检查集群状态')]} liveBlocks={appendText([], '部分')} streaming />
+        <ChatThread
+          bubbles={[userBubble('检查集群状态')]}
+          liveBlocks={appendText([], '部分')}
+          streaming
+        />
       </LangProvider>,
     );
     scrollIntoView.mockClear();
@@ -172,9 +196,7 @@ describe('ChatThread', () => {
     // The pending question sits ahead of the streaming answer.
     const pending = screen.getByText('第二个问题');
     const answer = screen.getByText('正在回答');
-    expect(
-      pending.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(pending.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('stopsFollowingAndOffersAJumpOnceTheReaderScrollsUpTest', () => {

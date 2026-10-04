@@ -149,6 +149,27 @@ describe('useConversationTimeline', () => {
     expect(result.current.items.map((row) => row.seq)).toEqual([1, 2]);
   });
 
+  it('loadMoreAppendsTheNewestTailAtTheEndTest', async () => {
+    /** loadMore 用 after=nextAfter 前向取页并在末尾追加——剩余的是会话
+     * 最新的尾巴（不是更早的内容），UI 文案与按钮位置必须与之一致。 */
+    timelineMock.mockResolvedValueOnce(page([item(1, { type: 'user', text: 'a' })], 2));
+    const { result } = render(42, 2, 1);
+
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    expect(result.current.items.map((row) => row.seq)).toEqual([1]);
+
+    timelineMock.mockResolvedValueOnce(page([item(4, { type: 'text', text: 'newest' })], null));
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    // forward continuation: after = the previous page's nextAfter (2), NOT 0
+    expect(timelineMock).toHaveBeenLastCalledWith(42, { after: 2, limit: 2 });
+    // appended at the end — the newest events land below the existing rows
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 4]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   it('discardsAResponseForAConversationTheUserAlreadyLeftTest', async () => {
     let releaseStale: (value: AiTimelineVO) => void = () => undefined;
     const stale = new Promise<AiTimelineVO>((resolve) => {

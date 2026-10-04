@@ -1666,7 +1666,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -1723,6 +1726,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.thread.jumpToLatest': { zh: '回到最新', en: 'Jump to latest' },
   'ai.thread.unread': { zh: '{count} 条新消息', en: '{count} new messages' },
   'ai.thread.loadEarlier': { zh: '加载更早的内容', en: 'Load earlier events' },
+  'ai.thread.loadRemaining': { zh: '加载剩余内容', en: 'Load remaining events' },
 
   // ─── AI render blocks ───
   'ai.thinking.model': { zh: '思考过程', en: 'Reasoning' },
