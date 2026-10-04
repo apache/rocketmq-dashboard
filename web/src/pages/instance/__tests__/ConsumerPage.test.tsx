@@ -1725,7 +1725,7 @@ describe('Consumer page', () => {
       screen.getByTestId('consumer-group-import-file'),
       new File([[IMPORT_HEADER, ...rows].join('\n')], 'groups.csv'),
     );
-    await user.click(await screen.findByRole('button', { name: '开始导入' }));
+    await user.click(await screen.findByRole('button', { name: /^(Start Import|开始导入)$/ }));
     await waitFor(() => expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1));
   };
 
