@@ -22,7 +22,12 @@ import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listDataSources } from '../../api/settings';
-import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
+import {
+  listMetricProfiles,
+  queryByDataSource,
+  queryMetrics,
+  type MetricData,
+} from '../../api/metrics';
 import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
@@ -83,7 +88,7 @@ const profiles = [
   },
 ];
 
-const metricData = {
+const metricData: MetricData = {
   resultType: 'matrix',
   series: [
     {

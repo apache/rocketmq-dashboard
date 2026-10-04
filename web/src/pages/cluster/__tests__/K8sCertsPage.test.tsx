@@ -130,12 +130,10 @@ describe('K8sCertsPage', () => {
   });
 
   it('shows future-dated certificates as not yet valid', async () => {
-    vi.mocked(listK8sCerts).mockResolvedValue([
-      {
-        ...certs[0],
-        status: 'not_yet_valid',
-      },
-    ]);
+    vi.mocked(listK8sCerts).mockResolvedValue([{
+      ...certs[0],
+      status: 'not_yet_valid',
+    }]);
     renderPage();
 
     expect(await screen.findByText('尚未生效')).toBeInTheDocument();
