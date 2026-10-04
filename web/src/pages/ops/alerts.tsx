@@ -561,53 +561,62 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     }
   };
 
-  const handleBulkToggle = async (enabled: boolean) => {
+  const handleBulkToggle = (enabled: boolean) => {
     const targetIds = selectedRuleIds.map(Number);
     if (targetIds.length === 0 || isActionRunning) return;
 
-    setBulkAction(enabled ? 'enable' : 'disable');
-    try {
-      const result = await (domain === 'CLUSTER'
-        ? bulkToggleAlertRules(targetIds, enabled)
-        : bulkToggleAlertRules(targetIds, enabled, domain));
-      const updatedRules = new Map(result.updatedRules.map((rule) => [rule.id, rule]));
-      const failedIds = Object.keys(result.failures);
+    // The sibling bulk delete confirms with a count; toggling N rules at once deserves the
+    // same friction — one misclick must not silently stop (or restart) N monitors.
+    Modal.confirm({
+      title: t(enabled ? 'alerts.bulkEnableConfirm' : 'alerts.bulkDisableConfirm', {
+        count: targetIds.length,
+      }),
+      onOk: async () => {
+        setBulkAction(enabled ? 'enable' : 'disable');
+        try {
+          const result = await (domain === 'CLUSTER'
+            ? bulkToggleAlertRules(targetIds, enabled)
+            : bulkToggleAlertRules(targetIds, enabled, domain));
+          const updatedRules = new Map(result.updatedRules.map((rule) => [rule.id, rule]));
+          const failedIds = Object.keys(result.failures);
 
-      if (updatedRules.size > 0) {
-        setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
-      }
+          if (updatedRules.size > 0) {
+            setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
+          }
 
-      setSelectedRuleIds(failedIds.map(Number));
+          setSelectedRuleIds(failedIds.map(Number));
 
-      if (failedIds.length === 0) {
-        message.success(
-          t(enabled ? 'alerts.bulkEnableSuccess' : 'alerts.bulkDisableSuccess', {
-            count: updatedRules.size,
-          }),
-        );
-      } else if (updatedRules.size === 0) {
-        message.error(
-          t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
-            count: targetIds.length,
-          }),
-        );
-      } else {
-        message.warning(
-          t(enabled ? 'alerts.bulkEnablePartial' : 'alerts.bulkDisablePartial', {
-            success: updatedRules.size,
-            failed: failedIds.length,
-          }),
-        );
-      }
-    } catch {
-      message.error(
-        t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
-          count: targetIds.length,
-        }),
-      );
-    } finally {
-      setBulkAction(null);
-    }
+          if (failedIds.length === 0) {
+            message.success(
+              t(enabled ? 'alerts.bulkEnableSuccess' : 'alerts.bulkDisableSuccess', {
+                count: updatedRules.size,
+              }),
+            );
+          } else if (updatedRules.size === 0) {
+            message.error(
+              t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
+                count: targetIds.length,
+              }),
+            );
+          } else {
+            message.warning(
+              t(enabled ? 'alerts.bulkEnablePartial' : 'alerts.bulkDisablePartial', {
+                success: updatedRules.size,
+                failed: failedIds.length,
+              }),
+            );
+          }
+        } catch {
+          message.error(
+            t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
+              count: targetIds.length,
+            }),
+          );
+        } finally {
+          setBulkAction(null);
+        }
+      },
+    });
   };
 
   const handleBulkDelete = () => {
@@ -1012,7 +1021,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               size="small"
               disabled={!hasSelectedRules || isActionRunning}
               loading={bulkAction === 'enable'}
-              onClick={() => void handleBulkToggle(true)}
+              onClick={() => handleBulkToggle(true)}
             >
               {t('alerts.bulkEnable')}
             </Button>
@@ -1020,7 +1029,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
               size="small"
               disabled={!hasSelectedRules || isActionRunning}
               loading={bulkAction === 'disable'}
-              onClick={() => void handleBulkToggle(false)}
+              onClick={() => handleBulkToggle(false)}
             >
               {t('alerts.bulkDisable')}
             </Button>
