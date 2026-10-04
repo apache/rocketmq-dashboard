@@ -881,7 +881,7 @@ const TopicPageContent = ({
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
           <Tag key={item.id} color={ISSUE_SEVERITY_COLOR[item.severity]}>
-            {item.title}
+            {t(item.titleKey)}
           </Tag>
         ))}
         {issues.length > 3 && <Tag>+{issues.length - 3}</Tag>}
@@ -1081,10 +1081,10 @@ const TopicPageContent = ({
               </Tag>
               <div>
                 <Text strong>
-                  {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
+                  {item.brokerName ? `${item.brokerName}：${t(item.titleKey)}` : t(item.titleKey)}
                 </Text>
                 <Text type="secondary" style={{ display: 'block' }}>
-                  {item.description}
+                  {t(item.descriptionKey)}
                 </Text>
               </div>
             </Flex>
@@ -1094,16 +1094,16 @@ const TopicPageContent = ({
     );
   };
 
-  const renderRouteRecommendations = (recommendations: string[]) => {
-    if (recommendations.length === 0) return null;
+  const renderRouteRecommendations = (recommendationKeys: string[]) => {
+    if (recommendationKeys.length === 0) return null;
     return (
       <InfoBanner
         title="建议处理"
         description={
           <Space direction="vertical" size={2}>
-            {recommendations.map((item) => (
+            {recommendationKeys.map((item) => (
               <Text key={item} style={{ fontSize: 14 }}>
-                {item}
+                {t(item)}
               </Text>
             ))}
           </Space>
@@ -1128,7 +1128,9 @@ const TopicPageContent = ({
             <Alert
               type={routeLoadFailed ? 'error' : diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${routeLoadFailed ? '加载失败' : diagnostics.statusText}`}
+              message={t('topic.routeDiagnostics', {
+                status: routeLoadFailed ? t('routeDiag.loadFailed') : t(diagnostics.statusKey),
+              })}
               description={
                 routeLoadFailed
                   ? '路由信息获取失败，下面的结论与重建操作暂不可用，请重试。'
@@ -1178,7 +1180,7 @@ const TopicPageContent = ({
               )}
             </Row>
             {renderRouteIssues(diagnostics.issues)}
-            {renderRouteRecommendations(diagnostics.recommendations)}
+            {renderRouteRecommendations(diagnostics.recommendationKeys)}
           </Space>
         )}
         <Table<RouteDistribution>

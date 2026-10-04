@@ -3068,6 +3068,120 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.skipAccumulate': { zh: '跳过堆积', en: 'Skip Accumulate' },
   'topic.deleteWarning': { zh: '删除后无法恢复，请确认。', en: 'This cannot be undone.' },
   'topic.fetchFailed': { zh: '获取主题列表失败', en: 'Failed to fetch topic list' },
+  'topic.routeDiagnostics': { zh: '路由诊断：{status}', en: 'Route diagnostics: {status}' },
+  // ─── Topic route diagnostics (utils return keys; the page translates) ───
+  'routeDiag.statusHealthy': { zh: '路由健康', en: 'Routes healthy' },
+  'routeDiag.statusWarning': { zh: '需要关注', en: 'Needs attention' },
+  'routeDiag.statusCritical': { zh: '不可用', en: 'Unavailable' },
+  'routeDiag.loadFailed': { zh: '加载失败', en: 'Load failed' },
+  'routeDiag.noRoute.title': { zh: 'Broker 上没有 Topic 路由', en: 'No topic route on any broker' },
+  'routeDiag.noRoute.desc': {
+    zh: '元数据中存在 Topic 记录，但当前实例没有返回任何 Broker 路由。',
+    en: 'The metadata contains a topic record, but the instance returned no broker routes.',
+  },
+  'routeDiag.missingBrokerAddress.title': { zh: 'Broker 地址缺失', en: 'Broker address missing' },
+  'routeDiag.missingBrokerAddress.desc': {
+    zh: 'NameServer 返回了队列元数据，但没有返回可用于定位 Broker 的地址。',
+    en: 'The NameServer returned queue metadata but no address that can locate the broker.',
+  },
+  'routeDiag.missingMasterAddress.title': { zh: 'Master 地址缺失', en: 'Master address missing' },
+  'routeDiag.missingMasterAddress.desc': {
+    zh: '该 Broker 只返回了非 master 地址，Topic 写入链路需要确认 master 是否在线。',
+    en: 'This broker only returned non-master addresses; confirm the master is online for the write path.',
+  },
+  'routeDiag.writeQueueUnavailable.title': { zh: '写队列不可用', en: 'Write queues unavailable' },
+  'routeDiag.writeQueueUnavailable.desc': {
+    zh: '该 Broker 没有可写队列，生产者不会把消息写到这个 Broker。',
+    en: 'This broker has no writable queues; producers will not write messages to it.',
+  },
+  'routeDiag.readQueueUnavailable.title': { zh: '读队列不可用', en: 'Read queues unavailable' },
+  'routeDiag.readQueueUnavailable.desc': {
+    zh: '该 Broker 没有可读队列，消费者不会从这个 Broker 拉取消息。',
+    en: 'This broker has no readable queues; consumers will not pull messages from it.',
+  },
+  'routeDiag.permissionNotWritable.title': { zh: '权限不允许写入', en: 'Permission denies writes' },
+  'routeDiag.permissionNotWritable.desc': {
+    zh: 'Topic 权限缺少写权限，生产者发送可能失败或被路由到其他 Broker。',
+    en: 'The topic permission lacks write access; producer sends may fail or route elsewhere.',
+  },
+  'routeDiag.permissionNotReadable.title': { zh: '权限不允许读取', en: 'Permission denies reads' },
+  'routeDiag.permissionNotReadable.desc': {
+    zh: 'Topic 权限缺少读权限，消费者订阅后可能无法正常消费。',
+    en: 'The topic permission lacks read access; subscribed consumers may not consume normally.',
+  },
+  'routeDiag.readWriteQueueMismatch.title': {
+    zh: '读写队列不一致',
+    en: 'Read/write queue mismatch',
+  },
+  'routeDiag.readWriteQueueMismatch.desc': {
+    zh: '该 Broker 的读队列数和写队列数不同，扩缩容或迁移后需要确认配置是否符合预期。',
+    en: "This broker's read and write queue counts differ; verify the configuration after scaling or migration.",
+  },
+  'routeDiag.duplicateBrokerAddress.title': {
+    zh: 'Broker 地址重复',
+    en: 'Duplicate broker address',
+  },
+  'routeDiag.duplicateBrokerAddress.desc': {
+    zh: '多个 BrokerName 返回了相同地址，请确认 NameServer 注册信息是否过期。',
+    en: 'Multiple broker names returned the same address; check for stale NameServer registrations.',
+  },
+  'routeDiag.writeQueueSkew.title': { zh: '写队列分布不均', en: 'Uneven write queues' },
+  'routeDiag.writeQueueSkew.desc': {
+    zh: '不同 Broker 的写队列数差距较大，生产流量可能无法均匀分摊。',
+    en: 'Write queue counts differ widely across brokers; production traffic may not spread evenly.',
+  },
+  'routeDiag.readQueueSkew.title': { zh: '读队列分布不均', en: 'Uneven read queues' },
+  'routeDiag.readQueueSkew.desc': {
+    zh: '不同 Broker 的读队列数差距较大，消费者负载可能无法均匀分摊。',
+    en: 'Read queue counts differ widely across brokers; consumer load may not spread evenly.',
+  },
+  'routeDiag.noWritableRoute.title': { zh: '没有可写路由', en: 'No writable route' },
+  'routeDiag.noWritableRoute.desc': {
+    zh: '所有 Broker 都缺少写权限或写队列，生产者无法向该 Topic 发送消息。',
+    en: 'Every broker lacks write permission or write queues; producers cannot send to this topic.',
+  },
+  'routeDiag.noReadableRoute.title': { zh: '没有可读路由', en: 'No readable route' },
+  'routeDiag.noReadableRoute.desc': {
+    zh: '所有 Broker 都缺少读权限或读队列，消费者无法从该 Topic 拉取消息。',
+    en: 'Every broker lacks read permission or read queues; consumers cannot pull from this topic.',
+  },
+  'routeDiag.singleBrokerRoute.title': { zh: '单 Broker 路由', en: 'Single-broker route' },
+  'routeDiag.singleBrokerRoute.desc': {
+    zh: '该 Topic 只返回一个 Broker 路由，生产业务需要确认是否符合容灾预期。',
+    en: 'This topic has only one broker route; confirm that matches the disaster-recovery expectation.',
+  },
+  'routeDiag.recommendation.noRoute': {
+    zh: '确认 Topic 已在目标 Broker 上创建；必要时使用“在 Broker 上重建”。',
+    en: 'Confirm the topic exists on the target brokers; use "Rebuild on broker" if necessary.',
+  },
+  'routeDiag.recommendation.address': {
+    zh: '检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。',
+    en: 'Check that the brokers still register with the NameServer and the master is reachable.',
+  },
+  'routeDiag.recommendation.writable': {
+    zh: '确认 Topic 权限包含写权限，避免生产者发送失败。',
+    en: 'Confirm the topic permission includes write access to avoid producer failures.',
+  },
+  'routeDiag.recommendation.readable': {
+    zh: '确认 Topic 权限包含读权限，避免消费者订阅后无可读队列。',
+    en: 'Confirm the topic permission includes read access so consumers have readable queues.',
+  },
+  'routeDiag.recommendation.queueConfig': {
+    zh: '对比各 Broker 上的 TopicConfig，统一读写队列数后再观察客户端路由。',
+    en: 'Compare the topic config across brokers and align the read/write queue counts.',
+  },
+  'routeDiag.recommendation.skew': {
+    zh: '评估是否需要扩容、迁移或重新分配队列，降低单 Broker 负载集中风险。',
+    en: 'Evaluate scaling, migration, or queue reassignment to reduce single-broker concentration.',
+  },
+  'routeDiag.recommendation.singleBroker': {
+    zh: '确认该 Topic 是否预期只部署在单 Broker；生产业务建议准备冗余路由。',
+    en: 'Confirm single-broker deployment is intended; production topics should have redundant routes.',
+  },
+  'routeDiag.recommendation.duplicateAddress': {
+    zh: '清理过期 Broker 注册信息，避免客户端拿到重复或错误地址。',
+    en: 'Clean up stale broker registrations so clients do not receive duplicate or wrong addresses.',
+  },
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
