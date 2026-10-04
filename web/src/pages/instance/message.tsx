@@ -35,6 +35,7 @@ import {
   Flex,
   Progress,
   Statistic,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -53,6 +54,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import MessageProperties from '../../components/MessageProperties';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -68,8 +70,11 @@ import {
   queryMessagePage,
 } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
+import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { downloadBlob } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
+import { formatBytes, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
@@ -88,15 +93,7 @@ const { RangePicker } = DatePicker;
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid' | 'queue';
-
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
+type DirectConsumeCapabilityStatus = 'loading' | 'supported' | 'unsupported' | 'unavailable';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const },
@@ -123,19 +120,6 @@ const TOPIC_TAG_COLORS: Record<string, string> = {
 const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startOf('day'), dayjs()];
 
 /* ─── Helpers ─── */
-
-const formatSize = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
-
-const formatTimeMs = (value: number | string): string => {
-  if (!value) return '-';
-  const d = new Date(value);
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
-};
 
 const formatBody = (body: string): string => {
   try {
@@ -188,18 +172,6 @@ const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQu
     return { ...commonParams, ...(key ? { key } : {}) };
   }
   return commonParams;
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return fallback;
 };
 
 const diagnosticTagColor: Record<TraceDiagnosticStatus, string> = {
@@ -331,10 +303,13 @@ type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
+  instancesFailed: boolean;
+  reloadInstances: () => void;
 };
 
 const MessagePage = () => {
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
+    useInstanceFilter();
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
@@ -344,6 +319,8 @@ const MessagePage = () => {
       selectedInstanceId={selectedInstanceId}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
+      instancesFailed={instancesFailed}
+      reloadInstances={reloadInstances}
     />
   );
 };
@@ -355,6 +332,8 @@ const MessagePageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instancesFailed,
+  reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
@@ -420,6 +399,10 @@ const MessagePageContent = ({
   const [directConsumeGroup, setDirectConsumeGroup] = useState('');
   const [directConsumeClientId, setDirectConsumeClientId] = useState('');
   const [directConsumeSubmitting, setDirectConsumeSubmitting] = useState(false);
+  const [directConsumeCapability, setDirectConsumeCapability] = useState<{
+    instanceId: string;
+    status: DirectConsumeCapabilityStatus;
+  } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
   // committed query, not whatever the form inputs hold at the moment a page is clicked.
@@ -435,6 +418,49 @@ const MessagePageContent = ({
     },
     [],
   );
+
+  useEffect(() => {
+    const instanceId = selectedInstanceId;
+    if (!instanceId) return;
+
+    let active = true;
+    void getInstanceCapabilities(instanceId)
+      .then((result) => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({
+            instanceId,
+            status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
+              ? 'supported'
+              : 'unsupported',
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setDirectConsumeOpen(false);
+          setDirectConsumeCapability({ instanceId, status: 'unavailable' });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedInstanceId]);
+
+  const directConsumeCapabilityStatus =
+    directConsumeCapability !== null && directConsumeCapability.instanceId === selectedInstanceId
+      ? directConsumeCapability.status
+      : 'loading';
+  const directConsumeSupported = directConsumeCapabilityStatus === 'supported';
+  const directConsumeDisabledReason = !selectedInstanceId
+    ? t('message.directConsumeSelectInstance')
+    : directConsumeCapabilityStatus === 'unavailable'
+      ? t('message.directConsumeCapabilityUnavailable')
+      : directConsumeCapabilityStatus === 'unsupported'
+        ? t('message.directConsumeUnsupported')
+        : directConsumeCapabilityStatus === 'loading'
+          ? t('message.directConsumeCapabilityLoading')
+          : undefined;
 
   useEffect(() => {
     writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
@@ -524,7 +550,7 @@ const MessagePageContent = ({
       message.success(t('messagePage.queryCompleted', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        setQueryError(getErrorMessage(error, t('messagePage.queryFailed')));
+        setQueryError(describeThrownMessage(error) || t('messagePage.queryFailed'));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -612,7 +638,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -620,6 +646,10 @@ const MessagePageContent = ({
       }
     }
   };
+
+  // Both tabs render halves of the trace payload — Trace draws the nodes, Verify draws the
+  // consumerStatus table — so a modal opened or switched straight onto either one must fetch it.
+  const rendersTracePayload = (tab: string) => tab === 'trace' || tab === 'consumer';
 
   const openDetail = (record: MessageRecord, tab = 'content') => {
     traceGenerationRef.current += 1;
@@ -629,12 +659,12 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
-    if (tab === 'trace') void loadMessageTrace(record);
+    if (rendersTracePayload(tab)) void loadMessageTrace(record);
   };
 
   const handleModalTabChange = (tab: string) => {
     setModalTab(tab);
-    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
+    if (rendersTracePayload(tab) && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
@@ -671,7 +701,7 @@ const MessagePageContent = ({
       setTraceError(null);
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        setTraceError(getErrorMessage(error, t('messagePage.traceLoadFailed')));
+        setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -688,6 +718,7 @@ const MessagePageContent = ({
   };
 
   const openDirectConsume = () => {
+    if (!directConsumeSupported) return;
     setDirectConsumeGroup('');
     setDirectConsumeClientId('');
     setDirectConsumeOpen(true);
@@ -721,14 +752,14 @@ const MessagePageContent = ({
       );
       setDirectConsumeOpen(false);
     } catch (error) {
-      message.error(getErrorMessage(error, t('messagePage.directConsumeFailed')));
+      message.error(describeThrownMessage(error) || t('messagePage.directConsumeFailed'));
     } finally {
       setDirectConsumeSubmitting(false);
     }
   };
 
   const handleDownload = (record: MessageRecord) => {
-    const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
+    const blob = new Blob([record.body], { type: 'application/json' });
     downloadBlob(blob, `${record.msgId}.json`);
     message.success(t('messagePage.downloadSuccess'));
   };
@@ -799,7 +830,7 @@ const MessagePageContent = ({
       key: 'size',
       width: 80,
       align: 'right',
-      render: (size: number) => formatSize(size),
+      render: (size: number) => formatBytes(size),
     },
     {
       title: t('common.actions'),
@@ -915,7 +946,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatSize(selectedMsg.size)}
+              {formatBytes(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
@@ -942,8 +973,24 @@ const MessagePageContent = ({
           <Typography.Title level={5} style={{ marginBottom: 8 }}>
             {t('topic.messageBody')}
           </Typography.Title>
+          {selectedMsg.bodyTruncated && (
+            <Alert
+              showIcon
+              type="warning"
+              message={t('messagePage.bodyTruncatedWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
+          {selectedMsg.bodyEncoding === 'BASE64' && (
+            <Alert
+              showIcon
+              type="info"
+              message={t('messagePage.bodyBinaryWarning')}
+              style={{ marginBottom: 8 }}
+            />
+          )}
           <Paragraph
-            copyable
+            copyable={{ text: selectedMsg.body }}
             style={{
               background: '#f5f5f5',
               padding: '12px 16px',
@@ -958,6 +1005,10 @@ const MessagePageContent = ({
           >
             {formatBody(selectedMsg.body)}
           </Paragraph>
+          <MessageProperties
+            properties={selectedMsg.properties}
+            propertiesTruncated={selectedMsg.propertiesTruncated}
+          />
         </>
       ),
     },
@@ -1068,6 +1119,8 @@ const MessagePageContent = ({
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
+              failed={instancesFailed}
+              onRetry={reloadInstances}
             />
             <Segmented
               options={QUERY_OPTIONS.map(({ value }) => ({
@@ -1264,14 +1317,18 @@ const MessagePageContent = ({
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>{t('common.close')}</Button>
-            <Button
-              type="primary"
-              icon={<SendOutlined />}
-              disabled={!selectedInstanceId || !selectedMsg}
-              onClick={openDirectConsume}
-            >
-              {t('messagePage.directConsume')}
-            </Button>
+            <Tooltip title={directConsumeDisabledReason}>
+              <span>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  disabled={!directConsumeSupported || !selectedInstanceId || !selectedMsg}
+                  onClick={openDirectConsume}
+                >
+                  {t('messagePage.directConsume')}
+                </Button>
+              </span>
+            </Tooltip>
           </Flex>
         }
       >
@@ -1280,7 +1337,7 @@ const MessagePageContent = ({
 
       <Modal
         title={t('messagePage.directConsumeTitle')}
-        open={directConsumeOpen}
+        open={directConsumeOpen && directConsumeSupported}
         onCancel={() => setDirectConsumeOpen(false)}
         onOk={() => void handleDirectConsume()}
         confirmLoading={directConsumeSubmitting}

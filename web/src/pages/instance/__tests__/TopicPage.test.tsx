@@ -185,7 +185,7 @@ describe('TopicPage', () => {
     });
     topicServiceMocks.sendTopicMessage.mockResolvedValue({
       msgId: 'MSG-0001',
-      sendTime: '2026-01-02T00:00:00Z',
+      sendTime: Date.parse('2026-01-02T00:00:00Z'),
       offsetMsgId: 'OFFSET-0001',
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -253,7 +253,7 @@ describe('TopicPage', () => {
         size: 20,
       });
     topicServiceMocks.createTopic.mockResolvedValue(createdTopic);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     expect(await screen.findByText('共 1 个 Topic')).toBeInTheDocument();
@@ -285,7 +285,7 @@ describe('TopicPage', () => {
       perm: 'RO',
       remark: 'updated remark',
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -319,7 +319,7 @@ describe('TopicPage', () => {
   });
 
   it('invalidates an open Topic edit when the selected instance changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const topicA = { ...buildTopics(1)[0], name: 'topic-a', instanceId: 'instance-a' };
     const topicB = { ...buildTopics(1)[0], name: 'topic-b', instanceId: 'instance-b' };
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -355,7 +355,7 @@ describe('TopicPage', () => {
       { ...selectedInstance, vendor: 'ALIYUN' },
     ]);
     topicServiceMocks.updateTopic.mockResolvedValue(buildTopics(1)[0]);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -383,7 +383,7 @@ describe('TopicPage', () => {
   });
 
   it('sends a normal test message from an Aliyun cloud topic', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       { ...selectedInstance, type: 'CLOUD', vendor: 'ALIYUN' },
     ]);
@@ -409,7 +409,7 @@ describe('TopicPage', () => {
   });
 
   it('opens a clean create dialog after a cancelled edit', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -430,7 +430,7 @@ describe('TopicPage', () => {
 
   it('ignores duplicate Topic creates while the first request is pending', async () => {
     topicServiceMocks.createTopic.mockImplementation(() => new Promise(() => {}));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
@@ -447,7 +447,7 @@ describe('TopicPage', () => {
   });
 
   it('downloads all topics matching the current filters when exporting', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
     let exportedBlob: Blob | undefined;
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
@@ -502,7 +502,7 @@ describe('TopicPage', () => {
   });
 
   it('keeps matching rows when the search term has leading or trailing spaces', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     // The server query uses the trimmed term, so it returns the matching topic; the
     // client-side row filter must not re-filter with the padded raw input.
     mockTopicsList([{ ...buildTopics(1)[0], name: 'orders-topic' }]);
@@ -521,7 +521,7 @@ describe('TopicPage', () => {
   });
 
   it('keeps the current table page after opening and closing topic details', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 6,
@@ -567,7 +567,7 @@ describe('TopicPage', () => {
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 6,
@@ -624,7 +624,7 @@ describe('TopicPage', () => {
   });
 
   it('reloads the server page after deleting one topic', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const topic = buildTopics(1)[0];
     let call = 0;
     topicServiceMocks.listTopicsPage.mockImplementation(async () => {
@@ -661,7 +661,7 @@ describe('TopicPage', () => {
   });
 
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
@@ -691,7 +691,7 @@ describe('TopicPage', () => {
   });
 
   it('renders topic route health diagnostics in the detail modal', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const routes: BrokerRoute[] = [
       {
         brokerName: 'broker-a',
@@ -746,7 +746,7 @@ describe('TopicPage', () => {
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const remainingTopics = [buildTopics(3)[1]];
     topicServiceMocks.listTopicsPage
       .mockResolvedValueOnce({
@@ -789,7 +789,7 @@ describe('TopicPage', () => {
   });
 
   it('clears selected topics when the search scope changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders();
 
     const row = await screen.findByRole('row', { name: /topic-01/ });
@@ -803,7 +803,7 @@ describe('TopicPage', () => {
   });
 
   it('moves back from an emptied last topic page after batch deletion', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const firstPage = buildTopics(20);
     const secondPage = [buildTopics(21)[20]];
     let deletedLastPage = false;
@@ -898,12 +898,21 @@ describe('TopicPage', () => {
   });
 
   it('imports valid topic CSV rows through the backend batch service with the selected instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
-    await screen.findByText(/共 0 个 Topic/);
+    // NOT `findByText(/共 0 个 Topic/)`: the header subtitle carries that text from the very
+    // first render (totalTopics starts at 0), so it resolves before the instance list lands and
+    // the upload races `handleImportFile`'s `selectedInstanceId` guard, which bails with
+    // 请先选择实例 and the import modal never opens. The instance-scoped page fetch only fires
+    // once the selection resolved, so observing the call is the race-free readiness mark.
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
     const csv = [
       '"Name","Namespace","Type","Cluster ID","Write Queues","Read Queues","Permission","Remark"',
       '"imported-topic","ignored","NORMAL","ignored-cluster","4","6","RW","orders"',
@@ -931,7 +940,7 @@ describe('TopicPage', () => {
   });
 
   it('reloads the paginated inventory after importing topics', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const imported: Topic = {
       ...buildTopics(1)[0],
       name: 'imported-topic',
@@ -944,7 +953,12 @@ describe('TopicPage', () => {
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
-    await screen.findByText(/共 0 个 Topic/);
+    // Race-free readiness mark — see the comment in the batch-import test above.
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
     const csv = [
       '"Name","Namespace","Type","Cluster ID","Write Queues","Read Queues","Permission","Remark"',
       '"imported-topic","ignored","NORMAL","ignored-cluster","4","6","RW","orders"',
@@ -960,7 +974,7 @@ describe('TopicPage', () => {
   });
 
   it('does not call importTopics when imported topic CSV is invalid or duplicated', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     mockTopicsList([{ ...buildTopics(1)[0], instanceId: 'instance-proxy-1' }]);
     renderWithProviders('/instance/instance-proxy-1/topic');
@@ -982,7 +996,7 @@ describe('TopicPage', () => {
   });
 
   it('imports valid topic rows while skipping duplicate rows', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([]);
     instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     topicServiceMocks.importTopics.mockResolvedValue({
@@ -1044,7 +1058,7 @@ describe('TopicPage', () => {
   });
 
   it('previews the send payload and submits the normalized properties', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
 
@@ -1083,7 +1097,7 @@ describe('TopicPage', () => {
   });
 
   it('blocks duplicate form properties in the send payload preflight', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
 
@@ -1103,7 +1117,7 @@ describe('TopicPage', () => {
 
     await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
     expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
-    expect(within(dialog).getByText('重复属性会覆盖前面的值：traceId')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复属性仅保留第一个值：traceId')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
@@ -1114,7 +1128,7 @@ describe('TopicPage', () => {
   });
 
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
       items: [
@@ -1144,8 +1158,80 @@ describe('TopicPage', () => {
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
 
-  it('renders subscription group names as links in the topic detail modal', async () => {
+  it('renders an unresolvable Topic consumer lag as unavailable instead of -1', async () => {
     const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-orders',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          // ConsumerLagResolver.UNKNOWN: the broker answered, but this group's lag is not
+          // resolvable, and metricsAvailable stays true because stats were returned.
+          diffTotal: -1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+    expect(screen.queryByText('-1')).toBeNull();
+  });
+
+  it('renders the broadcasting consumer model from the API value with the broadcast color', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'BROADCASTING',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-aliyun-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'Broadcasting',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-clustering',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          diffTotal: 0,
+        },
+      ],
+      total: 3,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const broadcastTags = await screen.findAllByText('广播消费');
+    expect(broadcastTags).toHaveLength(2);
+    for (const tag of broadcastTags) {
+      expect(tag.closest('.ant-tag')).toHaveClass('ant-tag-orange');
+    }
+    const clusteringTags = await screen.findAllByText('集群消费');
+    expect(clusteringTags).toHaveLength(1);
+    expect(clusteringTags[0].closest('.ant-tag')).toHaveClass('ant-tag-blue');
+  });
+
+  it('renders subscription group names as links in the topic detail modal', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
       items: [
@@ -1170,7 +1256,7 @@ describe('TopicPage', () => {
   });
 
   it('keeps a reopened sync modal owned by its newest route check', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     let resolveFirst!: (routes: BrokerRoute[]) => void;
     let resolveSecond!: (routes: BrokerRoute[]) => void;
     const firstCheck = new Promise<BrokerRoute[]>((resolve) => {

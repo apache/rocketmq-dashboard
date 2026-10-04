@@ -87,8 +87,9 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv } from '../../utils/download';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatBytes, formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeTopicRoutes,
@@ -306,12 +307,6 @@ const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
 
 const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 
-const formatBytes = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
-
 const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
   empty: '空 Body',
   'json-object': 'JSON Object',
@@ -344,6 +339,8 @@ const TopicPageContent = ({
   selectInstance,
   instanceOptions,
   instancesLoading,
+  instancesFailed,
+  reloadInstances,
   instances,
 }: TopicPageContentProps) => {
   const { t } = useLang();
@@ -949,7 +946,18 @@ const TopicPageContent = ({
       title: '消费模式',
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
+      render: (m: string) => {
+        // The API sends enum values ("BROADCASTING"/"CLUSTERING" and vendor case
+        // variants), never the legacy display strings the old comparison matched.
+        const normalized = (m ?? '').trim().toUpperCase();
+        const isBroadcast = normalized.includes('BROADCAST');
+        const label = isBroadcast
+          ? t('topic.broadcast')
+          : normalized.includes('CLUSTER')
+            ? t('topic.clustering')
+            : m;
+        return <Tag color={isBroadcast ? 'orange' : 'blue'}>{label}</Tag>;
+      },
     },
     {
       title: '消费 TPS',
@@ -963,7 +971,7 @@ const TopicPageContent = ({
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? (
+        record.metricsAvailable === false || !isLagAvailable(n) ? (
           <Text type="secondary">不可用</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
@@ -1524,6 +1532,8 @@ const TopicPageContent = ({
             }}
             options={instanceOptions}
             style={{ width: 220 }}
+            failed={instancesFailed}
+            onRetry={reloadInstances}
           />
           <Input.Search
             placeholder="搜索 Topic 名称"

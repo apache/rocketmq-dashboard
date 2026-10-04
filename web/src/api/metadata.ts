@@ -286,7 +286,8 @@ export interface SendTopicMessageRequest {
 
 export interface SendTopicMessageResult {
   msgId: string;
-  sendTime: string;
+  /** Epoch milliseconds, mirroring the server's `SendMessageVO.sendTime`. */
+  sendTime: number;
   offsetMsgId: string;
 }
 

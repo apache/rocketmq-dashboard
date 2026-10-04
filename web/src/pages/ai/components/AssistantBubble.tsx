@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Card, Flex, Tag, Tooltip, Typography, theme } from 'antd';
 import { Check, Copy } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
@@ -41,6 +41,11 @@ import { modelBrandLogo } from './ModelBadge';
  * `streaming` marks the bubble the run in flight is filling. It drives exactly two things: the
  * pending dots before the first block lands, and the auto-expand of the LAST thinking block (see
  * `ThinkingBlock`). `toolCatalog` is passed through to `ToolBlock` for its risk tag.
+ *
+ * Memoised because a streaming run re-renders the page at display rate, and a persisted bubble's
+ * props (the folded `Bubble` object, the catalog array, the model string) keep their identity
+ * across those renders: without the bailout every tick re-ran ReactMarkdown over EVERY persisted
+ * answer, i.e. one full transcript re-parse per frame once a conversation collected a few runs.
  */
 
 export interface AssistantBubbleProps {
@@ -302,4 +307,4 @@ const AssistantBubble = ({
   );
 };
 
-export default AssistantBubble;
+export default memo(AssistantBubble);

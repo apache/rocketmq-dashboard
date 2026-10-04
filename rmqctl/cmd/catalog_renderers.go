@@ -27,7 +27,7 @@ import (
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
 )
 
-func renderTable(w io.Writer, tool toolcatalog.Tool, result any) error {
+func renderTable(w, errOut io.Writer, tool toolcatalog.Tool, result any) error {
 	if tool.ViewHint != "table" {
 		return output.JSON(w, result)
 	}
@@ -38,7 +38,17 @@ func renderTable(w io.Writer, tool toolcatalog.Tool, result any) error {
 	if len(rows) == 0 {
 		return output.JSON(w, result)
 	}
-	return output.Rows(w, rows, tableColumns(rows))
+	if err := output.Rows(w, rows, tableColumns(rows)); err != nil {
+		return err
+	}
+	if tool.Name == "rmq.message.query" || tool.Name == "rmq.message.query_by_topic" {
+		payload, _ := result.(map[string]any)
+		if payload["resultMayBeTruncated"] == true {
+			_, err := fmt.Fprintf(errOut, "WARNING: Results may be incomplete (resultMayBeTruncated=true); skippedCount=%v rows omitted by limit from the provider-bounded result. More messages may exist.\n", payload["skippedCount"])
+			return err
+		}
+	}
+	return nil
 }
 
 func tableRows(result any, dataKey string) ([]map[string]any, error) {

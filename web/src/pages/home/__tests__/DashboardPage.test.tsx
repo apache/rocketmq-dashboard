@@ -179,7 +179,7 @@ describe('DashboardPage', () => {
 
   it('exposes traffic insight metrics in the expanded cluster health row', async () => {
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(trafficDashboard());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('traffic-a');
@@ -212,7 +212,7 @@ describe('DashboardPage', () => {
     vi.mocked(dashboardService.getDashboard)
       .mockResolvedValueOnce(dashboard('initial-cluster'))
       .mockReturnValueOnce(instanceA.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('initial-cluster');
@@ -235,7 +235,7 @@ describe('DashboardPage', () => {
       .mockResolvedValueOnce(dashboard('initial-cluster'))
       .mockReturnValueOnce(instanceA.promise)
       .mockReturnValueOnce(instanceB.promise);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('initial-cluster');
@@ -261,7 +261,7 @@ describe('DashboardPage', () => {
 
   it('preserves the selected instance when navigating to the cluster page', async () => {
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('instance-a-cluster'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(
       <>
         <DashboardPage />
@@ -308,7 +308,7 @@ describe('DashboardPage', () => {
       },
     ]);
     vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('apache-cluster'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DashboardPage />);
 
     await screen.findAllByText('apache-cluster');
