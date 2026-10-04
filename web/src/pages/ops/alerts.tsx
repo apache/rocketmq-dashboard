@@ -393,7 +393,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         if (!cancelled) setLoading(false);
       });
     void listAlertRuleRuntime(domain)
-      .then(setRuntime)
+      .then((runtime) => {
+        // The same guard as the rules call above: a slow runtime response for a previous
+        // domain/filter/page must not clobber the one the user switched to.
+        if (!cancelled) setRuntime(runtime);
+      })
       .catch(() => undefined);
 
     return () => {
@@ -402,9 +406,17 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   }, [domain, enabledFilter, page, pageSize, rulesVersion, search, t]);
 
   useEffect(() => {
+    let cancelled = false;
     void listInstances()
-      .then(setInstances)
-      .catch(() => message.error(t('alerts.instanceLoadFailed')));
+      .then((instances) => {
+        if (!cancelled) setInstances(instances);
+      })
+      .catch(() => {
+        if (!cancelled) message.error(t('alerts.instanceLoadFailed'));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const enabledCount = rules.filter((r) => r.enabled).length;

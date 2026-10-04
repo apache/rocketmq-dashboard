@@ -123,6 +123,13 @@ const ToolPlaygroundModal = ({
   const toolLoadRequestRef = useRef(0);
   /** The catalog is loaded once per mount: reopening the modal must not re-hit the endpoint. */
   const bootstrappedRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   const selectTool = useCallback(
     (name: string, availableTools: McpTool[] = tools, instanceId: string = selectedInstanceId) => {
@@ -165,6 +172,7 @@ const ToolPlaygroundModal = ({
     setInstancesLoading(true);
     try {
       const instances = await listInstances();
+      if (!mountedRef.current) return;
       const options = instances.map((instance) => ({
         value: instance.name,
         label: instance.name,
@@ -173,9 +181,10 @@ const ToolPlaygroundModal = ({
       instanceId = options[0]?.value ?? '';
       setSelectedInstanceId(instanceId);
     } catch {
+      if (!mountedRef.current) return;
       message.warning(t('ai.instanceListLoadFailed'));
     } finally {
-      setInstancesLoading(false);
+      if (mountedRef.current) setInstancesLoading(false);
     }
 
     await loadTools(instanceId);
