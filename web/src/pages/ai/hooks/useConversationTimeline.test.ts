@@ -46,6 +46,14 @@ function page(
   return { items, nextAfter, activeRun };
 }
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((release) => {
+    resolve = release;
+  });
+  return { promise, resolve };
+}
+
 function render(conversationId: number | null = 7, limit?: number, maxPages?: number) {
   return renderHook(
     ({ id }: { id: number | null }) => useConversationTimeline(id, { limit, maxPages }),
@@ -193,6 +201,92 @@ describe('useConversationTimeline', () => {
 
     expect(timelineMock).toHaveBeenLastCalledWith(7, { after: 0, limit: 200 });
     expect(result.current.items).toHaveLength(2);
+  });
+
+  it('loadMoreDoesNotCancelAnInFlightRefetchTest', async () => {
+    const refreshed = deferred<AiTimelineVO>();
+    const nextPage = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(1, { type: 'text', text: 'before' })], 1))
+      .mockReturnValueOnce(refreshed.promise)
+      .mockReturnValueOnce(nextPage.promise);
+
+    const { result } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    let refetchPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      refetchPromise = result.current.refetch();
+    });
+    await waitFor(() => expect(timelineMock).toHaveBeenCalledTimes(2));
+
+    let loadMorePromise: Promise<void> = Promise.resolve();
+    act(() => {
+      loadMorePromise = result.current.loadMore();
+    });
+    await waitFor(() => expect(timelineMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      nextPage.resolve(page([item(2, { type: 'text', text: 'incremental' })], null));
+      await loadMorePromise;
+    });
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 2]);
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      refreshed.resolve(
+        page(
+          [item(1, { type: 'text', text: 'before' }), item(3, { type: 'text', text: 'persisted' })],
+          null,
+        ),
+      );
+      await refetchPromise;
+    });
+
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 3]);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('refetchSupersedesAnOlderInFlightLoadMoreTest', async () => {
+    const nextPage = deferred<AiTimelineVO>();
+    const refreshed = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(1, { type: 'text', text: 'before' })], 1))
+      .mockReturnValueOnce(nextPage.promise)
+      .mockReturnValueOnce(refreshed.promise);
+
+    const { result } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+
+    let loadMorePromise: Promise<void> = Promise.resolve();
+    act(() => {
+      loadMorePromise = result.current.loadMore();
+    });
+    await waitFor(() => expect(timelineMock).toHaveBeenCalledTimes(2));
+
+    let refetchPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      refetchPromise = result.current.refetch();
+    });
+    await waitFor(() => expect(timelineMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      refreshed.resolve(
+        page(
+          [item(1, { type: 'text', text: 'before' }), item(3, { type: 'text', text: 'persisted' })],
+          null,
+        ),
+      );
+      await refetchPromise;
+    });
+
+    await act(async () => {
+      nextPage.resolve(page([item(2, { type: 'text', text: 'stale incremental' })], null));
+      await loadMorePromise;
+    });
+
+    expect(result.current.items.map((row) => row.seq)).toEqual([1, 3]);
+    expect(result.current.loading).toBe(false);
   });
 
   it('reportsTheServerMessageOnFailureTest', async () => {
