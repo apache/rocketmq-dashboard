@@ -106,11 +106,15 @@ describe('resourceCsvImport', () => {
     expect(validation.errors).toEqual([]);
     expect(validation.rows[0]).toMatchObject({ name: 'topic-a', status: 'pending' });
     expect(validation.rows[1]).toMatchObject({ name: 'topic-a', status: 'invalid' });
-    expect(validation.rows[1].message).toContain('重复');
-    expect(validation.rows[1].message).toContain('Type 不支持');
-    expect(validation.rows[1].message).toContain('Write Queues 必须在 1..256 之间');
-    expect(validation.rows[1].message).toContain('Read Queues 必须在 1..256 之间');
-    expect(validation.rows[1].message).toContain('Permission 不支持');
+    expect(validation.rows[1].issues).toEqual(
+      expect.arrayContaining([
+        { key: 'csvImport.nameDuplicate', params: { line: 2, name: 'topic-a' } },
+        { key: 'csvImport.unsupportedType', params: { value: 'INVALID' } },
+        { key: 'csvImport.fieldRange', params: { field: 'Write Queues', min: 1, max: 256 } },
+        { key: 'csvImport.fieldRange', params: { field: 'Read Queues', min: 1, max: 256 } },
+        { key: 'csvImport.unsupportedPermission', params: { value: 'BAD' } },
+      ]),
+    );
   });
 
   it('maps consumer group CSV fields to create payloads', () => {
@@ -167,12 +171,18 @@ describe('resourceCsvImport', () => {
   });
 
   it('reports the RocketMQ-oriented name error messages', () => {
-    expect(validateResourceName('', 'topic')).toBe('Name 不能为空');
-    expect(validateResourceName('a'.repeat(128), 'topic')).toBe('Name 长度不能超过 127 个字符');
-    expect(validateResourceName('a'.repeat(121), 'group')).toBe('Name 长度不能超过 120 个字符');
-    expect(validateResourceName('bad/name', 'topic')).toBe(
-      'Name 仅支持字母、数字、下划线、短横线、% 和 |',
-    );
+    expect(validateResourceName('', 'topic')).toEqual({ key: 'csvImport.nameEmpty' });
+    expect(validateResourceName('a'.repeat(128), 'topic')).toEqual({
+      key: 'csvImport.nameTooLong',
+      params: { max: 127 },
+    });
+    expect(validateResourceName('a'.repeat(121), 'group')).toEqual({
+      key: 'csvImport.nameTooLong',
+      params: { max: 120 },
+    });
+    expect(validateResourceName('bad/name', 'topic')).toEqual({
+      key: 'csvImport.nameInvalidChars',
+    });
     expect(validateResourceName('ok-name|100%', 'group')).toBeNull();
   });
 
