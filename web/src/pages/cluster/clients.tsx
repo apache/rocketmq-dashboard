@@ -632,11 +632,11 @@ const ClientsPage = () => {
       ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
         <div style={{ minWidth: 0 }}>
-          <Text strong style={diagnosticCellLine} title={record.title}>
-            {record.title}
+          <Text strong style={diagnosticCellLine} title={t(record.titleKey)}>
+            {t(record.titleKey)}
           </Text>
-          <Text type="secondary" style={diagnosticCellLine} title={record.description}>
-            {record.description}
+          <Text type="secondary" style={diagnosticCellLine} title={t(record.descriptionKey)}>
+            {t(record.descriptionKey)}
           </Text>
         </div>
       ),
@@ -874,7 +874,7 @@ const ClientsPage = () => {
             <Typography.Title level={5} style={{ margin: 0 }}>
               {t('clients.diagnostics')}
             </Typography.Title>
-            <Text type="secondary">{clientDiagnostics.statusText}</Text>
+            <Text type="secondary">{t(clientDiagnostics.statusKey)}</Text>
             <div style={{ marginTop: 8 }}>
               <Tag color={clientDiagnostics.statusColor}>
                 {t('clients.diagnosticIssues')}: {clientDiagnostics.issues.length}
@@ -928,9 +928,9 @@ const ClientsPage = () => {
         <div style={{ marginTop: 12 }}>
           <Text strong>{t('clients.diagnosticRecommendations')}</Text>
           <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-            {clientDiagnostics.recommendations.map((item) => (
+            {clientDiagnostics.recommendationKeys.map((item) => (
               <li key={item}>
-                <Text>{item}</Text>
+                <Text>{t(item)}</Text>
               </li>
             ))}
           </ul>

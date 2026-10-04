@@ -867,6 +867,152 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
+  // ─── Client connection diagnostics (utils return keys; the page translates) ───
+  'clientDiag.statusHealthy': { zh: '客户端连接健康', en: 'Client connections healthy' },
+  'clientDiag.statusWarning': { zh: '客户端连接需要关注', en: 'Client connections need attention' },
+  'clientDiag.statusCritical': {
+    zh: '客户端连接存在高风险',
+    en: 'Client connections have high risk',
+  },
+  'clientDiag.noConnections.title': { zh: '未发现客户端连接', en: 'No client connections found' },
+  'clientDiag.noConnections.desc': {
+    zh: '当前 NameServer 查询没有返回任何 Producer 或 Consumer 连接。',
+    en: 'The NameServer query returned no producer or consumer connections.',
+  },
+  'clientDiag.noConnections.recommendation': {
+    zh: '确认目标 NameServer、Proxy 和 Broker 侧客户端注册链路是否正常。',
+    en: 'Verify the client registration path through the NameServer, Proxy, and brokers.',
+  },
+  'clientDiag.partialScan.title': { zh: '客户端扫描结果不完整', en: 'Client scan incomplete' },
+  'clientDiag.partialScan.desc': {
+    zh: '部分 Producer 连接来自受限 Topic 扫描，当前列表可能不是完整客户端清单。',
+    en: 'Some producer connections come from a bounded topic scan; the list may not be complete.',
+  },
+  'clientDiag.partialScan.recommendation': {
+    zh: '缩小 Topic 或集群范围后重新查询，并在排障时避免把当前列表视为全集。',
+    en: 'Narrow the topic or cluster scope and re-query; do not treat the list as complete while troubleshooting.',
+  },
+  'clientDiag.clientIdCollision.title': {
+    zh: 'Client ID 连接到多个地址',
+    en: 'Client ID on multiple addresses',
+  },
+  'clientDiag.clientIdCollision.desc': {
+    zh: '同一个 Client ID 同时出现在多个远端地址，可能是实例 ID 配置冲突或旧连接未及时清理。',
+    en: 'One client ID appears on multiple remote addresses — an instance-name conflict or stale connections.',
+  },
+  'clientDiag.clientIdCollision.recommendation': {
+    zh: '检查客户端 instanceName/clientId 配置，确保同一进程实例使用唯一标识。',
+    en: 'Check the client instanceName/clientId configuration so each process uses a unique identity.',
+  },
+  'clientDiag.exactDuplicate.title': { zh: '连接记录重复', en: 'Duplicate connection record' },
+  'clientDiag.exactDuplicate.desc': {
+    zh: '相同客户端、资源和地址出现了重复记录，可能来自采集侧合并或上游返回重复项。',
+    en: 'The same client, resource, and address appears more than once — likely a collection-side or upstream duplicate.',
+  },
+  'clientDiag.exactDuplicate.recommendation': {
+    zh: '刷新连接清单；若重复持续存在，检查客户端连接采集路径是否重复汇总。',
+    en: 'Refresh the list; if duplicates persist, check whether the collection path double-counts.',
+  },
+  'clientDiag.unknownProtocol.title': { zh: '协议类型未知', en: 'Unknown protocol' },
+  'clientDiag.unknownProtocol.desc': {
+    zh: '该客户端连接的协议不在 Studio 已知协议列表中，统计和排障可能不准确。',
+    en: "The connection's protocol is not in Studio's known list; statistics may be inaccurate.",
+  },
+  'clientDiag.unknownProtocol.recommendation': {
+    zh: '确认客户端协议版本和服务端采集字段，必要时补充协议映射。',
+    en: 'Confirm the client protocol and the collected fields; extend the protocol mapping if needed.',
+  },
+  'clientDiag.unknownLanguage.title': { zh: '客户端语言未知', en: 'Unknown client language' },
+  'clientDiag.unknownLanguage.desc': {
+    zh: '该客户端连接的语言不在 Studio 已知语言列表中。',
+    en: "The connection's language is not in Studio's known list.",
+  },
+  'clientDiag.unknownLanguage.recommendation': {
+    zh: '确认客户端 SDK 语言和采集字段，必要时补充语言展示映射。',
+    en: 'Confirm the SDK language and collected fields; extend the language mapping if needed.',
+  },
+  'clientDiag.unknownVersion.title': { zh: '客户端版本未知', en: 'Unknown client version' },
+  'clientDiag.unknownVersion.desc': {
+    zh: '该客户端没有上报明确版本，升级治理和兼容性判断缺少依据。',
+    en: 'The client reports no explicit version, so upgrade governance lacks a basis.',
+  },
+  'clientDiag.unknownVersion.recommendation': {
+    zh: '升级客户端 SDK 或检查版本字段采集，确保连接清单能展示真实客户端版本。',
+    en: 'Upgrade the SDK or fix the version field collection so the list shows real versions.',
+  },
+  'clientDiag.invalidTime.title': { zh: '连接时间无法解析', en: 'Unparseable connection time' },
+  'clientDiag.invalidTime.desc': {
+    zh: '该连接的时间字段无法被浏览器解析，排序和人工判断可能受影响。',
+    en: "The connection's time field cannot be parsed by the browser; sorting may be affected.",
+  },
+  'clientDiag.invalidTime.recommendation': {
+    zh: '统一连接时间格式，优先返回 ISO-8601 或 yyyy-MM-dd HH:mm:ss。',
+    en: 'Standardize the time format, preferring ISO-8601 or yyyy-MM-dd HH:mm:ss.',
+  },
+  'clientDiag.mixedProtocol.title': {
+    zh: '同一资源存在多协议连接',
+    en: 'Mixed protocols on one resource',
+  },
+  'clientDiag.mixedProtocol.desc': {
+    zh: '同一个 Group 或 Topic 同时存在 gRPC 与 Remoting 客户端，迁移期排障需要区分控制面来源。',
+    en: 'One group or topic has both gRPC and Remoting clients; distinguish control-plane sources during migration.',
+  },
+  'clientDiag.mixedProtocol.recommendation': {
+    zh: '确认该资源是否处于协议迁移期，并分别检查 Proxy 与 Broker 侧连接状态。',
+    en: 'Check whether the resource is mid-migration and inspect the Proxy and broker sides separately.',
+  },
+  'clientDiag.mixedVersion.title': {
+    zh: '同一资源存在多版本客户端',
+    en: 'Mixed versions on one resource',
+  },
+  'clientDiag.mixedVersion.desc': {
+    zh: '同一个 Group 或 Topic 内客户端版本不一致，可能导致重试、负载均衡或协议能力差异。',
+    en: 'Clients on one group or topic run different versions, which can affect retries and load balancing.',
+  },
+  'clientDiag.mixedVersion.recommendation': {
+    zh: '按资源维度收敛客户端 SDK 版本，升级后再次确认连接清单。',
+    en: 'Converge SDK versions per resource and re-check the list after the upgrade.',
+  },
+  'clientDiag.singleConsumerInstance.title': {
+    zh: 'Consumer Group 只有单实例在线',
+    en: 'Single consumer instance online',
+  },
+  'clientDiag.singleConsumerInstance.desc': {
+    zh: '该 Consumer Group 当前只有一个客户端实例，进程故障会直接影响消费连续性。',
+    en: 'This consumer group has one client instance; a process failure directly interrupts consumption.',
+  },
+  'clientDiag.singleConsumerInstance.recommendation': {
+    zh: '为关键 Consumer Group 保持至少两个实例在线，并确认负载均衡后队列分配正常。',
+    en: 'Keep at least two instances online for critical groups and verify queue assignment after rebalancing.',
+  },
+  'clientDiag.mixedLanguageVersion.title': {
+    zh: '同一资源存在多语言多版本客户端',
+    en: 'Mixed languages and versions',
+  },
+  'clientDiag.mixedLanguageVersion.desc': {
+    zh: '该资源由多语言 SDK 共同访问，升级治理和兼容性排查需要同时关注语言与版本。',
+    en: 'Multiple SDK languages access this resource; governance must track language and version together.',
+  },
+  'clientDiag.mixedLanguageVersion.recommendation': {
+    zh: '记录各语言 SDK 的目标版本矩阵，避免只按单一语言判断升级完成度。',
+    en: 'Keep a per-language target-version matrix instead of judging readiness by one language.',
+  },
+  'clientDiag.addressConcentration.title': {
+    zh: '连接集中在单一地址',
+    en: 'Connections concentrated on one address',
+  },
+  'clientDiag.addressConcentration.desc': {
+    zh: '较多客户端连接集中在同一个地址，主机或网关故障会影响多个生产或消费链路。',
+    en: 'Many connections share one address; a host or gateway failure affects multiple paths.',
+  },
+  'clientDiag.addressConcentration.recommendation': {
+    zh: '检查该地址上的客户端部署密度，必要时拆分实例或调整负载分布。',
+    en: 'Check the deployment density on that address; split instances or rebalance if needed.',
+  },
+  'clientDiag.recommendation.default': {
+    zh: '保持客户端连接清单按集群定期巡检，重点关注协议和 SDK 版本收敛。',
+    en: 'Review the connection inventory per cluster regularly, focusing on protocol and SDK version convergence.',
+  },
   'clients.clientId': { zh: 'Client ID', en: 'Client ID' },
   'clients.groupOrTopic': { zh: 'Group/Topic', en: 'Group/Topic' },
   'clients.protocol': { zh: '协议', en: 'Protocol' },
@@ -1704,7 +1850,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
