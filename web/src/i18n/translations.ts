@@ -1704,7 +1704,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2294,6 +2297,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.docs': { zh: '文档中心', en: 'Documentation' },
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
+
+  'home.welcomeSuffix': { zh: '，欢迎', en: ', welcome' },
+  'home.voiceInputTitle': { zh: '语音输入（暂未支持）', en: 'Voice input (not supported yet)' },
+  'home.buildVersion': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Version {time} build({commit})',
+  },
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
