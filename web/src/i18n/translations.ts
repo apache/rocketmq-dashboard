@@ -287,6 +287,8 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'instance.count': { zh: '共 {n} 个实例', en: '{n} instances' },
   'instance.searchPlaceholder': { zh: '搜索实例 ID 或地址', en: 'Search instance ID or endpoint' },
+  'instance.selectPlaceholder': { zh: '选择实例', en: 'Select an instance' },
+  'instance.noMatchInstance': { zh: '暂无匹配实例', en: 'No matching instances' },
   'instance.allTypes': { zh: '全部架构', en: 'All Types' },
   'instance.cloudType': { zh: '云服务', en: 'Cloud Service' },
   'instance.proxyLocalMode': { zh: 'Proxy Local 模式', en: 'Proxy Local Mode' },
@@ -1704,7 +1706,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {

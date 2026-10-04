@@ -44,7 +44,7 @@ export function InstanceSelect({
   onChange,
   options,
   style,
-  placeholder = '选择实例',
+  placeholder,
   failed,
   onRetry,
 }: InstanceSelectProps) {
@@ -54,7 +54,7 @@ export function InstanceSelect({
     <Select
       showSearch
       allowClear
-      placeholder={placeholder}
+      placeholder={placeholder ?? t('instance.selectPlaceholder')}
       value={value ?? undefined}
       onChange={(next, option) => {
         if (next === undefined || next === null) {
@@ -73,7 +73,7 @@ export function InstanceSelect({
           .toLowerCase()
           .includes(input.toLowerCase())
       }
-      notFoundContent="暂无匹配实例"
+      notFoundContent={t('instance.noMatchInstance')}
       style={style ?? { width: 220 }}
     />
   );
