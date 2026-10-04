@@ -108,21 +108,17 @@ import {
 const { Text } = Typography;
 
 const INSTANCE_ACCESS_LABEL: Record<Instance['type'], string> = {
-  CLOUD: '云服务',
+  CLOUD: 'topic.accessCloud',
   PROXY_LOCAL: 'Proxy Local',
   PROXY_CLUSTER: 'Proxy Cluster',
   DIRECT: 'Direct',
 };
 
 const INSTANCE_ACCESS_DESCRIPTION: Record<Instance['type'], string> = {
-  CLOUD:
-    '接入点为云厂商托管实例的接入地址，由云实例目录解析得出。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_LOCAL:
-    '接入点为与 Broker 同进程部署的 Proxy 地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  PROXY_CLUSTER:
-    '接入点为独立 Proxy 集群的 SLB 内网地址。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
-  DIRECT:
-    '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。',
+  CLOUD: 'topic.accessDescCloud',
+  PROXY_LOCAL: 'topic.accessDescProxyLocal',
+  PROXY_CLUSTER: 'topic.accessDescProxyCluster',
+  DIRECT: 'topic.accessDescDirect',
 };
 
 // ─── Cluster name lookup ───────────────────────────────────────────
@@ -132,33 +128,37 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
 };
 
 const TYPE_OPTIONS = [
-  { label: '全部', value: '' },
-  { label: '普通', value: 'NORMAL' },
-  { label: '顺序', value: 'FIFO' },
-  { label: '延迟', value: 'DELAY' },
-  { label: '事务', value: 'TRANSACTION' },
+  { label: 'topic.filterAllTypes', value: '' },
+  { label: 'topic.filterNormal', value: 'NORMAL' },
+  { label: 'topic.filterFifo', value: 'FIFO' },
+  { label: 'topic.filterDelay', value: 'DELAY' },
+  { label: 'topic.filterTransaction', value: 'TRANSACTION' },
   { label: 'LiteTopic', value: 'LITE' },
 ];
 
 // Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
 const TOPIC_TYPE_CARDS = [
-  { value: 'NORMAL', label: '普通消息', desc: '适用于无特殊顺序要求的常规消息收发场景。' },
-  { value: 'FIFO', label: '顺序消息', desc: '严格按照消息发送顺序消费，适用于顺序敏感的业务。' },
-  { value: 'DELAY', label: '延迟消息', desc: '消息在指定的延迟时间或定时后才投递给消费者。' },
+  { value: 'NORMAL', label: 'topic.typeNormal', desc: 'topic.typeNormalDesc' },
+  { value: 'FIFO', label: 'topic.typeFifo', desc: 'topic.typeFifoDesc' },
+  { value: 'DELAY', label: 'topic.typeDelay', desc: 'topic.typeDelayDesc' },
   {
     value: 'TRANSACTION',
-    label: '事务消息',
-    desc: '支持分布式事务，保证本地事务与消息发送的最终一致性。',
+    label: 'topic.typeTransaction',
+    desc: 'topic.typeTransactionDesc',
   },
   {
     value: 'LITE',
     label: 'LiteTopic',
-    desc: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。',
+    desc: 'topic.typeLiteDesc',
   },
 ];
 
 // ─── Perm label ───────────────────────────────────────────────────
-const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
+const PERM_LABEL: Record<string, string> = {
+  RW: 'topic.permRw',
+  RO: 'topic.permRo',
+  WO: 'topic.permWo',
+};
 
 type SendMessageFormValues = {
   topic: string;
@@ -283,21 +283,21 @@ const randomMetricsBody = () =>
   );
 
 const RANDOM_BODY_GENERATORS = [
-  { label: '订单事件', fn: randomOrderBody },
-  { label: '用户行为', fn: randomUserEventBody },
-  { label: '支付回调', fn: randomPaymentBody },
-  { label: '库存变更', fn: randomInventoryBody },
-  { label: '通知消息', fn: randomNotificationBody },
-  { label: '监控指标', fn: randomMetricsBody },
+  { label: 'topic.bodyOrderEvent', fn: randomOrderBody },
+  { label: 'topic.bodyUserEvent', fn: randomUserEventBody },
+  { label: 'topic.bodyPayment', fn: randomPaymentBody },
+  { label: 'topic.bodyInventory', fn: randomInventoryBody },
+  { label: 'topic.bodyNotification', fn: randomNotificationBody },
+  { label: 'topic.bodyMetrics', fn: randomMetricsBody },
 ];
 
 const ROUTE_STATUS_META: Record<
   RouteDiagnosticStatus,
   { color: string; label: string; icon: React.ReactNode }
 > = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
+  healthy: { color: 'success', label: 'topic.routeHealthy', icon: <CheckCircleOutlined /> },
+  warning: { color: 'warning', label: 'topic.routeWarning', icon: <WarningOutlined /> },
+  critical: { color: 'error', label: 'topic.routeCritical', icon: <ExclamationCircleOutlined /> },
 };
 
 const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
@@ -308,20 +308,20 @@ const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
 const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 
 const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
-  empty: '空 Body',
+  empty: 'topic.bodyFormatEmpty',
   'json-object': 'JSON Object',
   'json-array': 'JSON Array',
-  'json-scalar': 'JSON 标量',
-  'plain-text': '文本',
+  'json-scalar': 'topic.bodyFormatJsonScalar',
+  'plain-text': 'topic.bodyFormatPlainText',
 };
 
 const PAYLOAD_STATUS_META: Record<
   MessagePayloadPreviewStatus,
   { label: string; color: string; alertType: 'success' | 'warning' | 'error' }
 > = {
-  ready: { label: '可以发送', color: 'success', alertType: 'success' },
-  warning: { label: '建议检查', color: 'warning', alertType: 'warning' },
-  error: { label: '阻止发送', color: 'error', alertType: 'error' },
+  ready: { label: 'topic.precheckReady', color: 'success', alertType: 'success' },
+  warning: { label: 'topic.precheckWarning', color: 'warning', alertType: 'warning' },
+  error: { label: 'topic.precheckBlocked', color: 'error', alertType: 'error' },
 };
 
 const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
@@ -464,8 +464,7 @@ const TopicPageContent = ({
         }
         return requestId === topicRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === topicRequestIdRef.current)
-          message.error('Topic 列表加载失败，请稍后重试');
+        if (requestId === topicRequestIdRef.current) message.error(t('topic.listLoadFailed'));
         return undefined;
       } finally {
         if (requestId === topicRequestIdRef.current) setLoading(false);
@@ -566,7 +565,7 @@ const TopicPageContent = ({
       }
       if (requestId !== detailRequestIdRef.current) return;
       if (detailFailed) {
-        message.error('Topic 详情加载失败，请稍后重试');
+        message.error(t('topic.detailLoadFailed'));
       }
       setDetailLoading(false);
     },
@@ -587,9 +586,9 @@ const TopicPageContent = ({
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
-      message.success(`Topic「${topic.name}」已在 Broker 上重建`);
+      message.success(t('topic.rebuildCompleted', { name: topic.name }));
     } catch {
-      message.error('重建 Topic 失败，请检查 Broker 状态后重试');
+      message.error(t('topic.rebuildFailed'));
     } finally {
       setRebuilding(false);
     }
@@ -639,7 +638,7 @@ const TopicPageContent = ({
       setSyncCheckedCount(checked.length);
       setSyncFailedCount(results.length - checked.length);
       if (checked.length < results.length) {
-        message.error('部分 Topic 路由校验失败，请稍后重试');
+        message.error(t('topic.routeCheckPartialFailed'));
       }
       setRoutesByTopic((previous) => {
         const next = { ...previous };
@@ -686,9 +685,9 @@ const TopicPageContent = ({
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       setSyncedTopics((previous) => new Set(previous).add(topic.name));
-      message.success(`Topic「${topic.name}」已同步到 Broker`);
+      message.success(t('topic.syncCompleted', { name: topic.name }));
     } catch {
-      message.error(`同步 Topic「${topic.name}」失败，请检查 Broker 状态后重试`);
+      message.error(t('topic.syncFailed', { name: topic.name }));
     } finally {
       setSyncingKeys((previous) => {
         const next = new Set(previous);
@@ -712,11 +711,11 @@ const TopicPageContent = ({
       setSendModalOpen(true);
     } else if (key === 'delete') {
       modal.confirm({
-        title: '确认删除',
-        content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
-        okText: '删除',
+        title: t('topic.deleteConfirmTitle'),
+        content: t('topic.deleteConfirmContent', { name: topic.name }),
+        okText: t('common.delete'),
         okType: 'danger',
-        cancelText: '取消',
+        cancelText: t('common.cancel'),
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
@@ -725,9 +724,9 @@ const TopicPageContent = ({
             // failure path re-seeds that same selection - leaving nothing to uncheck.
             setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
             await reloadTopicPage();
-            message.success(`Topic「${topic.name}」已删除`);
+            message.success(t('topic.deleted', { name: topic.name }));
           } catch {
-            message.error('删除 Topic 失败，请稍后重试');
+            message.error(t('topic.deleteFailed'));
           }
         },
       });
@@ -744,10 +743,10 @@ const TopicPageContent = ({
     })
       .then((csv) => {
         downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-        message.success('Topic 导出完成');
+        message.success(t('topic.exportCompleted'));
       })
       .catch(() => {
-        message.error('导出 Topic 失败，请稍后重试');
+        message.error(t('topic.exportFailed'));
       })
       .finally(() => setExporting(false));
   };
@@ -755,7 +754,7 @@ const TopicPageContent = ({
   // ─── Table columns ────────────────────────────────────────────
   const columns: TableColumnsType<Topic> = [
     {
-      title: 'Topic 名称',
+      title: t('topic.colName'),
       dataIndex: 'name',
       key: 'name',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
@@ -769,7 +768,7 @@ const TopicPageContent = ({
       ),
     },
     {
-      title: '备注',
+      title: t('topic.colRemark'),
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
@@ -786,7 +785,7 @@ const TopicPageContent = ({
       ),
     },
     {
-      title: '类型',
+      title: t('topic.colType'),
       dataIndex: 'type',
       key: 'type',
       width: 100,
@@ -797,13 +796,13 @@ const TopicPageContent = ({
       },
     },
     {
-      title: '状态',
+      title: t('topic.colStatus'),
       key: 'status',
       width: 90,
-      render: () => <Tag color="green">服务中</Tag>,
+      render: () => <Tag color="green">{t('topic.statusServing')}</Tag>,
     },
     {
-      title: '创建时间',
+      title: t('topic.colCreatedAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 170,
@@ -811,7 +810,7 @@ const TopicPageContent = ({
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '修改时间',
+      title: t('topic.colModifiedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 170,
@@ -819,7 +818,7 @@ const TopicPageContent = ({
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       // 4 个小按钮实测 274px + 单元格左 padding 8px = 282px；按钮右对齐贴住表格右缘，
       // 与 Group 管理页操作列样式保持一致。勿随意改小：列宽不足时按钮溢出产生横向滚动条。
@@ -833,7 +832,7 @@ const TopicPageContent = ({
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => handleAction('detail', record)}
           >
-            详情
+            {t('topic.btnDetail')}
           </Button>
           <Button
             size="small"
@@ -841,7 +840,7 @@ const TopicPageContent = ({
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => handleAction('config', record)}
           >
-            配置
+            {t('topic.btnConfig')}
           </Button>
           {canSendTestMessage(record) && (
             <Button
@@ -850,7 +849,7 @@ const TopicPageContent = ({
               style={{ borderColor: '#52c41a', color: '#52c41a' }}
               onClick={() => handleAction('send', record)}
             >
-              发送
+              {t('topic.btnSend')}
             </Button>
           )}
           <Button
@@ -859,7 +858,7 @@ const TopicPageContent = ({
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() => handleAction('delete', record)}
           >
-            删除
+            {t('common.delete')}
           </Button>
         </Flex>
       ),
@@ -870,13 +869,13 @@ const TopicPageContent = ({
     const meta = ROUTE_STATUS_META[status];
     return (
       <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
+        {t(meta.label)}
       </Tag>
     );
   };
 
   const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
+    if (issues.length === 0) return <Text type="secondary">{t('common.none')}</Text>;
     return (
       <Space size={[4, 4]} wrap>
         {issues.slice(0, 3).map((item) => (
@@ -904,7 +903,7 @@ const TopicPageContent = ({
       ),
     },
     {
-      title: '地址拓扑',
+      title: t('topic.colAddrTopology'),
       key: 'brokerAddr',
       width: 260,
       render: (_: unknown, record) => (
@@ -925,28 +924,28 @@ const TopicPageContent = ({
                 </Tag>
               ))
             ) : (
-              <Tag color="warning">地址未知</Tag>
+              <Tag color="warning">{t('topic.addrUnknown')}</Tag>
             )}
           </Space>
         </Space>
       ),
     },
     {
-      title: '队列分布',
+      title: t('topic.colQueueDistribution'),
       key: 'queues',
       width: 220,
       render: (_: unknown, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <div>
             <Flex justify="space-between">
-              <Text>写队列 {record.writeQueues}</Text>
+              <Text>{t('topic.writeQueues', { count: record.writeQueues })}</Text>
               <Text type="secondary">{formatPercent(record.writeShare)}</Text>
             </Flex>
             <Progress percent={record.writeShare} showInfo={false} size="small" />
           </div>
           <div>
             <Flex justify="space-between">
-              <Text>读队列 {record.readQueues}</Text>
+              <Text>{t('topic.readQueues', { count: record.readQueues })}</Text>
               <Text type="secondary">{formatPercent(record.readShare)}</Text>
             </Flex>
             <Progress percent={record.readShare} showInfo={false} size="small" />
@@ -955,22 +954,22 @@ const TopicPageContent = ({
       ),
     },
     {
-      title: '权限',
+      title: t('topic.colPerm'),
       dataIndex: 'perm',
       key: 'perm',
       width: 130,
       render: (_: string, record) => (
         <Space direction="vertical" size={4}>
-          <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
+          <Tag>{t(PERM_LABEL[record.perm] ?? '') || record.perm}</Tag>
           <Space size={4}>
-            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
-            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
+            <Tag color={record.readable ? 'success' : 'error'}>{t('topic.permRead')}</Tag>
+            <Tag color={record.writable ? 'success' : 'error'}>{t('topic.permWrite')}</Tag>
           </Space>
         </Space>
       ),
     },
     {
-      title: '诊断',
+      title: t('topic.colDiagnostics'),
       key: 'diagnostics',
       width: 220,
       render: (_: unknown, record) => renderRouteIssueTags(record.issues),
@@ -980,7 +979,7 @@ const TopicPageContent = ({
   // ─── Consumer table columns ───────────────────────────────────
   const consumerColumns: TableColumnsType<ConsumerGroupInfo> = [
     {
-      title: '消费者组',
+      title: t('topic.colConsumerGroup'),
       dataIndex: 'group',
       key: 'group',
       render: (group: string) =>
@@ -999,7 +998,7 @@ const TopicPageContent = ({
         ),
     },
     {
-      title: '消费模式',
+      title: t('topic.colMessageModel'),
       dataIndex: 'messageModel',
       key: 'messageModel',
       render: (m: string) => {
@@ -1016,19 +1015,23 @@ const TopicPageContent = ({
       },
     },
     {
-      title: '消费 TPS',
+      title: t('topic.colConsumeTps'),
       dataIndex: 'consumeTps',
       key: 'consumeTps',
       render: (n: number, record) =>
-        record.metricsAvailable === false ? <Text type="secondary">不可用</Text> : formatNumber(n),
+        record.metricsAvailable === false ? (
+          <Text type="secondary">{t('common.unavailable')}</Text>
+        ) : (
+          formatNumber(n)
+        ),
     },
     {
-      title: '堆积量',
+      title: t('topic.colLag'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number, record) =>
         record.metricsAvailable === false || !isLagAvailable(n) ? (
-          <Text type="secondary">不可用</Text>
+          <Text type="secondary">{t('common.unavailable')}</Text>
         ) : (
           <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
         ),
@@ -1071,13 +1074,15 @@ const TopicPageContent = ({
         style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}
       >
         <Text strong style={{ display: 'block', marginBottom: 8 }}>
-          诊断项
+          {t('topic.diagnosticIssues')}
         </Text>
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           {issues.map((item) => (
             <Flex key={item.id} align="flex-start" gap={8}>
               <Tag color={ISSUE_SEVERITY_COLOR[item.severity]} style={{ marginTop: 1 }}>
-                {item.severity === 'critical' ? '异常' : '关注'}
+                {t(
+                  item.severity === 'critical' ? 'topic.severityCritical' : 'topic.severityWarning',
+                )}
               </Tag>
               <div>
                 <Text strong>
@@ -1098,7 +1103,7 @@ const TopicPageContent = ({
     if (recommendations.length === 0) return null;
     return (
       <InfoBanner
-        title="建议处理"
+        title={t('topic.recommendations')}
         description={
           <Space direction="vertical" size={2}>
             {recommendations.map((item) => (
@@ -1121,20 +1126,26 @@ const TopicPageContent = ({
     return (
       <>
         <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-          路由信息
+          {t('topic.routeInfo')}
         </Text>
         {!detailLoading && (
           <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
             <Alert
               type={routeLoadFailed ? 'error' : diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${routeLoadFailed ? '加载失败' : diagnostics.statusText}`}
+              message={t('topic.routeDiagnostics', {
+                status: routeLoadFailed ? t('topic.routeLoadFailedStatus') : diagnostics.statusText,
+              })}
               description={
                 routeLoadFailed
-                  ? '路由信息获取失败，下面的结论与重建操作暂不可用，请重试。'
+                  ? t('topic.routeLoadFailedDesc')
                   : diagnostics.status === 'healthy'
-                    ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                    : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+                    ? t('topic.routeSummaryHealthy', {
+                        brokers: summary.brokerCount,
+                        write: summary.totalWriteQueues,
+                        read: summary.totalReadQueues,
+                      })
+                    : t('topic.routeSummaryIssues', { count: diagnostics.issues.length })
               }
               action={
                 routeLoadFailed ? (
@@ -1148,33 +1159,36 @@ const TopicPageContent = ({
                     loading={rebuilding}
                     onClick={() => void rebuildTopic(topic)}
                   >
-                    在 Broker 上重建
+                    {t('topic.btnRebuildOnBroker')}
                   </Button>
                 ) : undefined
               }
             />
             <Row gutter={[12, 12]}>
               {renderRouteMetric(
-                'Broker 数',
+                t('topic.metricBrokers'),
                 summary.brokerCount,
-                `${summary.addressCount} 个地址`,
+                t('topic.metricAddresses', { count: summary.addressCount }),
               )}
               {renderRouteMetric(
-                '可写 Broker',
+                t('topic.metricWritableBrokers'),
                 summary.writableBrokerCount,
-                `${summary.totalWriteQueues} 个写队列`,
+                t('topic.metricWriteQueues', { count: summary.totalWriteQueues }),
               )}
               {renderRouteMetric(
-                '可读 Broker',
+                t('topic.metricReadableBrokers'),
                 summary.readableBrokerCount,
-                `${summary.totalReadQueues} 个读队列`,
+                t('topic.metricReadQueues', { count: summary.totalReadQueues }),
               )}
               {renderRouteMetric(
-                'Replica 数',
+                t('topic.metricReplicas'),
                 summary.replicaCount,
                 summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
-                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
-                  : '队列均衡',
+                  ? t('topic.queueSkew', {
+                      write: summary.writeSkew.gap,
+                      read: summary.readSkew.gap,
+                    })
+                  : t('topic.queuesBalanced'),
               )}
             </Row>
             {renderRouteIssues(diagnostics.issues)}
@@ -1203,29 +1217,35 @@ const TopicPageContent = ({
 
     return (
       <Descriptions bordered column={2} size="small" styles={{ label: { fontWeight: 500 } }}>
-        <Descriptions.Item label="Topic 名称" span={2}>
+        <Descriptions.Item label={t('topic.colName')} span={2}>
           {topic.name}
         </Descriptions.Item>
-        <Descriptions.Item label="类型">
+        <Descriptions.Item label={t('topic.colType')}>
           <Tag color={typeInfo?.color}>
             {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="集群" span={2}>
+        <Descriptions.Item label={t('topic.cluster')} span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
             {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
-        <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
-        <Descriptions.Item label="权限">
+        <Descriptions.Item label={t('topic.writeQueueCount')}>
+          {topic.writeQueues}
+        </Descriptions.Item>
+        <Descriptions.Item label={t('topic.readQueueCount')}>{topic.readQueues}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.colPerm')}>
           <Tag>{PERM_LABEL[topic.perm]}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
+        <Descriptions.Item label={t('topic.todayMessages')}>
+          {formatNumber(topic.messageCount)}
+        </Descriptions.Item>
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
-        <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
-        <Descriptions.Item label="创建时间" span={2}>
+        <Descriptions.Item label={t('topic.consumerGroupCount')}>
+          {topic.consumerGroupCount}
+        </Descriptions.Item>
+        <Descriptions.Item label={t('topic.colCreatedAt')} span={2}>
           {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
       </Descriptions>
@@ -1236,7 +1256,7 @@ const TopicPageContent = ({
   const handleCreate = async () => {
     if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     createInFlightRef.current = true;
@@ -1249,21 +1269,21 @@ const TopicPageContent = ({
           instanceId: selectedInstanceId,
         });
         await reloadTopicPage();
-        message.success(`Topic「${updated.name}」更新成功`);
+        message.success(t('topic.updateCompleted', { name: updated.name }));
       } else {
         const created = await createTopic({
           ...values,
           instanceId: selectedInstanceId,
         });
         await reloadTopicPage();
-        message.success(`Topic「${created.name}」创建成功`);
+        message.success(t('topic.createCompleted', { name: created.name }));
       }
       setModalOpen(false);
       setEditingTopic(null);
       form.resetFields();
     } catch (error) {
       if (!(error && typeof error === 'object' && 'errorFields' in error)) {
-        message.error(editingTopic ? '更新 Topic 失败，请稍后重试' : '创建 Topic 失败，请稍后重试');
+        message.error(t(editingTopic ? 'topic.updateFailed' : 'topic.createFailed'));
       }
     } finally {
       createInFlightRef.current = false;
@@ -1288,7 +1308,7 @@ const TopicPageContent = ({
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -1301,7 +1321,7 @@ const TopicPageContent = ({
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('topic.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -1309,7 +1329,7 @@ const TopicPageContent = ({
 
   const handleImportTopics = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('topic.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -1334,16 +1354,16 @@ const TopicPageContent = ({
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('topic.rowCreateFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('topic.rowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : t('topic.rowCreateFailed'),
         };
       }
     } finally {
@@ -1361,34 +1381,38 @@ const TopicPageContent = ({
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdTopics.length} 个 Topic，${invalidCount} 行无效已跳过`);
+        message.warning(
+          t('topic.importedWithInvalid', { created: createdTopics.length, invalid: invalidCount }),
+        );
       } else {
-        message.success(`已导入 ${createdTopics.length} 个 Topic`);
+        message.success(t('topic.imported', { count: createdTopics.length }));
       }
     } else if (createdTopics.length > 0) {
-      message.warning(`已导入 ${createdTopics.length} 个 Topic，${failedCount} 个失败`);
+      message.warning(
+        t('topic.importedWithFailed', { created: createdTopics.length, failed: failedCount }),
+      );
     } else {
-      message.error(`${failedCount} 个 Topic 导入失败`);
+      message.error(t('topic.importAllFailed', { count: failedCount }));
     }
   };
 
   const topicImportColumns: TableColumnsType<ResourceImportRow<Partial<Topic>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
+    { title: t('topic.colLineNumber'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('topic.colName'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('topic.colStatus'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<Topic>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('topic.importSuccess')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('topic.importFailed')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('topic.importInvalid')}</Tag>;
+        return <Tag>{t('topic.importPending')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('topic.colDescription'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -1397,7 +1421,7 @@ const TopicPageContent = ({
 
   const renderPayloadIssues = (issues: MessagePayloadIssue[]) => {
     if (issues.length === 0) {
-      return <Text type="secondary">未发现阻止发送的问题</Text>;
+      return <Text type="secondary">{t('topic.precheckNoIssues')}</Text>;
     }
     return (
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
@@ -1409,7 +1433,13 @@ const TopicPageContent = ({
             wrap="nowrap"
           >
             <Tag color={PAYLOAD_ISSUE_COLOR[item.severity]} style={{ marginTop: 1 }}>
-              {item.severity === 'error' ? '阻止' : item.severity === 'warning' ? '关注' : '提示'}
+              {t(
+                item.severity === 'error'
+                  ? 'topic.severityBlocked'
+                  : item.severity === 'warning'
+                    ? 'topic.severityWarning'
+                    : 'topic.severityInfo',
+              )}
             </Tag>
             <div style={{ minWidth: 0 }}>
               <Text strong>{item.title}</Text>
@@ -1435,22 +1465,26 @@ const TopicPageContent = ({
           type={statusMeta.alertType}
           message={
             <Flex gap={8} align="center" wrap>
-              <span>发送前预检</span>
-              <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
-              <Tag>{BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]}</Tag>
+              <span>{t('topic.sendPrecheck')}</span>
+              <Tag color={statusMeta.color}>{t(statusMeta.label)}</Tag>
+              <Tag>{t(BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat])}</Tag>
             </Flex>
           }
           description={
             sendPayloadPreview.blockingIssues.length > 0
-              ? `发现 ${sendPayloadPreview.blockingIssues.length} 个阻止发送的问题。`
-              : '将按下方摘要发送到 RocketMQ，发送前可继续调整 Body、Tag、Key 和自定义属性。'
+              ? t('topic.precheckBlockingCount', {
+                  count: sendPayloadPreview.blockingIssues.length,
+                })
+              : t('topic.precheckSummary')
           }
         />
 
         <Flex gap={8} wrap>
           <Tag>Body {formatBytes(sendPayloadPreview.summary.bodyBytes)}</Tag>
-          <Tag>属性 {sendPayloadPreview.summary.propertyCount}</Tag>
-          <Tag>属性大小 {formatBytes(sendPayloadPreview.summary.propertyBytes)}</Tag>
+          <Tag>{t('topic.propCount', { count: sendPayloadPreview.summary.propertyCount })}</Tag>
+          <Tag>
+            {t('topic.propBytes', { size: formatBytes(sendPayloadPreview.summary.propertyBytes) })}
+          </Tag>
           <Tag color={sendPayloadPreview.normalized.tag ? 'blue' : undefined}>
             Tag {sendPayloadPreview.normalized.tag || '-'}
           </Tag>
@@ -1463,13 +1497,13 @@ const TopicPageContent = ({
           <Descriptions.Item label="Topic">
             <Text code>{sendPayloadPreview.normalized.topic || sendTopic?.name || '-'}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Body 类型">
-            {BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]} /{' '}
+          <Descriptions.Item label={t('topic.bodyType')}>
+            {t(BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat])} /{' '}
             {formatBytes(sendPayloadPreview.summary.bodyBytes)}
           </Descriptions.Item>
-          <Descriptions.Item label="自定义属性">
+          <Descriptions.Item label={t('topic.customProps')}>
             {propertyPreview.length === 0 ? (
-              <Text type="secondary">无</Text>
+              <Text type="secondary">{t('common.none')}</Text>
             ) : (
               <Space size={[4, 4]} wrap>
                 {propertyPreview.map((entry) => (
@@ -1510,7 +1544,11 @@ const TopicPageContent = ({
       });
       if (payloadPreview.blockingIssues.length > 0) {
         message.error(
-          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
+          t('topic.precheckBlockedToast', {
+            issues: payloadPreview.blockingIssues
+              .map((item) => item.title)
+              .join(t('topic.listSeparator')),
+          }),
         );
         return;
       }
@@ -1523,9 +1561,9 @@ const TopicPageContent = ({
         properties: payloadPreview.properties,
       });
       // Keep the modal open for consecutive sends
-      message.success(`消息发送成功！MsgId: ${result.msgId}`);
+      message.success(t('topic.sendCompleted', { id: result.msgId }));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
+      message.error(error instanceof Error ? error.message : t('topic.sendFailed'));
     } finally {
       setSending(false);
     }
@@ -1537,41 +1575,44 @@ const TopicPageContent = ({
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader title={t('topic.title')} subtitle={`共 ${totalTopics} 个 Topic`} />
+      <PageHeader
+        title={t('topic.title')}
+        subtitle={t('topic.subtitleCount', { count: totalTopics })}
+      />
 
       {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
         <InfoBanner>
           <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.currentInstance')}</span>
               <span>{selectedInstance.name}</span>
             </span>
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
-              <span>{INSTANCE_ACCESS_LABEL[selectedInstance.type]}</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.accessMode')}</span>
+              <span>{t(INSTANCE_ACCESS_LABEL[selectedInstance.type])}</span>
             </span>
             {selectedInstance.vendor === 'ALIYUN' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>阿里云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.vendor')}</span>
+                <span>{t('topic.vendorAliyun')}</span>
               </span>
             )}
             {selectedInstance.vendor === 'TENCENT' && (
               <span>
-                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
-                <span>腾讯云</span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.vendor')}</span>
+                <span>{t('topic.vendorTencent')}</span>
               </span>
             )}
             <span>
-              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入点</span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>{t('topic.endpoint')}</span>
               <Text code copyable style={{ fontSize: 16 }}>
                 {selectedInstance.endpoint}
               </Text>
             </span>
           </Flex>
           <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
-            {INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type]}
+            {t(INSTANCE_ACCESS_DESCRIPTION[selectedInstance.type])}
           </div>
         </InfoBanner>
       )}
@@ -1599,7 +1640,7 @@ const TopicPageContent = ({
             onRetry={reloadInstances}
           />
           <Input.Search
-            placeholder="搜索 Topic 名称"
+            placeholder={t('topic.searchPlaceholder')}
             allowClear
             style={{ width: 260 }}
             onSearch={(value) => {
@@ -1618,14 +1659,14 @@ const TopicPageContent = ({
             }}
           />
           <Select
-            placeholder="类型筛选"
+            placeholder={t('topic.typeFilterPlaceholder')}
             value={typeFilter}
             onChange={(value) => {
               setSelectedRowKeys([]);
               setTypeFilter(value);
               resetTablePage();
             }}
-            options={TYPE_OPTIONS}
+            options={TYPE_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))}
             style={{ width: 140 }}
           />
         </Space>
@@ -1636,11 +1677,11 @@ const TopicPageContent = ({
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
-                  okText: '删除',
+                  title: t('topic.batchDeleteConfirmTitle'),
+                  content: t('topic.batchDeleteConfirmContent', { count: selectedRowKeys.length }),
+                  okText: t('common.delete'),
                   okType: 'danger',
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
@@ -1652,22 +1693,25 @@ const TopicPageContent = ({
                       setSelectedRowKeys(failed);
 
                       if (failed.length === 0) {
-                        message.success(`已删除 ${deleted.length} 个 Topic`);
+                        message.success(t('topic.batchDeleted', { count: deleted.length }));
                       } else if (deleted.length > 0) {
                         message.warning(
-                          `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
+                          t('topic.batchDeletedWithFailed', {
+                            deleted: deleted.length,
+                            failed: failed.length,
+                          }),
                         );
                       } else {
-                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+                        message.error(t('topic.batchDeleteFailedCount', { count: failed.length }));
                       }
                     } catch {
-                      message.error('批量删除 Topic 失败，请稍后重试');
+                      message.error(t('topic.batchDeleteFailed'));
                     }
                   },
                 });
               }}
             >
-              删除 ({selectedRowKeys.length})
+              {t('topic.btnDeleteCount', { count: selectedRowKeys.length })}
             </Button>
           )}
           <input
@@ -1686,10 +1730,10 @@ const TopicPageContent = ({
             disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
-            导入
+            {t('topic.btnImport')}
           </Button>
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
-            导出
+            {t('topic.btnExport')}
           </Button>
           <Button
             icon={<DiffOutlined />}
@@ -1704,7 +1748,7 @@ const TopicPageContent = ({
               disabled={!hasSelectedInstance || topics.length === 0}
               onClick={() => void openSyncModal()}
             >
-              同步数据
+              {t('topic.btnSyncData')}
             </Button>
           )}
           <Button
@@ -1717,7 +1761,7 @@ const TopicPageContent = ({
               setModalOpen(true);
             }}
           >
-            创建 Topic
+            {t('topic.btnCreate')}
           </Button>
         </Space>
       </Flex>
@@ -1738,7 +1782,7 @@ const TopicPageContent = ({
             pageSize: tablePageSize,
             total: totalTopics,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('topic.totalRows', { total }),
             onChange: (page, pageSize) => {
               setSelectedRowKeys([]);
               setTablePage(page);
@@ -1777,7 +1821,7 @@ const TopicPageContent = ({
           <>
             {/* Section 1: 基本信息 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              基本信息
+              {t('topic.sectionBasic')}
             </Text>
             {renderDetailTab(selectedTopic)}
 
@@ -1794,7 +1838,7 @@ const TopicPageContent = ({
 
             {/* Section 3: 消费者 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              消费者
+              {t('topic.sectionConsumers')}
             </Text>
             <Table<ConsumerGroupInfo>
               columns={consumerColumns}
@@ -1825,7 +1869,7 @@ const TopicPageContent = ({
 
       {/* ── Create / Edit Topic Modal ─────────────────────────── */}
       <Modal
-        title={editingTopic ? '编辑 Topic' : '创建 Topic'}
+        title={editingTopic ? t('topic.editTitle') : t('topic.createTitle')}
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
@@ -1834,8 +1878,8 @@ const TopicPageContent = ({
         }}
         onOk={handleCreate}
         confirmLoading={creating}
-        okText={editingTopic ? '保存' : '创建'}
-        cancelText="取消"
+        okText={editingTopic ? t('topic.btnSave') : t('topic.btnCreateShort')}
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -1851,33 +1895,33 @@ const TopicPageContent = ({
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label="Topic 名称"
+            label={t('topic.colName')}
             name="name"
             rules={[
-              { required: true, message: '请输入 Topic 名称' },
+              { required: true, message: t('topic.nameRequired') },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('topic.namePattern'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.topic,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.topic} 个字符`,
+                message: t('topic.nameMaxLength', { max: RESOURCE_NAME_MAX_LENGTH.topic }),
               },
             ]}
           >
-            <Input placeholder="请输入 Topic 名称" disabled={!!editingTopic} />
+            <Input placeholder={t('topic.namePlaceholder')} disabled={!!editingTopic} />
           </Form.Item>
 
           <Form.Item
-            label="类型"
+            label={t('topic.colType')}
             name="type"
             rules={[{ required: true }]}
-            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
+            extra={t(TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc ?? '')}
           >
             <Segmented
               disabled={!!editingTopic}
               options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
-                ({ value, label }) => ({ value, label }),
+                ({ value, label }) => ({ value, label: t(label) }),
               )}
             />
           </Form.Item>
@@ -1886,20 +1930,20 @@ const TopicPageContent = ({
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="写队列数"
+                  label={t('topic.writeQueueCount')}
                   name="writeQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queuesPerBrokerHint')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
-                  label="读队列数"
+                  label={t('topic.readQueueCount')}
                   name="readQueues"
                   rules={[{ required: true }]}
-                  extra="每个 Broker 节点 8 个队列"
+                  extra={t('topic.queuesPerBrokerHint')}
                 >
                   <InputNumber min={1} max={256} style={{ width: '100%' }} />
                 </Form.Item>
@@ -1908,31 +1952,39 @@ const TopicPageContent = ({
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
+            <Form.Item label={t('topic.colPerm')} name="perm" rules={[{ required: true }]}>
               <Radio.Group>
-                <Radio.Button value="RW">读写</Radio.Button>
-                <Radio.Button value="RO">只读</Radio.Button>
-                <Radio.Button value="WO">只写</Radio.Button>
+                <Radio.Button value="RW">{t('topic.permRw')}</Radio.Button>
+                <Radio.Button value="RO">{t('topic.permRo')}</Radio.Button>
+                <Radio.Button value="WO">{t('topic.permWo')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />
+          <Form.Item label={t('topic.colRemark')} name="remark">
+            <Input.TextArea rows={3} placeholder={t('topic.remarkPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* ── Import Topic Modal ────────────────────────────────── */}
       <Modal
-        title={`导入 Topic${importFilename ? `：${importFilename}` : ''}`}
+        title={
+          importFilename
+            ? t('topic.importModalTitleWithFile', { filename: importFilename })
+            : t('topic.importModalTitle')
+        }
         open={importModalOpen}
         onCancel={() => {
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportTopics()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={
+          importRows.some((row) => row.status === 'failed')
+            ? t('topic.retryFailedRows')
+            : t('topic.startImport')
+        }
+        cancelText={t('topic.btnClose')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -1948,24 +2000,24 @@ const TopicPageContent = ({
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
-              description={importErrors.join('；')}
+              message={t('topic.csvNotImportable')}
+              description={importErrors.join(t('topic.listSeparator'))}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.detectedInvalidRows', {
+                count: importRows.filter((row) => row.status === 'invalid').length,
+              })}
+              description={t('topic.importFieldsNote')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Topic，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('topic.detectedTopics', { count: importRows.length })}
+              description={t('topic.importFieldsNote')}
             />
           )}
           <Table<ResourceImportRow<Partial<Topic>>>
@@ -1983,7 +2035,7 @@ const TopicPageContent = ({
         title={
           <Space>
             <SendOutlined />
-            <span>发送消息到 {sendTopic?.name}</span>
+            <span>{t('topic.sendTo', { name: sendTopic?.name ?? '' })}</span>
           </Space>
         }
         open={sendModalOpen}
@@ -1992,8 +2044,8 @@ const TopicPageContent = ({
           sendForm.resetFields();
         }}
         onOk={handleSend}
-        okText="发送"
-        cancelText="取消"
+        okText={t('topic.btnSend')}
+        cancelText={t('common.cancel')}
         confirmLoading={sending}
         width={640}
         destroyOnHidden
@@ -2011,30 +2063,30 @@ const TopicPageContent = ({
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="Tag" name="tag">
-                <Input placeholder="可选，消息标签" />
+                <Input placeholder={t('topic.tagPlaceholder')} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item label="Key" name="key">
-                <Input placeholder="可选，消息 Key（用于查询）" />
+                <Input placeholder={t('topic.keyPlaceholder')} />
               </Form.Item>
             </Col>
           </Row>
 
           <Form.Item
-            label="消息体 Body"
+            label={t('topic.bodyLabel')}
             name="body"
-            rules={[{ required: true, message: '请输入消息体' }]}
+            rules={[{ required: true, message: t('topic.bodyRequired') }]}
           >
             <Input.TextArea
               rows={8}
-              placeholder="JSON 格式消息体"
+              placeholder={t('topic.bodyPlaceholder')}
               style={{ fontFamily: 'monospace', fontSize: 14 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
             <Text type="secondary" style={{ fontSize: 14, flexShrink: 0 }}>
-              快速填入:
+              {t('topic.quickFill')}
             </Text>
             <Space size={4} wrap>
               {RANDOM_BODY_GENERATORS.map((gen) => (
@@ -2045,14 +2097,14 @@ const TopicPageContent = ({
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
                   style={{ fontSize: 14, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
-                  {gen.label}
+                  {t(gen.label)}
                 </Button>
               ))}
             </Space>
           </Flex>
 
           <Divider style={{ margin: '8px 0 16px' }} orientation="left" plain>
-            自定义属性（可选）
+            {t('topic.customPropsOptional')}
           </Divider>
 
           <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
@@ -2061,13 +2113,13 @@ const TopicPageContent = ({
               value={propsMode}
               onChange={(value) => setPropsMode(value as 'form' | 'text')}
               options={[
-                { label: '逐条录入', value: 'form' },
-                { label: '批量粘贴', value: 'text' },
+                { label: t('topic.propsModeForm'), value: 'form' },
+                { label: t('topic.propsModeText'), value: 'text' },
               ]}
             />
             {propsMode === 'text' && (
               <Text type="secondary" style={{ fontSize: 14 }}>
-                支持 key=value，每行填写一个属性；属性值可以包含逗号
+                {t('topic.propsTextHint')}
               </Text>
             )}
           </Flex>
@@ -2088,12 +2140,12 @@ const TopicPageContent = ({
                     <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性名" />
+                          <Input placeholder={t('topic.propKeyPlaceholder')} />
                         </Form.Item>
                       </Col>
                       <Col span={10}>
                         <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
-                          <Input placeholder="属性值" />
+                          <Input placeholder={t('topic.propValuePlaceholder')} />
                         </Form.Item>
                       </Col>
                       <Col span={4}>
@@ -2105,7 +2157,7 @@ const TopicPageContent = ({
                     </Row>
                   ))}
                   <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
-                    添加属性
+                    {t('topic.addProp')}
                   </Button>
                 </>
               )}
@@ -2113,23 +2165,23 @@ const TopicPageContent = ({
           )}
 
           <Divider style={{ margin: '20px 0 16px' }} orientation="left" plain>
-            发送前预检
+            {t('topic.sendPrecheck')}
           </Divider>
           {renderSendPayloadPreview()}
         </Form>
       </Modal>
 
       <Modal
-        title="同步数据"
+        title={t('topic.btnSyncData')}
         open={syncModalOpen}
         onCancel={closeSyncModal}
-        footer={<Button onClick={closeSyncModal}>关闭</Button>}
+        footer={<Button onClick={closeSyncModal}>{t('topic.btnClose')}</Button>}
         width={680}
         destroyOnHidden
       >
         {syncChecking ? (
           <Flex justify="center" align="center" style={{ padding: 48 }}>
-            <Spin tip="正在校验 Topic 路由…">
+            <Spin tip={t('topic.syncChecking')}>
               <div style={{ width: 200 }} />
             </Spin>
           </Flex>
@@ -2139,9 +2191,7 @@ const TopicPageContent = ({
               renderSyncFailureAlert()
             ) : (
               <Text type="secondary">
-                当前列表中的 {syncCheckedCount} 个 Topic 在 Broker
-                上均有路由，无需同步（本次校验只覆盖当前页与当前筛选，翻页或清除筛选可校验其他
-                Topic）。
+                {t('topic.syncAllPresent', { count: syncCheckedCount })}
               </Text>
             )}
           </div>
@@ -2149,8 +2199,7 @@ const TopicPageContent = ({
           <>
             {renderSyncFailureAlert()}
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
-              Broker（按元数据记录的队列数重建）。
+              {t('topic.syncMissingDescription', { count: syncMissing.length })}
             </Text>
             <Table<Topic>
               dataSource={syncMissing}
@@ -2160,25 +2209,25 @@ const TopicPageContent = ({
               columns={[
                 { title: 'Topic', dataIndex: 'name', key: 'name' },
                 {
-                  title: '写/读队列数',
+                  title: t('topic.colQueueCount'),
                   key: 'queues',
                   width: 110,
                   render: (_: unknown, topic: Topic) =>
                     `${topic.writeQueues ?? '-'} / ${topic.readQueues ?? '-'}`,
                 },
                 {
-                  title: '状态',
+                  title: t('topic.colStatus'),
                   key: 'status',
                   width: 100,
                   render: (_: unknown, topic: Topic) =>
                     syncedTopics.has(topic.name) ? (
-                      <Tag color="green">已同步</Tag>
+                      <Tag color="green">{t('topic.syncDone')}</Tag>
                     ) : (
-                      <Tag color="orange">缺失路由</Tag>
+                      <Tag color="orange">{t('topic.syncMissingRoute')}</Tag>
                     ),
                 },
                 {
-                  title: '操作',
+                  title: t('common.actions'),
                   key: 'action',
                   width: 90,
                   render: (_: unknown, topic: Topic) => (
@@ -2189,7 +2238,7 @@ const TopicPageContent = ({
                       disabled={syncedTopics.has(topic.name)}
                       onClick={() => void syncTopicToBroker(topic)}
                     >
-                      同步
+                      {t('topic.btnSync')}
                     </Button>
                   ),
                 },
