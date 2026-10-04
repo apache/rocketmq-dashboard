@@ -1704,7 +1704,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -3549,6 +3552,35 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
+  // ─── Queue Browser ───
+  'queueBrowser.selectTopic': { zh: '选择 Topic', en: 'Select a topic' },
+  'queueBrowser.loadQueues': { zh: '加载队列', en: 'Load Queues' },
+  'queueBrowser.emptyHint': {
+    zh: '选择 Topic 并点击「加载队列」，按队列浏览消息',
+    en: 'Select a topic and click "Load Queues" to browse messages by queue',
+  },
+  'queueBrowser.loadFailed': {
+    zh: '加载队列信息失败',
+    en: 'Failed to load queue information',
+  },
+  'queueBrowser.pullFailed': { zh: '拉取消息失败', en: 'Failed to pull the message' },
+  'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
+  'queueBrowser.offsetTooltip': { zh: 'offset: {offset}', en: 'offset: {offset}' },
+  'queueBrowser.view': { zh: '查看', en: 'View' },
+  'queueBrowser.queueSummary': {
+    zh: '共 {queues} 个队列，总消息量 {messages} 条',
+    en: '{queues} queues, {messages} messages in total',
+  },
+  'queueBrowser.detailEmptyHint': {
+    zh: '点击左侧「查看」，消息详情将显示在这里',
+    en: 'Click "View" on the left; message details will appear here',
+  },
+  'queueBrowser.storeTime': { zh: '存储时间', en: 'Store Time' },
+  'queueBrowser.size': { zh: '大小', en: 'Size' },
+  'queueBrowser.noMessageAtOffset': {
+    zh: '该 offset 处无消息',
+    en: 'No message at this offset',
+  },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.logout': { zh: '退出', en: 'Logout' },
   'common.submit': { zh: '提交', en: 'Submit' },
