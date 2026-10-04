@@ -647,6 +647,40 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldKeepDialogOrderingChoicesTest() {
+        // The create dialog emits PARTITON_ORDER/MESSAGES_ORDER (pinned by
+        // docs/api-spec.md and accepted by the CSV import util): both stand for
+        // orderly consumption, yet normalizeDeliveryOrderType only matched the
+        // exact strings FIFO/ORDERLY - every dialog choice silently provisioned
+        // Concurrently on the cloud.
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+
+        java.util.List<String> choices =
+                java.util.List.of("PARTITON_ORDER", "MESSAGES_ORDER", "FIFO", "Orderly");
+        for (String choice : choices) {
+            ConsumerGroupVO group = new ConsumerGroupVO();
+            group.setName("GID_order");
+            group.setDeliveryOrderType(choice);
+            provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+        }
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient, org.mockito.Mockito.times(choices.size())).createConsumerGroup(captor.capture());
+        java.util.List<String> sentOrderTypes = captor.getAllValues().stream()
+                .map(CreateConsumerGroupRequest::getDeliveryOrderType)
+                .collect(java.util.stream.Collectors.toList());
+        assertThat(sentOrderTypes).containsOnly("Orderly");
+    }
+
+    @Test
     void resetOffsetShouldUseSpecifiedTimeTest() {
         stubInstance();
         stubCallThrough();
