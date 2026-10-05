@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
@@ -221,6 +222,18 @@ class ProxyAddressServiceTest {
         verify(restTemplate).postForEntity(eq("http://10.0.0.10:8081/admin/reloadConfig"), isNull(), eq(String.class));
         verify(operationAuditService).record("RELOAD_PROXY_CONFIG", "PROXY", "10.0.0.10:8081",
                 "cluster-1", null, "SUCCESS", null);
+    }
+
+    @Test
+    void reloadConfigShouldAuditNonSuccessfulResponseAsFailure() {
+        doNothing().when(clusterService).requireProxy("cluster-1", "10.0.0.11:8081");
+        when(restTemplate.postForEntity(eq("http://10.0.0.11:8081/admin/reloadConfig"), isNull(), eq(String.class)))
+                .thenReturn(ResponseEntity.status(HttpStatus.FOUND).body("redirect"));
+
+        assertThatThrownBy(() -> proxyAddressService.reloadConfig("cluster-1", "10.0.0.11:8081"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(502));
+        verify(operationAuditService).record("RELOAD_PROXY_CONFIG", "PROXY", "10.0.0.11:8081",
+                "cluster-1", null, "FAILED", "Proxy returned 302 FOUND");
     }
 
     @Test

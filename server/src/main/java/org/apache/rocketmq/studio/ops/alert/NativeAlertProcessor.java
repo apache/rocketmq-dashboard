@@ -128,6 +128,10 @@ public class NativeAlertProcessor {
                         .map(rule -> new AlertStateKey(rule.getId(),
                                 AlertFingerprint.of(rule.getId(), sample.instanceId(), sample.labels()))))
                 .collect(Collectors.toSet());
+        List<MetricSample> unavailableSamples = samples.stream()
+                .filter(scope::contains)
+                .filter(sample -> sample.availability() != MetricAvailability.AVAILABLE)
+                .toList();
         Map<Long, AlertRuleVO> byId = rules.stream().collect(Collectors.toMap(AlertRuleVO::getId, rule -> rule,
                 (left, right) -> left));
         Instant resolvedAt = samples.stream().filter(scope::contains).map(MetricSample::collectedAt).max(Instant::compareTo)
@@ -142,6 +146,14 @@ public class NativeAlertProcessor {
             }
             AlertRuleVO rule = byId.get(active.key().ruleId());
             if (rule == null) {
+                continue;
+            }
+            // A group-level failure cannot enumerate its topics. Keep any previously active
+            // topic fingerprint covered by that failure until a successful collection can
+            // distinguish a disappeared topic from unavailable progress data.
+            if (unavailableSamples.stream().anyMatch(sample ->
+                    sample.metricKey().equals(StringUtils.trimWhitespace(rule.getMetric()))
+                            && active.labels().entrySet().containsAll(sample.labels().entrySet()))) {
                 continue;
             }
             AlertStateUpdate update = stateMachine.advance(active.state(), clear,

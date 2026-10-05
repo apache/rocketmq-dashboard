@@ -273,8 +273,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                         continue;
                     }
                     MessageExt deadLetter = admin.viewMessage(dlqTopic, msgId);
-                    if (deadLetter != null) {
+                    // Offset-based broker lookup ignores the requested topic; check the returned message.
+                    if (deadLetter != null && dlqTopic.equals(deadLetter.getTopic())) {
                         resolved.add(deadLetter);
+                    } else if (deadLetter != null) {
+                        log.warn("Ignoring selected message {} from topic {} instead of {}",
+                                msgId, deadLetter.getTopic(), dlqTopic);
                     }
                 } catch (Exception e) {
                     log.warn("Failed to resolve selected dead letter {} from {}: {}",
@@ -439,9 +443,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                 // must not abort the whole DLQ scan silently; skip it and keep collecting the rest.
                 try {
                     long minOffset = consumer.searchOffset(queue, begin);
-                    long maxOffset = consumer.searchOffset(queue, end);
+                    // searchOffset returns the first message at a timestamp. Include
+                    // every message at end, even when they span multiple pull batches.
+                    long endOffsetExclusive = end == Long.MAX_VALUE
+                            ? consumer.maxOffset(queue) : consumer.searchOffset(queue, end + 1);
                     int consecutiveIllegalOffsets = 0;
-                    for (long offset = minOffset; offset <= maxOffset; ) {
+                    for (long offset = minOffset; offset < endOffsetExclusive; ) {
                         if (result.size() >= cap) {
                             truncated = true;
                             break outer;

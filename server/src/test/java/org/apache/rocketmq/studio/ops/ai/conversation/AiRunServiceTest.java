@@ -351,6 +351,33 @@ class AiRunServiceTest {
     }
 
     @Test
+    void reportSpeedShouldTouchOnlyTheSpeedColumnTest() {
+        // The client reports the speed as its stream closes, which also happens mid-run when the
+        // connection drops while the run keeps executing. A full-row write read before the worker
+        // finalises would race finalizeRun's terminal update and write the stale RUNNING state back
+        // over it, resurrecting the run as active and locking the conversation with 409s until the
+        // orphan sweep reaps the row. The update must therefore carry only the id and the speed.
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
+
+        service.reportSpeed(RUN_ID, 42.5);
+
+        assertThat(runUpdates).hasSize(1);
+        RmqAiRun update = runUpdates.get(0);
+        assertThat(update.getId()).isEqualTo(RUN_ID);
+        assertThat(update.getTokensPerSecond()).isEqualTo(42.5);
+        // Everything the finalize path owns must stay null so updateById cannot touch those columns.
+        assertThat(update.getStatus()).isNull();
+        assertThat(update.getStopReason()).isNull();
+        assertThat(update.getFinishedAt()).isNull();
+        assertThat(update.getDurationMs()).isNull();
+        assertThat(update.getEndSeq()).isNull();
+        assertThat(update.getInputTokens()).isNull();
+        assertThat(update.getOutputTokens()).isNull();
+        assertThat(update.getGmtModified()).isNull();
+    }
+
+    @Test
     void aStaleStopShouldFailClosedAndNotTouchTheNewerRunTest() {
         RmqAiRun stale = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.QUEUED);
         RmqAiRun current = AiRunTestSupport.run(RUN_ID + 1, CONVERSATION_ID, 2, RunStatus.RUNNING);

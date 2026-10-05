@@ -393,13 +393,28 @@ public class AiRunService {
      * the same deltas but not the same clock — a client estimate is what the user watched, so the
      * replay should show that exact number. Idempotent: a duplicate report simply overwrites.
      *
+     * <p>The update is partial on purpose. The report arrives exactly when a run is finishing — the
+     * client sends it as its stream closes, which also happens mid-run when the connection drops
+     * while the run keeps executing — so a full-row write read before
+     * {@link AiRunExecutor#finalizeRun} updates the row races it and writes the stale
+     * {@code RUNNING} state back over the terminal one. That resurrects the run as active: every
+     * later turn of the conversation is refused with 409 until the orphan sweep reaps the row, and
+     * the non-null columns the stale read still carries — {@code status}, {@code end_seq} and
+     * {@code gmt_modified} — are written back over the terminal ones. The nullable terminal facts
+     * (duration, tokens, finished_at) survive: MyBatis-Plus defaults to {@code FieldStrategy.NOT_NULL},
+     * so a null field never reaches the SET clause. Only the speed column is touched, the same
+     * partial-update shape {@code rememberRuntimeSession} uses.
+     *
      * @throws BusinessException 404 when the run does not exist or belongs to somebody else
      */
     public RmqAiRun reportSpeed(Long runId, double tokensPerSecond) {
         String owner = AiConversationService.currentOwner();
         RmqAiRun run = requireOwnedRun(runId, owner);
+        RmqAiRun update = new RmqAiRun();
+        update.setId(run.getId());
+        update.setTokensPerSecond(tokensPerSecond);
+        runRepository.update(update);
         run.setTokensPerSecond(tokensPerSecond);
-        runRepository.update(run);
         return run;
     }
 
