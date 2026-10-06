@@ -166,7 +166,11 @@ func main() {
 	files := map[string][]byte{}
 	base := func(name string) string {
 		text := string(read(filepath.Join(*root, name)))
-		return strings.Split(text, "\nThird-party source materials\n")[0]
+		// Git checkouts on Windows (autocrlf) carry CRLF endings, which would
+		// make the LF-only marker below miss and leak the whole source-package
+		// attribution into the binary package. Normalize before splitting.
+		normalized := strings.ReplaceAll(text, "\r\n", "\n")
+		return strings.Split(normalized, "\nThird-party source materials\n")[0]
 	}
 	license, notice := base("LICENSE"), base("NOTICE")
 	collect := func(name, version, sum, dir string, toolchain bool) {
