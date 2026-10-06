@@ -3580,6 +3580,12 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Enter new TTL value (ms)',
   },
   'liteTopic.extendTtlModalTitle': { zh: '延长 TTL', en: 'Extend TTL' },
+  'liteTopic.instance': { zh: '所属实例', en: 'Owning Instance' },
+  'liteTopic.instancePlaceholder': { zh: '选择所属实例', en: 'Select the owning instance' },
+  'liteTopic.instanceRequired': {
+    zh: '请选择 Topic 所属的实例',
+    en: 'Select the instance that owns the topic',
+  },
   'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },

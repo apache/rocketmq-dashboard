@@ -112,15 +112,17 @@ describe('LiteTopic API', () => {
     expect(result.popProgress).toBe(96);
   });
 
-  it('extends lite topic TTL', async () => {
+  it('extends lite topic TTL with the owning instance id', async () => {
     mock.onPost('/liteTopic/extendTTL').reply((config) => {
       const body = JSON.parse(config.data);
+      // LiteTopicTTLUpdateDTO requires a non-blank instanceId (@NotBlank).
+      expect(body.instanceId).toBe('apache-main');
       expect(body.topicPattern).toBe('order-*');
       expect(body.newTTL).toBe(7200);
       return [200, { code: 200 }];
     });
 
-    await extendLiteTopicTTL('order-*', 7200);
+    await extendLiteTopicTTL('apache-main', 'order-*', 7200);
   });
 
   it('queries lite topic quota without namespace', async () => {

@@ -59,6 +59,7 @@ import {
   type LiteTopicItem,
   type LiteTopicSession,
 } from '../../api/liteTopic';
+import { listInstances, supportsApacheRuntime, type Instance } from '../../api/instance';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
@@ -147,10 +148,15 @@ const LiteTopicPage: React.FC = () => {
   // Extend TTL modal
   const [extendTTLModalOpen, setExtendTTLModalOpen] = useState(false);
   const [extendTTLForm, setExtendTTLForm] = useState<{
+    instanceId: string;
     topicPattern: string;
     newTTL: number | null;
-  }>({ topicPattern: '', newTTL: null });
+  }>({ instanceId: '', topicPattern: '', newTTL: null });
   const [extendTTLLoading, setExtendTTLLoading] = useState(false);
+  // Instances that may own a Lite topic write (the backend's ownership guard
+  // only supports Apache-vendor instances for TTL updates).
+  const [ttlInstanceOptions, setTtlInstanceOptions] = useState<Instance[]>([]);
+  const [ttlInstancesLoading, setTtlInstancesLoading] = useState(false);
 
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
@@ -304,17 +310,43 @@ const LiteTopicPage: React.FC = () => {
 
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
     setExtendTTLForm({
+      instanceId: '',
       topicPattern: record.topicPattern || '',
       newTTL: null,
     });
     setExtendTTLModalOpen(true);
+    // The TTL write is ownership-checked against the owning instance, so the
+    // modal needs the Apache-vendor instance list; auto-select when only one
+    // candidate exists.
+    setTtlInstancesLoading(true);
+    listInstances()
+      .then((instances) => {
+        const candidates = instances.filter(supportsApacheRuntime);
+        setTtlInstanceOptions(candidates);
+        setExtendTTLForm((form) =>
+          form.instanceId === '' && candidates.length === 1
+            ? { ...form, instanceId: String(candidates[0].name) }
+            : form,
+        );
+      })
+      .catch(() => {
+        setTtlInstanceOptions([]);
+      })
+      .finally(() => {
+        setTtlInstancesLoading(false);
+      });
   };
 
   const handleExtendTTL = async () => {
-    if (!extendTTLForm.topicPattern || extendTTLForm.newTTL == null) return;
+    if (!extendTTLForm.instanceId || !extendTTLForm.topicPattern || extendTTLForm.newTTL == null)
+      return;
     setExtendTTLLoading(true);
     try {
-      await extendLiteTopicTTL(extendTTLForm.topicPattern, extendTTLForm.newTTL);
+      await extendLiteTopicTTL(
+        extendTTLForm.instanceId,
+        extendTTLForm.topicPattern,
+        extendTTLForm.newTTL,
+      );
       message.success(t('liteTopic.extendTtlSuccess'));
       setExtendTTLModalOpen(false);
       void fetchData(patternFilter || undefined, namespaceFilter || undefined);
@@ -912,6 +944,23 @@ const LiteTopicPage: React.FC = () => {
         destroyOnHidden
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            label={t('liteTopic.instance')}
+            required
+            validateStatus={extendTTLForm.instanceId ? '' : 'error'}
+            help={extendTTLForm.instanceId ? undefined : t('liteTopic.instanceRequired')}
+          >
+            <Select
+              value={extendTTLForm.instanceId || undefined}
+              onChange={(val) => setExtendTTLForm({ ...extendTTLForm, instanceId: val })}
+              loading={ttlInstancesLoading}
+              placeholder={t('liteTopic.instancePlaceholder')}
+              options={ttlInstanceOptions.map((instance) => ({
+                value: String(instance.name),
+                label: instance.name,
+              }))}
+            />
+          </Form.Item>
           <Form.Item label={t('liteTopic.pattern')}>
             <Input
               value={extendTTLForm.topicPattern}
