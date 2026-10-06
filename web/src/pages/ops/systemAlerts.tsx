@@ -205,6 +205,19 @@ const SystemAlertsPage = () => {
     })
       .then((data: PageResult<SystemAlert>) => {
         if (!cancelled) {
+          // Alerts expire / are reaped server-side, so the feed shrinks under
+          // the user. A page past the last valid one must re-query the final
+          // page instead of rendering a permanently empty list, matching the
+          // alerts/audit pages' clamp. Skip storing the empty result so the
+          // rows only ever come from the clamped page; setPage triggers the
+          // follow-up request.
+          if (data.items.length === 0 && data.total > 0 && page > 1) {
+            const lastPage = Math.max(1, Math.ceil(data.total / pageSize));
+            if (lastPage < page) {
+              setPage(lastPage);
+              return;
+            }
+          }
           setAlerts(data.items);
           setTotal(data.total);
         }
