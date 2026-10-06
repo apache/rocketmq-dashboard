@@ -312,10 +312,13 @@ func run(arguments []string) error {
 			return fmt.Errorf("parse merged catalog: %w", err)
 		}
 	} else {
-		source, err := os.ReadFile(inputPath)
+		// Assign to the outer `source` (not :=): the digest and the SDK
+		// contract below are computed from it in single-file mode too.
+		content, err := os.ReadFile(inputPath)
 		if err != nil {
 			return fmt.Errorf("read catalog: %w", err)
 		}
+		source = content
 		if err := yaml.Unmarshal(source, &document); err != nil {
 			return fmt.Errorf("parse catalog: %w", err)
 		}
