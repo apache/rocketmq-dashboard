@@ -155,10 +155,18 @@ describe('DLQ page', () => {
     vi.clearAllMocks();
   });
 
-  it('renders invalid message timestamps as unavailable without throwing', () => {
+  it('renders invalid message timestamps as unavailable without throwing', async () => {
     expect(formatDateTime(Number.NaN)).toBe('-');
     expect(formatDateTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatDateTime(0)).not.toBe('-');
+    // The page itself must route API values through the same guard: a
+    // non-numeric timestamp string reaches the row and renders as '-'.
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+      pageOf([{ ...dlqGroup, lastEnqueueTime: 'not-a-date' }]),
+    );
+    renderWithProviders(<DLQPage />);
+    const row = await screen.findByRole('row', { name: /cg-order/ });
+    expect(within(row).getByText('-')).toBeInTheDocument();
   });
 
   it('loads DLQ groups through the service layer', async () => {
