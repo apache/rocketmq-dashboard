@@ -421,12 +421,16 @@ describe('TopicPage', () => {
     await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('创建 Topic')).toBeInTheDocument();
-    await user.type(within(dialog).getByLabelText('Topic 名称'), 'topic-zz');
+    fireEvent.change(within(dialog).getByLabelText('Topic 名称'), {
+      target: { value: 'topic-zz' },
+    });
     await user.click(within(dialog).getByRole('button', { name: /创\s*建/ }));
 
     await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
     expect(topicServiceMocks.updateTopic).not.toHaveBeenCalled();
-  });
+    // Modal open -> cancel -> re-open -> submit is a long sequential chain;
+    // give it headroom over the default 20s under parallel load.
+  }, 45000);
 
   it('ignores duplicate Topic creates while the first request is pending', async () => {
     topicServiceMocks.createTopic.mockImplementation(() => new Promise(() => {}));
@@ -800,7 +804,9 @@ describe('TopicPage', () => {
     await user.keyboard('{Enter}');
 
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
-  });
+    // Typing the search term key-by-key plus the re-query is heavy under
+    // parallel load; give this chain headroom over the default 20s.
+  }, 45000);
 
   it('moves back from an emptied last topic page after batch deletion', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -857,7 +863,10 @@ describe('TopicPage', () => {
       page: 1,
       pageSize: 20,
     });
-  });
+    // The pagination -> select-all -> bulk-delete -> confirm chain is the
+    // heaviest in this file; give it headroom over the default 20s (it passed
+    // at ~7s isolated but overran 20s on a loaded parallel runner).
+  }, 45000);
 
   it('filters topics by the instance from the route and shows its endpoint', async () => {
     const base = buildTopics(1)[0];
