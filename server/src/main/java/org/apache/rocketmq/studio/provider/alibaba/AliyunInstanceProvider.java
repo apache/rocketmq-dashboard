@@ -376,14 +376,17 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     /**
-     * OpenAPI accepts Concurrently/Orderly; tolerate FIFO/ordered spellings from the UI.
+     * OpenAPI accepts Concurrently/Orderly; tolerate the order-type spellings
+     * the console actually sends - the create form posts PARTITON_ORDER /
+     * MESSAGES_ORDER and the CSV import accepts PARTITION_ORDER - plus the
+     * FIFO/ORDERLY spellings, matching the Tencent provider's ORDER match.
      */
     static String normalizeDeliveryOrderType(String raw) {
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DELIVERY_ORDER_TYPE;
         }
-        String value = raw.trim();
-        if ("FIFO".equalsIgnoreCase(value) || "ORDERLY".equalsIgnoreCase(value)) {
+        String upper = raw.trim().toUpperCase(Locale.ROOT);
+        if ("FIFO".equals(upper) || upper.contains("ORDER")) {
             return ORDERLY_DELIVERY_ORDER_TYPE;
         }
         return DEFAULT_DELIVERY_ORDER_TYPE;
