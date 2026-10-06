@@ -573,6 +573,21 @@ describe('Cluster page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('caps the NS registry form inputs at the DTO limits', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    expect(await screen.findByText('rocketmq1-nameserver:9876')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /新建 NameServer/ }));
+    const dialog = await screen.findByRole('dialog', { name: /新建 NameServer/ });
+    // CreateNameserverRegistryDTO: name @Size(max=128), namesrvAddr @Size(max=512),
+    // k8sNamespace @Size(max=128) — longer values are always rejected with 400.
+    expect(within(dialog).getByLabelText('名称')).toHaveAttribute('maxlength', '128');
+    expect(within(dialog).getByLabelText('NameServer 地址')).toHaveAttribute('maxlength', '512');
+    expect(within(dialog).getByLabelText('K8s Namespace')).toHaveAttribute('maxlength', '128');
+  });
+
   it('localizes the NameServer address guidance', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1494,3 +1509,4 @@ describe('Cluster page', () => {
     );
   });
 });
+

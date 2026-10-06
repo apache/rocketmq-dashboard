@@ -1929,14 +1929,16 @@ const ClusterPage = () => {
             label={t('common.name')}
             rules={[{ required: true, message: t('common.name') }]}
           >
-            <Input placeholder="rocketmq1" />
+            {/* CreateNameserverRegistryDTO caps name at 128 characters */}
+            <Input placeholder="rocketmq1" maxLength={128} showCount />
           </Form.Item>
           <Form.Item
             name="namesrvAddr"
             label={t('cluster.nsAddr')}
             rules={[{ required: true, message: t('cluster.nsAddr') }]}
           >
-            <Input placeholder={t('cluster.nsAddrPlaceholder')} />
+            {/* ...and namesrvAddr at 512; the backend rejects longer values with a bare 400 */}
+            <Input placeholder={t('cluster.nsAddrPlaceholder')} maxLength={512} showCount />
           </Form.Item>
           <Form.Item name="k8sId" label={t('cluster.k8sId')} extra={t('cluster.k8sIdExtra')}>
             <Select
@@ -1946,7 +1948,8 @@ const ClusterPage = () => {
             />
           </Form.Item>
           <Form.Item name="k8sNamespace" label={t('cluster.k8sNamespace')}>
-            <Input placeholder="rocketmq1" />
+            {/* ...and k8sNamespace at 128 */}
+            <Input placeholder="rocketmq1" maxLength={128} showCount />
           </Form.Item>
           <Form.Item name="description" label={t('cluster.nsDescription')}>
             <Input.TextArea rows={2} />
