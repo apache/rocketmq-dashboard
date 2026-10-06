@@ -38,6 +38,7 @@ import type { LlmConfig } from '../../../api/llm';
 import type { AgentEngine } from '../../../stores/engineStore';
 import InfoBanner from '../../../components/InfoBanner';
 import type { ChatMode } from '../chatDraft';
+import { MAX_COMPOSER_DRAFT_CHARS } from '../hooks/useComposerDraft';
 import ModelBadge from './ModelBadge';
 import SendStopButton, { type SendStopState } from './SendStopButton';
 
@@ -476,6 +477,7 @@ const Composer = ({
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder ?? t('ai.composer.placeholder')}
+              maxLength={MAX_COMPOSER_DRAFT_CHARS}
             />
             <Sparkle
               className="text-gray-400"
