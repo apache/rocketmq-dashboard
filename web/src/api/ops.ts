@@ -82,7 +82,7 @@ export interface SystemAlert {
   domain?: 'BUSINESS' | 'CLUSTER' | null;
   ruleId?: number | null;
   fingerprint?: string | null;
-  transition?: 'FIRING' | 'RESOLVED' | null;
+  transition?: 'FIRING' | 'REMINDER' | 'RESOLVED' | null;
   instanceId?: string | null;
   currentValue?: number | null;
   notificationSuppressed?: boolean;
@@ -133,7 +133,7 @@ export interface NotificationDeliveryRecord extends NotificationDelivery {
   messageContent?: string | null;
   alertTitle: string;
   alertDomain?: 'BUSINESS' | 'CLUSTER' | null;
-  transition?: 'FIRING' | 'RESOLVED' | null;
+  transition?: 'FIRING' | 'REMINDER' | 'RESOLVED' | null;
   instanceId?: string | null;
 }
 

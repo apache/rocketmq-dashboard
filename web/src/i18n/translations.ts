@@ -1323,6 +1323,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Cluster alert monitoring, {n} unacknowledged',
   },
   'sysAlerts.firing': { zh: '触发中', en: 'Firing' },
+  'sysAlerts.reminder': { zh: '再次提醒', en: 'Reminder' },
   'sysAlerts.resolved': { zh: '已恢复', en: 'Resolved' },
   'sysAlerts.loadFailed': {
     zh: '系统告警加载失败，请稍后重试',
@@ -1666,7 +1667,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
