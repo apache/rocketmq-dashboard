@@ -44,6 +44,7 @@ import {
   Progress,
   Switch,
   message,
+  theme,
 } from 'antd';
 import {
   Plus,
@@ -246,6 +247,7 @@ const ConsumerPageContent = ({
   reloadInstances,
 }: ConsumerPageContentProps) => {
   const { t, lang } = useLang();
+  const { token } = theme.useToken();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -2154,7 +2156,9 @@ const ConsumerPageContent = ({
                       size="small"
                       style={{
                         marginBottom: 16,
-                        background: '#fafafa',
+                        // Theme fill instead of a fixed light grey, which left this summary
+                        // card unreadable in dark mode.
+                        background: token.colorFillQuaternary,
                         borderRadius: 8,
                       }}
                       styles={{ body: { padding: '8px 16px' } }}
