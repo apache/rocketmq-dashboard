@@ -55,6 +55,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -703,6 +705,45 @@ class RocketMQMessageProviderTest {
         assertThat(result.messages()).isEmpty();
         assertThat(result.mayBeTruncated()).isTrue();
         verify(pullConsumer, times(4)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {200, 201})
+    void queryByTopicReportsResultBudgetOverflowTest(int matchingCount) throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 500L, 0L, 0L, matchingCount, matchingCount);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> topicPullBatch(invocation.getArgument(2), matchingCount, 100L));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, null, null, 100L, 500L);
+
+        assertThat(result.messages()).hasSize(200);
+        assertThat(result.messages().get(0).getMsgId()).isEqualTo("msg-" + (matchingCount - 1));
+        assertThat(result.messages().get(199).getMsgId()).isEqualTo("msg-" + (matchingCount - 200));
+        assertThat(result.mayBeTruncated()).isEqualTo(matchingCount > 200);
+    }
+
+    @Test
+    void queryByTopicDoesNotCountFilteredRowsAgainstResultBudgetTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 500L, 0L, 0L, 300L, 300L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32)))
+                .thenAnswer(invocation -> {
+                    PullResult batch = topicPullBatch(invocation.getArgument(2), 300L, 100L);
+                    batch.getMsgFoundList().forEach(message -> message.setTags(
+                            message.getStoreTimestamp() >= 200L ? "wanted" : "other"));
+                    return batch;
+                });
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                "instance-a", "TopicA", null, "wanted", null, 100L, 500L);
+
+        assertThat(result.messages()).hasSize(200);
+        assertThat(result.messages()).extracting(MessageRecordVO::getTag).containsOnly("wanted");
+        assertThat(result.mayBeTruncated()).isFalse();
     }
 
     @Test

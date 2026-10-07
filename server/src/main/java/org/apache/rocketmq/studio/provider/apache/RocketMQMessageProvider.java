@@ -444,6 +444,9 @@ public class RocketMQMessageProvider implements MessageProvider {
                             if (!matchesTag(messageExt, tag)) {
                                 continue;
                             }
+                            if (newestMessages.size() >= resultLimit) {
+                                mayBeTruncated = true;
+                            }
                             addTopicQueryCandidate(newestMessages, toRecordVO(messageExt, queue.getBrokerName()), resultLimit);
                         }
                     }
