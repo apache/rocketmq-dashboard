@@ -79,6 +79,7 @@ const alertRules: AlertRule[] = [
     enabled: false,
     lastTriggered: null,
     description: 'consumer lag',
+    severity: 'critical',
   },
   {
     id: 3,
@@ -199,6 +200,16 @@ describe('AlertsPage', () => {
       failures: {},
       updatedRules: [],
     });
+  });
+
+  it('shows each rule severity and defaults unset severity to info', async () => {
+    renderPage();
+
+    await expectRuleRowInteractive('Consumer lag');
+    // rule 2 carries severity: critical
+    expect(within(getRuleRow('Consumer lag')).getByText('严重')).toBeInTheDocument();
+    // rule 1 has no severity and must fall back to the info tag, not render blank
+    expect(within(getRuleRow('Broker disk usage')).getByText('信息')).toBeInTheDocument();
   });
 
   it('renders unavailable conditions without placeholder threshold values', async () => {
