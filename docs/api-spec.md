@@ -149,6 +149,11 @@
 | 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
 | 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
 | 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 114 | GET | `/api/liteTopic/list` | LiteTopic 会话列表 |
+| 115 | GET | `/api/liteTopic/session/:sessionId` | LiteTopic 会话详情 |
+| 116 | POST | `/api/liteTopic/extendTTL` | 调整 LiteTopic TTL |
+| 117 | GET | `/api/liteTopic/quota` | LiteTopic 配额 |
+| 118 | GET | `/api/liteTopic/capability` | LiteTopic 能力检查 |
 
 ## 通用响应格式
 
@@ -1065,6 +1070,118 @@ POST /api/topics/send
 ```
 
 ---
+
+### 5.9 获取 LiteTopic 会话列表
+
+```
+GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | `string` | 否 | 按 Topic 模式过滤 |
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicItem[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `topicPattern` | `string` | LiteTopic 模式 |
+| `namespace` | `string` | 命名空间 |
+| `topicCount` | `number` | 会话内 Topic 数 |
+| `consumerCount` | `number` | 消费者数 |
+| `totalBacklog` | `number` | 总堆积消息数 |
+| `averageTTL` | `number` | 平均 TTL（毫秒） |
+| `ttlStatus` | `string` | TTL 状态 |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `sessionIds` | `string[]` | 会话 ID 列表 |
+
+### 5.10 获取 LiteTopic 会话详情
+
+```
+GET /api/liteTopic/session/:sessionId
+```
+
+**Response `data`:** `LiteTopicSession`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sessionId` | `string` | 会话 ID |
+| `clientId` | `string` | 客户端 ID |
+| `clientAddress` | `string` | 客户端地址 |
+| `parentTopic` | `string` | 父 Topic |
+| `consumerGroup` | `string` | 消费组 |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳） |
+| `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳） |
+| `ttl` | `number` | TTL（毫秒） |
+| `ttlRemaining` | `number` | 剩余 TTL（毫秒） |
+| `status` | `string` | 会话状态 |
+| `totalMessages` | `number` | 消息总数 |
+| `consumedMessages` | `number` | 已消费消息数 |
+| `pendingMessages` | `number` | 待消费消息数 |
+| `popProgress` | `number` | 消费进度 |
+| `liteTopicCreationCount` | `number` | 会话内创建的 Topic 数 |
+| `liteTopics` | `object[]` | 会话内 Topic：`topicName` / `status` / `ttlRemaining` |
+
+### 5.11 调整 LiteTopic TTL
+
+```
+POST /api/liteTopic/extendTTL
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `topicPattern` | `string` | 是 | LiteTopic 模式 |
+| `newTTL` | `number` | 是 | 新的 TTL（毫秒），必须为正数 |
+
+**Response `data`:** `null`
+
+### 5.12 获取 LiteTopic 配额
+
+```
+GET /api/liteTopic/quota?namespace={namespace}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namespace` | `string` | 否 | 按命名空间过滤 |
+
+**Response `data`:** `LiteTopicQuota`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `currentTopicCount` | `number` | 当前 Topic 数 |
+| `maxTopicCount` | `number` | Topic 数上限 |
+| `currentSessionCount` | `number` | 当前会话数 |
+| `maxSessionCount` | `number` | 会话数上限 |
+| `currentCreationRate` | `number` | 当前创建速率 |
+| `maxCreationRate` | `number` | 创建速率上限 |
+| `usageRate` | `number` | Topic 配额使用率 |
+| `sessionUsageRate` | `number` | 会话配额使用率 |
+| `defaultTTL` | `number` | 默认 TTL（毫秒） |
+| `maxTTL` | `number` | TTL 上限（毫秒） |
+| `remainingQuota` | `number` | 剩余配额 |
+| `consumerDensity` | `number` | 消费者密度 |
+
+### 5.13 检查 LiteTopic 能力
+
+```
+GET /api/liteTopic/capability
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `supported` | `boolean` | 当前集群是否支持 LiteTopic |
+
 
 ## 6. 消费组管理 Consumer Group
 
