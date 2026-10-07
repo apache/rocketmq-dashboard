@@ -10,11 +10,14 @@ export interface MessageRecord {
   queueId: number | null;
   queueOffset: number | null;
   body: string;
+  bodyEncoding?: string | null;
+  bodyTruncated?: boolean;
   storeTime: number | string;
   bornHost: string;
   storeHost: string;
   reconsumeTimes?: number;
   properties: Record<string, string>;
+  propertiesTruncated?: boolean;
   size: number;
 }
 
