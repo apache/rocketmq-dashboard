@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, ConfigProvider, theme } from 'antd';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -104,6 +104,14 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 const lastElement = <T,>(elements: T[]): T => elements[elements.length - 1]!;
+
+// Comparing raw CSS text would depend on how each side spells a colour, so both the element's
+// value and the expected token go through the same parser before they are compared.
+const normalizeBackground = (value: string): string => {
+  const probe = document.createElement('span');
+  probe.style.background = value;
+  return probe.style.background;
+};
 
 describe('Message page query history', () => {
   beforeEach(() => {
@@ -678,6 +686,42 @@ describe('Message page query history', () => {
     expect(locationItems[0]).toHaveTextContent('-');
     expect(locationItems[1]).toHaveTextContent('-');
     expect(locationItems[2]).toHaveTextContent('-');
+  });
+
+  it('renders the message body on the theme fill token so dark mode stays readable', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-DARK-BODY'), body: '{"dark":true}' },
+    ]);
+    render(
+      <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <MessagePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-DARK-BODY/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const bodyPanel = within(dialog).getByText(/"dark": true/);
+    // A fixed light background leaves the dark theme's light text unreadable on it, so the
+    // panel has to follow the theme's fill token instead.
+    const darkFill = theme.getDesignToken({ algorithm: theme.darkAlgorithm }).colorFillQuaternary;
+    expect(normalizeBackground((bodyPanel as HTMLElement).style.background)).toBe(
+      normalizeBackground(darkFill),
+    );
+    expect(normalizeBackground((bodyPanel as HTMLElement).style.background)).not.toBe(
+      normalizeBackground('#f5f5f5'),
+    );
   });
 
   it('renders a message larger than a megabyte with the matching unit', async () => {

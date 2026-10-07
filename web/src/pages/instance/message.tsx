@@ -37,6 +37,7 @@ import {
   Statistic,
   Tooltip,
   message,
+  theme,
 } from 'antd';
 import {
   SearchOutlined,
@@ -336,6 +337,7 @@ const MessagePageContent = ({
   reloadInstances,
 }: InstanceFilterProps) => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
   const [topicError, setTopicError] = useState<string | null>(null);
   const [topicLoading, setTopicLoading] = useState(false);
@@ -992,7 +994,9 @@ const MessagePageContent = ({
           <Paragraph
             copyable={{ text: selectedMsg.body }}
             style={{
-              background: '#f5f5f5',
+              // Theme fill instead of a fixed light grey: the body text inherits the active
+              // theme's color, so a hardcoded light background made it unreadable in dark mode.
+              background: token.colorFillQuaternary,
               padding: '12px 16px',
               borderRadius: 6,
               fontFamily: "'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace",
