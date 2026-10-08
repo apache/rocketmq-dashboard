@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -175,6 +175,7 @@ export function collectLicenses(moduleIds, base = root) {
 
 export function distributionLicenses() {
   let base;
+  let captured;
   return {
     name: 'distribution-licenses',
     apply: 'build',
@@ -192,7 +193,9 @@ export function distributionLicenses() {
       }
       const result = collectLicenses([...ids], base);
       const outputFiles = {};
-      for (const [name, item] of Object.entries(bundle)) {
+      const outputNames = Object.keys(bundle);
+      for (const name of outputNames) {
+        const item = bundle[name];
         outputFiles[name] = sha(item.type === 'chunk' ? item.code : item.source);
       }
       const manifest = { modules: result.modules, components: result.components, outputFiles, files: {} };
@@ -200,7 +203,32 @@ export function distributionLicenses() {
         manifest.files[name] = sha(data);
         this.emitFile({ type: 'asset', fileName: name, source: data });
       }
+      captured = { result, outputNames };
       this.emitFile({ type: 'asset', fileName: 'legal/manifest.json', source: `${JSON.stringify(manifest, null, 2)}\n` });
+    },
+    writeBundle(options) {
+      // Vite's own post plugins still rewrite chunks after this plugin's generateBundle ran -
+      // vite:build-preload prepends __vite__mapDeps to the entry chunk from its generateBundle
+      // hook - so the manifest emitted above pins bytes that differ from the artifacts on disk
+      // and `npm run build` fails its own license check. Files are already written when this
+      // hook runs: re-hash the shipped bytes and overwrite the manifest with them. The in-memory
+      // generate() flow (write: false) keeps the emitted manifest, whose inputs nobody rewrites.
+      if (!captured) return;
+      const directory = options.dir ?? path.dirname(options.file);
+      const outputFiles = {};
+      for (const name of captured.outputNames) {
+        outputFiles[name] = sha(readFileSync(path.join(directory, name)));
+      }
+      const manifest = {
+        modules: captured.result.modules,
+        components: captured.result.components,
+        outputFiles,
+        files: {},
+      };
+      for (const [name, data] of captured.result.files) {
+        manifest.files[name] = sha(data);
+      }
+      writeFileSync(path.join(directory, 'legal/manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
     },
   };
 }

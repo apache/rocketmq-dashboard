@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -95,4 +95,32 @@ test('vitePackagingAndTamperGateTest', async (t) => {
   const output = Object.keys(manifest.outputFiles)[0];
   write(directory, output, 'tampered');
   assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
+});
+
+test('preloadHelperRewriteStillPassesTamperGateTest', async (t) => {
+  const directory = temporary(t);
+  const fixture = path.join(directory, 'fixture');
+  // Vite's build-preload plugin prepends __vite__mapDeps to the entry chunk from its own
+  // generateBundle hook, which runs after this plugin's: the emitted manifest must pin the
+  // final bytes, or `npm run build` fails its own license check on the app bundle.
+  write(fixture, 'LICENSE', readFileSync(path.join(root, 'LICENSE')));
+  write(fixture, 'NOTICE', readFileSync(path.join(root, 'NOTICE')));
+  write(fixture, 'src/entry.js',
+    "import './base.css'; console.log('entry'); import('./lazy.js').then((m) => console.log(m));");
+  write(fixture, 'src/lazy.js', "import './lazy.css'; export default 1;");
+  write(fixture, 'src/base.css', 'body{color:red}');
+  write(fixture, 'src/lazy.css', '.a{color:blue}');
+  symlinkSync(path.join(root, 'node_modules'), path.join(fixture, 'node_modules'), 'dir');
+  const outDir = path.join(directory, 'dist');
+  await build({
+    root: fixture,
+    configFile: false,
+    logLevel: 'error',
+    plugins: [distributionLicenses()],
+    build: { write: true, minify: false, outDir, rollupOptions: { input: path.join(fixture, 'src/entry.js') } },
+  });
+  const assets = readdirSync(path.join(outDir, 'assets'));
+  const entry = assets.find((name) => name.endsWith('.js') && name.includes('entry'));
+  assert.match(readFileSync(path.join(outDir, 'assets', entry), 'utf8'), /__vite__mapDeps/);
+  checkDistribution(outDir, fixture);
 });
