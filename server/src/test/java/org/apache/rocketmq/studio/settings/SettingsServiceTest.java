@@ -291,6 +291,51 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldKeepExistingWebhooksWhenTheRedactedMarkerIsEchoedTest() {
+        // A reader session reads the settings through the non-admin redaction and every save
+        // echoes what it loaded, so the write side must recognise the marker it emitted.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=secret")
+                .smsWebhook("https://sms.example.test/notify")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook("******")
+                .smsWebhook("******")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=secret");
+        assertThat(update.getSmsWebhook()).isEqualTo("https://sms.example.test/notify");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReplaceAWebhookThatWasActuallyRetypedTest() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=old")
+                .smsWebhook("https://sms.example.test/old")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .dingtalkWebhook("https://oapi.dingtalk.com/robot/send?access_token=new")
+                .smsWebhook("")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDingtalkWebhook())
+                .isEqualTo("https://oapi.dingtalk.com/robot/send?access_token=new");
+        // Clearing a webhook by blanking the field stays a legitimate edit.
+        assertThat(update.getSmsWebhook()).isEmpty();
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void listDataSourcesShouldReturnAllSourcesTest() {
         DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
                 .url("localhost:9876").status("connected").build();

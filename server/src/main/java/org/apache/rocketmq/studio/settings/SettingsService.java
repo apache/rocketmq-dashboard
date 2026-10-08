@@ -141,6 +141,18 @@ public class SettingsService {
         } else if (!StringUtils.hasText(settings.getDingtalkSigningSecret()) && currentSettings != null) {
             settings.setDingtalkSigningSecret(currentSettings.getDingtalkSigningSecret());
         }
+        // Non-admin sessions read the webhooks through redactNotificationWebhooks and every
+        // console save echoes what it loaded, so the marker this service itself emitted must
+        // restore the stored URL instead of being persisted over it (issue #5004). A genuinely
+        // retyped URL — or a blank, which is how the form clears a webhook — still wins.
+        if (currentSettings != null) {
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getDingtalkWebhook())) {
+                settings.setDingtalkWebhook(currentSettings.getDingtalkWebhook());
+            }
+            if (REDACTED_NOTIFICATION_WEBHOOK.equals(settings.getSmsWebhook())) {
+                settings.setSmsWebhook(currentSettings.getSmsWebhook());
+            }
+        }
         if (currentSettings != null) {
             if (!StringUtils.hasText(settings.getLlmEngine())) {
                 settings.setLlmEngine(currentSettings.getLlmEngine());
