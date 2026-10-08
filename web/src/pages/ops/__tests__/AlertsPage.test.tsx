@@ -925,6 +925,29 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
   });
 
+  it('counts the 24h-triggered stat against the UTC timestamp, not the browser zone', async () => {
+    // Pin the viewer zone off UTC so a browser-zone parse is observably wrong, and pin the
+    // clock so the fixture's age is exact. The stat must read the same value the adjacent
+    // Last-Triggered column renders — UTC, per the formatUtcDateTime convention.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-24T12:00:00Z'));
+    try {
+      // 2026-08-23T13:00:00 UTC is 23h before the pinned now. Parsed as Shanghai wall time
+      // it becomes 05:00Z — 31h old — which is what the browser-zone parse wrongly excludes.
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered: '2026-08-23T13:00:00' }]),
+      );
+
+      renderPage();
+
+      const statLabel = await screen.findByText('本页 24h 触发');
+      expect(statLabel.nextElementSibling).toHaveTextContent('1');
+    } finally {
+      nowSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('clamps to the last valid page when a bulk delete empties the current one', async () => {
     // 21 rules: page 2 holds only rule 21. Deleting it leaves 20 rules across 1 page, so the
     // refresh of page 2 comes back empty and the view must clamp to the last valid page (1).
