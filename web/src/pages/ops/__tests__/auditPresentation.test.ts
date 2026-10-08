@@ -75,6 +75,46 @@ describe('audit presentation helpers', () => {
     });
   });
 
+  it('presents the silence, notification-delivery, cloud-import and group-settings codes the server records', () => {
+    // These codes are emitted by AlertSilenceService, NotificationOutboxService, the
+    // cloud instance import and the group settings write path; without registry entries
+    // they render as grey "other" tags with no translation key.
+    expect(getAuditOperationPresentation('CREATE_ALERT_SILENCE')).toMatchObject({
+      labelKey: 'audit.op.CREATE_ALERT_SILENCE',
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('DELETE_ALERT_SILENCE')).toMatchObject({
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('DELIVER_ALERT_NOTIFICATION')).toMatchObject({
+      labelKey: 'audit.op.DELIVER_ALERT_NOTIFICATION',
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('RETRY_ALERT_NOTIFICATION')).toMatchObject({
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('RETRY_ALERT_NOTIFICATION_MANUALLY')).toMatchObject({
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('FAIL_ALERT_NOTIFICATION')).toMatchObject({
+      category: 'alerts',
+    });
+    expect(getAuditOperationPresentation('IMPORT_CLOUD_INSTANCES')).toMatchObject({
+      labelKey: 'audit.op.IMPORT_CLOUD_INSTANCES',
+      category: 'instance',
+    });
+    expect(getAuditOperationPresentation('UPDATE_GROUP_SETTINGS')).toMatchObject({
+      labelKey: 'audit.op.UPDATE_GROUP_SETTINGS',
+      category: 'metadata',
+    });
+    expect(getAuditResourcePresentation('ALERT_SILENCE')).toMatchObject({
+      labelKey: 'audit.res.ALERT_SILENCE',
+    });
+    expect(getAuditResourcePresentation('ALERT_NOTIFICATION')).toMatchObject({
+      labelKey: 'audit.res.ALERT_NOTIFICATION',
+    });
+  });
+
   it('maps resource and result codes to readable table labels', () => {
     expect(getAuditResourcePresentation('PROXY')).toEqual({
       label: 'Proxy',
