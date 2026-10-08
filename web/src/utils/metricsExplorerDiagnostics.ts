@@ -52,8 +52,11 @@ export interface MetricResultSummary {
 export interface MetricCsvContext {
   profileName: string;
   sourceName: string;
+  /** Epoch seconds of the query window start. */
   queryStart?: number;
+  /** Epoch seconds of the query window end. */
   queryEnd?: number;
+  /** Wall-clock `Date.now()` of the query, in epoch milliseconds. */
   queriedAt?: number;
 }
 
@@ -74,8 +77,11 @@ export interface MetricCsvRow {
   value: number;
   histogramCount?: number;
   histogramSum?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryStart?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queryEnd?: number;
+  /** Epoch seconds, like every other epoch column in the row. */
   queriedAt?: number;
 }
 
@@ -258,6 +264,11 @@ export const buildMetricCsvRows = (
     const { samples } = toMetricSeriesSamples(series);
     const seriesLabel = metricSeriesLabel(series, metric.name);
     const labels = stableLabelsText(series.labels);
+    // Timestamp / Query Start / Query End are epoch seconds; `queriedAt` is a wall-clock
+    // `Date.now()` in milliseconds. One CSV file must not mix the two units, so the query
+    // instant is emitted in the same seconds unit as the rest of the epoch columns.
+    const queriedAtSeconds =
+      context.queriedAt === undefined ? undefined : Math.floor(context.queriedAt / 1000);
     return samples.map((sample) => ({
       profileName: context.profileName,
       sourceName: context.sourceName,
@@ -277,7 +288,7 @@ export const buildMetricCsvRows = (
       histogramSum: sample.histogramSum,
       queryStart: context.queryStart,
       queryEnd: context.queryEnd,
-      queriedAt: context.queriedAt,
+      queriedAt: queriedAtSeconds,
     }));
   });
 
@@ -340,7 +351,9 @@ export const buildMetricSeriesDetailRows = (
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
