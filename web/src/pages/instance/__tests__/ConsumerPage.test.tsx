@@ -1559,6 +1559,29 @@ describe('Consumer page', () => {
     expect(await within(row).findByText('42')).toBeInTheDocument();
   });
 
+  it('renders a placeholder for an online instance whose protocol is unknown', async () => {
+    // The Apache provider derives online instances from a broker connection set, which
+    // carries no protocol marker — the API legitimately returns the field absent.
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [{ clientId: 'client-no-proto', address: '10.0.0.9:1234' }],
+        },
+      ]),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    const instanceRow = await within(dialog).findByText('client-no-proto');
+    const protocolCell = instanceRow.closest('tr')?.children[1];
+    expect(protocolCell).toBeDefined();
+    expect(within(protocolCell as HTMLElement).getByText('-')).toBeInTheDocument();
+    expect((protocolCell as HTMLElement).querySelector('.ant-tag')).toBeNull();
+  });
+
   it('edits retry settings from the detail modal settings tab', async () => {
     vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
       groupName: 'remote-cg',

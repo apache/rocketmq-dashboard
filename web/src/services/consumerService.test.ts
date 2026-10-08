@@ -55,19 +55,19 @@ describe('consumer service mock data', () => {
 
     first[0].name = 'mutated-group';
     first[0].subscribedTopics.push('mutated-topic');
-    first[0].instances[0].topicLag['order-create'] = 999999;
+    first[0].instances[0].topicLag!['order-create'] = 999999;
 
     const second = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(second[0].name).toBe('cg-order-notify');
     expect(second[0].subscribedTopics).not.toContain('mutated-topic');
-    expect(second[0].instances[0].topicLag['order-create']).toBe(180);
+    expect(second[0].instances[0].topicLag!['order-create']).toBe(180);
     expect(second[0]).not.toBe(first[0]);
     expect(second[0].instances[0]).not.toBe(first[0].instances[0]);
   });
 
   it('returns copied consumer group details', async () => {
     const first = await getConsumerGroup('cg-order-notify');
-    first.instances[0].subscribedTopics.push('mutated-topic');
+    first.instances[0].subscribedTopics!.push('mutated-topic');
 
     const second = await getConsumerGroup('cg-order-notify');
     expect(second.instances[0].subscribedTopics).not.toContain('mutated-topic');
