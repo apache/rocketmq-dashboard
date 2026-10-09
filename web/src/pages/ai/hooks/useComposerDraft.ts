@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useState } from 'react';
+import useAuthStore from '../../../stores/authStore';
 
 /**
  * The composer draft: the ONE piece of AI-page state that stays on the client.
@@ -35,6 +36,18 @@ import { useCallback, useState } from 'react';
 export const COMPOSER_DRAFT_STORAGE_KEY = 'rocketmq-studio-ai-composer-draft';
 
 /**
+ * The draft belongs to the account that typed it. `sessionStorage` is per tab and survives a
+ * client-side logout in that tab (logout only clears localStorage), so one global key would put
+ * the previous operator's unsent text - cluster addresses, topic names, whatever they were
+ * mid-question about - into the next operator's composer, where it could be sent as theirs.
+ */
+function storageKey(): string {
+  const { user, userId } = useAuthStore.getState();
+  const account = userId != null ? `user-id:${userId}` : (user ?? '').trim() || 'anonymous';
+  return `${COMPOSER_DRAFT_STORAGE_KEY}:${encodeURIComponent(account)}`;
+}
+
+/**
  * `AiMessageDTO.message` is `@NotBlank @Size(max = 8192)`. A restored draft is clamped to that bound
  * so a hand-edited or corrupt storage value cannot produce a message the server will reject; text
  * being typed is left alone and the server stays the authority on the send path.
@@ -43,7 +56,7 @@ export const MAX_COMPOSER_DRAFT_CHARS = 8192;
 
 function readDraft(): string {
   try {
-    const stored = sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    const stored = sessionStorage.getItem(storageKey());
     return typeof stored === 'string' ? stored.slice(0, MAX_COMPOSER_DRAFT_CHARS) : '';
   } catch {
     return '';
@@ -52,8 +65,9 @@ function readDraft(): string {
 
 function writeDraft(value: string): void {
   try {
-    if (value) sessionStorage.setItem(COMPOSER_DRAFT_STORAGE_KEY, value);
-    else sessionStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY);
+    const key = storageKey();
+    if (value) sessionStorage.setItem(key, value);
+    else sessionStorage.removeItem(key);
   } catch {
     // Storage refused (private mode, quota): the draft survives in memory for this mount and is
     // simply not carried across navigation. Not worth surfacing to the operator.
