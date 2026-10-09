@@ -86,8 +86,8 @@ export interface UseConversationTimelineResult {
   /** Highest `seq` held; pass it to `attachRunStream` so a re-attach does not replay anything twice. */
   lastSeq: number;
   loading: boolean;
-  /** Server-supplied message, or `''`; the caller pairs it with an i18n fallback. */
-  error: string;
+  /** Null on success; an empty failure message uses the caller's i18n fallback. */
+  error: string | null;
   /** True when the bounded forward walk stopped before the tail; `loadMore` continues it. */
   hasMore: boolean;
   /** Reload the whole transcript from `seq > 0`; reject on failure so live blocks are retained. */
@@ -107,7 +107,7 @@ export function useConversationTimeline(
   const [nextAfter, setNextAfter] = useState<number | null>(null);
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const hasCurrentSnapshot = loadedActiveRun?.conversationId === conversationId;
   const refetchRequestId = useRef(0);
   const activeRefetchRef = useRef<number | null>(null);
@@ -129,7 +129,7 @@ export function useConversationTimeline(
       setItems([]);
       setLoadedActiveRun(null);
       setNextAfter(null);
-      setError('');
+      setError(null);
       setLoading(false);
       return;
     }
@@ -140,7 +140,7 @@ export function useConversationTimeline(
     loadMoreRequestId.current += 1;
     loadingMoreRef.current = null;
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       let collected: TimelineItem[] = [];
       let after = 0;
@@ -193,7 +193,7 @@ export function useConversationTimeline(
     const refetchId = refetchRequestId.current;
     loadingMoreRef.current = id;
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       const result = await getConversationTimeline(conversationId, { after, limit });
       if (id !== loadMoreRequestId.current || refetchId !== refetchRequestId.current) return;

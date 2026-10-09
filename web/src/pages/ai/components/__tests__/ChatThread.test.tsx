@@ -121,7 +121,11 @@ describe('ChatThread', () => {
     placeReader(0);
     rerender(
       <LangProvider>
-        <ChatThread bubbles={[userBubble('检查集群状态')]} liveBlocks={appendText([], '部分')} streaming />
+        <ChatThread
+          bubbles={[userBubble('检查集群状态')]}
+          liveBlocks={appendText([], '部分')}
+          streaming
+        />
       </LangProvider>,
     );
     scrollIntoView.mockClear();
@@ -172,9 +176,7 @@ describe('ChatThread', () => {
     // The pending question sits ahead of the streaming answer.
     const pending = screen.getByText('第二个问题');
     const answer = screen.getByText('正在回答');
-    expect(
-      pending.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(pending.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('stopsFollowingAndOffersAJumpOnceTheReaderScrollsUpTest', () => {
@@ -245,10 +247,18 @@ describe('ChatThread', () => {
     placeReader(600);
     fireEvent.scroll(screen.getByTestId('ai-thread-scroll'));
     scrollIntoView.mockClear();
-    const update = (bubbles: Bubble[]) => rerender(
-      <LangProvider><ChatThread bubbles={bubbles} /></LangProvider>,
-    );
-    const batch = [...initial, assistantBubble('first answer'), userBubble('next question'), assistantBubble('next answer')];
+    const update = (bubbles: Bubble[]) =>
+      rerender(
+        <LangProvider>
+          <ChatThread bubbles={bubbles} />
+        </LangProvider>,
+      );
+    const batch = [
+      ...initial,
+      assistantBubble('first answer'),
+      userBubble('next question'),
+      assistantBubble('next answer'),
+    ];
     update(batch);
     expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('3');
     update([...batch.slice(0, -1), assistantBubble('updated next answer')]);
