@@ -220,7 +220,13 @@ public class SettingsService {
         return settingsRepository.findAllDataSources();
     }
 
-    @Cacheable(DATA_SOURCE_CACHE)
+    // The parameterised, paginated overload is intentionally NOT cached: its
+    // Spring cache key is derived from the caller-supplied search/type/page/
+    // pageSize arguments, and the plain ConcurrentMapCacheManager configured
+    // in CacheConfig has no TTL, size bound or eviction — every distinct
+    // search term would pin a permanent PageResult (credential-bearing
+    // data-source configs) in the heap. The documented cache scope is the
+    // full list above; write paths evict it via allEntries below.
     public PageResult<DataSourceVO> listDataSources(String search, String type, int page, int pageSize) {
         if (page < 1) {
             throw new BusinessException(400, "page must be greater than zero");
