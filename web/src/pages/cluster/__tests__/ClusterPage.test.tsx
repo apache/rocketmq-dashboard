@@ -35,6 +35,7 @@ const clusterServiceMocks = vi.hoisted(() => ({
   createNameserverRegistry: vi.fn(),
   deleteNameserverRegistry: vi.fn(),
   getBrokerConfigDiff: vi.fn(),
+  getCluster: vi.fn(),
   getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
   listK8sCerts: vi.fn(),
@@ -220,6 +221,7 @@ describe('Cluster page', () => {
         gmtModified: '',
       },
     ]);
+    clusterServiceMocks.getCluster.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.listRegistryClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.listK8sCerts.mockReset().mockResolvedValue([
@@ -382,6 +384,118 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('1,842')).toBeInTheDocument();
     expect(within(dialog).getByText('8081')).toBeInTheDocument();
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
+  });
+
+  it('fills the broker config dialog from the live cluster detail, not from fabricated defaults', async () => {
+    // GET /clusters/registry reports topology only, so a registry row carries no config - the
+    // shape the real API returns. The dialog must not invent values and must not submit them.
+    const clusterWithoutConfig = buildCluster();
+    delete (clusterWithoutConfig as { config?: unknown }).config;
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([clusterWithoutConfig]);
+    const liveCluster = buildCluster();
+    clusterServiceMocks.getCluster.mockResolvedValue({
+      ...liveCluster,
+      config: { ...liveCluster.config!, flushDiskType: 'SYNC_FLUSH', fileReservedTime: 168 },
+    });
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 12,
+        name: 'instance-1',
+        endpoint: '10.101.2.1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+
+    expect(clusterServiceMocks.getCluster).toHaveBeenCalledWith('cluster-prod', 'instance-1');
+    // SYNC_FLUSH would have been shown as ASYNC_FLUSH and 168 as 72 by the old fallbacks.
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('文件保留时长 (小时)')).toHaveValue('168'),
+    );
+    expect(within(dialog).getByRole('radio', { name: '同步刷盘' })).toBeChecked();
+  });
+
+  it('refuses to edit a broker config it could not read instead of submitting defaults', async () => {
+    const clusterWithoutConfig = buildCluster();
+    delete (clusterWithoutConfig as { config?: unknown }).config;
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([clusterWithoutConfig]);
+    clusterServiceMocks.getCluster.mockRejectedValue(new Error('cluster unreachable'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+
+    expect(
+      await within(dialog).findByText('无法读取该集群的 Broker 配置，请先确认集群可达'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'OK' })).toBeDisabled();
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+  });
+
+  it('drops a live config response for a dialog the operator already left', async () => {
+    // The read for cluster A is still in flight when the operator cancels and opens cluster B,
+    // whose own read fails. A's response must not fill B's form or clear B's warning: doing so
+    // would re-enable OK and submit values that were never read for B.
+    const clusterA = buildCluster();
+    delete (clusterA as { config?: unknown }).config;
+    const clusterB: ClusterInfo = {
+      ...buildCluster(),
+      id: 'cluster-b',
+      name: 'rocketmq-b',
+      brokers: buildCluster().brokers.map((broker, index) => ({
+        ...broker,
+        name: `rocketmq-b-${index}`,
+        addr: `10.101.2.2${index + 2}:10911`,
+      })),
+    };
+    delete (clusterB as { config?: unknown }).config;
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([clusterA, clusterB]);
+    let releaseClusterA: (value: ClusterInfo) => void = () => {};
+    clusterServiceMocks.getCluster.mockImplementation((id: string) =>
+      id === 'cluster-prod'
+        ? new Promise<ClusterInfo>((resolve) => {
+            releaseClusterA = resolve;
+          })
+        : Promise.reject(new Error('cluster unreachable')),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const rowA = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(rowA).getByRole('button', { name: /^配\s*置$/ }));
+    const dialogA = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    await user.click(within(dialogA).getByRole('button', { name: 'Cancel' }));
+
+    const rowB = await screen.findByRole('row', { name: /10\.101\.2\.22:10911/ });
+    await user.click(within(rowB).getByRole('button', { name: /^配\s*置$/ }));
+    const dialogB = await screen.findByRole('dialog', { name: /配置 - rocketmq-b/ });
+    expect(
+      await within(dialogB).findByText('无法读取该集群的 Broker 配置，请先确认集群可达'),
+    ).toBeInTheDocument();
+
+    const lateConfig = buildCluster().config!;
+    await act(async () => {
+      releaseClusterA({ ...buildCluster(), config: { ...lateConfig, fileReservedTime: 168 } });
+    });
+
+    expect(
+      within(dialogB).getByText('无法读取该集群的 Broker 配置，请先确认集群可达'),
+    ).toBeInTheDocument();
+    expect(within(dialogB).getByRole('button', { name: 'OK' })).toBeDisabled();
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
   });
 
   it('previews broker config changes before submitting the update', async () => {
