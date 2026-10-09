@@ -20,6 +20,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { downloadBlob } from '../../../utils/download';
+import { formatDateTime } from '../../../utils/format';
 import type { CloudCredentialPage } from '../../../api/cloudCredential';
 import {
   createCloudCredential,
@@ -106,6 +107,16 @@ describe('CloudCredentialTab', () => {
     await waitFor(() => expect(screen.getByText('aliyun-test')).toBeInTheDocument());
     expect(screen.getByText('LTAI****0001')).toBeInTheDocument();
     expect(screen.getByText('阿里云')).toBeInTheDocument();
+  });
+
+  it('formats the created timestamp instead of printing the raw wire value', async () => {
+    renderTab();
+
+    await screen.findByText('aliyun-test');
+    // The API serializes a zoneless LocalDateTime; the column used to print it verbatim
+    // ("2026-08-18T10:00:00") while every sibling inventory table formats the field.
+    expect(screen.queryByText('2026-08-18T10:00:00')).not.toBeInTheDocument();
+    expect(screen.getByText(formatDateTime('2026-08-18T10:00:00'))).toBeInTheDocument();
   });
 
   it('loads the first page and sends the selected filters', async () => {
