@@ -70,10 +70,13 @@ upload_source() {
   info "📤 传输源码到 $REMOTE:$REMOTE_PATH ..."
   run_remote "mkdir -p $REMOTE_PATH"
   scp -q "$SRC_TAR" "$REMOTE:$REMOTE_PATH/"
-  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）
-  run_remote "cd $REMOTE_PATH && [ -f deploy/.env ] && cp deploy/.env /tmp/deploy-env-backup; \
-    rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
-    [ -f /tmp/deploy-env-backup ] && mv /tmp/deploy-env-backup deploy/.env || true"
+  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）。
+  # 任一步失败（备份 .env、清理、解压、恢复 .env）都必须让远端命令以非零退出：
+  # 旧写法用 `;` 分隔并以 `|| true` 结尾，tar 解压失败也被吞掉，部署会带着残缺源码继续走到
+  # docker build 才在别处报错。解压失败时仍先恢复 .env，再以原退出码终止。
+  run_remote "cd $REMOTE_PATH && { [ ! -f deploy/.env ] || cp deploy/.env /tmp/deploy-env-backup; } && \
+    { rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
+      rc=\$?; { [ ! -f /tmp/deploy-env-backup ] || mv /tmp/deploy-env-backup deploy/.env; }; exit \$rc; }"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
 }
