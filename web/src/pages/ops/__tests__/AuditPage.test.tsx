@@ -387,9 +387,11 @@ describe('Audit page', () => {
     await user.click(await screen.findByRole('button', { name: '确认清理' }));
 
     // The success wording would claim the retention window was applied while older rows survive.
+    // The warning has to say "possibly": a sweep that ends exactly on the ceiling may have been
+    // complete, and asserting that rows remain would be wrong in that case.
     expect(
       await screen.findByText(
-        '已删除 10000 条日志，但仍有 30 天之前的记录（单次清理上限 10000 条），请再次执行',
+        '已删除 10000 条日志，可能仍有 30 天之前的记录（单次清理上限 10000 条），请再次执行',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('已清理 30 天之前的日志')).not.toBeInTheDocument();

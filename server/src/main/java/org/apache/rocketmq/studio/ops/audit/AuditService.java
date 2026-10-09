@@ -156,7 +156,9 @@ public class AuditService {
         int deleted = auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
         // The sweep is bounded (500 rows x 20 batches). Answering with the count alone made a
         // truncated cleanup indistinguishable from a complete one, so the operator (and the
-        // retention policy) believed the window was applied while older rows survived.
+        // retention policy) believed the window was applied while older rows survived. A sweep
+        // that ends exactly on the ceiling may also have been complete, so this is a "rows may
+        // remain" signal and the wording that reports it says so.
         return new CleanupOutcome(deleted, deleted >= CLEANUP_BATCH_SIZE * CLEANUP_MAX_BATCHES);
     }
 

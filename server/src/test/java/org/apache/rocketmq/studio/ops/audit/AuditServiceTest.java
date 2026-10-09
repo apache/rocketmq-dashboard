@@ -275,8 +275,9 @@ class AuditServiceTest {
 
         AuditService.CleanupOutcome outcome = auditService.cleanupLogs(90);
 
-        // 500 x 20 is the ceiling: a full sweep may have left expired rows behind, and the caller
-        // (and the operator) has to be told so.
+        // 500 x 20 is the ceiling: the sweep may have stopped there with expired rows behind, and
+        // the caller (and the operator) has to be told so. A sweep that ends exactly on the
+        // ceiling may equally have been complete, which is why the warning says "possibly".
         assertThat(outcome.deleted()).isEqualTo(10_000);
         assertThat(outcome.truncated()).isTrue();
     }
