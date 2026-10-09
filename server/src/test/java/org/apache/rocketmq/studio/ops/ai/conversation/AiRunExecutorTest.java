@@ -274,6 +274,22 @@ class AiRunExecutorTest {
     }
 
     @Test
+    void aBlankResultSubtypeShouldFailTheRunLikeTheProjectorSaysTest() {
+        // The projector defends against a result frame with no subtype by persisting an
+        // llm.provider.unknown error, because only a "success" subtype is a success. decide() read
+        // the same blank as "no result frame arrived" and wrote COMPLETED, so the row disagreed
+        // with the error event the run had just left in its own timeline.
+        provider.emit(new AgentEvent.ResultMeta("session-9", null, null, null, null));
+
+        startAndRun();
+
+        assertThat(types()).containsExactly("user", "error", "run_status");
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(runRow().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(runRow().getErrorCode()).isEqualTo("llm.provider.unknown");
+    }
+
+    @Test
     void aFailedResultFrameShouldNotPersistTheSessionIdItEchoesBackTest() {
         // A failed frame carries the session id that was *requested*, not a live one: the parser says so
         // in as many words. Persisting it would point the next turn at a session that does not exist.
