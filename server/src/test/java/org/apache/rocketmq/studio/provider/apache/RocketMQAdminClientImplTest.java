@@ -1125,6 +1125,52 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void importConsumerGroupShouldNotRewriteAnExistingMatchingGroupTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setRetryQueueNums(5);
+        existing.setConsumeEnable(false);
+        existing.setRetryMaxTimes(16);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("open-source-local");
+        group.setRetryMaxTimes(16);
+
+        adminClient.importConsumerGroup(group);
+
+        // The import contract is "existing config is only registered, never overwritten": a matching
+        // group must not receive the creation defaults (retryQueueNums 1, consumption re-enabled).
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+    }
+
+    @Test
+    void importConsumerGroupShouldRefuseToOverwriteADifferentConfigTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        // The 409 is raised before the metadata write, so the lookup may never happen.
+        lenient().when(groupMapper.selectOne(any())).thenReturn(null);
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setRetryMaxTimes(3);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("open-source-local");
+        group.setRetryMaxTimes(16);
+
+        assertThatThrownBy(() -> adminClient.importConsumerGroup(group))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("refusing to overwrite");
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+    }
+
+    @Test
     void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);

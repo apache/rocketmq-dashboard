@@ -820,9 +820,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
             boolean consumeMessageOrderly = isOrderlyDelivery(group.getDeliveryOrderType());
             config.setConsumeMessageOrderly(consumeMessageOrderly);
 
-            for (String addr : brokerAddrs) {
-                admin.createAndUpdateSubscriptionGroupConfig(addr,
-                        importing ? config : createConfigForMaster(admin, addr, config, group));
+            if (importing) {
+                // An import only registers a group that already matches and refuses to overwrite a
+                // different config (verifyGroupImport throws 409); it never applies the creation
+                // defaults to a live group.
+                if (!verifyGroupImport(admin, brokerAddrs, config)) {
+                    for (String addr : brokerAddrs) {
+                        admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+                    }
+                }
+            } else {
+                for (String addr : brokerAddrs) {
+                    admin.createAndUpdateSubscriptionGroupConfig(addr,
+                            createConfigForMaster(admin, addr, config, group));
+                }
             }
 
             persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());
