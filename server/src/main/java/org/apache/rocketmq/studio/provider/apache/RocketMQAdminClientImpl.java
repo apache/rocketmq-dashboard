@@ -640,16 +640,26 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     }
                     configs.put(addr, config);
                 }
+                // The same request field the create path applies to the broker: a plan that offers to
+                // switch ordered consumption has to reach consumeMessageOrderly, or the update is a
+                // silent no-op for that field. An absent value keeps the broker's own flag.
+                boolean deliveryOrderTypeRequested = StringUtils.hasText(group.getDeliveryOrderType());
+                boolean consumeMessageOrderly = isOrderlyDelivery(group.getDeliveryOrderType());
                 for (Map.Entry<String, SubscriptionGroupConfig> entry : configs.entrySet()) {
                     // Preserve each broker's other settings; zero is an explicit retry limit.
                     SubscriptionGroupConfig config = entry.getValue();
                     config.setRetryMaxTimes(group.getRetryMaxTimes());
+                    if (deliveryOrderTypeRequested) {
+                        config.setConsumeMessageOrderly(consumeMessageOrderly);
+                    }
                     admin.createAndUpdateSubscriptionGroupConfig(entry.getKey(), config);
                     updatedBrokers++;
                 }
 
                 persistConsumerGroup(group, clusterName, group.getRetryMaxTimes());
                 recordAudit("UPDATE_GROUP", groupName, "retryMaxTimes=" + group.getRetryMaxTimes()
+                        + ", consumeMessageOrderly=" + (deliveryOrderTypeRequested
+                                ? Boolean.toString(consumeMessageOrderly) : "unchanged")
                         + ", brokersUpdated=" + updatedBrokers + "/" + totalBrokers, "SUCCESS");
                 return group;
             } catch (BusinessException e) {
