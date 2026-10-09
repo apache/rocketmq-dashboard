@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.MutationOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolError;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionException;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolInvocation;
@@ -66,7 +67,7 @@ class ToolTokenSingleUseTest {
     private final ToolFilterChain chain = new ToolFilterChain(List.of(new ToolMutationFilter(tokens, true)));
 
     @Test
-    void replayedTokenIsRejectedAndDoesNotExecuteTwice() {
+    void replayedTokenIsRejectedAndDoesNotExecuteTwiceTest() {
         String token = preview();
 
         apply(token);
@@ -79,7 +80,7 @@ class ToolTokenSingleUseTest {
 
     @Test
     @Timeout(30)
-    void concurrentAppliesExecuteTheMutationExactlyOnce() throws Exception {
+    void concurrentAppliesExecuteTheMutationExactlyOnceTest() throws Exception {
         String token = preview();
         int callers = 8;
         ExecutorService pool = Executors.newFixedThreadPool(callers);
@@ -104,7 +105,7 @@ class ToolTokenSingleUseTest {
     }
 
     @Test
-    void distinctPreviewsIssueIndependentTokens() {
+    void distinctPreviewsIssueIndependentTokensTest() {
         String first = preview();
         String second = preview();
         assertThat(first).isNotEqualTo(second);
@@ -118,6 +119,36 @@ class ToolTokenSingleUseTest {
         assertThatThrownBy(() -> apply(second)).isInstanceOfSatisfying(ToolExecutionException.class,
                 failure -> assertThat(failure.getErrorCode()).isEqualTo("CONFLICT"));
         assertThat(handler.executions.get()).isEqualTo(2);
+    }
+
+    @Test
+    void failedPreviewLeavesTokenAvailableForRetryTest() {
+        String token = preview();
+        handler.previewFailure = ToolError.OFFSET_RESET_PREVIEW_UNSAFE.exception("unsafe preview");
+
+        assertThatThrownBy(() -> apply(token)).isSameAs(handler.previewFailure);
+        assertThat(handler.executions).hasValue(0);
+
+        handler.previewFailure = null;
+        apply(token);
+        assertThat(handler.executions).hasValue(1);
+        assertThatThrownBy(() -> apply(token)).isInstanceOfSatisfying(ToolExecutionException.class,
+                failure -> assertThat(failure.getErrorCode()).isEqualTo("CONFLICT"));
+        assertThat(handler.executions).hasValue(1);
+    }
+
+    @Test
+    void failedMutationStillConsumesTokenTest() {
+        String token = preview();
+        handler.executionFailure = new IllegalStateException("mutation failed");
+
+        assertThatThrownBy(() -> apply(token)).isSameAs(handler.executionFailure);
+        assertThat(handler.executions).hasValue(1);
+
+        handler.executionFailure = null;
+        assertThatThrownBy(() -> apply(token)).isInstanceOfSatisfying(ToolExecutionException.class,
+                failure -> assertThat(failure.getErrorCode()).isEqualTo("CONFLICT"));
+        assertThat(handler.executions).hasValue(1);
     }
 
     private Callable<String> applyAfterBarrier(CyclicBarrier rendezvous, String token) {
@@ -156,6 +187,8 @@ class ToolTokenSingleUseTest {
 
     private static class CountingHandler extends MutationToolHandler<Map<String, Object>, Object> {
         private final AtomicInteger executions = new AtomicInteger();
+        private RuntimeException previewFailure;
+        private RuntimeException executionFailure;
 
         @SuppressWarnings("unchecked")
         private CountingHandler() {
@@ -169,12 +202,18 @@ class ToolTokenSingleUseTest {
 
         @Override
         public ToolPlan preview(Map<String, Object> input, ToolExecutionContext context) {
+            if (previewFailure != null) {
+                throw previewFailure;
+            }
             return ToolPlan.builder("Create topic").build();
         }
 
         @Override
         public Object execute(Map<String, Object> input, ToolExecutionContext context) {
             executions.incrementAndGet();
+            if (executionFailure != null) {
+                throw executionFailure;
+            }
             return new LinkedHashMap<>(input);
         }
     }
