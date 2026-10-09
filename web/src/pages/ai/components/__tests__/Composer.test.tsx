@@ -22,6 +22,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../../i18n/LangContext';
 import type { LlmConfig } from '../../../../api/llm';
+import { MAX_COMPOSER_DRAFT_CHARS } from '../../hooks/useComposerDraft';
 import Composer, { type ComposerProps } from '../Composer';
 
 /**
@@ -208,6 +209,20 @@ describe('Composer', () => {
 
     expect(props.onStop).not.toHaveBeenCalled();
     expect(props.onSend).not.toHaveBeenCalled();
+  });
+
+  // The backend's `AiMessageDTO.message` is `@NotBlank @Size(max = 8192)`; anything longer is
+  // answered as an in-stream refusal the run never starts from. `useComposerDraft` clamps a
+  // RESTORED draft to that budget and deliberately leaves typed text alone (the server stays the
+  // authority on the send path); the textarea's maxLength clamps what is being TYPED, so a pasted
+  // stack trace is cut at the budget instead of failing with no explanation. home/index.tsx reuses
+  // this Composer, so both entry points get the clamp. The constant is imported rather than
+  // redeclared, and pinned to the backend budget, so a wrong export value fails here.
+  it('capsTypedTextAtTheBackendMessageBudgetTest', () => {
+    renderComposer({ value: '检查集群状态' });
+
+    expect(MAX_COMPOSER_DRAFT_CHARS).toBe(8192);
+    expect(textarea()).toHaveAttribute('maxlength', String(MAX_COMPOSER_DRAFT_CHARS));
   });
 
   it('disablesTheInputEntirelyWhenThePageIsDisabledTest', () => {
