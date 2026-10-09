@@ -76,6 +76,45 @@ class QueryHistorySchemaIndexTest {
         }
     }
 
+    @Test
+    void migrationWidensTheOwnerColumnsOfAnExistingDatabaseTest() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:query-history-owner-width;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
+        dataSource.setUser("sa");
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // The shape a database initialised before the widening carries: usernames are up to 128
+            // characters (AuthService), so the old 64-character columns dropped those rows.
+            statement.execute("CREATE TABLE rmq_instance_message ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "gmt_create DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                    + "query_type VARCHAR(32) NOT NULL, "
+                    + "queried_by VARCHAR(64), "
+                    + "cluster_id VARCHAR(255))");
+            statement.execute("CREATE TABLE rmq_operation_audit ("
+                    + "id BIGINT AUTO_INCREMENT PRIMARY KEY, "
+                    + "operator VARCHAR(64))");
+        }
+
+        QueryHistorySchemaMigration migration = new QueryHistorySchemaMigration(dataSource);
+        migration.run(new DefaultApplicationArguments());
+        migration.run(new DefaultApplicationArguments());
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            assertThat(columnWidth(connection, "rmq_instance_message", "queried_by")).isEqualTo(128);
+            assertThat(columnWidth(connection, "rmq_operation_audit", "operator")).isEqualTo(128);
+            String longUsername = "u".repeat(100);
+            statement.executeUpdate("INSERT INTO rmq_instance_message (query_type, queried_by) VALUES ('KEY', '"
+                    + longUsername + "')");
+        }
+    }
+
+    private static int columnWidth(Connection connection, String tableName, String columnName) throws Exception {
+        try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
+            return columns.next() ? columns.getInt("COLUMN_SIZE") : 0;
+        }
+    }
+
     private static boolean hasColumn(Connection connection, String tableName, String columnName) throws Exception {
         try (ResultSet columns = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
             return columns.next();
