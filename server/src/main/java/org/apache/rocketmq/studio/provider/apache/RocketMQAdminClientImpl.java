@@ -25,6 +25,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -264,6 +265,31 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return message != null && (message.contains("not online") || message.contains("CODE: 206"));
     }
 
+    /** The broker's own group-length bound (TopicValidator only enforces the topic bound). */
+    private static final int GROUP_NAME_MAX_LENGTH = 120;
+
+    /**
+     * The broker rejects an illegal name itself, but only after the ownership row has been inserted:
+     * the claim stayed behind as a PENDING entry that the topic list then showed as a real topic
+     * while the create had failed. Validate with the broker's own rules first, so the caller gets the
+     * broker's message as a 400 and nothing is written.
+     */
+    private static void requireValidTopicName(String name) {
+        TopicValidator.ValidateResult result = TopicValidator.validateTopic(name);
+        if (!result.isValid()) {
+            throw new BusinessException(400, result.getRemark());
+        }
+    }
+
+    /** @see #requireValidTopicName */
+    private static void requireValidGroupName(String name) {
+        if (name.length() > GROUP_NAME_MAX_LENGTH || TopicValidator.isTopicOrGroupIllegal(name)) {
+            throw new BusinessException(400, "The specified group: " + name
+                    + " is invalid, allowing only ^[%|a-zA-Z0-9_-]+$ and at most "
+                    + GROUP_NAME_MAX_LENGTH + " characters");
+        }
+    }
+
     @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         return createTopic(instanceId, topic, false);
@@ -281,6 +307,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
         topic.setInstanceId(target);
         topic.setName(ResourceOwnershipGuard.requireText(topic.getName(), "topicName"));
+        requireValidTopicName(topic.getName());
         String topicName = topic.getName();
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
@@ -363,6 +390,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String target = ownershipGuard.requireInstance(instanceId).getName();
         topic.setInstanceId(target);
         topic.setName(ResourceOwnershipGuard.requireText(topic.getName(), "topicName"));
+        requireValidTopicName(topic.getName());
         String topicName = topic.getName();
 
         return executeResourceWrite(target, Kind.TOPIC, topicName, false, topic.getType(), (admin, clusterName) -> {
@@ -611,6 +639,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
         group.setInstanceId(instanceId);
         group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
+        requireValidGroupName(group.getName());
         return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), true, null,
                 (admin, cluster) -> createConsumerGroup(admin, group, cluster, importing));
     }
@@ -620,6 +649,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
         group.setInstanceId(instanceId);
         group.setName(ResourceOwnershipGuard.requireText(group.getName(), "groupName"));
+        requireValidGroupName(group.getName());
         return executeResourceWrite(instanceId, Kind.GROUP, group.getName(), false, null, (admin, clusterName) -> {
             String groupName = group.getName();
             int totalBrokers = 0;

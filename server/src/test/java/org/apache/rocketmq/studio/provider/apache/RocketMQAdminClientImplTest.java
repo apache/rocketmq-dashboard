@@ -712,6 +712,65 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicRejectsAnIllegalNameBeforeWritingAnythingTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        lenient().when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("open-source-local");
+        topic.setName("my topic");
+
+        assertThatThrownBy(() -> adminClient.createTopic(topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("contains illegal characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        // The broker rejects the name too, but only after the ownership row exists; the rejection
+        // must not leave a phantom entry behind or reach the broker at all.
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        verify(ownershipGuard, never()).write(any(), any(), any(), anyBoolean(), any(), any());
+    }
+
+    @Test
+    void createConsumerGroupRejectsANameLongerThanTheBrokerLimitTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        lenient().when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId("open-source-local");
+        group.setName("g".repeat(121));
+
+        assertThatThrownBy(() -> adminClient.createConsumerGroup(group))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("at most 120 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+    }
+
+    @Test
+    void createTopicKeepsTheBrokerCompatibleNamesItAcceptsTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        // 127 characters is the broker's own topic limit, so it has to pass validation.
+        TopicVO atTheLimit = new TopicVO();
+        atTheLimit.setInstanceId("open-source-local");
+        atTheLimit.setName("t".repeat(127));
+        adminClient.createTopic(atTheLimit);
+        verify(adminExt).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
+
+        // The underscore in a derived-looking user name is legal for the broker.
+        TopicVO withUnderscore = new TopicVO();
+        withUnderscore.setInstanceId("open-source-local");
+        withUnderscore.setName("order_retry_v2");
+        adminClient.createTopic(withUnderscore);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
+    }
+
+    @Test
     void createTopicShouldOnlyWriteTargetClusterBrokersInMultiClusterTopology() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = clusterInfoWithTwoClusters();
