@@ -282,6 +282,76 @@ describe('AlertsPage', () => {
     ).toBe('> 85%');
   });
 
+  it('renders the stored catalog unit code as the label the dialog shows', () => {
+    const unitLabel = (unit?: string | null) =>
+      unit === 'messages' ? '条' : unit === 'seconds' ? '秒' : (unit ?? undefined);
+
+    expect(
+      formatThresholdCondition(
+        {
+          ...cloneRule(alertRules[0]),
+          metric: 'consumer.lag.total',
+          threshold: 12000,
+          thresholdUnit: 'messages',
+        },
+        'Unavailable',
+        unitLabel,
+      ),
+    ).toBe('> 12000 条');
+    expect(
+      formatThresholdCondition(
+        {
+          ...cloneRule(alertRules[0]),
+          metric: 'consumer.delay.seconds',
+          threshold: 420,
+          thresholdUnit: 'seconds',
+        },
+        'Unavailable',
+        unitLabel,
+      ),
+    ).toBe('> 420 秒');
+    expect(
+      formatThresholdCondition(
+        {
+          ...cloneRule(alertRules[0]),
+          metric: 'consumer.lag.total',
+          threshold: 85,
+          thresholdUnit: '%',
+        },
+        'Unavailable',
+        unitLabel,
+      ),
+    ).toBe('> 85%');
+  });
+
+  it('translates the catalog unit code in the rules table', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([
+        {
+          id: 77,
+          name: 'Consumer lag',
+          instanceId: 'local',
+          metric: 'consumer.lag.total',
+          operator: '>',
+          threshold: 12000,
+          // What the API returns: NativeAlertMetricCatalogService's unit code, not a label.
+          thresholdUnit: 'messages',
+          duration: '5m',
+          channels: ['dingtalk'],
+          enabled: true,
+          lastTriggered: null,
+          description: '',
+        },
+      ]),
+    );
+
+    renderPage();
+
+    await screen.findByText('Consumer lag');
+    expect(screen.getByText('> 12000 条')).toBeInTheDocument();
+    expect(screen.queryByText('> 12000messages')).not.toBeInTheDocument();
+  });
+
   it('bulk enables selected alert rules and clears the selection after success', async () => {
     const user = userEvent.setup();
     renderPage();
