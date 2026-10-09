@@ -712,6 +712,38 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void importTopicCreatesTheTopicOnTheMastersThatLackItTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMastersOfOneCluster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        // The topic exists on broker-1 and is missing on broker-2: the second master is the one the
+        // import exists to configure.
+        TopicConfig existing = new TopicConfig();
+        existing.setTopicName("orders");
+        existing.setReadQueueNums(8);
+        existing.setWriteQueueNums(8);
+        existing.setPerm(org.apache.rocketmq.common.constant.PermName.PERM_READ
+                | org.apache.rocketmq.common.constant.PermName.PERM_WRITE);
+        when(adminExt.examineTopicConfig("10.0.0.1:10911", "orders")).thenReturn(existing);
+        when(adminExt.examineTopicConfig("10.0.0.2:10911", "orders")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        ResponseCode.TOPIC_NOT_EXIST, "topic not exist"));
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("cluster-1");
+        topic.setName("orders");
+        topic.setReadQueues(8);
+        topic.setWriteQueues(8);
+        adminClient.importTopic("cluster-1", topic);
+
+        ArgumentCaptor<TopicConfig> created = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(eq("10.0.0.2:10911"), created.capture());
+        assertThat(created.getValue().getTopicName()).isEqualTo("orders");
+        verify(adminExt, never()).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), any(TopicConfig.class));
+    }
+
+    @Test
     void createTopicShouldOnlyWriteTargetClusterBrokersInMultiClusterTopology() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = clusterInfoWithTwoClusters();
@@ -1158,6 +1190,33 @@ class RocketMQAdminClientImplTest {
         assertThat(config.getValue().isConsumeMessageOrderly()).isTrue();
     }
 
+    @Test
+    void importConsumerGroupCreatesTheGroupOnTheMastersThatLackItTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMastersOfOneCluster());
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setRetryMaxTimes(16);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.2:10911", "cg-orders")).thenThrow(
+                new org.apache.rocketmq.client.exception.MQBrokerException(
+                        ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST, "subscription group not exist"));
+        doNothing().when(adminExt).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("cluster-1");
+        group.setRetryMaxTimes(16);
+
+        adminClient.importConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> created = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(adminExt).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.2:10911"), created.capture());
+        assertThat(created.getValue().getGroupName()).isEqualTo("cg-orders");
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), any());
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"Concurrently", "concurrently", "   "})
@@ -1581,6 +1640,27 @@ class RocketMQAdminClientImplTest {
         broker.setBrokerName("broker-2");
         broker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
         clusterInfo.getBrokerAddrTable().put("broker-2", broker);
+        return clusterInfo;
+    }
+
+    /** One cluster with two broker groups, i.e. two masters that can host the same topic. */
+    private ClusterInfo clusterInfoWithTwoMastersOfOneCluster() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1", "broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData firstBroker = new BrokerData();
+        firstBroker.setCluster("cluster-1");
+        firstBroker.setBrokerName("broker-1");
+        firstBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData secondBroker = new BrokerData();
+        secondBroker.setCluster("cluster-1");
+        secondBroker.setBrokerName("broker-2");
+        secondBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        brokerAddrTable.put("broker-1", firstBroker);
+        brokerAddrTable.put("broker-2", secondBroker);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
     }
 
