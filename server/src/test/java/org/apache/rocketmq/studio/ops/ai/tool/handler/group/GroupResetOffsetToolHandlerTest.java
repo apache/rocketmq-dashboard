@@ -52,6 +52,25 @@ class GroupResetOffsetToolHandlerTest {
     }
 
     @Test
+    void applyShouldRejectANonPositiveTimestampTest() {
+        // A timestamp at or before the first stored message resolves to the queue minimum, so
+        // accepting 0 here rewinds the whole topic for the group; the REST DTO rejects it
+        // (@Positive on ResetConsumerOffsetDTO).
+        for (long timestamp : new long[] {0L, -1L}) {
+            GroupResetOffsetInput input = new GroupResetOffsetInput(
+                    "untrusted-instance", "group-1", "TopicA", timestamp);
+            ToolExecutionContext execution = ToolExecutionContext.of(
+                    "instance-a", null, Map.of("instanceId", "untrusted-instance"));
+
+            assertThatThrownBy(() -> handler.execute(input, execution))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("timestamp must be positive")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        }
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
     void applyShouldRejectMissingTimestampTest() {
         // Decision 13: the server no longer defaults to the current time.
         GroupResetOffsetInput input = new GroupResetOffsetInput(
