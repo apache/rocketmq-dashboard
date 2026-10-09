@@ -131,6 +131,9 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     // Loading is asynchronous; state updates happen after the runtime APIs resolve.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    return () => {
+      loadSeqRef.current += 1;
+    };
   }, [load]);
 
   const llmReady = Boolean((config?.ready ?? config?.enabled) && selectedModel);

@@ -32,10 +32,12 @@ const modelsMock = vi.mocked(getLlmModels);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const config: LlmConfig = {
@@ -63,6 +65,47 @@ describe('useLlmRuntime', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('does not publish an engine or start a model lookup after unmount', async () => {
+    const pending = deferred<LlmConfig>();
+    configMock.mockReturnValue(pending.promise);
+    modelsMock.mockResolvedValue({ status: 0, data: [] });
+    const onEngine = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onEngine }));
+
+    unmount();
+    await act(async () => pending.resolve(config));
+
+    expect(onEngine).not.toHaveBeenCalled();
+    expect(modelsMock).not.toHaveBeenCalled();
+  });
+
+  it('does not report a configuration failure after unmount', async () => {
+    const pending = deferred<LlmConfig>();
+    configMock.mockReturnValue(pending.promise);
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onError }));
+
+    unmount();
+    await act(async () => pending.reject(new Error('configuration unavailable')));
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('does not report a model lookup failure after unmount', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof getLlmModels>>>();
+    configMock.mockResolvedValue(config);
+    modelsMock.mockReturnValue(pending.promise);
+    const onError = vi.fn();
+    const { unmount } = renderHook(() => useLlmRuntime({ enabled: true, onError }));
+    await act(async () => {});
+    expect(modelsMock).toHaveBeenCalledOnce();
+
+    unmount();
+    await act(async () => pending.reject(new Error('models unavailable')));
+
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('a late response for a disabled runtime never repopulates the state', async () => {
