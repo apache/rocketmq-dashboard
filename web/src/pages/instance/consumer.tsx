@@ -413,8 +413,13 @@ const ConsumerPageContent = ({
           }
         }
       } finally {
-        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
-          setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        // The loading flag belongs to whichever request is current, not to the request that
+        // raised it: the modal's 2s auto-refresh can supersede a user-visible check while that
+        // check is still in flight, and then only the silent request is left to clear it.
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionLoadingByGroup((prev) =>
+            prev[cacheKey] ? { ...prev, [cacheKey]: false } : prev,
+          );
         }
       }
     },

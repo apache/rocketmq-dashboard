@@ -1395,6 +1395,69 @@ describe('Consumer page', () => {
     expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
+  it('stops the subscription check spinner when a silent refresh supersedes it', async () => {
+    const userRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    const silentRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockReturnValueOnce(userRequest.promise)
+      .mockReturnValueOnce(silentRequest.promise)
+      .mockResolvedValue([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+      ]);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    // Opening the modal starts a user-visible check; the modal's 2s auto-refresh then starts a
+    // silent one while that check is still in flight.
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const checkButton = await screen.findByRole('button', { name: /重新检查/ });
+    expect(checkButton).toHaveClass('ant-btn-loading');
+    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
+      timeout: 10000,
+    });
+
+    await act(async () => {
+      silentRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+      ]);
+      await silentRequest.promise;
+    });
+    await act(async () => {
+      userRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+      ]);
+      await userRequest.promise;
+    });
+
+    // Neither request clears the flag on the old code: the user-triggered one is no longer the
+    // current request and the silent one is skipped by the `!silent` guard, so the button kept
+    // spinning forever.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /重新检查/ })).not.toHaveClass('ant-btn-loading'),
+    );
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
