@@ -439,7 +439,53 @@ class MybatisPlusAclRepositoryTest {
                 .isEqualTo(CredentialUtils.encodeBase64("kept-secret-value"));
         // The kept secret is not echoed back.
         assertThat(result.getSecretKey()).isNull();
-        assertThat(result.isAdmin()).isTrue();
+        assertThat(result.getAdmin()).isTrue();
+    }
+
+    @Test
+    void updateWithOmittedAdminShouldKeepStoredAdminFlagTest() {
+        RmqAclUser existing = userEntity(1L, "svc-x", CredentialUtils.encodeBase64("kept-secret"));
+        // An admin service account, as the ACL page shows it.
+        existing.setAdmin(true);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .whiteRemoteAddress("192.168.0.0/16")
+                .build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        // The field is optional in the API, so a partial update that does not mention it must not
+        // demote the account; the console's own model of this request keeps it too
+        // (aclService.ts: admin: data.admin ?? existing?.admin ?? false).
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getAdmin()).isTrue();
+        assertThat(result.getAdmin()).isTrue();
+    }
+
+    @Test
+    void updateWithExplicitlyClearedAdminShouldDemoteTheAccountTest() {
+        RmqAclUser existing = userEntity(1L, "svc-x", CredentialUtils.encodeBase64("kept-secret"));
+        existing.setAdmin(true);
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .admin(false)
+                .build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
+        verify(userMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getAdmin()).isFalse();
+        assertThat(result.getAdmin()).isFalse();
     }
 
     @Test
