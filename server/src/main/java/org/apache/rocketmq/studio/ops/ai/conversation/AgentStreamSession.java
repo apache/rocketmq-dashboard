@@ -176,7 +176,13 @@ final class AgentStreamSession {
             pending = new ArrayDeque<>(buffered);
             buffered.clear();
         }
-        pending.forEach(frame -> deliver(frame.seq(), frame.event()));
+        // Drained under the same lock the publisher serialises on: without it, a live frame handed
+        // over while the drain sits between two buffered frames could reach the wire first, and the
+        // client would fold it ahead of an older block - a tool_done before its tool_start. The
+        // intrinsic lock is reentrant, so deliver()'s own synchronisation nests.
+        synchronized (sendLock) {
+            pending.forEach(frame -> deliver(frame.seq(), frame.event()));
+        }
     }
 
     /**
