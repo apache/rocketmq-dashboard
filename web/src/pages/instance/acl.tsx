@@ -1079,7 +1079,9 @@ const AclPageContent = ({
     <div style={{ padding: 24 }}>
       <PageHeader
         title={t('acl.title')}
-        subtitle={t('acl.subtitle', { rules: rules.length, users: users.length })}
+        // The header quotes grand totals, so it must read the server-reported totals —
+        // rules/users only hold the current page and would cap the counts at the page size.
+        subtitle={t('acl.subtitle', { rules: ruleTotal, users: userTotal })}
         extra={
           <Button
             type="primary"
