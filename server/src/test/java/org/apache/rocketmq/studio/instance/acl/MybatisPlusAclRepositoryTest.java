@@ -419,6 +419,25 @@ class MybatisPlusAclRepositoryTest {
     }
 
     @Test
+    void updateShouldReportARenameOntoAnExistingUsernameAsAConflictTest() {
+        RmqAclUser existing = userEntity(1L, "svc-c", CredentialUtils.encodeBase64("kept-secret"));
+        existing.setAccessKey("K");
+        when(userMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
+        // Another row already owns username=K (uk_username), e.g. a user created after this account
+        // was renamed away from it.
+        when(userMapper.updateById(any(RmqAclUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate"));
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder().accessKey("K").build();
+
+        assertThatThrownBy(() -> repository.createAndUpdatePlainAccessConfig(config))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user already exists: K")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        org.mockito.Mockito.verifyNoInteractions(ruleMapper);
+    }
+
+    @Test
     void updateWithBlankSecretShouldKeepStoredSecret() {
         RmqAclUser existing = userEntity(1L, "svc-x",
                 CredentialUtils.encodeBase64("kept-secret-value"));
