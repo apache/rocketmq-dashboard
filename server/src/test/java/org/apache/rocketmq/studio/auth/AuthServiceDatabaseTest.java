@@ -98,6 +98,23 @@ class AuthServiceDatabaseTest {
     }
 
     @Test
+    void listUsersMatchesTheSearchTextLiterallyTest() {
+        when(userMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqStudioUser>(1, 20));
+
+        assertThat(authService.listUsers("ops_admin", null, null, 1, 20).getItems()).isEmpty();
+
+        // The username is matched literally: unescaped, "ops_admin" would also match "opsXadmin"
+        // and a lone "%" would page through every account.
+        org.mockito.ArgumentCaptor<QueryWrapper<RmqStudioUser>> queryCaptor =
+                org.mockito.ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(userMapper).selectPage(any(Page.class), queryCaptor.capture());
+        QueryWrapper<RmqStudioUser> query = queryCaptor.getValue();
+        assertThat(query.getSqlSegment()).contains("username LIKE");
+        assertThat(query.getParamNameValuePairs().values()).containsOnly("%ops\\_admin%");
+    }
+
+    @Test
     void listUsersRejectsInvalidPaginationBeforeDatabaseAccess() {
         assertThatThrownBy(() -> authService.listUsers(null, null, null, 0, 20))
                 .isInstanceOf(BusinessException.class)

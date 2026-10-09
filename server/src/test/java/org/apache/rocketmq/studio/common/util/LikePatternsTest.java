@@ -23,14 +23,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LikePatternsTest {
 
     @Test
-    void escapesEveryLikeMetacharacter() {
+    void escapesEveryLikeMetacharacterTest() {
         assertThat(LikePatterns.escape("topic_a")).isEqualTo("topic\\_a");
         assertThat(LikePatterns.escape("100%")).isEqualTo("100\\%");
         assertThat(LikePatterns.escape("%DLQ%group")).isEqualTo("\\%DLQ\\%group");
     }
 
     @Test
-    void escapesTheEscapeCharacterItself() {
+    void escapesTheEscapeCharacterItselfTest() {
         // A term that already contains a backslash must not be able to escape the next character
         // of the pattern it lands in.
         assertThat(LikePatterns.escape("a\\b")).isEqualTo("a\\\\b");
@@ -38,13 +38,13 @@ class LikePatternsTest {
     }
 
     @Test
-    void leavesPlainTextAlone() {
+    void leavesPlainTextAloneTest() {
         assertThat(LikePatterns.escape("orders")).isEqualTo("orders");
         assertThat(LikePatterns.escape("GID-prod-1")).isEqualTo("GID-prod-1");
     }
 
     @Test
-    void passesAbsentFiltersThrough() {
+    void passesAbsentFiltersThroughTest() {
         assertThat(LikePatterns.escape(null)).isNull();
         assertThat(LikePatterns.escape("")).isEmpty();
         assertThat(LikePatterns.escape("   ")).isEqualTo("   ");

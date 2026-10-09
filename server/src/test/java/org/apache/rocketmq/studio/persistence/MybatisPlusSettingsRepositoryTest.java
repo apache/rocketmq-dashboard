@@ -65,6 +65,24 @@ class MybatisPlusSettingsRepositoryTest {
     }
 
     @Test
+    void findDataSourcesMatchesTheTypeFilterLiterallyTest() {
+        when(dataSourceMapper.selectPage(any(), any())).thenReturn(
+                new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources(null, "prom_type", 1, 20);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> captor =
+                ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(), captor.capture());
+        QueryWrapper<RmqDataSource> wrapper = captor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("LOWER(json) LIKE CONCAT");
+        // The type is spliced into a pattern of its own, so its metacharacters need escaping too:
+        // unescaped, "prom_type" would also match "promXtype".
+        assertThat(wrapper.getParamNameValuePairs().values()).contains("prom\\_type");
+    }
+
+    @Test
     void shouldReturnDefaultsWhenGeneralSettingsDoNotExist() {
         when(settingsMapper.selectOne(any())).thenReturn(null);
 
