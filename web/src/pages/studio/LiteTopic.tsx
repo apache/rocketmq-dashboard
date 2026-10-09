@@ -141,6 +141,8 @@ const LiteTopicPage: React.FC = () => {
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>();
 
   // Extend TTL modal
   const [extendTTLModalOpen, setExtendTTLModalOpen] = useState(false);
@@ -278,8 +280,10 @@ const LiteTopicPage: React.FC = () => {
     void fetchData(patternFilter || undefined, namespace, { clear: true });
   };
 
-  const handleViewSessions = async (sessionId: string) => {
+  const handleViewSessions = async (sessionId: string, sessionIds?: string[]) => {
     const requestId = ++sessionRequestId.current;
+    if (sessionIds) setAvailableSessionIds(sessionIds);
+    setSelectedSessionId(sessionId);
     setSessionDrawerOpen(true);
     setSessionLoading(true);
     setSessionData(null);
@@ -451,7 +455,7 @@ const LiteTopicPage: React.FC = () => {
               icon={<Eye size={14} />}
               onClick={(e) => {
                 e.stopPropagation();
-                handleViewSessions(record.sessionIds![0]);
+                void handleViewSessions(record.sessionIds![0], record.sessionIds);
               }}
             >
               {t('liteTopic.viewSessions')}
@@ -870,11 +874,29 @@ const LiteTopicPage: React.FC = () => {
         width={680}
         open={sessionDrawerOpen}
         onClose={() => {
+          sessionRequestId.current += 1;
           setSessionDrawerOpen(false);
+          setSessionLoading(false);
           setSessionData(null);
+          setAvailableSessionIds([]);
+          setSelectedSessionId(undefined);
         }}
         destroyOnHidden
       >
+        {availableSessionIds.length > 1 && (
+          <Select
+            aria-label={t('liteTopic.sessionId')}
+            showSearch
+            optionFilterProp="label"
+            value={selectedSessionId}
+            options={availableSessionIds.map((sessionId) => ({
+              value: sessionId,
+              label: sessionId,
+            }))}
+            onChange={(sessionId) => void handleViewSessions(sessionId)}
+            style={{ width: '100%', marginBottom: 16 }}
+          />
+        )}
         {renderSessionContent()}
       </Drawer>
 

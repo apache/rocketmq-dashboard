@@ -156,6 +156,32 @@ describe('LiteTopic Page', () => {
     expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
   });
 
+  it('allows viewing every session linked to the same LiteTopic row', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'order-*', sessionIds: ['session-1', 'session-2'] },
+    ]);
+    apiMocks.queryLiteTopicSession.mockImplementation(async (sessionId: string) => ({
+      sessionId,
+      clientId: sessionId === 'session-1' ? 'first-client' : 'second-client',
+      totalMessages: 100,
+      consumedMessages: 0,
+    }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    expect(await screen.findByText('first-client')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '会话 ID' }));
+    await user.click(
+      await screen.findByText('session-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-2');
+    expect(await screen.findByText('second-client')).toBeInTheDocument();
+    expect(screen.queryByText('first-client')).not.toBeInTheDocument();
+  });
+
   it('keeps the latest session detail when an earlier request resolves last', async () => {
     const firstSession = createDeferred<{
       sessionId: string;
