@@ -100,6 +100,20 @@ describe('formatBytes', () => {
 });
 
 describe('formatTimeMs', () => {
+  it.each([8_640_000_000_000_001, -8_640_000_000_000_001, Number.MAX_VALUE, -Number.MAX_VALUE])(
+    'uses the placeholder for finite timestamps outside the Date range: %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+      expect(formatRelativeTime(value, 'en', (key) => key, Date.now())).toBe('-');
+      expect(formatRelativeTime(Date.now(), 'en', (key) => key, value)).toBe('-');
+    },
+  );
+
+  it.each([8_640_000_000_000_000, -8_640_000_000_000_000])('keeps representable boundary dates: %s', (value) => {
+    expect(formatTimeMs(value)).toBe(`${formatDateTime(new Date(value))}.000`);
+    expect(formatRelativeTime(value, 'en', (key) => key, value)).toBe('ai.history.justNow');
+  });
+
   const shape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
 
   it('preserves the Unix epoch timestamp', () => {
