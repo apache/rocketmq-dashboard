@@ -48,16 +48,18 @@ class AlertRuleRequestDTOTest {
         request.setDescription("d".repeat(513));
         request.setConsumerGroup("g".repeat(256));
         request.setTopic("t".repeat(256));
+        request.setThresholdUnit("u".repeat(33));
 
         // The columns are name/metric/brokerName/clusterName/instanceId 128, description 512,
-        // consumerGroup/topic 255; without the bound the first check was the database write, which
-        // answers 500 instead of 400.
+        // consumerGroup/topic 255, thresholdUnit 32; without the bound the first check was the
+        // database write, which answers 500 instead of 400.
         assertThat(validator.validate(request))
                 .extracting(violation -> violation.getMessage())
                 .containsExactlyInAnyOrder("name must not exceed 128 characters",
                         "description must not exceed 512 characters",
                         "consumerGroup must not exceed 255 characters",
-                        "topic must not exceed 255 characters");
+                        "topic must not exceed 255 characters",
+                        "thresholdUnit must not exceed 32 characters");
     }
 
     @Test
@@ -67,6 +69,7 @@ class AlertRuleRequestDTOTest {
         request.setDescription("d".repeat(512));
         request.setConsumerGroup("g".repeat(255));
         request.setTopic("t".repeat(255));
+        request.setThresholdUnit("u".repeat(32));
 
         assertThat(validator.validate(request)).isEmpty();
     }

@@ -37,6 +37,7 @@ public class AlertRuleRequestDTO {
     @Pattern(regexp = ">|>=|<|<=|==|!=|UNAVAILABLE", message = "operator is invalid")
     private String operator;
     private double threshold;
+    @Size(max = 32, message = "thresholdUnit must not exceed 32 characters")
     private String thresholdUnit;
     @Pattern(regexp = PROMETHEUS_DURATION_REGEXP, message = "duration is invalid")
     @Size(max = 32, message = "duration must not exceed 32 characters")
