@@ -88,6 +88,9 @@ const ENGINE_OPTIONS: { value: AgentEngine; label: string }[] = [
   { value: 'http', label: 'HTTP' },
 ];
 
+/** The `getAgentCapabilities()` engine probes, keyed by the engine they gate. */
+export type EngineAvailability = Partial<Record<AgentEngine, boolean>>;
+
 /** Max height the textarea grows to before it scrolls; matches `.chat-input { max-height }`. */
 const TEXTAREA_MAX_HEIGHT = 180;
 
@@ -120,6 +123,11 @@ export interface ComposerProps {
   stopRequested: boolean;
   /** Provider configured, enabled and a model selected: a send would be accepted. */
   llmReady: boolean;
+  /**
+   * Engines the server probed as absent (the CLI binary is not installed). Defaults to every engine
+   * being selectable: an unprobed capability must not look broken.
+   */
+  engineAvailability?: EngineAvailability;
   /**
    * Nothing can be sent at all — mock mode, where the AI page does not participate and the page
    * renders the `ai.mockProviderDisabled` Alert instead of a composer that pretends to work.
@@ -201,6 +209,7 @@ const Composer = ({
   modelsLoading = false,
   onModelChange,
   canSelectModel = true,
+  engineAvailability,
   engine,
   onEngineChange,
   mode,
@@ -392,7 +401,10 @@ const Composer = ({
                 size="small"
                 value={engine}
                 onChange={(value) => onEngineChange(value as AgentEngine)}
-                options={ENGINE_OPTIONS}
+                options={ENGINE_OPTIONS.map((option) => ({
+                  ...option,
+                  disabled: engineAvailability?.[option.value] === false,
+                }))}
                 variant="borderless"
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
