@@ -26,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
@@ -48,7 +50,7 @@ import static org.mockito.Mockito.when;
  * key is derived from the caller-supplied {@code search}/{@code type}/{@code page}/{@code pageSize}
  * arguments. {@code CacheConfig} backs it with a plain {@link ConcurrentMapCacheManager}, whose
  * caches have no TTL, no size bound and no eviction, so every distinct search term pins a
- * permanent {@code PageResult<DataSourceVO>} (a page of credential-bearing data-source configs) in
+ * permanent {@code PageResult<DataSourceVO>} (a page of the data-source list) in
  * the heap. The paged endpoint is not admin-only, so any authenticated reader can grow the cache
  * without bound.
  *
@@ -77,20 +79,20 @@ class SettingsServiceDataSourceCacheBoundTest {
         service = context.getBean(SettingsService.class);
     }
 
-    @org.springframework.context.annotation.Configuration
+    @Configuration
     static class TestConfig {
 
-        @org.springframework.context.annotation.Bean
+        @Bean
         ObjectMapper objectMapper() {
             return new ObjectMapper();
         }
 
-        @org.springframework.context.annotation.Bean
+        @Bean
         RestClient.Builder restClientBuilder() {
             return RestClient.builder();
         }
 
-        @org.springframework.context.annotation.Bean
+        @Bean
         SettingsService settingsService(SettingsRepository repository, RestClient.Builder builder,
                                         ObjectMapper mapper, OperationAuditService audit) {
             return new SettingsService(repository, builder.build(), mapper, audit);
@@ -106,7 +108,7 @@ class SettingsServiceDataSourceCacheBoundTest {
 
     /** Control: the documented cache behaviour — the full list is cached and served once. */
     @Test
-    void fullDataSourceListIsCachedAsDocumented() {
+    void fullDataSourceListIsCachedAsDocumentedTest() {
         when(settingsRepository.findAllDataSources()).thenReturn(List.of());
 
         service.listDataSources();
@@ -123,7 +125,7 @@ class SettingsServiceDataSourceCacheBoundTest {
      * entries carry credential-bearing data-source configs.
      */
     @Test
-    void parameterizedDataSourceSearchMustNotAccumulatePermanentCacheEntries() {
+    void parameterizedDataSourceSearchMustNotAccumulatePermanentCacheEntriesTest() {
         when(settingsRepository.findDataSources(any(), any(), anyInt(), anyInt()))
                 .thenAnswer(invocation -> PageResult.of(List.of(), 0L,
                         invocation.getArgument(2), invocation.getArgument(3)));
