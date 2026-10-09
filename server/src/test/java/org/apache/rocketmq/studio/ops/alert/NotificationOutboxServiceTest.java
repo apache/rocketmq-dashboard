@@ -592,6 +592,27 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void bulkRetryKeepsTheOutcomeOfEarlierDeliveriesWhenALaterOneFailsUnexpectedlyTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox failed = new RmqAlertNotificationOutbox();
+        failed.setId(8L);
+        failed.setStatus(NotificationOutboxStatus.FAILED.name());
+        when(mapper.selectById(8L)).thenReturn(failed);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+        when(mapper.selectById(9L))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("db down"));
+
+        NotificationDeliveryBulkRetryResult result = new NotificationOutboxService(mapper,
+                mock(SettingsRepository.class), mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFailedDeliveries(List.of(8L, 9L));
+
+        // Delivery 8 was already committed as PENDING; a database failure on 9 must not turn the
+        // whole request into an error that hides that.
+        assertThat(result.getSucceededIds()).containsExactly(8L);
+        assertThat(result.getFailures()).containsKey(9L);
+    }
+
+    @Test
     void bulkRetryRejectsNullIdsBeforeRetryingAnyDeliveryTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         NotificationOutboxService service = new NotificationOutboxService(mapper,
