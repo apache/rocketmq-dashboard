@@ -1202,6 +1202,40 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void exportExcelReportsTheRowsItWroteForASelectionTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt present = new MessageExt();
+        present.setMsgId("msg-selected");
+        present.setTopic(dlqTopic);
+        present.setQueueId(0);
+        present.setQueueOffset(5L);
+        present.setStoreTimestamp(150L);
+        present.setKeys("key-selected");
+        present.setBody("hello dlq".getBytes(StandardCharsets.UTF_8));
+        MessageExt other = new MessageExt();
+        other.setMsgId("msg-other");
+        other.setTopic(dlqTopic);
+        other.setQueueId(0);
+        other.setQueueOffset(6L);
+        other.setStoreTimestamp(160L);
+        other.setKeys("key-other");
+        other.setBody("hello other".getBytes(StandardCharsets.UTF_8));
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(0L);
+        when(pullConsumer.maxOffset(queue)).thenReturn(2L);
+        when(pullConsumer.pull(queue, "*", 0L, 32))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of(present, other)));
+
+        // One of the two selected messages is not in the scanned window any more.
+        DLQExcelExportResultVO result = provider.exportExcel("instance-a", "group-a", 100L,
+                Long.MAX_VALUE, List.of("msg-selected", "msg-vanished"));
+
+        assertThat(result.getExportedRows()).isEqualTo(1);
+        assertThat(result.getSelectedRows()).isEqualTo(2);
+    }
+
+    @Test
     void exportExcelTruncatesOversizedBodiesInsteadOfFailingTheWholeExportTest() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
