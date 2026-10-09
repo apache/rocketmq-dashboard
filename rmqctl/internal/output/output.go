@@ -51,11 +51,44 @@ func JSON(w io.Writer, value any) error {
 func YAML(w io.Writer, value any) error {
 	encoder := yaml.NewEncoder(w)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(value); err != nil {
+	if err := encoder.Encode(normalizeForYAML(value)); err != nil {
 		_ = encoder.Close()
 		return err
 	}
 	return encoder.Close()
+}
+
+// normalizeForYAML converts json.Number leaves into plain numbers. Studio results are decoded
+// with UseNumber so int64 offsets and timestamps beyond 2^53 survive the JSON round-trip, but
+// json.Number is a string type and yaml.v3 has no special case for it: without this walk every
+// number in a --output yaml dump is quoted ("skippedCount: \"5\""), which breaks YAML consumers
+// and the documented yaml/json payload equivalence. Int64 is preferred over float64 so large
+// offsets keep their exact digits in the YAML text.
+func normalizeForYAML(value any) any {
+	switch typed := value.(type) {
+	case json.Number:
+		if number, err := typed.Int64(); err == nil {
+			return number
+		}
+		if number, err := typed.Float64(); err == nil {
+			return number
+		}
+		return typed.String()
+	case map[string]any:
+		normalized := make(map[string]any, len(typed))
+		for key, item := range typed {
+			normalized[key] = normalizeForYAML(item)
+		}
+		return normalized
+	case []any:
+		normalized := make([]any, len(typed))
+		for index, item := range typed {
+			normalized[index] = normalizeForYAML(item)
+		}
+		return normalized
+	default:
+		return value
+	}
 }
 
 func Structured(w io.Writer, format string, value any) error {
