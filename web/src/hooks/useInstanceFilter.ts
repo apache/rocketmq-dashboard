@@ -101,7 +101,13 @@ export function useInstanceFilter() {
     navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
 
-  const reloadInstances = useCallback(() => setReloadToken((token) => token + 1), []);
+  const reloadInstances = useCallback(() => {
+    // A retry is a fresh load: re-arm the loading flag so pages mirroring it
+    // into their own table spinners show a loading state instead of a dead
+    // retry button while the refetch is in flight.
+    setInstancesLoading(true);
+    setReloadToken((token) => token + 1);
+  }, []);
 
   const instanceOptions = instances.map((instance) => ({
     value: instance.name,

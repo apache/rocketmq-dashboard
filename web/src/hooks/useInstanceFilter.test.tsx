@@ -28,11 +28,13 @@ vi.mock('../services/instanceService', () => instanceServiceMocks);
 
 function InstanceRouteProbe() {
   const { pathname } = useLocation();
-  const { selectedInstanceId, instancesFailed, reloadInstances } = useInstanceFilter();
+  const { selectedInstanceId, instancesFailed, instancesLoading, reloadInstances } =
+    useInstanceFilter();
   return (
     <>
       <output>{`${pathname}|${selectedInstanceId}`}</output>
       <output data-testid="instances-failed">{`${instancesFailed}`}</output>
+      <output data-testid="instances-loading">{`${instancesLoading}`}</output>
       <button onClick={reloadInstances}>retry</button>
     </>
   );
@@ -100,6 +102,57 @@ describe('useInstanceFilter', () => {
 
     await waitFor(() => {
       expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('false');
+    });
+  });
+
+  it('re-arms the loading flag while a retry is in flight', async () => {
+    const held: { resolve?: (value: Awaited<ReturnType<typeof listInstances>>) => void } = {};
+    instanceServiceMocks.listInstances
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            held.resolve = resolve;
+          }),
+      );
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('instances-loading')).toHaveTextContent('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }));
+
+    // The retry refetches the instance list, so the hook must report loading again: pages mirror
+    // this flag into their own table spinners (consumer/topic pages setLoading(instancesLoading)).
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-loading')).toHaveTextContent('true');
+    });
+
+    held.resolve?.([
+      {
+        id: 7,
+        name: 'instance-a',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-loading')).toHaveTextContent('false');
       expect(screen.getByTestId('instances-failed')).toHaveTextContent('false');
     });
   });
