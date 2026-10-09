@@ -151,7 +151,7 @@ public class NameServerConfigDiffService {
      * (fixes the §15.5.5 "Cluster details are unavailable" path that keyed on the instance id).
      * Secret-bearing keys are never exposed: only {@link #SAFE_CONFIG_KEYS} are returned.
      */
-    public List<NodeConfig> read(String clusterId, String instanceId) {
+    public NameServerConfigRead read(String clusterId, String instanceId) {
         String normalizedClusterId = requireClusterId(clusterId);
         String normalizedInstanceId = normalizeInstanceId(instanceId);
         ClusterVO cluster = normalizedInstanceId == null
@@ -164,11 +164,13 @@ public class NameServerConfigDiffService {
         }
         String connectionEndpoint = connectionEndpoint(cluster, addresses);
         List<NodeConfig> read = new ArrayList<>();
+        List<String> unreachable = new ArrayList<>();
         for (String address : addresses) {
             try {
                 Properties config = readConfig(normalizedInstanceId, connectionEndpoint, address);
                 read.add(new NodeConfig(address, safeConfig(config)));
             } catch (BusinessException exception) {
+                unreachable.add(address);
                 log.warn("Skipping unreachable NameServer {} while reading config for cluster {}: {}",
                         address, normalizedClusterId, exception.getMessage());
             }
@@ -177,7 +179,7 @@ public class NameServerConfigDiffService {
             throw new BusinessException(502,
                     "No reachable NameServer endpoint to read config from: " + normalizedClusterId);
         }
-        return read;
+        return new NameServerConfigRead(List.copyOf(read), List.copyOf(unreachable));
     }
 
     private Map<String, String> safeConfig(Properties config) {
@@ -193,6 +195,15 @@ public class NameServerConfigDiffService {
 
     /** One NameServer endpoint's safe configuration snapshot. */
     public record NodeConfig(String addr, Map<String, String> config) {
+    }
+
+    /**
+     * Result of {@link #read}: the safe configuration of every reachable endpoint plus the
+     * addresses that could not be read. Callers surface the unreachable set instead of silently
+     * presenting a partial view as complete; {@code unreachableEndpoints} is empty when every
+     * endpoint answered.
+     */
+    public record NameServerConfigRead(List<NodeConfig> nodes, List<String> unreachableEndpoints) {
     }
 
     private Properties readConfig(String instanceId, String connectionEndpoint, String address) {
