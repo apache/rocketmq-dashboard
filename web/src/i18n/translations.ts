@@ -2620,6 +2620,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.probeElapsed': { zh: '耗时 (ms)', en: 'Elapsed (ms)' },
   'cluster.configTitle': { zh: '配置 - {name}', en: 'Config - {name}' },
   'cluster.configUpdated': { zh: '配置已更新', en: 'Configuration updated' },
+  'cluster.configUnavailable': {
+    zh: '无法读取该集群的 Broker 配置，请先确认集群可达',
+    en: 'The broker configuration of this cluster could not be read',
+  },
   'cluster.configPartiallyUpdated': {
     zh: '部分 Broker 配置已更新，请检查：{brokers}',
     en: 'Some broker configurations were updated. Check: {brokers}',

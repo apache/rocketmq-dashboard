@@ -73,6 +73,7 @@ import {
   createNameserverRegistry,
   deleteNameserverRegistry,
   getBrokerConfigDiff,
+  getCluster,
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
@@ -167,6 +168,8 @@ const ClusterPage = () => {
   const [configPreview, setConfigPreview] = useState<ClusterConfigPreviewResult | null>(null);
   const [configPreviewLoading, setConfigPreviewLoading] = useState(false);
   const [configSubmitting, setConfigSubmitting] = useState(false);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configUnavailable, setConfigUnavailable] = useState(false);
   const [nsRegistry, setNsRegistry] = useState<NameserverRegistryEntry[]>([]);
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsConfigDiffState, setNsConfigDiffState] = useState<{
@@ -694,14 +697,7 @@ const ClusterPage = () => {
     void requestRefresh('background');
   };
 
-  // Broker config handler
-  const handleConfigOpen = (cluster: ClusterInfo) => {
-    const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
-    configPreviewRequest.invalidate();
-    setSelectedCluster(cluster);
-    setConfigPreview(null);
-    setConfigPreviewLoading(false);
-    setConfigSubmitting(false);
+  const applyConfigFormValues = (cfg: ClusterConfig) => {
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
@@ -712,7 +708,55 @@ const ClusterPage = () => {
       readQueueNums: cfg.readQueueNums ?? 8,
       brokerPermission: cfg.brokerPermission ?? 6,
     });
+  };
+
+  // Broker config handler
+  const handleConfigOpen = (cluster: ClusterInfo) => {
+    configPreviewRequest.invalidate();
+    setSelectedCluster(cluster);
+    setConfigPreview(null);
+    setConfigPreviewLoading(false);
+    setConfigSubmitting(false);
+    setConfigUnavailable(false);
+    const rowConfig = cluster.config;
+    if (rowConfig) {
+      applyConfigFormValues(rowConfig);
+    }
+    setConfigLoading(!rowConfig);
     setConfigModalOpen(true);
+    void loadLiveConfig(cluster, rowConfig != null);
+  };
+
+  /**
+   * The Broker tab is fed by GET /clusters/registry, which reports topology only - the provider's
+   * buildClusterVO sets no config - so a registry row's config is null. Filling the form from the
+   * "??" fallbacks and submitting it would push values the operator never chose (durability,
+   * retention, message size, queue counts, permission) onto every broker of the cluster. Read the
+   * live config from the cluster detail endpoint instead and refuse to edit what cannot be read.
+   */
+  const loadLiveConfig = async (cluster: ClusterInfo, hadRowConfig: boolean) => {
+    let detail: ClusterInfo | undefined;
+    try {
+      detail = await getCluster(cluster.id, resolveOwningInstanceId(cluster));
+    } catch {
+      detail = undefined;
+    }
+    const liveConfig = detail?.config;
+    if (liveConfig) {
+      applyConfigFormValues(liveConfig);
+      setSelectedCluster((current) =>
+        current && current.id === cluster.id
+          ? { ...current, ...detail, config: liveConfig }
+          : current,
+      );
+      setConfigUnavailable(false);
+      setConfigLoading(false);
+      return;
+    }
+    setConfigLoading(false);
+    if (!hadRowConfig) {
+      setConfigUnavailable(true);
+    }
   };
 
   const buildConfigUpdateRequest = (
@@ -1399,110 +1443,121 @@ const ClusterPage = () => {
             }}
             onOk={() => void handleConfigSubmit()}
             confirmLoading={configSubmitting}
+            okButtonProps={{ disabled: configLoading || configUnavailable }}
             width={720}
           >
-            <Flex justify="flex-end" style={{ marginBottom: 12 }}>
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                loading={configPreviewLoading}
-                onClick={() => void handleConfigPreview()}
-              >
-                {t('cluster.configPreview')}
-              </Button>
-            </Flex>
-            {/* Two-column grid: the eight fields pair up into four rows, halving the modal
+            {configLoading ? (
+              <Flex justify="center" style={{ padding: '32px 0' }}>
+                <Spin />
+              </Flex>
+            ) : configUnavailable ? (
+              <Alert type="warning" showIcon message={t('cluster.configUnavailable')} />
+            ) : (
+              <>
+                <Flex justify="flex-end" style={{ marginBottom: 12 }}>
+                  <Button
+                    size="small"
+                    icon={<EyeOutlined />}
+                    loading={configPreviewLoading}
+                    onClick={() => void handleConfigPreview()}
+                  >
+                    {t('cluster.configPreview')}
+                  </Button>
+                </Flex>
+                {/* Two-column grid: the eight fields pair up into four rows, halving the modal
                 height. Related controls sit side by side (flush + retention, size + permission,
                 the queue pair, the two auto-create switches) so the form reads as groups
                 instead of a corridor of labels. */}
-            <Form
-              form={configForm}
-              layout="vertical"
-              onValuesChange={() => {
-                configPreviewRequest.invalidate();
-                setConfigPreview(null);
-                setConfigPreviewLoading(false);
-              }}
-            >
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
-                    <Radio.Group>
-                      <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
-                      <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
-                    </Radio.Group>
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
-                    <InputNumber min={1} max={720} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
-                    <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  {/* Named options instead of a raw 0-7 number: the permission is a bitfield
+                <Form
+                  form={configForm}
+                  layout="vertical"
+                  onValuesChange={() => {
+                    configPreviewRequest.invalidate();
+                    setConfigPreview(null);
+                    setConfigPreviewLoading(false);
+                  }}
+                >
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
+                        <Radio.Group>
+                          <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
+                          <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
+                        </Radio.Group>
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
+                        <InputNumber min={1} max={720} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
+                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      {/* Named options instead of a raw 0-7 number: the permission is a bitfield
                       and only 6/4/2/0 carry meaning for an operator. An unusual persisted
                       value (e.g. 7) still renders — the Select falls back to showing it raw. */}
-                  <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
-                    <Select
-                      options={[
-                        { value: 6, label: t('cluster.permRW') },
-                        { value: 4, label: t('cluster.permR') },
-                        { value: 2, label: t('cluster.permW') },
-                        { value: 0, label: t('cluster.permNone') },
-                      ]}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    label={t('cluster.writeQueues')}
-                    name="writeQueueNums"
-                    tooltip={t('cluster.queueMatchHint')}
-                  >
-                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    label={t('cluster.readQueues')}
-                    name="readQueueNums"
-                    tooltip={t('cluster.queueMatchHint')}
-                  >
-                    <InputNumber min={1} max={256} style={{ width: '100%' }} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    label={t('cluster.autoCreateTopic')}
-                    name="autoCreateTopicEnable"
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    label={t('cluster.autoCreateSubGroup')}
-                    name="autoCreateSubscriptionGroup"
-                    valuePropName="checked"
-                  >
-                    <Switch />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Form>
-            {renderConfigPreview()}
+                      <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
+                        <Select
+                          options={[
+                            { value: 6, label: t('cluster.permRW') },
+                            { value: 4, label: t('cluster.permR') },
+                            { value: 2, label: t('cluster.permW') },
+                            { value: 0, label: t('cluster.permNone') },
+                          ]}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        label={t('cluster.writeQueues')}
+                        name="writeQueueNums"
+                        tooltip={t('cluster.queueMatchHint')}
+                      >
+                        <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        label={t('cluster.readQueues')}
+                        name="readQueueNums"
+                        tooltip={t('cluster.queueMatchHint')}
+                      >
+                        <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        label={t('cluster.autoCreateTopic')}
+                        name="autoCreateTopicEnable"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item
+                        label={t('cluster.autoCreateSubGroup')}
+                        name="autoCreateSubscriptionGroup"
+                        valuePropName="checked"
+                      >
+                        <Switch />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Form>
+                {renderConfigPreview()}
+              </>
+            )}
           </Modal>
         )}
       </div>
