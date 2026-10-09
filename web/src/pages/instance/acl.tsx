@@ -503,6 +503,10 @@ const AclPageContent = ({
       message.success(t('acl.configExamined'));
     } catch {
       if (examineRequestGenerationRef.current !== requestGeneration) return;
+      // A failed re-examine must not leave the previously examined cluster's accounts, version and
+      // risk verdict on screen under the cluster id that was just typed; the toast carries the
+      // reason and the panel returns to its empty state.
+      setClusterConfig(null);
       message.error(t('common.operationFailed'));
     } finally {
       if (examineRequestGenerationRef.current === requestGeneration) {
@@ -1337,6 +1341,11 @@ const AclPageContent = ({
                         </Tag>
                         <Tag color="geekblue" style={{ fontSize: 14, padding: '4px 10px' }}>
                           {clusterConfig.aclVersion}
+                        </Tag>
+                        {/* Name the cluster the panel describes: the input above may already hold a
+                            different id, and the accounts are read per cluster. */}
+                        <Tag style={{ fontSize: 14, padding: '4px 10px' }}>
+                          {clusterConfig.clusterId}
                         </Tag>
                         <Tag style={{ fontSize: 14, padding: '4px 10px' }}>
                           {t('acl.accountCount')}: {clusterConfig.accountCount}
