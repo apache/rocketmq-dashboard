@@ -1426,7 +1426,8 @@ const ClusterPage = () => {
                 // partial update onto both counts and refuses a pair that does not match. Keep
                 // the two inputs in step here: otherwise editing one of them submits the other's
                 // stale value and the whole save is a 400 the dialog cannot explain. The guard
-                // keeps the re-entrant onValuesChange of setFieldsValue from looping.
+                // skips the redundant setFieldsValue when the partner field already holds the
+                // value.
                 const queueNums = changed.writeQueueNums ?? changed.readQueueNums;
                 if (
                   typeof queueNums === 'number' &&
