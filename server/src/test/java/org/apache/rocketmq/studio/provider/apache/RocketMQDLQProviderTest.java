@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import com.alibaba.excel.EasyExcel;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
@@ -35,11 +36,13 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqClientPool;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.dlq.DLQExcelExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQExportResultVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQMessageVO;
@@ -54,6 +57,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.ByteArrayInputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -292,6 +296,60 @@ class RocketMQDLQProviderTest {
 
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
         verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
+    }
+
+    @Test
+    void resendRejectsATargetTopicThatResolvesToAnotherClusterTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        // One NameServer can serve several clusters, so the target exists on the endpoint while
+        // belonging to a different cluster than the dead-letter topic it would be replayed from.
+        // The producer routes by topic name and would publish into that other cluster silently.
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("target-topic")).thenReturn(routeInCluster("cluster-b"));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(409);
+                    assertThat(exception.getMessage()).contains("different cluster");
+                });
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    private static TopicRouteData routeInCluster(String cluster) {
+        BrokerData broker = new BrokerData();
+        broker.setCluster(cluster);
+        broker.setBrokerName("broker-a");
+        broker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        TopicRouteData route = new TopicRouteData();
+        route.setBrokerDatas(List.of(broker));
+        return route;
+    }
+
+    @Test
+    void resendLeavesAnUnresolvableDlqRouteToTheScanNotFoundTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("target-topic"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        // Only a resolvable route can prove a cluster mismatch, so a dead-letter topic that has no
+        // route yet must fall through to the scan's precise 404 instead of a route-verification 502.
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenThrow(new MQClientException(
+                "No topic route info in name server for the topic: " + dlqTopic, null));
+        when(adminExt.examineTopicRouteInfo("target-topic")).thenReturn(routeInCluster("cluster-b"));
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic))
+                .thenThrow(new MQClientException("Can not find Message Queue for this topic, " + dlqTopic, null));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
+                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
     @Test
@@ -1108,6 +1166,54 @@ class RocketMQDLQProviderTest {
         assertThat(result.getMessages()).extracting(DLQMessageVO::getMsgId).containsExactly("last-message");
         verify(pullConsumer).maxOffset(queue);
         verify(pullConsumer, never()).searchOffset(queue, Long.MIN_VALUE);
+    }
+
+    @Test
+    void exportExcelTruncatesOversizedBodiesInsteadOfFailingTheWholeExportTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt oversized = new MessageExt();
+        oversized.setMsgId("msg-huge");
+        oversized.setTopic(dlqTopic);
+        oversized.setQueueId(0);
+        oversized.setQueueOffset(5L);
+        oversized.setStoreTimestamp(150L);
+        oversized.setKeys("key-huge");
+        // Leading astral characters put a high surrogate exactly at the truncation boundary,
+        // so the cut must back off onto a code-point boundary.
+        oversized.setBody(("\uD835\uDC00".repeat(16_377) + "x".repeat(40_000))
+                .getBytes(StandardCharsets.UTF_8));
+        MessageExt small = new MessageExt();
+        small.setMsgId("msg-small");
+        small.setTopic(dlqTopic);
+        small.setQueueId(0);
+        small.setQueueOffset(6L);
+        small.setStoreTimestamp(160L);
+        small.setKeys("key-small");
+        small.setBody("hello dlq".getBytes(StandardCharsets.UTF_8));
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 2L, 0L, 0L, List.of(oversized, small));
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        // The scan resolves the window with searchOffset(begin) and searchOffset(end + 1).
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 2L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(0L), eq(32))).thenReturn(pullResult);
+
+        DLQExcelExportResultVO exported =
+                provider.exportExcel("instance-a", "group-a", 100L, 200L, null);
+        assertThat(exported.getData()).isNotEmpty();
+
+        List<Map<Integer, String>> rows;
+        try (ByteArrayInputStream input = new ByteArrayInputStream(exported.getData())) {
+            rows = EasyExcel.read(input).sheet("DLQ").doReadSync();
+        }
+        assertThat(rows).hasSize(2);
+        int bodyColumn = 7; // Message ID, Topic, Queue ID, Offset, Store Time, Reconsume Times, Keys, Body
+        String oversizedBody = rows.get(0).get(bodyColumn);
+        assertThat(oversizedBody.length()).isLessThanOrEqualTo(32_767);
+        assertThat(oversizedBody).endsWith("...[truncated]");
+        // The cut must not split a surrogate pair into an unpaired half.
+        assertThat(oversizedBody.codePoints())
+                .noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
+        assertThat(rows.get(1).get(bodyColumn)).isEqualTo("hello dlq");
     }
 
     private void stubExistingTarget(String topic) throws Exception {

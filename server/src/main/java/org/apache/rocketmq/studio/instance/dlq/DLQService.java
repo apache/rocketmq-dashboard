@@ -19,13 +19,19 @@ package org.apache.rocketmq.studio.instance.dlq;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +43,7 @@ public class DLQService {
 
     private final DLQProvider dlqProvider;
     private final InstanceProviderRegistry providerRegistry;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     public PageResult<DLQGroupVO> listDLQGroups(String instanceId, String search, int page, int pageSize) {
         requireApacheInstance(instanceId);
@@ -61,8 +68,9 @@ public class DLQService {
         String normalizedTargetTopic = normalizeOptional(targetTopic);
         log.info("Resending DLQ messages: group={}, targetTopic={}",
                 normalizedGroupName, normalizedTargetTopic);
-        return dlqProvider.resendMessages(
-                instanceId, normalizedGroupName, startTime, endTime, normalizedTargetTopic);
+        return withOwnedDlqTargets(instanceId, normalizedGroupName, normalizedTargetTopic, () ->
+                dlqProvider.resendMessages(
+                        instanceId, normalizedGroupName, startTime, endTime, normalizedTargetTopic));
     }
 
     public DLQExportResultVO exportMessages(String instanceId, String groupName, Long startTime, Long endTime,
@@ -98,8 +106,27 @@ public class DLQService {
         String normalizedTargetTopic = normalizeOptional(targetTopic);
         log.info("Resending selected DLQ messages: group={}, count={}, targetTopic={}",
                 normalizedGroupName, normalizedMsgIds.size(), normalizedTargetTopic);
-        return dlqProvider.resendMessages(
-                instanceId, normalizedGroupName, normalizedMsgIds, normalizedTargetTopic);
+        return withOwnedDlqTargets(instanceId, normalizedGroupName, normalizedTargetTopic, () ->
+                dlqProvider.resendMessages(
+                        instanceId, normalizedGroupName, normalizedMsgIds, normalizedTargetTopic));
+    }
+
+    /**
+     * A resend reads the group's dead-letter topic and publishes back into a topic, so it is a
+     * group+topic write like the send/redeliver paths - which check exactly these resources. Without
+     * the check any Apache instance registered against the same cluster could replay another
+     * instance's dead letters and publish them into a topic it does not own: the DLQ topic
+     * {@code %DLQ%<group>} belongs to the group's owner, which is what this guard expresses.
+     */
+    private <T> T withOwnedDlqTargets(String instanceId, String groupName, String targetTopic,
+                                      Supplier<T> action) {
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        List<Resource> resources = new ArrayList<>();
+        resources.add(new Resource(Kind.GROUP, groupName));
+        if (StringUtils.hasText(targetTopic)) {
+            resources.add(ownershipGuard.topicResource(targetTopic));
+        }
+        return ownershipGuard.withOwned(instance, resources, action);
     }
 
     public DLQExcelExportResultVO exportExcel(String instanceId, String groupName, Long startTime, Long endTime,
