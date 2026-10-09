@@ -752,9 +752,13 @@ const UserManagementPage = () => {
         title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+        destroyOnHidden
       >
-        <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
+        <Form form={createForm} layout="vertical" initialValues={{ admin: false }} preserve={false}>
           <Form.Item
             name="username"
             label={t('userMgmt.username')}
