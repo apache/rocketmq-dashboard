@@ -166,4 +166,34 @@ describe('consumer group diagnostics', () => {
       expect.arrayContaining(['SUBSCRIPTION_UNKNOWN', 'UNKNOWN_QUEUE_LAG', 'STALE_HEARTBEAT']),
     );
   });
+
+  it('reports an unmeasurable consume delay as unknown instead of a healthy zero', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ delaySeconds: 0, consumptionTimestampAvailable: false, totalLag: 0 }),
+      [subscription({})],
+      [queue({ diffTotal: 0 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    // The provider leaves delaySeconds at zero when the broker stats carried no consumed-message
+    // timestamp; judging that zero reported the group as caught up rather than unmeasurable.
+    expect(diagnostics.issues.map((item) => item.code)).toContain('CONSUME_DELAY_UNKNOWN');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('HIGH_CONSUME_DELAY');
+    expect(diagnostics.status).toBe('warning');
+    expect(diagnostics.recommendations).toContain(
+      '消费延迟不可用时，确认 Broker 消费统计可读且消费端仍在提交 offset。',
+    );
+  });
+
+  it('keeps judging a measured delay', () => {
+    const diagnostics = analyzeConsumerGroupHealth(
+      group({ delaySeconds: 1_900, consumptionTimestampAvailable: true, totalLag: 0 }),
+      [subscription({})],
+      [queue({ diffTotal: 0 })],
+      { now: '2026-08-31T12:01:00Z' },
+    );
+
+    expect(diagnostics.issues.map((item) => item.code)).toContain('HIGH_CONSUME_DELAY');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('CONSUME_DELAY_UNKNOWN');
+  });
 });

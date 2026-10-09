@@ -109,6 +109,11 @@ export interface ConsumerGroup {
   gmtCreate: string;
   gmtModified: string;
   delaySeconds: number;
+  /**
+   * Whether the broker consume stats carried a consumed-message timestamp. When false,
+   * `delaySeconds` is the provider's placeholder zero, not a measured delay.
+   */
+  consumptionTimestampAvailable?: boolean;
   instances: ConsumerInstance[];
 }
 
