@@ -121,6 +121,21 @@ const ToolPlaygroundModal = ({
   const [toolResult, setToolResult] = useState<unknown>(undefined);
   const [toolExecuting, setToolExecuting] = useState(false);
   const toolLoadRequestRef = useRef(0);
+  const executionRequestRef = useRef(0);
+  const invalidateExecution = useCallback(() => {
+    executionRequestRef.current += 1;
+    setToolExecuting(false);
+    setToolResult(undefined);
+  }, []);
+
+  useEffect(() => {
+    // Closing or disabling the playground abandons its result, not the server operation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!open || disabled) invalidateExecution();
+    return () => {
+      executionRequestRef.current += 1;
+    };
+  }, [disabled, invalidateExecution, open]);
   /** The catalog is loaded once per mount: reopening the modal must not re-hit the endpoint. */
   const bootstrappedRef = useRef(false);
 
@@ -129,16 +144,16 @@ const ToolPlaygroundModal = ({
       const tool = availableTools.find((item) => item.name === name);
       setSelectedToolName(name);
       setToolInput(tool ? buildToolInputTemplate(tool, instanceId) : '{}');
-      setToolResult(undefined);
+      invalidateExecution();
     },
-    [selectedInstanceId, tools],
+    [invalidateExecution, selectedInstanceId, tools],
   );
 
   const loadTools = useCallback(
     async (instanceId: string) => {
       const requestId = ++toolLoadRequestRef.current;
       setSelectedToolName('');
-      setToolResult(undefined);
+      invalidateExecution();
       setToolsLoading(true);
       try {
         const availableTools = await listTools(instanceId || undefined);
@@ -157,7 +172,7 @@ const ToolPlaygroundModal = ({
         if (requestId === toolLoadRequestRef.current) setToolsLoading(false);
       }
     },
-    [onToolsLoaded, selectTool, t],
+    [invalidateExecution, onToolsLoaded, selectTool, t],
   );
 
   const bootstrap = useCallback(async () => {
@@ -201,7 +216,7 @@ const ToolPlaygroundModal = ({
   );
 
   const handleExecuteTool = useCallback(async () => {
-    if (!selectedToolName || toolExecuting) return;
+    if (!open || disabled || !selectedToolName || toolExecuting) return;
 
     let parsedInput: unknown;
     try {
@@ -217,23 +232,29 @@ const ToolPlaygroundModal = ({
 
     setToolExecuting(true);
     setToolResult(undefined);
+    const requestId = ++executionRequestRef.current;
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput, selectedInstanceId));
+      const result = await executeTool(selectedToolName, parsedInput, selectedInstanceId);
+      if (requestId !== executionRequestRef.current) return;
+      setToolResult(result);
       message.success(t('ai.tools.executeSuccess'));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
+      if (requestId === executionRequestRef.current) {
+        message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
+      }
     } finally {
-      setToolExecuting(false);
+      if (requestId === executionRequestRef.current) setToolExecuting(false);
     }
-  }, [selectedInstanceId, selectedToolName, t, toolExecuting, toolInput]);
+  }, [disabled, open, selectedInstanceId, selectedToolName, t, toolExecuting, toolInput]);
 
   const handleClose = useCallback(() => {
     // Invalidate an in-flight catalog load: its response would otherwise land on a closed modal and
     // re-select a tool nobody is looking at.
     toolLoadRequestRef.current += 1;
+    invalidateExecution();
     setToolsLoading(false);
     onClose();
-  }, [onClose]);
+  }, [invalidateExecution, onClose]);
 
   const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 
@@ -312,7 +333,10 @@ const ToolPlaygroundModal = ({
             aria-label={t('ai.tools.inputAria')}
             value={toolInput}
             disabled={disabled}
-            onChange={(event) => setToolInput(event.target.value)}
+            onChange={(event) => {
+              setToolInput(event.target.value);
+              invalidateExecution();
+            }}
             autoSize={{ minRows: 6, maxRows: 12 }}
             spellCheck={false}
           />

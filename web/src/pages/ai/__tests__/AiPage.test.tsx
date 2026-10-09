@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, message } from 'antd';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
 import { attachRunStream, executeTool, listTools, openRunStream } from '../../../api/ai';
@@ -203,6 +203,7 @@ async function typeAndWaitForReady(text: string): Promise<HTMLElement> {
 }
 
 describe('AiPage', () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
     vi.clearAllMocks();
     dataModeMocks.useMock = false;
@@ -574,6 +575,83 @@ describe('AiPage', () => {
         expect.anything(),
       ),
     );
+  });
+
+  it.each(['tool', 'instance', 'arguments', 'close', 'unmount'])(
+    'discards a tool execution after changing its %s context',
+    async (context) => {
+      const user = userEvent.setup();
+      vi.mocked(listInstances).mockResolvedValue([
+        { name: 'instance-a' },
+        { name: 'instance-b' },
+      ] as Instance[]);
+      vi.mocked(listTools).mockResolvedValue([
+        { name: 'tool.one', description: 'First tool', parameters: {} },
+        { name: 'tool.two', description: 'Second tool', parameters: {} },
+      ]);
+      let resolve!: (value: unknown) => void;
+      vi.mocked(executeTool).mockReturnValue(
+        new Promise((res) => {
+          resolve = res;
+        }),
+      );
+      const success = vi
+        .spyOn(message, 'success')
+        .mockImplementation(() => (() => undefined) as never);
+      const view = renderPage({ toolsIntent: 'open' });
+      const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+      await within(dialog).findByText('First tool');
+      await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+      expect(executeTool).toHaveBeenCalledTimes(1);
+      if (context === 'tool' || context === 'instance') {
+        fireEvent.mouseDown(
+          within(dialog).getByRole('combobox', {
+            name: context === 'tool' ? '选择工具' : '选择实例',
+          }),
+        );
+        await user.click(
+          await screen.findByText(context === 'tool' ? 'tool.two' : 'instance-b', {
+            selector: '.ant-select-item-option-content',
+          }),
+        );
+      } else if (context === 'arguments') {
+        fireEvent.change(within(dialog).getByRole('textbox', { name: '工具参数 JSON' }), {
+          target: { value: '{"changed":true}' },
+        });
+      } else if (context === 'close') {
+        await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+      } else {
+        view.unmount();
+      }
+      await act(async () => {
+        resolve({ result: 'obsolete-result' });
+      });
+      expect(success).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('tool-result')).not.toBeInTheDocument();
+    },
+  );
+
+  it('discards a failed tool execution after closing the playground', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listTools).mockResolvedValue([
+      { name: 'tool.one', description: 'First tool', parameters: {} },
+    ]);
+    let reject!: (reason: unknown) => void;
+    vi.mocked(executeTool).mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      }),
+    );
+    const error = vi.spyOn(message, 'error').mockImplementation(() => (() => undefined) as never);
+    renderPage({ toolsIntent: 'open' });
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await within(dialog).findByText('First tool');
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+    await user.click(within(dialog).getByRole('button', { name: /关\s*闭/ }));
+    await act(async () => {
+      reject(new Error('obsolete-failure'));
+    });
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('opensTheToolPlaygroundLoadsTheCatalogAndExecutesAToolTest', async () => {
