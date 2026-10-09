@@ -34,7 +34,7 @@ class ConsumedTokenStoreTest {
     private final ConsumedTokenStore store = new ConsumedTokenStore();
 
     @Test
-    void firstConsumerWinsAndRepeatsAreRefused() {
+    void firstConsumerWinsAndRepeatsAreRefusedTest() {
         assertThat(store.consume("0000000000000001", 2_000L, 1_000L)).isTrue();
         assertThat(store.consume("0000000000000001", 2_000L, 1_000L)).isFalse();
         assertThat(store.consume("0000000000000001", 5_000L, 1_000L)).isFalse();
@@ -43,7 +43,7 @@ class ConsumedTokenStoreTest {
     }
 
     @Test
-    void keepsEntriesWithinTtlSoReplaysStayRejected() {
+    void keepsEntriesWithinTtlSoReplaysStayRejectedTest() {
         // A consumed-but-not-yet-expired id must still refuse replays even after many
         // other consumptions happened; purging only drops entries at or past expiry.
         assertThat(store.consume("replayed", 1_600L, 1_000L)).isTrue();
@@ -61,7 +61,7 @@ class ConsumedTokenStoreTest {
     }
 
     @Test
-    void concurrentConsumersOfOneIdElectExactlyOneWinner() throws Exception {
+    void concurrentConsumersOfOneIdElectExactlyOneWinnerTest() throws Exception {
         int callers = 16;
         ExecutorService pool = Executors.newFixedThreadPool(callers);
         try {
