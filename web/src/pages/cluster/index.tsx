@@ -42,6 +42,7 @@ import {
   Col,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { SortOrder } from 'antd/es/table/interface';
 import {
   ReloadOutlined,
   SettingOutlined,
@@ -1204,6 +1205,28 @@ const ClusterPage = () => {
       nsClusterName: string;
       cluster: ClusterInfo;
     };
+    // A broker whose runtime stats read failed carries diskUsage/tpsIn/tpsOut as Java zero
+    // defaults plus runtimeStatsAvailable=false (BrokerVO/RocketMQClusterProvider). Rendering the
+    // zero claims an empty disk and no traffic, so the cell and the order have to treat it as
+    // unknown - the same way the studio cluster page does.
+    const statsUnavailable = (broker: BrokerWithCluster) => broker.runtimeStatsAvailable === false;
+    const compareBrokerStats = (
+      left: BrokerWithCluster,
+      right: BrokerWithCluster,
+      field: 'diskUsage' | 'tpsIn' | 'tpsOut',
+      sortOrder?: SortOrder,
+    ): number => {
+      const leftUnavailable = statsUnavailable(left);
+      const rightUnavailable = statsUnavailable(right);
+      if (leftUnavailable || rightUnavailable) {
+        if (leftUnavailable === rightUnavailable) return 0;
+        // Ant Design reverses the comparator for a descending column, so invert this branch to
+        // keep unavailable brokers after measured ones in either order.
+        const unavailableAfterAvailable = sortOrder === 'descend' ? -1 : 1;
+        return leftUnavailable ? unavailableAfterAvailable : -unavailableAfterAvailable;
+      }
+      return left[field] - right[field];
+    };
     const brokerSearchText = searchText(brokerSearch);
 
     const allBrokers: BrokerWithCluster[] = registryClusters.flatMap((c) =>
@@ -1281,14 +1304,17 @@ const ClusterPage = () => {
         dataIndex: 'diskUsage',
         key: 'diskUsage',
         width: 150,
-        sorter: (a, b) => a.diskUsage - b.diskUsage,
-        render: (v: number) => (
-          <Progress
-            percent={v}
-            size="small"
-            strokeColor={v > 85 ? '#ff4d4f' : v > 70 ? '#faad14' : '#1677ff'}
-          />
-        ),
+        sorter: (a, b, sortOrder) => compareBrokerStats(a, b, 'diskUsage', sortOrder),
+        render: (v: number, record: BrokerWithCluster) =>
+          statsUnavailable(record) ? (
+            <Text type="secondary">{t('common.unavailable')}</Text>
+          ) : (
+            <Progress
+              percent={v}
+              size="small"
+              strokeColor={v > 85 ? '#ff4d4f' : v > 70 ? '#faad14' : '#1677ff'}
+            />
+          ),
       },
       {
         title: t('common.address'),
@@ -1305,8 +1331,13 @@ const ClusterPage = () => {
         key: 'tpsIn',
         width: 90,
         align: 'right',
-        sorter: (a, b) => a.tpsIn - b.tpsIn,
-        render: (v: number) => v.toLocaleString(),
+        sorter: (a, b, sortOrder) => compareBrokerStats(a, b, 'tpsIn', sortOrder),
+        render: (v: number, record: BrokerWithCluster) =>
+          statsUnavailable(record) ? (
+            <Text type="secondary">{t('common.unavailable')}</Text>
+          ) : (
+            v.toLocaleString()
+          ),
       },
       {
         title: 'TPS Out',
@@ -1314,8 +1345,13 @@ const ClusterPage = () => {
         key: 'tpsOut',
         width: 90,
         align: 'right',
-        sorter: (a, b) => a.tpsOut - b.tpsOut,
-        render: (v: number) => v.toLocaleString(),
+        sorter: (a, b, sortOrder) => compareBrokerStats(a, b, 'tpsOut', sortOrder),
+        render: (v: number, record: BrokerWithCluster) =>
+          statsUnavailable(record) ? (
+            <Text type="secondary">{t('common.unavailable')}</Text>
+          ) : (
+            v.toLocaleString()
+          ),
       },
       {
         title: t('common.actions'),

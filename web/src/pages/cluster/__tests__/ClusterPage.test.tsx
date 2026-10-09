@@ -384,6 +384,56 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('reports a failed broker runtime-stats read as unavailable instead of 0% and 0 TPS', async () => {
+    const cluster = buildCluster();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...cluster,
+        brokers: [
+          {
+            ...cluster.brokers[0],
+            // The shape RocketMQClusterProvider leaves behind when the stats read fails.
+            runtimeStatsAvailable: false,
+            diskUsage: 0,
+            tpsIn: 0,
+            tpsOut: 0,
+          },
+          // A second, measured broker: without one the order assertions below could never fail.
+          {
+            ...cluster.brokers[1],
+            runtimeStatsAvailable: true,
+            diskUsage: 42,
+            tpsIn: 950_000,
+            tpsOut: 12_345,
+          },
+        ],
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    expect(within(brokerRow).queryByText('0%')).not.toBeInTheDocument();
+    expect(within(brokerRow).getAllByText('不可用')).toHaveLength(3);
+    const measuredRow = screen.getByRole('row', { name: /10\.101\.2\.12:10911/ });
+    expect(within(measuredRow).getByText('950,000')).toBeInTheDocument();
+    expect(within(measuredRow).queryByText('不可用')).not.toBeInTheDocument();
+
+    const tpsInHeader = screen.getAllByText('TPS In')[0];
+    const brokerRowOrder = () =>
+      Array.from(document.querySelectorAll('tbody tr')).map((row) => row.textContent ?? '');
+    const unmeasuredIndex = () =>
+      brokerRowOrder().findIndex((text) => text.includes('10.101.2.11:10911'));
+    const measuredIndex = () =>
+      brokerRowOrder().findIndex((text) => text.includes('10.101.2.12:10911'));
+
+    // Neither direction may promote the unmeasured broker above the measured one.
+    await user.click(tpsInHeader);
+    expect(measuredIndex()).toBeLessThan(unmeasuredIndex());
+    await user.click(tpsInHeader);
+    expect(measuredIndex()).toBeLessThan(unmeasuredIndex());
+  });
+
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
