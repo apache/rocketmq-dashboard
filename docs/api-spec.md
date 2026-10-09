@@ -3115,7 +3115,7 @@ GET /api/metrics/grafana/dashboards/export
 
 LiteTopic 是 RocketMQ 5.0 的 Broker 侧特性：父 Topic 以 `TopicMessageType.LITE` 声明后，每个轻量主题存放在自己的 LMQ 中，名称形如 `%LMQ%$parentTopic$liteTopic`。Studio 通过 RocketMQ 的 lite admin RPC（`GET_BROKER_LITE_INFO` / `GET_PARENT_TOPIC_INFO` / `GET_LITE_CLIENT_INFO` / `GET_LITE_GROUP_INFO`）直接查询 Broker，SPI 契约见 `provider/LiteTopicProvider.java`。
 
-> **作用范围**：本节五个接口都**不接受 `instanceId`**，一律作用于服务端配置的 `studio.rocketmq.namesrvAddr` 指向的集群。该地址未配置时，除 §17.5 外的接口返回 `501 LiteTopic is not supported by this provider`，§17.5 返回 `{"supported": false}`。
+> **作用范围**：本节接口作用于服务端配置的 `studio.rocketmq.namesrv-addr` 指向的集群。四个 GET 接口不接受 `instanceId`；只有 §17.3 的 `extendTTL` 要求在请求体中提供 `instanceId`，用于校验实例与父 Topic 的归属。该地址未配置时，除 §17.5 外的接口返回 `501 LiteTopic is not supported by this provider`，§17.5 返回 `{"supported": false}`。
 >
 > **TTL 单位**：接口层一律使用**毫秒**，Broker 侧的 `lite.topic.expiration` 属性使用**分钟**，由 Provider 换算。换算按 `Math.round(ttlMillis / 60000.0)` 取整并夹在 `[1, 43200]` 分钟内，因此不足 1 分钟的取值会进位到 1 分钟，超过 30 天的取值会被截断到 30 天（与 §17.4 的 `maxTTL` 一致）。`extendTTL` 的响应是 `Result<Void>`，不回传实际生效值。
 >
@@ -3131,7 +3131,7 @@ GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `pattern` | `string` | 否 | 对父 Topic 名称做**子串**过滤（既不是正则也不是前缀匹配） |
+| `pattern` | `string` | 否 | 对父 Topic 名称做**不区分大小写的子串**过滤（既不是正则也不是前缀匹配） |
 | `namespace` | `string` | 否 | 命名空间过滤；省略或空白表示不限命名空间 |
 
 **Response `data`:** `LiteTopicItem[]`，按父 Topic 聚合，一个父 Topic 一条。
@@ -3156,7 +3156,7 @@ GET /api/liteTopic/list?pattern={pattern}&namespace={namespace}
 
 | HTTP 状态 | 场景 |
 |-----------|------|
-| `501` | 未配置 `studio.rocketmq.namesrvAddr` |
+| `501` | 未配置 `studio.rocketmq.namesrv-addr` |
 | `503` | 集群中没有可用的 Broker Master |
 
 ### 17.2 获取会话明细
@@ -3180,7 +3180,7 @@ GET /api/liteTopic/session/{sessionId}
 | `clientAddress` | `string` | 客户端地址 |
 | `parentTopic` | `string` | 父 Topic 名称 |
 | `consumerGroup` | `string` | 消费组名称 |
-| `createTime` | `number` | 创建时间（Unix 毫秒时间戳），未知时为 `null` |
+| `createTime` | `number` | 创建时间（Unix 毫秒时间戳）；当前实现未填充，恒为 `null` |
 | `lastActiveTime` | `number` | 最后活跃时间（Unix 毫秒时间戳），未知时为 `null` |
 | `ttl` | `number` | 父 Topic 的 TTL（毫秒）；父 Topic 没有过期属性时为 `null`，表示 Broker 不会过期该会话的轻量主题 |
 | `ttlRemaining` | `number` | 剩余 TTL（毫秒），最小截到 `0`；`ttl` 或 `lastActiveTime` 为 `null` 时同样为 `null` |
@@ -3188,7 +3188,7 @@ GET /api/liteTopic/session/{sessionId}
 | `totalMessages` | `number` | 消息总数，等于 `consumedMessages + pendingMessages` |
 | `consumedMessages` | `number` | 已消费消息数 |
 | `pendingMessages` | `number` | 待消费（堆积）消息数 |
-| `popProgress` | `number` | Pop 消费进度百分比；为 `null` 时控制台不渲染该进度条 |
+| `popProgress` | `number` | Pop 消费进度百分比；当前接口未映射该字段，恒为 `null`，控制台不渲染该进度条 |
 | `liteTopicCreationCount` | `number` | 该客户端已创建的轻量主题数量，Broker 未返回时为 `null` |
 | `liteTopics` | `SessionLiteTopic[]` | 该会话持有的轻量主题，按名称排序；无数据时为空数组 |
 
@@ -3284,7 +3284,7 @@ GET /api/liteTopic/capability
 |------|------|------|
 | `supported` | `boolean` | 当前集群是否暴露 LiteTopic admin 接口 |
 
-探测方式是向第一个 Broker Master 发起 `GET_BROKER_LITE_INFO`。未配置 `namesrvAddr`、没有可用 Master、或运行的是不支持 LiteTopic 的 RocketMQ 版本（Broker 以 unsupported 错误码应答）时都返回 `false`——**本接口自身不返回 5xx**，探测异常一律折叠成 `supported=false`。控制台据此整页降级，所以它是本节唯一应当最先调用的接口。
+探测会依次向各个 Broker Master 发起 `GET_BROKER_LITE_INFO`；任意一个 Master 成功应答即返回 `true`，单个 Master 不支持或探测失败时继续检查其余 Master。未配置 `studio.rocketmq.namesrv-addr`、没有可用 Master、或所有 Master 均未成功应答时返回 `false`——**本接口自身不返回 5xx**，探测异常一律折叠成 `supported=false`。控制台据此整页降级，所以它是本节唯一应当最先调用的接口。
 
 ---
 
