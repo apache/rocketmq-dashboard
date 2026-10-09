@@ -121,6 +121,32 @@ class AlertSilenceScheduleTest {
                 .isEqualTo(at("2026-03-09T07:30:00"));
     }
 
+    @Test
+    void recurrenceHonorsSeedOffsetDuringFallBackOverlapTest() {
+        // On 2026-11-01 in America/New_York the wall clock 01:30 occurs twice:
+        // 05:30Z (EDT) and 06:30Z (EST). This window was seeded at the second
+        // occurrence with EST offsets, so the first window is 06:30Z-07:30Z.
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "America/New_York", Set.of(),
+                "2026-11-01T06:30:00", "2026-11-01T07:30:00", "2026-11-10T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-11-01T06:45:00")))
+                .isEqualTo(at("2026-11-01T07:30:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2026-11-01T05:45:00"))).isNull();
+    }
+
+    @Test
+    void recurrenceKeepsSeedOffsetOnLaterOverlapDaysTest() {
+        // Seeded with EST offsets (06:30Z start). A year later, on the next overlap
+        // day (2027-11-07), the occurrence must keep the seeded 06:30Z start instead
+        // of drifting to the earlier 05:30Z pass.
+        AlertSilenceVO silence = recurring(AlertSilenceRecurrence.DAILY, "America/New_York", Set.of(),
+                "2026-11-01T06:30:00", "2026-11-01T07:30:00", "2027-11-10T00:00:00");
+
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2027-11-07T06:45:00")))
+                .isEqualTo(at("2027-11-07T07:30:00"));
+        assertThat(AlertSilenceSchedule.activeUntil(silence, at("2027-11-07T05:45:00"))).isNull();
+    }
+
     private static AlertSilenceVO once(String start, String end) {
         return AlertSilenceVO.builder().startsAt(at(start)).endsAt(at(end))
                 .recurrence(AlertSilenceRecurrence.ONCE).recurrenceDays(Set.of()).build();
