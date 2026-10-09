@@ -57,7 +57,6 @@ interface NameServerRecord {
   k8sCluster: string;
   name: string;
   status: NodeStatus;
-  version: string;
   address: string;
 }
 
@@ -66,7 +65,6 @@ interface ProxyRecord {
   k8sCluster: string;
   name: string;
   status: NodeStatus;
-  version: string;
   address: string;
   grpcPort: string;
   connections: number;
@@ -87,7 +85,6 @@ const NAMESERVER_EXPORT_COLUMNS: CsvColumn<NameServerRecord>[] = [
   { header: 'Cluster', value: (nameServer) => nameServer.k8sCluster },
   { header: 'NameServer Name', value: (nameServer) => nameServer.name },
   { header: 'Status', value: (nameServer) => nameServer.status },
-  { header: 'Version', value: (nameServer) => nameServer.version },
   { header: 'Address', value: (nameServer) => nameServer.address },
 ];
 
@@ -95,7 +92,6 @@ const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
   { header: 'Cluster', value: (proxy) => proxy.k8sCluster },
   { header: 'Proxy Name', value: (proxy) => proxy.name },
   { header: 'Status', value: (proxy) => proxy.status },
-  { header: 'Version', value: (proxy) => proxy.version },
   { header: 'HTTP Address', value: (proxy) => proxy.address },
   { header: 'gRPC Address', value: (proxy) => proxy.grpcPort },
   { header: 'Connections', value: (proxy) => proxy.connections },
@@ -154,7 +150,6 @@ function mapClusters(clusters: ClusterInfo[]): {
         k8sCluster: clusterLabel,
         name: nameServer.addr,
         status: normalizeStatus(nameServer.status),
-        version: cluster.version,
         address: nameServer.addr,
       });
     });
@@ -166,7 +161,6 @@ function mapClusters(clusters: ClusterInfo[]): {
         k8sCluster: clusterLabel,
         name: proxy.addr,
         status: normalizeStatus(proxy.status),
-        version: cluster.version,
         address: proxy.addr,
         grpcPort: proxy.grpcPort ? `${host}:${proxy.grpcPort}` : '-',
         connections: proxy.connections ?? 0,
@@ -408,7 +402,6 @@ const BrokerClusterPage = () => {
       key: 'status',
       render: renderStatus,
     },
-    { title: t('brokerCluster.version'), dataIndex: 'version', key: 'version' },
     {
       title: t('common.address'),
       dataIndex: 'address',
@@ -447,7 +440,6 @@ const BrokerClusterPage = () => {
       key: 'status',
       render: renderStatus,
     },
-    { title: t('brokerCluster.version'), dataIndex: 'version', key: 'version' },
     {
       title: t('brokerCluster.httpAddr'),
       dataIndex: 'address',
