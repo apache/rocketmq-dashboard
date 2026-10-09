@@ -1006,6 +1006,35 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstanceShouldRemoveNumericIdentifierBindingsTest() {
+        InstanceVO existing = InstanceVO.builder().name("to-delete").build();
+        existing.setId(1L);
+
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("to-delete")).thenReturn(0);
+        when(instanceProvider.countGroups("to-delete")).thenReturn(0);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+        DataSourceVO legacyBound = new DataSourceVO();
+        legacyBound.setKey("prom-a");
+        legacyBound.setInstanceIds(new ArrayList<>(List.of("1")));
+        DataSourceVO nameBound = new DataSourceVO();
+        nameBound.setKey("prom-b");
+        nameBound.setInstanceIds(new ArrayList<>(List.of("to-delete", "other-inst")));
+        when(settingsRepository.findAllDataSources()).thenReturn(List.of(legacyBound, nameBound));
+        when(settingsRepository.replaceDataSource(any(DataSourceVO.class))).thenReturn(true);
+
+        instanceService.deleteInstance(1L);
+
+        ArgumentCaptor<DataSourceVO> saved = ArgumentCaptor.forClass(DataSourceVO.class);
+        verify(settingsRepository, times(2)).replaceDataSource(saved.capture());
+        assertThat(saved.getAllValues().get(0).getKey()).isEqualTo("prom-a");
+        assertThat(saved.getAllValues().get(0).getInstanceIds()).isEmpty();
+        assertThat(saved.getAllValues().get(1).getKey()).isEqualTo("prom-b");
+        assertThat(saved.getAllValues().get(1).getInstanceIds()).containsExactly("other-inst");
+    }
+
+    @Test
     void deleteInstanceShouldSkipResourceCheckForCloudInstancesTest() {
         InstanceVO existing = InstanceVO.builder().name("cloud-inst").vendor(InstanceVendor.ALIYUN).build();
         existing.setId(2L);
