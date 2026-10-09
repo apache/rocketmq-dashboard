@@ -47,6 +47,8 @@ import java.time.ZoneOffset;
 @RequiredArgsConstructor
 public class AlertService {
 
+    private static final int RELATED_CANDIDATE_PAGE_SIZE = 100;
+    private static final int MAX_RELATED_CANDIDATE_PAGES = 5;
     private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
     private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
     // Native Studio metric names that have a rocketmq-exporter equivalent, mapped to the semantic
@@ -557,16 +559,59 @@ public class AlertService {
         }
         LocalDateTime from = source.getTime().minusMinutes(30);
         LocalDateTime to = source.getTime().plusMinutes(30);
-        List<SystemAlertVO> windowMatches = alertRepository.findAlertsPage(new SystemAlertQuery(null, relatedDomain, source.getInstanceId(),
-                        "FIRING", null, null, from, to, 1, 100))
-                .getItems().stream()
-                .filter(candidate -> !Objects.equals(candidate.getId(), source.getId()))
-                .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
-                .toList();
+        List<SystemAlertVO> windowMatches = new ArrayList<>();
+        int page = 1;
+        while (true) {
+            PageResult<SystemAlertVO> result = alertRepository.findAlertsPage(new SystemAlertQuery(null, relatedDomain,
+                    source.getInstanceId(), null, null, null, from, to, page, RELATED_CANDIDATE_PAGE_SIZE));
+            List<SystemAlertVO> candidates = result.getItems();
+            candidates.stream()
+                    .filter(candidate -> !Objects.equals(candidate.getId(), source.getId()))
+                    .filter(candidate -> AlertCorrelationScope.matches(source, candidate))
+                    // An incident whose latest in-window event is a REMINDER is still FIRING —
+                    // REMINDER is emitted only while the state stays FIRING — so the window
+                    // candidates are filtered in memory instead of by the transition column.
+                    .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition())
+                            || "REMINDER".equalsIgnoreCase(candidate.getTransition()))
+                    .forEach(windowMatches::add);
+            if (candidates.isEmpty() || (long) page * RELATED_CANDIDATE_PAGE_SIZE >= result.getTotal()) {
+                break;
+            }
+            // This runs synchronously on the related-alerts console request, so the scan is
+            // bounded rather than allowed to walk an arbitrarily long alert history.
+            if (page >= MAX_RELATED_CANDIDATE_PAGES) {
+                log.warn("Related-alert candidate scan for alert {} hit the {} page cap; "
+                        + "candidates beyond page {} were not considered", id, MAX_RELATED_CANDIDATE_PAGES, page);
+                break;
+            }
+            page++;
+        }
+        // One incident can emit several in-window rows (a FIRING and its follow-up REMINDERs);
+        // merge them by fingerprint keeping the latest event, the way
+        // AlertNotificationSuppressionService dedups its candidate scan, so the panel lists the
+        // incident once. Rows without a fingerprint cannot collide and keep their own identity.
+        Map<String, SystemAlertVO> latestByIncident = new LinkedHashMap<>();
+        windowMatches.forEach(candidate -> {
+            String incident = candidate.getFingerprint() != null ? candidate.getFingerprint()
+                    : "id:" + candidate.getId();
+            latestByIncident.merge(incident, candidate,
+                    (left, right) -> laterEvent(left, right) ? left : right);
+        });
+        // Explicit suppression causes are pinned: they can sit outside the display window, so a
+        // newer in-window event of the same incident must not drop the row the UI points at.
         LinkedHashMap<Long, SystemAlertVO> related = new LinkedHashMap<>();
         explicitCauses.forEach(candidate -> related.put(candidate.getId(), candidate));
-        windowMatches.forEach(candidate -> related.putIfAbsent(candidate.getId(), candidate));
+        latestByIncident.values().stream()
+                .filter(candidate -> !related.containsKey(candidate.getId()))
+                .forEach(candidate -> related.put(candidate.getId(), candidate));
         return List.copyOf(related.values());
+    }
+
+    private static boolean laterEvent(SystemAlertVO left, SystemAlertVO right) {
+        if (left.getTime() == null) {
+            return false;
+        }
+        return right.getTime() == null || !left.getTime().isBefore(right.getTime());
     }
 
 
