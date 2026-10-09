@@ -197,7 +197,10 @@ public class TencentInstanceProvider implements InstanceProvider {
                 context.credentialId(), context.regionId(), client -> client.DescribeConsumerGroupList(request));
         Long totalCount = response == null ? null : response.getTotalCount();
         if (totalCount == null) {
-            return 0;
+            // TotalCount unknown must not fabricate a zero (the instance page
+            // would show 0 groups while the group list shows the real ones):
+            // fall back to a complete listing, mirroring countTopics.
+            return listConsumerGroups(instanceId, null, false).size();
         }
         if (totalCount < 0L || totalCount > Integer.MAX_VALUE) {
             throw new BusinessException(502,
