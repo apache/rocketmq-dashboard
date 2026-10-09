@@ -18,9 +18,11 @@ package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.AgentProviderRegistry;
+import org.apache.rocketmq.studio.ops.ai.AgentProvider;
 import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
+import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
@@ -214,6 +216,61 @@ class AiRunExecutorTest {
         assertThat(runRow().getOutputTokens()).isEqualTo(90);
         assertThat(conversation.getRuntimeSessionId()).isEqualTo("session-9");
         // Exactly one terminal reached the wire: the projector's, not a second one from finalisation.
+        assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
+        assertThat(registry.isLive(RUN_ID)).isFalse();
+    }
+
+    @Test
+    void aStopThatLandsAfterTheSuccessFrameMustNotOverwriteTheCompletedRunTest() {
+        // The success frame is projected the moment it arrives - the run_status row, the live
+        // run_finished, everything. A stop that lands after it (the user pressed the button while
+        // the answer was already being finalised) can only find a finished run: writing a second
+        // terminal would corrupt the timeline with two run_status events and rewrite the row to
+        // STOPPED for an answer the user watched complete.
+        AgentProvider lateStop = new AgentProvider() {
+            @Override
+            public String engine() {
+                return ENGINE;
+            }
+
+            @Override
+            public boolean available() {
+                return true;
+            }
+
+            @Override
+            public String complete(LlmConfigVO config, String prompt, String modelOverride) {
+                throw new UnsupportedOperationException("a run streams events, it does not complete");
+            }
+
+            @Override
+            public void streamEvents(LlmConfigVO config, AgentStreamOptions options,
+                    Consumer<AgentEvent> sink) {
+                sink.accept(new AgentEvent.ResultMeta("session-7", 10L, 3, 4,
+                        AgentEventProjector.SUCCESS_SUBTYPE));
+                ((AgentRunHandle) options.getProcessSink()).requestStop(AbortReason.USER_STOP);
+            }
+        };
+        AiRunExecutor lateExecutor = new AiRunExecutor(new AgentProviderRegistry(List.of(lateStop)),
+                llmClient, promptEnhancer, registry, runRepository, conversationRepository,
+                eventRepository, properties(), objectMapper, AiRunTestSupport.directExecutor(),
+                AiRunTestSupport.recordingInto(emitters), scheduler, Clock.systemUTC());
+        AgentRunHandle handle = lateExecutor.newHandle(RUN_ID);
+        AiEventSink sink = lateExecutor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
+        session = lateExecutor.newSession(RUN_ID, lateExecutor.streamTimeoutMillis(ENGINE));
+        registry.register(RUN_ID, handle);
+        sink.writeUser("hello", null);
+        registry.attach(RUN_ID, session);
+        session.finishReplay();
+        lateExecutor.submit(new AiRunExecutor.RunContext(conversation, run, sink, handle,
+                LlmConfigVO.builder().engine(ENGINE).model("qwen3.8-max").enabled(true).build(),
+                ENGINE, "hello", null, false, Duration.ofSeconds(300), null));
+
+        assertThat(runRow().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runRow().getStopReason()).isNull();
+        // Exactly one terminal event, and it is the completed one the projector already wrote.
+        assertThat(types()).containsExactly("user", "run_status");
+        assertThat(payloads().get(1)).contains(RunStatus.COMPLETED.name());
         assertThat(emitters.get(0).eventCount("\"type\":\"run_finished\"")).isEqualTo(1);
         assertThat(registry.isLive(RUN_ID)).isFalse();
     }
@@ -552,6 +609,12 @@ class AiRunExecutorTest {
     }
 
     // --- harness ---------------------------------------------------------------
+
+    private AiConversationProperties properties() {
+        AiConversationProperties properties = new AiConversationProperties();
+        properties.setStopGrace(Duration.ofMillis(1));
+        return properties;
+    }
 
     private void startAndRun() {
         startAndRun(false);
