@@ -4,7 +4,7 @@ import org.apache.rocketmq.common.message.Message;
 
 public class TraceProducer {
     public static void main(String[] args) throws Exception {
-        String namesrv = System.getenv().getOrDefault("NAMESRV_ADDR", "nameserver:9876");
+        String namesrv = System.getenv().getOrDefault("NAMESRV_ADDR", "rmq-nameserver:9876");
         String topic = System.getenv().getOrDefault("TOPIC", "StudioTest");
         long intervalMs = Long.parseLong(System.getenv().getOrDefault("SEND_INTERVAL_MS", "1000"));
 
