@@ -227,7 +227,8 @@ $SSH 'cd /opt/rocketmq/rocketmq && \
 ### 5. 网络接入说明
 
 - **与 Studio 同机部署**：两边共用 `rocketmq_net` 网络，Studio server 容器直接用
-  `nameserver:9876` 接入（compose 默认 `STUDIO_ROCKETMQ_NAMESRV_ADDR=nameserver:9876`）。
+  `rmq-nameserver:9876` 接入（compose 默认 `STUDIO_ROCKETMQ_NAMESRV_ADDR=rmq-nameserver:9876`，
+  可用 `.env` 覆盖）。
 - **跨机访问**：`brokerIP1=broker-{0,1}` 仅容器网络内可达，宿主机/其他机器直连需改
   `conf/broker-{0,1}.conf` 为 `brokerIP1=<目标机器 IP>` 并重启 broker，同时放行
   9876、10909、10911、10912、20909、20911、20912、8080、8081。
