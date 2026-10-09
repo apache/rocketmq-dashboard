@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -238,6 +238,33 @@ describe('AiAssistantTab', () => {
       await screen.findByText('qwen-plus-latest', { selector: '.ant-select-item-option-content' }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    { label: 'provided', errMsg: 'Provider unavailable', expectedMessage: 'Provider unavailable' },
+    { label: 'missing', errMsg: undefined, expectedMessage: 'Connection test failed' },
+    { label: 'empty', errMsg: '', expectedMessage: 'Connection test failed' },
+  ])(
+    'displays failure diagnostics when the error message is $label',
+    async ({ errMsg, expectedMessage }) => {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+      llmApiMocks.testLlmConnection.mockResolvedValue({
+        status: 1,
+        errMsg,
+        code: 'llm.provider.unavailable',
+        hint: 'Check the provider endpoint and retry.',
+      });
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByText('API key configured');
+      await user.click(screen.getByRole('button', { name: 'Test connection' }));
+
+      const alert = within(await screen.findByRole('alert'));
+      expect(alert.getByText(expectedMessage)).toBeInTheDocument();
+      expect(alert.getByText('llm.provider.unavailable')).toBeInTheDocument();
+      expect(alert.getByText('Check the provider endpoint and retry.')).toBeInTheDocument();
+    },
+  );
 
   it('ignores a connection result after the tested configuration changes', async () => {
     let resolveTest!: (result: { status: number; msg: string }) => void;

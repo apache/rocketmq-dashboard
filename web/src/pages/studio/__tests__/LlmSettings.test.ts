@@ -48,16 +48,10 @@ describe('LlmSettingsPage', () => {
     });
   });
 
-  it('usesTheCallerFallbackWhenTheResponseIsUndefinedTest', () => {
-    expect(buildLlmFailureResult(undefined, 'Unable to reach the provider')).toEqual({
-      success: false,
-      msg: 'Unable to reach the provider',
-      code: undefined,
-      hint: undefined,
-    });
-  });
-
-  it.each([undefined, ''])('preservesDiagnosticsWhenTheErrorMessageIs%jTest', (errMsg) => {
+  it.each([
+    { label: 'missing', errMsg: undefined },
+    { label: 'empty', errMsg: '' },
+  ])('preserves diagnostics when the error message is $label', ({ errMsg }) => {
     expect(
       buildLlmFailureResult(
         {

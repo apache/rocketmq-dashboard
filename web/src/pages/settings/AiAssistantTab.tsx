@@ -44,6 +44,7 @@ import {
   type LlmTestResult,
 } from '../../api/llm';
 import { fallbackModelOptions } from '../studio/llmModelOptions';
+import { buildLlmFailureResult, type TestResult as TestState } from '../studio/llmFailureResult';
 
 const DEFAULT_BASE_URL: Record<string, string> = {
   tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -97,12 +98,6 @@ const baseUrlPresets = (
   deepseek: [{ value: 'https://api.deepseek.com/v1', label: t('settings.deepseekOfficial') }],
   ollama: [{ value: 'http://localhost:11434/v1', label: t('settings.ollamaLocal') }],
 });
-
-interface TestState {
-  success: boolean;
-  msg: string;
-  hint?: string;
-}
 
 export const AiAssistantTab = () => {
   const { t } = useLang();
@@ -259,11 +254,7 @@ export const AiAssistantTab = () => {
     if (result.status === 0) {
       setTestResult({ success: true, msg: result.msg || t('settings.connectionSucceeded') });
     } else {
-      setTestResult({
-        success: false,
-        msg: result.errMsg || t('settings.connectionTestFailedShort'),
-        hint: result.hint,
-      });
+      setTestResult(buildLlmFailureResult(result, t('settings.connectionTestFailedShort')));
     }
   };
 
@@ -519,7 +510,16 @@ export const AiAssistantTab = () => {
               type={testResult.success ? 'success' : 'error'}
               showIcon
               message={testResult.msg}
-              description={testResult.hint}
+              description={
+                testResult.code ? (
+                  <Space direction="vertical">
+                    <Tag>{testResult.code}</Tag>
+                    {testResult.hint && <span>{testResult.hint}</span>}
+                  </Space>
+                ) : (
+                  testResult.hint
+                )
+              }
             />
           )}
 
