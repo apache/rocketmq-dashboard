@@ -18,21 +18,30 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.rocketmq.studio.ops.alert.AlertDomain;
+import org.apache.rocketmq.studio.ops.alert.AlertSchemaMigration;
 import org.apache.rocketmq.studio.persistence.entity.RmqMetricSnapshot;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMetricSnapshotMapper;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -72,11 +81,12 @@ class MybatisPlusMetricSnapshotRepositoryTest {
     }
 
     @Test
-    void recentSnapshotsStopAtTheEvaluatedSampleTimeTest() {
+    void recentSnapshotsStopAtTheSecondAlignedEvaluatedSampleTimeTest() {
         when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of());
         MybatisPlusMetricSnapshotRepository repository =
                 new MybatisPlusMetricSnapshotRepository(mapper, new ObjectMapper());
-        Instant collectedAt = Instant.parse("2026-09-29T10:00:00Z");
+        // DATETIME storage rounds a .700s fraction up, so the bound must cover the next whole second.
+        Instant collectedAt = Instant.parse("2026-09-29T10:00:00.700Z");
         Instant since = collectedAt.minusSeconds(300);
         MetricSample scope = new MetricSample("consumer.lag.total", AlertDomain.BUSINESS,
                 "local", null, Map.of("consumerGroup", "orders"), 10D,
@@ -90,6 +100,44 @@ class MybatisPlusMetricSnapshotRepositoryTest {
         assertThat(query.getSqlSegment()).contains("collected_at >=", "collected_at <=");
         assertThat(query.getParamNameValuePairs().values()).contains(
                 LocalDateTime.ofInstant(since, ZoneOffset.UTC),
-                LocalDateTime.ofInstant(collectedAt, ZoneOffset.UTC));
+                LocalDateTime.ofInstant(collectedAt, ZoneOffset.UTC)
+                        .truncatedTo(ChronoUnit.SECONDS).plusSeconds(1));
+    }
+
+    @Test
+    void findRecentReturnsTheEvaluatedSampleStoredOnASecondGranularityColumnTest() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:metric-snapshot-granularity;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=VALUE");
+        dataSource.setUser("sa");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE rmq_alert_rule (id BIGINT PRIMARY KEY, name VARCHAR(128))");
+            statement.execute("CREATE TABLE rmq_system_alert (id BIGINT PRIMARY KEY, time TIMESTAMP)");
+            statement.execute("CREATE TABLE rmq_alert_notification_outbox (id BIGINT PRIMARY KEY, alert_id BIGINT, "
+                    + "channel VARCHAR(32), status VARCHAR(16), next_attempt_at TIMESTAMP)");
+        }
+        new AlertSchemaMigration(dataSource).run(new DefaultApplicationArguments());
+
+        MybatisSqlSessionFactoryBean factoryBean = new MybatisSqlSessionFactoryBean();
+        factoryBean.setDataSource(dataSource);
+        SqlSessionFactory factory = factoryBean.getObject();
+        factory.getConfiguration().addMapper(RmqMetricSnapshotMapper.class);
+        try (SqlSession session = factory.openSession(true)) {
+            MybatisPlusMetricSnapshotRepository repository =
+                    new MybatisPlusMetricSnapshotRepository(session.getMapper(RmqMetricSnapshotMapper.class),
+                            new ObjectMapper());
+            // H2 rounds the fractional seconds up exactly like the MySQL DATETIME column does.
+            Instant collectedAt = Instant.parse("2026-09-29T10:00:00.700Z");
+            MetricSample sample = new MetricSample("consumer.lag.total", AlertDomain.BUSINESS,
+                    "local", null, Map.of("consumerGroup", "orders"), 10D,
+                    MetricAvailability.AVAILABLE, collectedAt);
+
+            repository.saveAll(List.of(sample));
+
+            List<MetricSample> window = repository.findRecent(sample, collectedAt.minusSeconds(300));
+            assertThat(window).singleElement().satisfies(stored -> {
+                assertThat(stored.value()).isEqualTo(10D);
+                assertThat(stored.collectedAt()).isEqualTo(Instant.parse("2026-09-29T10:00:01Z"));
+            });
+        }
     }
 }
