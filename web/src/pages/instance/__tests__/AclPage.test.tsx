@@ -120,6 +120,18 @@ describe('ACL page', () => {
       page: 1,
       size: 20,
     });
+    // The rule dialog's principal picker reads the complete directory, not the paged table.
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: true,
+        clusters: ['cluster-a'],
+        gmtCreate: '2026-07-23T00:00:00Z',
+      },
+    ]);
   });
 
   it('loads ACL rules and users through the service layer', async () => {
@@ -458,21 +470,24 @@ describe('ACL page', () => {
       page: 1,
       size: 20,
     });
+    const tencentRoles = ['reader-role', 'publisher-role'].map(
+      (username) =>
+        ({
+          username,
+          admin: false,
+          clusters: ['rmq-cloud'],
+          accessKey: null,
+          secretKey: null,
+        }) as AclUser,
+    );
     vi.mocked(aclService.pageAclUsers).mockResolvedValue({
-      items: ['reader-role', 'publisher-role'].map(
-        (username) =>
-          ({
-            username,
-            admin: false,
-            clusters: ['rmq-cloud'],
-            accessKey: null,
-            secretKey: null,
-          }) as AclUser,
-      ),
+      items: tencentRoles,
       total: 2,
       page: 1,
       size: 20,
     });
+    // The principal picker reads the complete directory for the selected instance.
+    vi.mocked(aclService.listAclUsers).mockResolvedValue(tencentRoles);
     vi.mocked(aclService.updateAclRule).mockResolvedValue({ ...readerRule, id: 'reader-role' });
     vi.mocked(aclService.createAclRule).mockResolvedValue({
       ...readerRule,
@@ -533,6 +548,49 @@ describe('ACL page', () => {
         }),
       );
     }
+  });
+
+  it('offers users outside the loaded user page as rule principals', async () => {
+    const pageUsers = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      username: `page-user-${index + 1}`,
+      accessKey: `AK${index + 1}`,
+      secretKey: `SK${index + 1}`,
+      admin: false,
+      clusters: ['cluster-a'],
+      gmtCreate: '2026-07-23T00:00:00Z',
+    }));
+    const directoryUser = {
+      id: 21,
+      username: 'directory-only-user',
+      accessKey: 'AK21',
+      secretKey: 'SK21',
+      admin: false,
+      clusters: ['cluster-a'],
+      gmtCreate: '2026-07-23T00:00:00Z',
+    };
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: pageUsers,
+      total: 21,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([...pageUsers, directoryUser]);
+    const user = userEvent.setup();
+    renderWithProviders(<AclPage />);
+
+    await screen.findByText('remote-user');
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('主体'));
+
+    // The picker used to be fed by the paged, keyword-filtered Users tab, so on a deployment with
+    // more than one page of users (or a keyword typed there) a rule could not be created at all.
+    expect(
+      await screen.findByText('directory-only-user', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('keepsLocalMetadataPrincipalEditableTest', async () => {
