@@ -24,10 +24,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/types"
+	"golang.org/x/text/width"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,19 +85,19 @@ func RequireFormat(format string) error {
 }
 
 func ConfigTable(w io.Writer, cfg config.Config) error {
-	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "CURRENT\tCONTEXT\tSERVER\tACCESS KEY REF\tSECRET KEY REF")
+	lines := [][]string{{"CURRENT", "CONTEXT", "SERVER", "ACCESS KEY REF", "SECRET KEY REF"}}
 	for _, name := range slices.Sorted(maps.Keys(cfg.Contexts)) {
 		current := ""
 		if name == cfg.CurrentContext {
 			current = "*"
 		}
 		context := cfg.Contexts[name]
-		fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n",
+		lines = append(lines, []string{
 			current, name, context.Server,
-			context.Credential.AccessKeyRef, context.Credential.SecretKeyRef)
+			context.Credential.AccessKeyRef, context.Credential.SecretKeyRef,
+		})
 	}
-	return table.Flush()
+	return writeTable(w, lines)
 }
 
 func ToolCallSummary(w io.Writer, result any) error {
@@ -105,11 +105,10 @@ func ToolCallSummary(w io.Writer, result any) error {
 	if err != nil {
 		return err
 	}
-	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "INSTANCE\tSTATUS\tCONFIRM TOKEN")
-	fmt.Fprintf(table, "%s\t%s\t%s\n",
-		mutation.InstanceID, mutation.Status, mutation.ConfirmToken)
-	if err := table.Flush(); err != nil {
+	if err := writeTable(w, [][]string{
+		{"INSTANCE", "STATUS", "CONFIRM TOKEN"},
+		{mutation.InstanceID, string(mutation.Status), mutation.ConfirmToken},
+	}); err != nil {
 		return err
 	}
 	payload := mutation.Result
@@ -124,20 +123,76 @@ func ToolCallSummary(w io.Writer, result any) error {
 }
 
 func Rows(w io.Writer, rows []map[string]any, columns []Column) error {
-	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	headers := make([]string, 0, len(columns))
 	for _, col := range columns {
 		headers = append(headers, col.Header)
 	}
-	fmt.Fprintln(table, strings.Join(headers, "\t"))
+	lines := [][]string{headers}
 	for _, row := range rows {
 		values := make([]string, 0, len(columns))
 		for _, col := range columns {
 			values = append(values, stringify(row[col.Key]))
 		}
-		fmt.Fprintln(table, strings.Join(values, "\t"))
+		lines = append(lines, values)
 	}
-	return table.Flush()
+	return writeTable(w, lines)
+}
+
+// writeTable renders single-line cells in fixed columns padded to terminal
+// display width. text/tabwriter pads by rune count, so CJK ideographs
+// (common in topic and consumer-group names) — which render two cells wide in
+// every terminal — came out misaligned; this pads by the width the terminal
+// actually displays. The last column is not padded, matching tabwriter's
+// trailing behavior. It returns the first write error, like the
+// tabwriter.Flush it replaced.
+func writeTable(w io.Writer, lines [][]string) error {
+	widths := make([]int, 0, 8)
+	for _, line := range lines {
+		for i, cell := range line {
+			for i >= len(widths) {
+				widths = append(widths, 0)
+			}
+			if cw := displayWidth(cell); cw > widths[i] {
+				widths[i] = cw
+			}
+		}
+	}
+	for _, line := range lines {
+		var builder strings.Builder
+		for i, cell := range line {
+			if i > 0 {
+				builder.WriteString("  ")
+			}
+			builder.WriteString(cell)
+			if i < len(line)-1 && i < len(widths) {
+				builder.WriteString(strings.Repeat(" ", widths[i]-displayWidth(cell)))
+			}
+		}
+		builder.WriteByte('\n')
+		if _, err := fmt.Fprint(w, builder.String()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// displayWidth returns the number of terminal cells a single-line string
+// occupies, counting East Asian Wide and Fullwidth runes (e.g. CJK
+// ideographs, kana, fullwidth forms) as two cells. East Asian Ambiguous
+// runes (e.g. Greek, Cyrillic, °) count as one cell here, which is wrong on
+// the many CJK terminals configured to render ambiguous-width runes two
+// cells wide; the width table cannot know the terminal's locale setting.
+func displayWidth(s string) int {
+	cells := 0
+	for _, r := range s {
+		switch width.LookupRune(r).Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			cells += 2
+		default:
+			cells++
+		}
+	}
+	return cells
 }
 
 // MapsFromAny converts a JSON-decoded value into a slice of row maps for table
