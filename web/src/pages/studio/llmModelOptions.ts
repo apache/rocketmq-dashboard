@@ -28,16 +28,28 @@ export const FALLBACK_MODELS: Record<string, string[]> = {
     'claude-haiku-4-5',
   ],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  /**
+   * Mirrors `LlmConfigService.PROVIDER_MODELS["tongyi"]` (what `GET /llm/models` answers and what
+   * the home page offers). The list is used whenever the endpoint fails or the provider is
+   * re-selected, so a shorter copy hid five of the twelve models the gateway serves.
+   */
   tongyi: [
     'qwen3.8-max',
     'qwen3.7-max',
     'qwen3.7-plus',
+    'gpt-5',
+    'gpt-5.1',
+    'claude-fable-5',
+    'claude-opus-5',
+    'claude-sonnet-5',
     'deepseek-v4-pro',
     'deepseek-v4-flash',
     'MiniMax-M2.5',
     'glm-5.2',
   ],
-  ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
+  // Mirrors the server's list for the same reason (it offered gemma2, which the gateway does not
+  // serve).
+  ollama: ['llama3', 'mistral', 'qwen2.5'],
   bedrock: [
     'anthropic.claude-fable-5',
     'anthropic.claude-opus-5',
