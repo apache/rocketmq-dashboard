@@ -196,7 +196,8 @@ public interface InstanceProvider {
 
     /**
      * Message query with an explicit provider truncation signal. Providers that page remote APIs
-     * should return a bounded result and set {@code mayBeTruncated} when they stop at the budget.
+     * should return a bounded result and set {@code mayBeTruncated} when a result or scan budget
+     * is reached, or when a queue scan cannot finish.
      */
     default MessageQueryResult queryMessagesDetailed(String instanceId, String topic, String msgId,
                                                       String tag, String key, Long startTime, Long endTime) {

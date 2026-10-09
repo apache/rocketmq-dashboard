@@ -101,7 +101,7 @@ func TestMessageQueryCompletenessWarningTest(t *testing.T) {
 					}
 					wantWarning := ""
 					if format == "table" && !tc.empty && tc.truncated {
-						wantWarning = fmt.Sprintf("WARNING: Results may be incomplete (resultMayBeTruncated=true); skippedCount=%d rows omitted by limit from the provider-bounded result. More messages may exist.\n", tc.skipped)
+						wantWarning = fmt.Sprintf("WARNING: Results may be incomplete (resultMayBeTruncated=true) due to provider budgets, an unfinished scan, or the output limit; skippedCount=%d counts only rows omitted by the output limit. More messages may exist.\n", tc.skipped)
 					}
 					if stderr != wantWarning {
 						t.Errorf("stderr = %q, want %q", stderr, wantWarning)

@@ -221,7 +221,7 @@ describe('MessagePage async request ownership', () => {
 
     expect(screen.queryByText('message-on-page-two')).not.toBeInTheDocument();
     expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
-    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果可能因服务端扫描上限/)).not.toBeInTheDocument();
     expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
   });
 
@@ -243,6 +243,7 @@ describe('MessagePage async request ownership', () => {
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
     await user.click(queryButton);
     expect(await screen.findByText('topic-result')).toBeInTheDocument();
+    expect(screen.getByText(/查询结果可能因服务端扫描上限/)).toBeInTheDocument();
     await user.click(queryButton);
     await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(2));
 
@@ -250,7 +251,7 @@ describe('MessagePage async request ownership', () => {
 
     expect(screen.queryByText('topic-result')).not.toBeInTheDocument();
     expect(screen.queryByText('共 101 条消息')).not.toBeInTheDocument();
-    expect(screen.queryByText(/查询结果达到服务端扫描上限/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/查询结果可能因服务端扫描上限/)).not.toBeInTheDocument();
     expect(document.querySelector('.ant-pagination-item-active')).not.toBeInTheDocument();
     expect(document.querySelector('.ant-table-wrapper .ant-spin-spinning')).not.toBeInTheDocument();
 
