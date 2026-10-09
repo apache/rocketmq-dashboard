@@ -310,6 +310,21 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryMessagesByKeyWithoutAWindowSearchesTheKeyDefaultNotTheTopicScanDefaultTest() throws Exception {
+        when(adminExt.queryMessage(eq("TopicA"), eq("order-1"), eq(64), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, keyQueryMatches(1)));
+
+        provider.queryMessages("instance-a", "TopicA", null, null, "order-1", null, null);
+
+        ArgumentCaptor<Long> begin = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> end = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("TopicA"), eq("order-1"), eq(64), begin.capture(), end.capture());
+        // Key mode in the console sends no window at all, so this default is the only reach the
+        // index query gets: the topic scan's documented hour would hide every older match.
+        assertThat(end.getValue() - begin.getValue()).isEqualTo(3L * 24 * 60 * 60 * 1000);
+    }
+
+    @Test
     void queryByKeySurfacesAdminFailure() throws Exception {
         when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
                 .thenThrow(new IllegalStateException("broker unavailable"));
