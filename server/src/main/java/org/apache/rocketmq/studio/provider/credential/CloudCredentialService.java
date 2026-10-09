@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.credential;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
@@ -78,6 +79,23 @@ public class CloudCredentialService {
         return csv.toString();
     }
 
+    /** secret_key is VARCHAR(512) and holds the base64 of the secret, not its plaintext. */
+    private static final int SECRET_COLUMN_LENGTH = 512;
+
+    /** Column widths, counted in code points like every other user-facing bound in this project. */
+    private static void requireWithin(String value, int maxCodePoints, String field) {
+        if (value != null && TextBounds.codePointCount(value.trim()) > maxCodePoints) {
+            throw new BusinessException(400, field + " must not exceed " + maxCodePoints + " characters");
+        }
+    }
+
+    private static void requireSecretWithinColumn(String secretKey) {
+        if (secretKey != null && CredentialUtils.encodeBase64(secretKey).length() > SECRET_COLUMN_LENGTH) {
+            throw new BusinessException(400,
+                    "Cloud credential secretKey encodes to more than " + SECRET_COLUMN_LENGTH + " characters");
+        }
+    }
+
     public CloudCredentialVO create(CloudCredentialVO credential) {
         if (credential == null) {
             throw new BusinessException(400, "Cloud credential request is required");
@@ -91,6 +109,16 @@ public class CloudCredentialService {
         if (!StringUtils.hasText(credential.getAccessKey()) || !StringUtils.hasText(credential.getSecretKey())) {
             throw new BusinessException(400, "Cloud credential accessKey and secretKey are required");
         }
+        // The columns are name/access_key/secret_key VARCHAR(128/255/512), and the secret is stored
+        // base64-encoded - so a plaintext longer than 384 characters overflows a 512-character
+        // column. Without these bounds the write was the first length check, and its rejection
+        // surfaced as a generic 500 that did not say which length was allowed.
+        requireWithin(credential.getName(), 128, "Cloud credential name");
+        requireWithin(credential.getAccessKey(), 255, "Cloud credential accessKey");
+        requireWithin(credential.getRemark(), 255, "Cloud credential remark");
+        // The stored form is the base64 of the secret, so the column width applies to that; a
+        // 384-character bound on the plaintext would still overflow for a non-ASCII secret.
+        requireSecretWithinColumn(credential.getSecretKey());
         credentialRepository.findByVendorAndAccessKey(credential.getVendor(), credential.getAccessKey())
                 .ifPresent(existing -> {
                     throw new BusinessException(400,
@@ -122,13 +150,18 @@ public class CloudCredentialService {
         if (request.getName() != null && request.getName().isBlank()) {
             throw new BusinessException(400, "Cloud credential name cannot be blank");
         }
+        // The update path writes the same columns as create, so it needs the same bounds: without
+        // them the write was the first length check and its rejection surfaced as a generic 500.
         if (request.getName() != null) {
+            requireWithin(request.getName(), 128, "Cloud credential name");
             existing.setName(request.getName());
         }
         if (request.getSecretKey() != null && !request.getSecretKey().isBlank()) {
+            requireSecretWithinColumn(request.getSecretKey());
             existing.setSecretKey(request.getSecretKey());
         }
         if (request.getRemark() != null) {
+            requireWithin(request.getRemark(), 255, "Cloud credential remark");
             existing.setRemark(request.getRemark());
         }
         existing.setGmtModified(LocalDateTime.now());

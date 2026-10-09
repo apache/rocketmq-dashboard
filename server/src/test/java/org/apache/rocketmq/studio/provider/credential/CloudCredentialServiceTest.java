@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -135,6 +136,77 @@ class CloudCredentialServiceTest {
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ALIYUN or TENCENT");
+    }
+
+    @Test
+    void createShouldRejectFieldsThatExceedTheirColumnsTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("n".repeat(129));
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey("LTAI5tGoodKey00000000001");
+        request.setSecretKey("sk-value");
+
+        // name VARCHAR(128), access_key VARCHAR(255), secret_key VARCHAR(512) holding the base64 of
+        // the secret: without the bounds the database rejected the write and the API answered 500.
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential name must not exceed 128 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        request.setName("ok");
+        request.setAccessKey("A".repeat(256));
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential accessKey must not exceed 255 characters");
+
+        request.setAccessKey("LTAI5tGoodKey00000000001");
+        request.setSecretKey("s".repeat(400));
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential secretKey encodes to more than 512 characters");
+
+        request.setSecretKey("sk-value");
+        request.setRemark("r".repeat(256));
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential remark must not exceed 255 characters");
+
+        verifyNoInteractions(credentialRepository);
+    }
+
+    @Test
+    void updateShouldRejectFieldsThatExceedTheirColumnsTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId(1L);
+        stored.setVendor(InstanceVendor.ALIYUN);
+        stored.setAccessKey("LTAI5tUpdateKey000000001");
+        stored.setSecretKey("old-secret");
+        when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
+
+        // The update path writes the same columns as create, so it needs the same bounds: without
+        // them the database write was the first length check and its rejection became a generic 500.
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId(1L);
+        request.setName("n".repeat(129));
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential name must not exceed 128 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        request.setName("renamed");
+        request.setSecretKey("s".repeat(400));
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential secretKey encodes to more than 512 characters");
+
+        request.setSecretKey(null);
+        request.setRemark("r".repeat(256));
+        assertThatThrownBy(() -> service.update(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential remark must not exceed 255 characters");
+
+        verify(credentialRepository, never()).replace(any(CloudCredentialVO.class));
+        verify(aliyunClientFactory, never()).invalidateCredential(any());
     }
 
     @Test
