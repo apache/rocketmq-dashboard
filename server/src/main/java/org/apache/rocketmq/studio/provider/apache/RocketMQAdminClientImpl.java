@@ -71,6 +71,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -304,11 +305,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
                 applyTopicType(topicConfig, topic.getType());
 
-                boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
-                if (!physicalExists) {
-                    for (String addr : brokerAddrs) {
-                        admin.createAndUpdateTopicConfig(addr, topicConfig);
-                    }
+                // An import writes to the masters that do not carry a matching config yet; a
+                // cluster can hold the topic on some masters and not on others (a broker group
+                // added after the topic was created).
+                Set<String> topicMastersToCreate = importing
+                        ? mastersMissingTopicConfig(admin, brokerAddrs, topicConfig)
+                        : brokerAddrs;
+                for (String addr : topicMastersToCreate) {
+                    admin.createAndUpdateTopicConfig(addr, topicConfig);
                 }
 
                 // The global reservation was already committed independently before the RPC; here we only update the unique record.
@@ -791,11 +795,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
             boolean consumeMessageOrderly = isOrderlyDelivery(group.getDeliveryOrderType());
             config.setConsumeMessageOrderly(consumeMessageOrderly);
 
-            boolean physicalExists = importing && verifyGroupImport(admin, brokerAddrs, config);
-            if (!physicalExists) {
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateSubscriptionGroupConfig(addr, config);
-                }
+            Set<String> groupMastersToCreate = importing
+                    ? mastersMissingGroupConfig(admin, brokerAddrs, config)
+                    : brokerAddrs;
+            for (String addr : groupMastersToCreate) {
+                admin.createAndUpdateSubscriptionGroupConfig(addr, config);
             }
 
             persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());
@@ -1241,23 +1245,34 @@ public class RocketMQAdminClientImpl implements AdminClient {
         });
     }
 
-    /** Import reads all target masters within the ownership row lock; existing config is only registered, never overwritten. */
-    private boolean verifyTopicImport(MQAdminExt admin, Set<String> masters, TopicConfig requested) throws Exception {
-        boolean found = false;
+    /**
+     * The masters that do not have the topic yet, so an import can create it exactly there. The
+     * import reads every target master within the ownership row lock and only registers a config
+     * that matches; it never overwrites one.
+     *
+     * <p>Reporting a single boolean for the whole cluster treated "exists on at least one master" as
+     * "exists everywhere": the masters that did not have it were skipped, the import still answered
+     * success, and a broker group added to the cluster later silently served a topic auto-created
+     * with factory defaults instead of the imported configuration.</p>
+     */
+    private Set<String> mastersMissingTopicConfig(MQAdminExt admin, Set<String> masters, TopicConfig requested)
+            throws Exception {
+        Set<String> missing = new LinkedHashSet<>();
         for (String master : masters) {
             TopicConfig current;
             try {
                 current = admin.examineTopicConfig(master, requested.getTopicName());
             } catch (Exception failure) {
                 if (MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                    missing.add(master);
                     continue;
                 }
                 throw failure;
             }
             if (current == null) {
+                missing.add(master);
                 continue;
             }
-            found = true;
             if (!requested.getTopicName().equals(current.getTopicName())
                     || requested.getReadQueueNums() != current.getReadQueueNums()
                     || requested.getWriteQueueNums() != current.getWriteQueueNums()
@@ -1268,32 +1283,34 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw new BusinessException(409, "Import config conflicts with the existing physical topic; refusing to overwrite: " + requested.getTopicName());
             }
         }
-        return found;
+        return missing;
     }
 
-    private boolean verifyGroupImport(MQAdminExt admin, Set<String> masters, SubscriptionGroupConfig requested)
-            throws Exception {
-        boolean found = false;
+    /** The masters that do not have the group yet; see {@link #mastersMissingTopicConfig}. */
+    private Set<String> mastersMissingGroupConfig(MQAdminExt admin, Set<String> masters,
+                                                  SubscriptionGroupConfig requested) throws Exception {
+        Set<String> missing = new LinkedHashSet<>();
         for (String master : masters) {
             SubscriptionGroupConfig current;
             try {
                 current = admin.examineSubscriptionGroupConfig(master, requested.getGroupName());
             } catch (Exception failure) {
                 if (MqResponseCodes.hasResponseCode(failure, ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST)) {
+                    missing.add(master);
                     continue;
                 }
                 throw failure;
             }
             if (current == null) {
+                missing.add(master);
                 continue;
             }
-            found = true;
             if (!requested.getGroupName().equals(current.getGroupName())
                     || requested.getRetryMaxTimes() != current.getRetryMaxTimes()) {
                 throw new BusinessException(409, "Import config conflicts with the existing physical group; refusing to overwrite: " + requested.getGroupName());
             }
         }
-        return found;
+        return missing;
     }
 
     private Set<String> getMasterBrokerAddrsForCluster(MQAdminExt admin, String clusterName) throws Exception {
