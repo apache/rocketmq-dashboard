@@ -211,6 +211,7 @@ const ClusterPage = () => {
   const brokerConfigDiffRequest = useRequestGeneration();
   const connectionTestRequest = useRequestGeneration();
   const configPreviewRequest = useRequestGeneration();
+  const configLoadRequest = useRequestGeneration();
 
   const loadRegistryClusters = useCallback(async () => {
     const requestId = registryClustersRequest.begin();
@@ -273,9 +274,11 @@ const ClusterPage = () => {
       brokerConfigDiffRequest.invalidate();
       connectionTestRequest.invalidate();
       configPreviewRequest.invalidate();
+      configLoadRequest.invalidate();
     },
     [
       brokerConfigDiffRequest,
+      configLoadRequest,
       configPreviewRequest,
       connectionTestRequest,
       k8sCertsRequest,
@@ -724,7 +727,7 @@ const ClusterPage = () => {
     }
     setConfigLoading(!rowConfig);
     setConfigModalOpen(true);
-    void loadLiveConfig(cluster, rowConfig != null);
+    void loadLiveConfig(cluster, rowConfig != null, configLoadRequest.begin());
   };
 
   /**
@@ -734,13 +737,17 @@ const ClusterPage = () => {
    * retention, message size, queue counts, permission) onto every broker of the cluster. Read the
    * live config from the cluster detail endpoint instead and refuse to edit what cannot be read.
    */
-  const loadLiveConfig = async (cluster: ClusterInfo, hadRowConfig: boolean) => {
+  const loadLiveConfig = async (cluster: ClusterInfo, hadRowConfig: boolean, requestId: number) => {
     let detail: ClusterInfo | undefined;
     try {
       detail = await getCluster(cluster.id, resolveOwningInstanceId(cluster));
     } catch {
       detail = undefined;
     }
+    // The operator may have closed this dialog (or opened it for another cluster) while the read
+    // was in flight; committing then would fill the other dialog with these values and clear its
+    // refusal warning, so the next OK would submit values nobody read.
+    if (!configLoadRequest.isCurrent(requestId)) return;
     const liveConfig = detail?.config;
     if (liveConfig) {
       applyConfigFormValues(liveConfig);
@@ -1438,6 +1445,7 @@ const ClusterPage = () => {
             open={configModalOpen}
             onCancel={() => {
               configPreviewRequest.invalidate();
+              configLoadRequest.invalidate();
               setConfigModalOpen(false);
               setConfigPreview(null);
             }}

@@ -445,6 +445,59 @@ describe('Cluster page', () => {
     expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
   });
 
+  it('drops a live config response for a dialog the operator already left', async () => {
+    // The read for cluster A is still in flight when the operator cancels and opens cluster B,
+    // whose own read fails. A's response must not fill B's form or clear B's warning: doing so
+    // would re-enable OK and submit values that were never read for B.
+    const clusterA = buildCluster();
+    delete (clusterA as { config?: unknown }).config;
+    const clusterB: ClusterInfo = {
+      ...buildCluster(),
+      id: 'cluster-b',
+      name: 'rocketmq-b',
+      brokers: buildCluster().brokers.map((broker, index) => ({
+        ...broker,
+        name: `rocketmq-b-${index}`,
+        addr: `10.101.2.2${index + 2}:10911`,
+      })),
+    };
+    delete (clusterB as { config?: unknown }).config;
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([clusterA, clusterB]);
+    let releaseClusterA: (value: ClusterInfo) => void = () => {};
+    clusterServiceMocks.getCluster.mockImplementation((id: string) =>
+      id === 'cluster-prod'
+        ? new Promise<ClusterInfo>((resolve) => {
+            releaseClusterA = resolve;
+          })
+        : Promise.reject(new Error('cluster unreachable')),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const rowA = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(rowA).getByRole('button', { name: /^配\s*置$/ }));
+    const dialogA = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    await user.click(within(dialogA).getByRole('button', { name: 'Cancel' }));
+
+    const rowB = await screen.findByRole('row', { name: /10\.101\.2\.22:10911/ });
+    await user.click(within(rowB).getByRole('button', { name: /^配\s*置$/ }));
+    const dialogB = await screen.findByRole('dialog', { name: /配置 - rocketmq-b/ });
+    expect(
+      await within(dialogB).findByText('无法读取该集群的 Broker 配置，请先确认集群可达'),
+    ).toBeInTheDocument();
+
+    const lateConfig = buildCluster().config!;
+    await act(async () => {
+      releaseClusterA({ ...buildCluster(), config: { ...lateConfig, fileReservedTime: 168 } });
+    });
+
+    expect(
+      within(dialogB).getByText('无法读取该集群的 Broker 配置，请先确认集群可达'),
+    ).toBeInTheDocument();
+    expect(within(dialogB).getByRole('button', { name: 'OK' })).toBeDisabled();
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
+  });
+
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
