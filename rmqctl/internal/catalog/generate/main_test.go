@@ -281,3 +281,20 @@ func TestRunRejectsReservedInstanceIDFlag(t *testing.T) {
 		t.Fatalf("err = %v, want nested instanceId rejection", err)
 	}
 }
+
+// TestRunRejectsPropertyWithUnusableDerivedFlag pins the generator contract:
+// every leaf property must derive a flag the CLI can actually bind. A property
+// name such as "_mode" derives "-mode", which cobra cannot register as a
+// usable "--mode" flag and rmqctl explain would advertise as "---mode".
+func TestRunRejectsPropertyWithUnusableDerivedFlag(t *testing.T) {
+	source := strings.ReplaceAll(platformToolSource, "        status:", "        _mode:")
+	input, output := writeCatalogSource(t, source)
+
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "invalid CLI flag") {
+		t.Fatalf("err = %v, want rejection of unusable derived flag", err)
+	}
+	if _, statErr := os.Stat(output); statErr == nil {
+		t.Fatal("generator must not write output for an invalid catalog")
+	}
+}

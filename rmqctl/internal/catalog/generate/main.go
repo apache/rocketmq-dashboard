@@ -569,8 +569,15 @@ func validateSchema(schema inputSchema, flags map[string]struct{}, depth int) er
 			continue
 		}
 		flagName := schemaFlagName(name, field)
-		if field.CLIFlag != "" && !validCLIFlag(field.CLIFlag) {
-			return fmt.Errorf("property %q has invalid x-cli-flag %q", name, field.CLIFlag)
+		// Both explicit x-cli-flag values and flags derived from the property
+		// name must form a name cobra can register and a user can type: a
+		// leading dash (property "_mode" derives "-mode") or a doubled dash
+		// yields a flag the CLI cannot bind and explain would show as "---mode".
+		if !validCLIFlag(flagName) {
+			if field.CLIFlag != "" {
+				return fmt.Errorf("property %q has invalid x-cli-flag %q", name, field.CLIFlag)
+			}
+			return fmt.Errorf("property %q has invalid CLI flag --%s derived from its name", name, flagName)
 		}
 		// Global persistent flags own their names. The only exception is the
 		// top-level instanceId property: the runtime feeds it from the global
