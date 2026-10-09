@@ -367,7 +367,7 @@ const PromptTemplateModal = ({
             />
             <Button
               icon={<Plus size={16} />}
-              disabled={!inputValue.trim()}
+              disabled={!inputValue.trim() || !customTemplateTitle.trim()}
               onClick={handleSaveCurrentPromptTemplate}
             >
               {t('common.save')}
