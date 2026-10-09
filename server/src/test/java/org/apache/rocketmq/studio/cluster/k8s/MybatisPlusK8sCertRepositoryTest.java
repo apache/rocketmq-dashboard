@@ -21,6 +21,10 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import java.util.TimeZone;
+import java.time.ZoneOffset;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -134,6 +138,31 @@ class MybatisPlusK8sCertRepositoryTest {
         assertThatThrownBy(() -> repository(mapper).findById(1L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("certificate status");
+    }
+
+    @Test
+    void saveShouldPersistTheUtcModifiedInstantTheServiceStampedTest() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.updateById(any(RmqK8sCertificate.class))).thenReturn(1);
+        K8sCertVO cert = K8sCertVO.builder().k8sId("broker").build();
+        cert.setId(1L);
+        LocalDateTime utcInstant = LocalDateTime.now(ZoneOffset.UTC).minusHours(1);
+        cert.setGmtCreate(utcInstant);
+        cert.setGmtModified(utcInstant);
+
+        TimeZone previous = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            repository(mapper).save(cert);
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+
+        ArgumentCaptor<RmqK8sCertificate> entity = ArgumentCaptor.forClass(RmqK8sCertificate.class);
+        verify(mapper).updateById(entity.capture());
+        // The repository used to overwrite it with LocalDateTime.now(): the row's modified instant
+        // then disagreed with its UTC creation instant by the whole server offset.
+        assertThat(entity.getValue().getGmtModified()).isEqualTo(utcInstant);
     }
 
     private MybatisPlusK8sCertRepository repository(RmqK8sCertificateMapper mapper) {

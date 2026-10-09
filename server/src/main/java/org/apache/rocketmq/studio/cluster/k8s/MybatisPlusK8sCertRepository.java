@@ -31,6 +31,7 @@ import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -117,7 +118,12 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         entity.setCertPem(cert.getCertPem());
         entity.setKeyPem(cert.getKeyPem());
         entity.setGmtCreate(cert.getGmtCreate());
-        entity.setGmtModified(LocalDateTime.now());
+        // The service stamps both instants from its UTC clock (K8sCertService uses Clock.systemUTC
+        // and the API contract is UTC wall time); re-stamping the modified instant from the JVM
+        // default zone made GET /k8s-certs report it offset from gmt_create of the same row.
+        entity.setGmtModified(cert.getGmtModified() != null
+                ? cert.getGmtModified()
+                : LocalDateTime.now(ZoneOffset.UTC));
         return entity;
     }
 
