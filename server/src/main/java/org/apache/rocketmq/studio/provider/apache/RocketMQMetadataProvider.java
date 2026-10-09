@@ -293,10 +293,26 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private record GroupLiveSnapshot(List<ConsumerInstanceVO> instances, int onlineInstances,
             boolean consumeStatsAvailable, long totalLag, int delaySeconds,
-            boolean consumptionTimestampAvailable) {
+            boolean consumptionTimestampAvailable, List<String> subscribedTopics) {
         private static GroupLiveSnapshot empty() {
-            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false, List.of());
         }
+    }
+
+    /**
+     * The topics the group's subscribers are subscribed to, taken from the connection the same read
+     * already fetched. Without it every listed group shipped the VO's empty default while the detail
+     * read filled the field, so the drawer, the CSV export and the AI detail reported zero
+     * subscribed topics for a group whose own subscription tab listed them.
+     */
+    private static List<String> subscribedTopicsOf(ConsumerConnection connection) {
+        if (connection == null || connection.getSubscriptionTable() == null) {
+            return List.of();
+        }
+        return connection.getSubscriptionTable().keySet().stream()
+                .filter(StringUtils::hasText)
+                .sorted()
+                .toList();
     }
 
     private final ExecutorService onlineEnrichmentExecutor = Executors.newFixedThreadPool(
@@ -375,6 +391,11 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 vo.setTotalLag(liveStats.totalLag());
                 vo.setDelaySeconds(liveStats.delaySeconds());
                 vo.setConsumptionTimestampAvailable(liveStats.consumptionTimestampAvailable());
+                if (!liveStats.subscribedTopics().isEmpty()) {
+                    // An empty snapshot list means "not read" (the enrichment may have been cut short
+                    // by the batch deadline); it must not overwrite what the caller already had.
+                    vo.setSubscribedTopics(new ArrayList<>(liveStats.subscribedTopics()));
+                }
             }
         }
     }
@@ -387,7 +408,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 resolveConsumerConnection(instanceId, groupName);
         List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(connection.connection());
         int onlineInstances = connection.available() ? instances.size() : -1;
-        snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, false, 0L, 0, false));
+        List<String> subscribedTopics = subscribedTopicsOf(connection.connection());
+        snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, false, 0L, 0, false,
+                subscribedTopics));
         try {
             ConsumeStats stats;
             if (StringUtils.hasText(instanceId)) {
@@ -399,7 +422,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             if (stats == null) {
                 return;
             }
-            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true, 0L, 0, false));
+            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true, 0L, 0, false,
+                    subscribedTopics));
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
@@ -428,7 +452,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 timestampAvailable = true;
             }
             snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true,
-                    lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag, delaySeconds, timestampAvailable));
+                    lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag, delaySeconds, timestampAvailable,
+                    subscribedTopics));
         } catch (Exception e) {
             // No consume stats (e.g. POP-only group without an offset table): keep zeros.
         }
