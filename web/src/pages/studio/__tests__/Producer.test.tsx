@@ -692,6 +692,8 @@ describe('ProducerPage', () => {
 
   it('localizes the query form labels and result column titles in Chinese', async () => {
     renderWithProviders(<ProducerPage />);
+    expect(screen.getByRole('combobox', { name: '实例' })).toBeInTheDocument();
+    expect(screen.getByText('选择实例')).toBeInTheDocument();
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalled());
 
     expect(screen.getByText('实例')).toBeInTheDocument();
@@ -703,6 +705,8 @@ describe('ProducerPage', () => {
   it('localizes the query form labels in English', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     renderWithProviders(<ProducerPage />);
+    expect(screen.getByRole('combobox', { name: 'Instance' })).toBeInTheDocument();
+    expect(screen.getByText('Select Instance')).toBeInTheDocument();
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalled());
 
     expect(screen.getByText('Instance')).toBeInTheDocument();
