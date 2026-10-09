@@ -865,6 +865,47 @@ describe('ACL page', () => {
     expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
   });
 
+  it('does not present the previously examined cluster after a failed examine', async () => {
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValueOnce({
+      clusterId: 'cluster-a',
+      aclEnabled: true,
+      aclVersion: 'ACL 2.0',
+      globalWhiteRemoteAddresses: [],
+      accounts: [
+        {
+          accessKey: 'account-from-cluster-a',
+          admin: false,
+          defaultTopicPerm: 'PUB',
+          defaultGroupPerm: 'SUB',
+          topicPerms: [],
+          groupPerms: [],
+        },
+      ],
+      accountCount: 1,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    const clusterInput = screen.getByPlaceholderText('请输入集群 ID');
+    await user.type(clusterInput, 'cluster-a');
+    await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
+    expect(await screen.findAllByText('account-from-cluster-a')).not.toHaveLength(0);
+
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockRejectedValueOnce(
+      new Error('cluster unreachable'),
+    );
+    await user.clear(clusterInput);
+    await user.type(clusterInput, 'cluster-b');
+    await user.click(screen.getByRole('button', { name: /检\s*查\s*配\s*置/ }));
+
+    // The failure must not leave cluster-a's accounts and version on screen under "cluster-b".
+    await waitFor(() =>
+      expect(screen.queryByText('account-from-cluster-a')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('ACL 2.0')).not.toBeInTheDocument();
+  });
+
   it('keeps cluster config ownership with the latest examine request', async () => {
     const firstExamine =
       deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
