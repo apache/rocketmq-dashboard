@@ -1550,6 +1550,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.TOGGLE_ALERT_RULE': { zh: '启停告警规则', en: 'Toggle Alert Rule' },
   'audit.op.DELETE_ALERT_RULE': { zh: '删除告警规则', en: 'Delete Alert Rule' },
   'audit.op.ACKNOWLEDGE_SYSTEM_ALERT': { zh: '确认系统告警', en: 'Acknowledge System Alert' },
+  'audit.op.CREATE_ALERT_SILENCE': { zh: '创建告警静默', en: 'Create Alert Silence' },
+  'audit.op.DELETE_ALERT_SILENCE': { zh: '删除告警静默', en: 'Delete Alert Silence' },
+  'audit.op.IMPORT_CLOUD_INSTANCES': { zh: '导入云端实例', en: 'Import Cloud Instances' },
+  'audit.op.UPDATE_GROUP_SETTINGS': { zh: '更新消费组设置', en: 'Update Group Settings' },
   'audit.op.CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS': {
     zh: '清除已确认告警',
     en: 'Clear Acknowledged Alerts',
@@ -1574,6 +1578,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.res.SETTINGS': { zh: '设置', en: 'Settings' },
   'audit.res.METRICS_DATA_SOURCE': { zh: '指标数据源', en: 'Metrics Data Source' },
   'audit.res.CLOUD_CREDENTIAL': { zh: '云凭据', en: 'Cloud Credential' },
+  'audit.res.ALERT_SILENCE': { zh: '告警静默', en: 'Alert Silence' },
   'audit.res.ALERT_RULE': { zh: '告警规则', en: 'Alert Rule' },
   'audit.res.SYSTEM_ALERT': { zh: '系统告警', en: 'System Alert' },
   'audit.res.K8S_CERTIFICATE': { zh: 'K8s 证书', en: 'K8s Certificate' },
