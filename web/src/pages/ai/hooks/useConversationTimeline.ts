@@ -101,6 +101,7 @@ export function useConversationTimeline(
 
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loadedActiveRun, setLoadedActiveRun] = useState<LoadedActiveRun | null>(null);
+  const ownsSnapshot = loadedActiveRun?.conversationId === conversationId;
   const [nextAfter, setNextAfter] = useState<number | null>(null);
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -176,7 +177,7 @@ export function useConversationTimeline(
   }, [conversationId, limit, maxPages]);
 
   const loadMore = useCallback(async (): Promise<void> => {
-    if (conversationId === null || nextAfter === null || loadingMoreRef.current !== null) return;
+    if (!ownsSnapshot || conversationId === null || nextAfter === null || loadingMoreRef.current !== null) return;
 
     const after = nextAfter;
     const id = ++loadMoreRequestId.current;
@@ -204,7 +205,7 @@ export function useConversationTimeline(
         if (activeRefetchRef.current === null) setLoading(false);
       }
     }
-  }, [conversationId, limit, nextAfter]);
+  }, [conversationId, limit, nextAfter, ownsSnapshot]);
 
   useEffect(() => {
     // Loading is asynchronous; state updates happen after the timeline API resolves.
@@ -218,8 +219,11 @@ export function useConversationTimeline(
     };
   }, [refetch]);
 
-  const bubbles = useMemo(() => groupIntoBubbles(items, runSpeeds), [items, runSpeeds]);
-  const lastSeq = items.length ? items[items.length - 1].seq : 0;
+  const bubbles = useMemo(
+    () => ownsSnapshot ? groupIntoBubbles(items, runSpeeds) : [],
+    [items, ownsSnapshot, runSpeeds],
+  );
+  const lastSeq = ownsSnapshot && items.length ? items[items.length - 1].seq : 0;
   // Only the run of the conversation on screen: a run loaded for another one is not this
   // conversation's to attach, and it is not this conversation's to render either.
   const activeRun =
@@ -228,13 +232,13 @@ export function useConversationTimeline(
       : null;
 
   return {
-    items,
+    items: ownsSnapshot ? items : [],
     bubbles,
     activeRun,
     lastSeq,
     loading,
     error,
-    hasMore: nextAfter !== null,
+    hasMore: ownsSnapshot && nextAfter !== null,
     refetch,
     loadMore,
   };

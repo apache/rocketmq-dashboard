@@ -48,10 +48,12 @@ function page(
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((release) => {
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<T>((release, fail) => {
     resolve = release;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function render(conversationId: number | null = 7, limit?: number, maxPages?: number) {
@@ -297,6 +299,68 @@ describe('useConversationTimeline', () => {
     await waitFor(() => expect(result.current.error).toBe('会话不存在'));
     expect(result.current.loading).toBe(false);
     expect(result.current.items).toEqual([]);
+  });
+
+  it('hidesThePreviousTranscriptWhileTheNewConversationLoadsTest', async () => {
+    const pending = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(20, { type: 'text', text: 'conversation 7' })], 20))
+      .mockReturnValueOnce(pending.promise);
+    const { result, rerender } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.lastSeq).toBe(20));
+
+    rerender({ id: 8 });
+    expect(result.current.items).toEqual([]);
+    expect(result.current.bubbles).toEqual([]);
+    expect(result.current.lastSeq).toBe(0);
+    expect(result.current.hasMore).toBe(false);
+
+    await act(async () => pending.reject(new Error('conversation 8 unavailable')));
+    expect(result.current.error).toBe('conversation 8 unavailable');
+    expect(result.current.items).toEqual([]);
+    expect(result.current.bubbles).toEqual([]);
+  });
+
+  it('doesNotUseThePreviousConversationsCursorForLoadMoreTest', async () => {
+    const pending = deferred<AiTimelineVO>();
+    timelineMock
+      .mockResolvedValueOnce(page([item(20, { type: 'text', text: 'conversation 7' })], 20))
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue(page([item(21, { type: 'text', text: 'wrong page' })], null));
+    const { result, rerender } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    rerender({ id: 8 });
+
+    await act(async () => result.current.loadMore());
+    expect(timelineMock).toHaveBeenCalledTimes(2);
+
+    await act(async () =>
+      pending.resolve(page([item(1, { type: 'text', text: 'conversation 8' })], null)),
+    );
+    expect(result.current.items.map((row) => row.seq)).toEqual([1]);
+    expect(result.current.lastSeq).toBe(1);
+  });
+
+  it('retainsTheCurrentTranscriptWhenASameConversationRefreshFailsTest', async () => {
+    const pending = deferred<AiTimelineVO>();
+    const firstPage = page([item(20, { type: 'text', text: 'conversation 7' })], 20);
+    timelineMock.mockResolvedValueOnce(firstPage).mockReturnValueOnce(pending.promise);
+    const { result } = render(7, 1, 1);
+    await waitFor(() => expect(result.current.lastSeq).toBe(20));
+    let refresh: Promise<void>;
+    act(() => {
+      refresh = result.current.refetch();
+    });
+    expect(result.current.items).toEqual(firstPage.items);
+
+    await act(async () => {
+      const rejected = expect(refresh).rejects.toThrow('refresh failed');
+      pending.reject(new Error('refresh failed'));
+      await rejected;
+    });
+    expect(result.current.items).toEqual(firstPage.items);
+    expect(result.current.lastSeq).toBe(20);
+    expect(result.current.hasMore).toBe(true);
   });
 
   it('staysEmptyWithoutAConversationTest', async () => {
