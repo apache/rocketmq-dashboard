@@ -403,6 +403,24 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
 
+  it('does not render a Version column for nameservers or proxies', async () => {
+    // NameServerVO/ProxyVO carry no version, so the column used to repeat the cluster's version for
+    // every node (and export it to CSV) - a value no component ever reported for that node.
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    // The broker tab does have one, from BrokerVO.version.
+    expect(screen.getByRole('columnheader', { name: /版本|[Vv]ersion/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /NameServer|Nameserver/i }));
+    await screen.findAllByRole('columnheader');
+    expect(screen.queryByRole('columnheader', { name: /版本|[Vv]ersion/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /Proxy/ }));
+    await screen.findAllByRole('columnheader');
+    expect(screen.queryByRole('columnheader', { name: /版本|[Vv]ersion/ })).not.toBeInTheDocument();
+  });
+
   it('does not render a Connections column for nameservers', async () => {
     // The backend NameServerVO has no connection count; the column used to
     // fabricate a hardcoded 0 for every nameserver (and export it to CSV).
