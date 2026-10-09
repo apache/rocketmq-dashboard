@@ -139,6 +139,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    @Transactional
     public boolean replaceRule(AlertRuleVO rule) {
         if (rule.getId() == null || ruleMapper.selectById(rule.getId()) == null) {
             return false;
@@ -289,6 +290,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    @Transactional
     public int deleteAcknowledgedAlerts() {
         notificationOutboxMapper.deleteForAcknowledgedAlerts();
         return Math.toIntExact(alertMapper.delete(
