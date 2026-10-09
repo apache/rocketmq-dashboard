@@ -53,6 +53,24 @@ describe('useAgentCapabilities', () => {
     capabilitiesMock.mockReset();
   });
 
+  it('reports the probed engine and tool switches, keeping unknown as available', async () => {
+    capabilitiesMock.mockResolvedValue({
+      rmqctlAvailable: true,
+      claudeAvailable: false,
+      qoderAvailable: false,
+      mcpEnabled: false,
+      l3ToolsAllowed: false,
+    });
+
+    const { result } = renderHook(() => useAgentCapabilities(true));
+
+    await waitFor(() => expect(result.current.claudeAvailable).toBe(false));
+    expect(result.current.qoderAvailable).toBe(false);
+    expect(result.current.mcpEnabled).toBe(false);
+    expect(result.current.l3ToolsAllowed).toBe(false);
+    expect(result.current.rmqctlAvailable).toBe(true);
+  });
+
   it('failedReprobeDoesNotRetainAnOlderUnavailableResultTest', async () => {
     const firstProbe = deferred<AiAgentCapabilitiesVO>();
     const secondProbe = deferred<AiAgentCapabilitiesVO>();
@@ -69,19 +87,19 @@ describe('useAgentCapabilities', () => {
       firstProbe.resolve(capabilities(false));
       await firstProbe.promise;
     });
-    expect(result.current).toBe(false);
+    expect(result.current.rmqctlAvailable).toBe(false);
 
     rerender({ enabled: false });
     expect(capabilitiesMock).toHaveBeenCalledTimes(1);
 
     rerender({ enabled: true });
     await waitFor(() => expect(capabilitiesMock).toHaveBeenCalledTimes(2));
-    expect(result.current).toBe(true);
+    expect(result.current.rmqctlAvailable).toBe(true);
 
     await act(async () => {
       secondProbe.reject(new Error('temporary network failure'));
       await secondProbe.promise.catch(() => undefined);
     });
-    expect(result.current).toBe(true);
+    expect(result.current.rmqctlAvailable).toBe(true);
   });
 });

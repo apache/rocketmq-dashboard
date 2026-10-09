@@ -1853,6 +1853,22 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.notice.warn': { zh: '注意', en: 'Notice' },
 
   // ─── AI page shell ───
+  'ai.mcpDisabled': {
+    zh: 'Agent 工具调用已被服务端停用',
+    en: 'Agent tool calls are disabled on the server',
+  },
+  'ai.mcpDisabledDescription': {
+    zh: '服务端已关闭 MCP 工具通道（spring.ai.mcp.server.enabled=false），本轮所有 RocketMQ 工具调用都会被拒绝。',
+    en: 'The server has disabled the MCP tool channel (spring.ai.mcp.server.enabled=false); every RocketMQ tool call will be refused.',
+  },
+  'ai.l3ToolsDisabled': {
+    zh: '高危工具已被服务端停用',
+    en: 'Destructive tools are disabled on the server',
+  },
+  'ai.l3ToolsDisabledDescription': {
+    zh: '服务端未开启 L3 高危工具（studio.ai.allow-l3-tools=false），删除、重投等操作会被拒绝。',
+    en: 'The server has not enabled L3 destructive tools (studio.ai.allow-l3-tools=false); deletes, resends and similar operations will be refused.',
+  },
   'ai.rmqctlUnavailable': { zh: 'Agent 工具通道不可用', en: 'Agent tool channel unavailable' },
   'ai.rmqctlUnavailableDescription': {
     zh: '未检测到 rmqctl，托管 Agent 无法调用 RocketMQ 工具，本轮对话只能得到通用回答。',

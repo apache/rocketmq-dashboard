@@ -333,3 +333,44 @@ describe('Composer', () => {
     expect(tooSmall).toHaveLength(0);
   });
 });
+
+describe('Composer engine availability', () => {
+  const openEngineSelect = async () => {
+    const selector = screen.getAllByTitle('执行引擎')[0].querySelector('.ant-select-selector');
+    if (!selector) throw new Error('engine select not found');
+    fireEvent.mouseDown(selector);
+  };
+
+  /** The rendered dropdown item for one engine label. */
+  const optionItem = (label: string): HTMLElement => {
+    const item = screen
+      .getAllByTitle(label)
+      .map((node) => node.closest('.ant-select-item-option'))
+      .find((node): node is Element => node !== null);
+    if (!item) throw new Error(`engine option not found: ${label}`);
+    return item as HTMLElement;
+  };
+
+  it('disables an engine the server probed as absent', async () => {
+    renderComposer({ engineAvailability: { 'claude-code': false, qoder: false } });
+
+    await openEngineSelect();
+
+    // The server probed the binary as absent, so selecting it would only produce a failed run.
+    expect(await screen.findByTitle('Claude Code')).toBeInTheDocument();
+    expect(optionItem('Claude Code')).toHaveClass('ant-select-item-option-disabled');
+    expect(optionItem('Qoder')).toHaveClass('ant-select-item-option-disabled');
+    expect(optionItem('HTTP')).not.toHaveClass('ant-select-item-option-disabled');
+  });
+
+  it('keeps every engine selectable when the probe has not answered', async () => {
+    renderComposer();
+
+    await openEngineSelect();
+
+    for (const label of ['Claude Code', 'Qoder', 'HTTP']) {
+      expect(await screen.findByTitle(label)).toBeInTheDocument();
+      expect(optionItem(label)).not.toHaveClass('ant-select-item-option-disabled');
+    }
+  });
+});

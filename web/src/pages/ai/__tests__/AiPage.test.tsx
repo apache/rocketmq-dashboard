@@ -225,7 +225,7 @@ describe('AiPage', () => {
       claudeAvailable: true,
       qoderAvailable: false,
       mcpEnabled: true,
-      l3ToolsAllowed: false,
+      l3ToolsAllowed: true,
     });
     vi.mocked(getConversationTimeline).mockResolvedValue(timelinePage([]));
     vi.mocked(createConversation).mockResolvedValue(CONVERSATION_7);
@@ -411,7 +411,7 @@ describe('AiPage', () => {
       claudeAvailable: true,
       qoderAvailable: false,
       mcpEnabled: true,
-      l3ToolsAllowed: false,
+      l3ToolsAllowed: true,
     });
 
     renderPage();
@@ -422,6 +422,36 @@ describe('AiPage', () => {
     // the neutral InfoBanner treatment, never a coloured antd Alert.
     expect(banner.closest('.ant-alert')).toBeNull();
     expect(document.querySelector('.ant-alert-warning')).toBeNull();
+  });
+
+  it('explains a refused tool call when the server disabled the MCP channel', async () => {
+    vi.mocked(getAgentCapabilities).mockResolvedValue({
+      rmqctlAvailable: true,
+      claudeAvailable: true,
+      qoderAvailable: true,
+      mcpEnabled: false,
+      l3ToolsAllowed: true,
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId('ai-mcp-disabled-banner')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-l3-disabled-banner')).not.toBeInTheDocument();
+  });
+
+  it('explains a refused destructive tool when L3 tools are disabled', async () => {
+    vi.mocked(getAgentCapabilities).mockResolvedValue({
+      rmqctlAvailable: true,
+      claudeAvailable: true,
+      qoderAvailable: true,
+      mcpEnabled: true,
+      l3ToolsAllowed: false,
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId('ai-l3-disabled-banner')).toBeInTheDocument();
+    expect(screen.queryByTestId('ai-mcp-disabled-banner')).not.toBeInTheDocument();
   });
 
   it('handsOffTheHomePageDraftIntoANewConversationAndAutoSendsItExactlyOnceTest', async () => {

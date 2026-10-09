@@ -84,7 +84,7 @@ const AiPage = () => {
   });
   const timeline = useConversationTimeline(conversationId);
   const run = useAgentRun(conversationId, { refetchTimeline: timeline.refetch });
-  const rmqctlAvailable = useAgentCapabilities(!useMock);
+  const capabilities = useAgentCapabilities(!useMock);
   const startRun = useAiSend({
     conversationId,
     ready: llm.llmReady && !run.isStreaming,
@@ -175,7 +175,13 @@ const AiPage = () => {
         resetKey={conversationId}
         footer={
           <>
-            <RuntimeNotices mock={useMock} rmqctlAvailable={rmqctlAvailable} runError={run.error} />
+            <RuntimeNotices
+              mock={useMock}
+              rmqctlAvailable={capabilities.rmqctlAvailable}
+              mcpEnabled={capabilities.mcpEnabled}
+              l3ToolsAllowed={capabilities.l3ToolsAllowed}
+              runError={run.error}
+            />
             <Composer
               value={inputValue}
               onChange={setInputValue}
@@ -199,6 +205,10 @@ const AiPage = () => {
               canSelectModel={!userId || admin === true}
               engine={engine}
               onEngineChange={setEngine}
+              engineAvailability={{
+                'claude-code': capabilities.claudeAvailable,
+                qoder: capabilities.qoderAvailable,
+              }}
               mode={selectedMode}
               onModeChange={setSelectedMode}
               enhance={enhance}
