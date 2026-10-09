@@ -1092,13 +1092,24 @@ const MessagePageContent = ({
       key: 'consumer',
       label: t('messagePage.verify'),
       children: (
-        <Table
-          columns={consumerStatusColumns}
-          dataSource={traceData?.consumerStatus?.map((c, i) => ({ ...c, _key: i })) || []}
-          rowKey="_key"
-          pagination={false}
-          size="small"
-        />
+        <>
+          {/* Both tabs read the same trace payload, so this one has to report that request's
+              state too: an empty table for a failed or pending load reads as "no consumer groups
+              consumed this message", which is exactly the wrong conclusion. */}
+          {traceLoading ? (
+            <Typography.Text type="secondary">{t('messagePage.loadingTrace')}</Typography.Text>
+          ) : traceError ? (
+            <Alert showIcon type="warning" message={traceError} />
+          ) : (
+            <Table
+              columns={consumerStatusColumns}
+              dataSource={traceData?.consumerStatus?.map((c, i) => ({ ...c, _key: i })) || []}
+              rowKey="_key"
+              pagination={false}
+              size="small"
+            />
+          )}
+        </>
       ),
     },
   ];
