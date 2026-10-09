@@ -62,6 +62,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
+  listAclUsers,
   pageAclUsers,
   updateAclRule,
   updateAclUser,
@@ -164,6 +165,13 @@ const AclPageContent = ({
   // Rule modal
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AclRule | null>(null);
+  /**
+   * The complete user directory, loaded separately from the paged Users tab: the rule dialog's
+   * principal picker and the admin badge answer result-set-wide questions, so a page-scoped list
+   * made a rule impossible to create for any user outside the loaded page (or outside whatever the
+   * Users search box happens to contain).
+   */
+  const [directoryUsers, setDirectoryUsers] = useState<AclUser[]>([]);
   const [ruleForm] = Form.useForm();
 
   // User modal
@@ -262,9 +270,34 @@ const AclPageContent = ({
     userRefreshKey,
   ]);
 
+  useEffect(() => {
+    let mounted = true;
+    void listAclUsers({ instanceId: selectedInstanceId })
+      .then((all) => {
+        if (mounted) setDirectoryUsers(all.map(normalizeUser));
+      })
+      .catch(() => {
+        // Same fallback as the paged load: an unreadable directory leaves the picker with whatever
+        // the current rule already carries.
+        if (mounted) setDirectoryUsers([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedInstanceId, userRefreshKey]);
+
   /* ─── Rule helpers ─── */
+  // The edited rule's principal stays selectable even when the directory no longer lists it (the
+  // account was renamed or deleted), so saving an unrelated change cannot invent a new principal.
+  const principalPickerOptions = [
+    ...new Set([
+      ...directoryUsers.map((user) => user.username),
+      ...(editingRule?.principal ? [editingRule.principal] : []),
+    ]),
+  ].sort((left, right) => left.localeCompare(right));
+
   const isAdmin = (principal: string) =>
-    users.find((u) => u.username === principal)?.admin ?? false;
+    directoryUsers.find((u) => u.username === principal)?.admin ?? false;
 
   const actionTagColor: Record<string, string> = {
     PUB: 'blue',
@@ -1475,9 +1508,9 @@ const AclPageContent = ({
               disabled={tencentRoleMode && !!editingRule}
               showSearch
               optionFilterProp="label"
-              options={users.map((u) => ({
-                value: u.username,
-                label: u.username,
+              options={principalPickerOptions.map((username) => ({
+                value: username,
+                label: username,
               }))}
             />
           </Form.Item>
