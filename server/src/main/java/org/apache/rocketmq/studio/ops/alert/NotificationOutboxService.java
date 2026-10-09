@@ -275,6 +275,14 @@ public class NotificationOutboxService {
                 succeeded.add(deliveryId);
             } catch (org.apache.rocketmq.studio.common.exception.BusinessException error) {
                 failures.put(deliveryId, error.getMessage());
+            } catch (RuntimeException error) {
+                // Each id was already committed by its own update, so an unexpected failure on one
+                // row must not discard the outcome of the ids before it (the loop's whole purpose):
+                // record it and keep going, the way every other per-item loop in this codebase does.
+                log.warn("Retrying notification delivery {} failed unexpectedly: {}",
+                        deliveryId, error.getMessage());
+                failures.put(deliveryId, error.getMessage() == null
+                        ? error.getClass().getSimpleName() : error.getMessage());
             }
         }
         return new NotificationDeliveryBulkRetryResult(succeeded, failures);
