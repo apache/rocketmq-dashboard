@@ -79,10 +79,20 @@ public class CloudCredentialService {
         return csv.toString();
     }
 
+    /** secret_key is VARCHAR(512) and holds the base64 of the secret, not its plaintext. */
+    private static final int SECRET_COLUMN_LENGTH = 512;
+
     /** Column widths, counted in code points like every other user-facing bound in this project. */
     private static void requireWithin(String value, int maxCodePoints, String field) {
         if (value != null && TextBounds.codePointCount(value.trim()) > maxCodePoints) {
             throw new BusinessException(400, field + " must not exceed " + maxCodePoints + " characters");
+        }
+    }
+
+    private static void requireSecretWithinColumn(String secretKey) {
+        if (secretKey != null && CredentialUtils.encodeBase64(secretKey).length() > SECRET_COLUMN_LENGTH) {
+            throw new BusinessException(400,
+                    "Cloud credential secretKey encodes to more than " + SECRET_COLUMN_LENGTH + " characters");
         }
     }
 
@@ -105,13 +115,10 @@ public class CloudCredentialService {
         // surfaced as a generic 500 that did not say which length was allowed.
         requireWithin(credential.getName(), 128, "Cloud credential name");
         requireWithin(credential.getAccessKey(), 255, "Cloud credential accessKey");
+        requireWithin(credential.getRemark(), 255, "Cloud credential remark");
         // The stored form is the base64 of the secret, so the column width applies to that; a
         // 384-character bound on the plaintext would still overflow for a non-ASCII secret.
-        if (credential.getSecretKey() != null
-                && CredentialUtils.encodeBase64(credential.getSecretKey()).length() > 512) {
-            throw new BusinessException(400,
-                    "Cloud credential secretKey encodes to more than 512 characters");
-        }
+        requireSecretWithinColumn(credential.getSecretKey());
         credentialRepository.findByVendorAndAccessKey(credential.getVendor(), credential.getAccessKey())
                 .ifPresent(existing -> {
                     throw new BusinessException(400,
@@ -143,13 +150,18 @@ public class CloudCredentialService {
         if (request.getName() != null && request.getName().isBlank()) {
             throw new BusinessException(400, "Cloud credential name cannot be blank");
         }
+        // The update path writes the same columns as create, so it needs the same bounds: without
+        // them the write was the first length check and its rejection surfaced as a generic 500.
         if (request.getName() != null) {
+            requireWithin(request.getName(), 128, "Cloud credential name");
             existing.setName(request.getName());
         }
         if (request.getSecretKey() != null && !request.getSecretKey().isBlank()) {
+            requireSecretWithinColumn(request.getSecretKey());
             existing.setSecretKey(request.getSecretKey());
         }
         if (request.getRemark() != null) {
+            requireWithin(request.getRemark(), 255, "Cloud credential remark");
             existing.setRemark(request.getRemark());
         }
         existing.setGmtModified(LocalDateTime.now());
