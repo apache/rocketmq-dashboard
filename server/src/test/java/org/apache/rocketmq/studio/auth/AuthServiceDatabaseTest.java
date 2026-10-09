@@ -55,6 +55,8 @@ import static org.mockito.Mockito.when;
 
 class AuthServiceDatabaseTest {
 
+    private static final LocalDateTime UTC_CLOCK_INSTANT = LocalDateTime.of(2026, 8, 13, 0, 0);
+
     private AuthService authService;
     private RmqStudioUserMapper userMapper;
     private RmqStudioSessionMapper sessionMapper;
@@ -245,6 +247,54 @@ class AuthServiceDatabaseTest {
         assertThat(captor.getValue().getUserId()).isEqualTo(1L);
         assertThat(captor.getValue().getTokenHash()).doesNotContain(result.getToken());
         assertThat(captor.getValue().getTokenHash()).hasSize(64);
+    }
+
+    @Test
+    void createdUserCarriesTheUtcAuditInstantsTheApiSerializesTest() {
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        authService.createUser("operator", "password-1", false);
+
+        org.mockito.ArgumentCaptor<RmqStudioUser> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).insert(captor.capture());
+        // rmq_studio_user.gmt_create/gmt_modified otherwise fall back to the database session's
+        // CURRENT_TIMESTAMP, while the API serializes every zone-less timestamp as UTC.
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(UTC_CLOCK_INSTANT);
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(UTC_CLOCK_INSTANT);
+    }
+
+    @Test
+    void createdSessionCarriesTheUtcAuditInstantsTheApiSerializesTest() {
+        RmqStudioUser user = user(1L, "operator", true, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(1L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        authService.login(request);
+
+        org.mockito.ArgumentCaptor<RmqStudioSession> captor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioSession.class);
+        verify(sessionMapper).insert(captor.capture());
+        assertThat(captor.getValue().getGmtCreate()).isEqualTo(UTC_CLOCK_INSTANT);
+        assertThat(captor.getValue().getGmtModified()).isEqualTo(UTC_CLOCK_INSTANT);
+    }
+
+    @Test
+    void passwordChangeStampsTheUtcModifiedInstantTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+
+        authService.changePassword(1L, "password-1", "password-2", true);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioUser>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("gmt_modified");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs())
+                .containsValue(UTC_CLOCK_INSTANT);
     }
 
     @Test

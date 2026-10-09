@@ -307,7 +307,13 @@ public class AuthService {
         user.setPasswordHash(passwordHasher.hash(password));
         user.setAdmin(admin);
         user.setEnabled(true);
-        user.setPasswordChangedAt(now());
+        LocalDateTime current = now();
+        user.setPasswordChangedAt(current);
+        // An omitted gmt_create/gmt_modified falls back to the database session's
+        // CURRENT_TIMESTAMP, which is not UTC on a server running in another zone, while the
+        // API serializes every zone-less timestamp as UTC.
+        user.setGmtCreate(current);
+        user.setGmtModified(current);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -367,7 +373,8 @@ public class AuthService {
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", now())
+                .set("gmt_modified", now()));
         revokeUserSessions(user.getId());
     }
 
@@ -411,6 +418,8 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        session.setGmtCreate(current);
+        session.setGmtModified(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -480,7 +489,10 @@ public class AuthService {
             user.setPasswordHash(passwordHasher.hash(configuredUser.getPassword()));
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
-            user.setPasswordChangedAt(now());
+            LocalDateTime current = now();
+            user.setPasswordChangedAt(current);
+            user.setGmtCreate(current);
+            user.setGmtModified(current);
             try {
                 userMapper.insert(user);
             } catch (DuplicateKeyException exception) {
