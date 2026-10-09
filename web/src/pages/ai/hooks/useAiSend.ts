@@ -65,8 +65,8 @@ export interface UseAiSendOptions {
 
 /**
  * @returns `startRun`, resolving to the conversation id the request was (or will be) sent on, or
- *   null when creating the conversation failed (already reported through `onError`; the caller
- *   restores whatever input the send consumed).
+ *   null when creating the conversation failed or its initiating route was left. Only failures
+ *   on the current route are reported through `onError`.
  */
 export function useAiSend(
   options: UseAiSendOptions,
@@ -83,8 +83,12 @@ export function useAiSend(
   });
 
   const conversationIdRef = useRef(conversationId);
+  const contextVersionRef = useRef(0);
   useEffect(() => {
     conversationIdRef.current = conversationId;
+    return () => {
+      contextVersionRef.current += 1;
+    };
   }, [conversationId]);
 
   useEffect(() => {
@@ -111,11 +115,15 @@ export function useAiSend(
         return current;
       }
       let createdId: number;
+      const contextVersion = contextVersionRef.current;
       try {
-        const created = await createConversation(await withDefaultInstance(createBody));
+        const body = await withDefaultInstance(createBody);
+        if (contextVersion !== contextVersionRef.current) return null;
+        const created = await createConversation(body);
+        if (contextVersion !== contextVersionRef.current) return null;
         createdId = created.id;
       } catch (error) {
-        optionsRef.current.onError(error);
+        if (contextVersion === contextVersionRef.current) optionsRef.current.onError(error);
         return null;
       }
       pendingSendRef.current = { conversationId: createdId, request };
