@@ -16,10 +16,24 @@
  */
 
 import type { MetricData, MetricMapping, MetricSeries } from '../api/metrics';
+import useAuthStore from '../stores/authStore';
 import { readLocalStorage, removeLocalStorage, writeLocalStorage } from './browserStorage';
 import { buildCsv } from './download';
 
 export const METRICS_QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-metrics-query-history';
+
+/**
+ * The history belongs to the account that ran the queries. It holds PromQL text, metric and profile
+ * names, instance and data-source ids and the queried windows, and the auth logout path only clears
+ * the keys the auth store owns - so one global key handed the next operator on a shared workstation
+ * the previous operator's queries, ready to re-run. The sibling client-side preferences carry the
+ * account in their keys for the same reason.
+ */
+export const metricsQueryHistoryStorageKey = (): string => {
+  const { user, userId } = useAuthStore.getState();
+  const account = userId != null ? `user-id:${userId}` : (user ?? '').trim() || 'anonymous';
+  return `${METRICS_QUERY_HISTORY_STORAGE_KEY}:${encodeURIComponent(account)}`;
+};
 export const METRICS_QUERY_HISTORY_LIMIT = 12;
 
 export type MetricSampleKind = 'scalar' | 'histogram';
@@ -340,7 +354,9 @@ export const buildMetricSeriesDetailRows = (
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
@@ -420,7 +436,7 @@ const restoreHistoryEntry = (value: unknown): MetricsQueryHistoryEntry | null =>
 };
 
 export const loadMetricsQueryHistory = (): MetricsQueryHistoryEntry[] => {
-  const raw = readLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY);
+  const raw = readLocalStorage(metricsQueryHistoryStorageKey());
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -436,9 +452,9 @@ export const loadMetricsQueryHistory = (): MetricsQueryHistoryEntry[] => {
 };
 
 export const saveMetricsQueryHistory = (entries: MetricsQueryHistoryEntry[]) =>
-  writeLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+  writeLocalStorage(metricsQueryHistoryStorageKey(), JSON.stringify(entries));
 
-export const clearMetricsQueryHistory = () => removeLocalStorage(METRICS_QUERY_HISTORY_STORAGE_KEY);
+export const clearMetricsQueryHistory = () => removeLocalStorage(metricsQueryHistoryStorageKey());
 
 export const createMetricsQueryHistoryEntry = ({
   profileId,

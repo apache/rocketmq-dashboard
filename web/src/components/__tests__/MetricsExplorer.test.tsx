@@ -31,7 +31,7 @@ import {
 import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
-  METRICS_QUERY_HISTORY_STORAGE_KEY,
+  metricsQueryHistoryStorageKey,
   type MetricsQueryHistoryEntry,
 } from '../../utils/metricsExplorerDiagnostics';
 import MetricsExplorer from '../MetricsExplorer';
@@ -1110,7 +1110,7 @@ describe('MetricsExplorer', () => {
 
   it('restores profile, range, and source from query history', async () => {
     const user = userEvent.setup();
-    localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
+    localStorage.setItem(metricsQueryHistoryStorageKey(), JSON.stringify([createHistoryEntry()]));
 
     renderWithProviders(<MetricsExplorer />);
 
@@ -1148,7 +1148,7 @@ describe('MetricsExplorer', () => {
       },
     ]);
     localStorage.setItem(
-      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      metricsQueryHistoryStorageKey(),
       JSON.stringify([
         createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
       ]),
@@ -1191,7 +1191,7 @@ describe('MetricsExplorer', () => {
       },
     ]);
     localStorage.setItem(
-      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      metricsQueryHistoryStorageKey(),
       JSON.stringify([
         createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
       ]),
@@ -1240,7 +1240,7 @@ describe('MetricsExplorer', () => {
       },
     ]);
     localStorage.setItem(
-      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      metricsQueryHistoryStorageKey(),
       JSON.stringify([
         createHistoryEntry({
           id: 'history-custom-protected',
@@ -1277,7 +1277,7 @@ describe('MetricsExplorer', () => {
   it('filters query history from other instances and shows the current instance context', async () => {
     const user = userEvent.setup();
     localStorage.setItem(
-      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      metricsQueryHistoryStorageKey(),
       JSON.stringify([
         createHistoryEntry({
           id: 'history-instance-a',
@@ -1316,7 +1316,7 @@ describe('MetricsExplorer', () => {
       },
     ]);
     localStorage.setItem(
-      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      metricsQueryHistoryStorageKey(),
       JSON.stringify([
         createHistoryEntry({
           id: 'history-protected-source',
@@ -1375,6 +1375,6 @@ describe('MetricsExplorer', () => {
         },
       }),
     );
-    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('secret-value');
+    expect(localStorage.getItem(metricsQueryHistoryStorageKey())).not.toContain('secret-value');
   });
 });
