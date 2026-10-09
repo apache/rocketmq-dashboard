@@ -246,15 +246,19 @@ const UserManagementPage = () => {
   };
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
     try {
+      const values = await createForm.validateFields();
       await createStudioUser(values);
       message.success(t('userMgmt.userCreated'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
-    } catch {
+    } catch (error) {
+      // Validation failures are surfaced by antd as field errors; only report
+      // request failures here. Either way the rejection must not escape this
+      // handler, since the modal wiring calls it fire-and-forget.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.createFailed'));
     }
   };
@@ -295,8 +299,8 @@ const UserManagementPage = () => {
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
     try {
+      const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
@@ -308,7 +312,9 @@ const UserManagementPage = () => {
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
-    } catch {
+    } catch (error) {
+      // See createUser: validation rejections must stay handled here.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.changePasswordFailed'));
     }
   };
