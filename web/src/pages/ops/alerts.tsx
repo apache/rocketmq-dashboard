@@ -122,9 +122,24 @@ const legacyMetricTranslationKeys: Record<string, string> = {
 export const supportsUnavailableOperator = (metric?: string): boolean =>
   metric != null && availabilityMetrics.has(metric);
 
+/**
+ * The API stores a rule's threshold unit as the metric catalog code ("messages", "seconds",
+ * "ratio"); only the rule dialog translated it, so the rules table rendered the raw code.
+ */
+export const thresholdUnitText = (
+  unit: string | null | undefined,
+  t: (key: string) => string,
+): string | undefined => {
+  if (unit === '%' || unit === 'ratio') return '%';
+  if (unit === 'messages') return t('alerts.unitMessages');
+  if (unit === 'seconds') return t('alerts.unitSeconds');
+  return unit ?? undefined;
+};
+
 export const formatThresholdCondition = (
   rule: AlertRule,
   unavailableLabel = 'Unavailable',
+  unitLabel: (unit?: string | null) => string | undefined = (unit) => unit ?? undefined,
 ): string => {
   if (rule.operator === 'UNAVAILABLE') {
     return unavailableLabel;
@@ -132,7 +147,11 @@ export const formatThresholdCondition = (
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
     return `${rule.operator} ${rule.threshold * 100}%`;
   }
-  return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
+  const unit = unitLabel(rule.thresholdUnit);
+  // A word unit ("messages", "条") reads as a separate token, the same way the rule dialog's
+  // addonAfter renders it; a percent sign stays attached to the number.
+  const suffix = !unit ? '' : unit === '%' ? '%' : ` ${unit}`;
+  return `${rule.operator} ${rule.threshold}${suffix}`;
 };
 
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
@@ -216,12 +235,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     selectedMetricIsRatio || selectedThresholdUnit === '%' || selectedThresholdUnit === 'ratio';
   const thresholdUnitSuffix = selectedThresholdUnit === 'ratio' ? '%' : selectedThresholdUnit;
 
-  const thresholdUnitLabel = (unit?: string | null) => {
-    if (unit === 'messages') return t('alerts.unitMessages');
-    if (unit === 'seconds') return t('alerts.unitSeconds');
-    if (unit === 'ratio') return t('alerts.unitRatio');
-    return unit;
-  };
+  const thresholdUnitLabel = (unit?: string | null) => thresholdUnitText(unit, t);
 
   const unavailableReasonLabel = (reason?: string | null) => {
     if (reason === 'CONSUMER_STATS_UNAVAILABLE') return t('alerts.reasonConsumerStatsUnavailable');
@@ -676,7 +690,8 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       width: 120,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
-      render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
+      render: (_, record) =>
+        formatThresholdCondition(record, t('alerts.unavailableCondition'), thresholdUnitLabel),
     },
     {
       title: t('alerts.duration'),
