@@ -184,10 +184,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .like(StringUtils.hasText(search), RmqTopic::getName, search)
+                // Compare in a fixed case via LOWER(name) so the filter is
+                // identical on H2 (case-sensitive LIKE) and production MySQL
+                // (utf8mb4 collation): a case variant of a system topic must be
+                // hidden on BOTH, matching SystemTopicFilter.isSystem.
+                // Underscore is escaped so the LIKE prefix stays literal.
                 .notIn(RmqTopic::getName, TopicValidator.getSystemTopicSet())
-                .notLikeRight(RmqTopic::getName, "rmq_sys_")
-                .notLikeRight(RmqTopic::getName, "%RETRY%")
-                .notLikeRight(RmqTopic::getName, "%DLQ%")
+                .apply("LOWER(name) NOT LIKE {0}", "rmq\\_sys\\_%")
+                .apply("LOWER(name) NOT LIKE {0}", "\\%retry\\_%")
+                .apply("LOWER(name) NOT LIKE {0}", "\\%dlq\\_%")
                 .orderByAsc(RmqTopic::getName, RmqTopic::getId);
         Page<RmqTopic> result = topicMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toTopicVO).toList(),
