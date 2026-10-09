@@ -107,6 +107,16 @@ describe('message service mock data', () => {
     });
   });
 
+  it('matches the search term case-insensitively and trimmed, like the endpoint', async () => {
+    // DLQService trims the term and the provider lower-cases both sides, so a search that works in
+    // production must not return nothing in mock mode.
+    const upperCase = await listDLQGroups('instance-1', 'ORDER', 1, 20);
+    expect(upperCase.items.map((group) => group.groupName)).toContain('cg-order-processor');
+
+    const padded = await listDLQGroups('instance-1', ' order ', 1, 20);
+    expect(padded.items.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('filters and pages mock DLQ groups', async () => {
     const filtered = await listDLQGroups('instance-1', 'order', 1, 20);
     expect(filtered.items.every((group) => group.groupName.includes('order'))).toBe(true);

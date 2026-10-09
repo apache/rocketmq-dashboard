@@ -130,8 +130,15 @@ export async function listDLQGroups(
     if (page < 1 || pageSize < 1 || pageSize > 100) {
       return Promise.reject(new Error('Invalid page or pageSize'));
     }
+    // The endpoint trims the term and matches case-insensitively
+    // (DLQService: search.trim(); RocketMQDLQProvider: toLowerCase().contains(...)). Matching the
+    // raw term here made a search that works in production return nothing in mock mode.
+    const normalizedSearch = search?.trim().toLowerCase() ?? '';
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
-      (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
+      (group) =>
+        !normalizedSearch ||
+        group.groupName.toLowerCase().includes(normalizedSearch) ||
+        group.dlqTopic.toLowerCase().includes(normalizedSearch),
     );
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {
