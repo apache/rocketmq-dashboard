@@ -445,6 +445,21 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void deleteDataSourceShouldAcceptTheDocumentedKeyBodyTest() throws Exception {
+        doNothing().when(settingsService).deleteDataSource("ds-1");
+
+        // The API spec (§14.7) documents a {"key": ...} body; binding only the query parameter made
+        // a doc-conformant client's request a 400 that deleted nothing.
+        mockMvc.perform(post("/api/settings/datasources/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"key\":\"ds-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is(200)));
+
+        verify(settingsService).deleteDataSource("ds-1");
+    }
+
+    @Test
     void deleteDataSourceShouldRejectMissingKeyTest() throws Exception {
         doThrow(new BusinessException(400, "Data source key is required"))
                 .when(settingsService).deleteDataSource(null);
