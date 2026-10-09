@@ -82,6 +82,16 @@ public class AclService {
 
     public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
             String instanceId, Integer page, Integer pageSize) {
+        return listRules(principal, resource, scope, decision, null, instanceId, page, pageSize);
+    }
+
+    /**
+     * @param aclVersion restricts the page to one ACL version ({@code 1.0}/{@code 2.0}); the console
+     *                   has offered this filter all along, and the repository predicate existed, but
+     *                   nothing carried the value from the request to it.
+     */
+    public PageResult<AclRuleVO> listRules(String principal, String resource, String scope, String decision,
+            String aclVersion, String instanceId, Integer page, Integer pageSize) {
         int normalizedPage = requireValidPage(page);
         int normalizedPageSize = requireValidPageSize(pageSize);
         requireAcl2Supported(instanceId);
@@ -90,12 +100,14 @@ public class AclService {
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
+                    .filter(rule -> equalsIgnoreCase(rule.getAclVersion(), aclVersion))
                     .toList();
             return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
-        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, page={}, pageSize={}",
-                principal, resource, scope, decision, normalizedPage, normalizedPageSize);
-        return aclRepository.findRulePage(principal, resource, scope, decision, null,
+        log.info("Listing ACL rules for principal={}, resource={}, scope={}, decision={}, aclVersion={},"
+                        + " page={}, pageSize={}",
+                principal, resource, scope, decision, aclVersion, normalizedPage, normalizedPageSize);
+        return aclRepository.findRulePage(principal, resource, scope, decision, aclVersion,
                 normalizedPage, normalizedPageSize);
     }
 

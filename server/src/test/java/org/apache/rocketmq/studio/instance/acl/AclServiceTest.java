@@ -112,6 +112,38 @@ class AclServiceTest {
     }
 
     @Test
+    void listRulesShouldForwardTheAclVersionFilterToTheRepositoryTest() {
+        when(aclRepository.findRulePage(null, null, null, null, "1.0", 1, 20))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user1").aclVersion("1.0").build()), 1, 1, 20));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, "1.0",
+                null, 1, 20);
+
+        assertThat(result.getItems()).hasSize(1);
+        verify(aclRepository).findRulePage(null, null, null, null, "1.0", 1, 20);
+    }
+
+    @Test
+    void listRulesShouldFilterTencentRulesByAclVersionTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        when(tencentAclService.listRules("tencent-instance", null)).thenReturn(List.of(
+                AclRuleVO.builder().principal("role-legacy").aclVersion("1.0").build(),
+                AclRuleVO.builder().principal("role-acl2").aclVersion("2.0").build()));
+
+        PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, "2.0",
+                "tencent-instance", 1, 20);
+
+        assertThat(result.getItems()).extracting(AclRuleVO::getPrincipal).containsExactly("role-acl2");
+        assertThat(result.getTotal()).isEqualTo(1);
+    }
+
+    @Test
     void capabilitiesShouldDescribeApacheRemoteReadSupport() {
         InstanceVO instance = InstanceVO.builder()
                 .name("instance-1")
