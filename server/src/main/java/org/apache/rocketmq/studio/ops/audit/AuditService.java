@@ -149,7 +149,15 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        int deleted = auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        if (deleted > 0) {
+            // The endpoint that erases audit evidence must leave evidence of itself: without this
+            // the trail cannot say who removed what, and every sibling destructive operation
+            // (alert bulk delete, DLQ resend, credential and certificate deletion) records one.
+            record("CLEANUP_AUDIT_LOGS", "AUDIT_LOG", null, "beforeDays=" + beforeDays
+                    + ", deleted=" + deleted, "SUCCESS");
+        }
+        return deleted;
     }
 
     private void validatePagination(int page, int pageSize) {
