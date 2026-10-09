@@ -354,6 +354,34 @@ describe('MessagePage async request ownership', () => {
     expect(serviceMocks.getMessageTrace).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a manually refreshed trace when the tab is re-entered', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace
+      .mockResolvedValueOnce(createTrace('first-trace'))
+      .mockResolvedValueOnce(createTrace('refreshed-trace'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('first-trace description')).toBeInTheDocument();
+
+    // An explicit lookup of the same msgId supersedes the cached snapshot ...
+    await user.click(within(dialog).getByRole('button', { name: /查询轨迹/ }));
+    expect(await within(dialog).findByText('refreshed-trace description')).toBeInTheDocument();
+
+    // ... and a tab round-trip must not bring the superseded one back.
+    await user.click(within(dialog).getByText('消息内容'));
+    await user.click(within(dialog).getByText('消息轨迹'));
+    expect(await within(dialog).findByText('refreshed-trace description')).toBeInTheDocument();
+    expect(within(dialog).queryByText('first-trace description')).not.toBeInTheDocument();
+  });
+
   it('requiresGroupAndClientBeforeDirectConsumeTest', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     const user = userEvent.setup({ pointerEventsCheck: 0 });

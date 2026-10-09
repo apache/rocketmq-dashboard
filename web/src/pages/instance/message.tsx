@@ -699,6 +699,15 @@ const MessagePageContent = ({
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);
+      // The tab entry reads a per-message cache, so a manual lookup has to publish its fresher
+      // result there: otherwise switching tabs and coming back re-serves the snapshot this query
+      // just superseded.
+      if (traceQueryMode === 'msgid' && selectedMsg) {
+        traceCacheRef.current.set(
+          JSON.stringify([selectedInstanceId, selectedMsg.topic, value, customTraceTopic.trim()]),
+          Promise.resolve(result),
+        );
+      }
     } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
         setTraceError(describeThrownMessage(error) || t('messagePage.traceLoadFailed'));
