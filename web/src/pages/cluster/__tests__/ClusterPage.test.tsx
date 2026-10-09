@@ -413,6 +413,32 @@ describe('Cluster page', () => {
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
   });
 
+  it('mirrors a queue-count edit onto its pair instead of submitting a mismatched pair', async () => {
+    // The broker exposes a single defaultTopicQueueNums property: the backend mirrors a partial
+    // update onto both counts and rejects a pair that does not match. The dialog always submits
+    // both, so without the mirror an edit of either field alone sends the partner's stale value
+    // and the whole save fails with a 400 the dialog renders as a contentless error.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const writeQueuesInput = within(dialog).getByLabelText('写队列数');
+    await user.clear(writeQueuesInput);
+    await user.type(writeQueuesInput, '16');
+
+    expect(within(dialog).getByLabelText('读队列数')).toHaveValue('16');
+
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+
+    await waitFor(() =>
+      expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ writeQueueNums: 16, readQueueNums: 16 }),
+      ),
+    );
+  });
+
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stalePreview = deferred<ClusterConfigPreviewResult>();

@@ -1418,10 +1418,27 @@ const ClusterPage = () => {
             <Form
               form={configForm}
               layout="vertical"
-              onValuesChange={() => {
+              onValuesChange={(changed) => {
                 configPreviewRequest.invalidate();
                 setConfigPreview(null);
                 setConfigPreviewLoading(false);
+                // A broker has one defaultTopicQueueNums property, so the backend mirrors a
+                // partial update onto both counts and refuses a pair that does not match. Keep
+                // the two inputs in step here: otherwise editing one of them submits the other's
+                // stale value and the whole save is a 400 the dialog cannot explain. The guard
+                // skips the redundant setFieldsValue when the partner field already holds the
+                // value.
+                const queueNums = changed.writeQueueNums ?? changed.readQueueNums;
+                if (
+                  typeof queueNums === 'number' &&
+                  (configForm.getFieldValue('writeQueueNums') !== queueNums ||
+                    configForm.getFieldValue('readQueueNums') !== queueNums)
+                ) {
+                  configForm.setFieldsValue({
+                    writeQueueNums: queueNums,
+                    readQueueNums: queueNums,
+                  });
+                }
               }}
             >
               <Row gutter={16}>
