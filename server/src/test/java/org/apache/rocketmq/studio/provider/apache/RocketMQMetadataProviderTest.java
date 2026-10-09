@@ -886,6 +886,37 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsPageShouldCarryTheGroupsSubscribedTopicsTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-orders");
+        entity.setInstanceId("instance-a");
+        Page<RmqGroup> databasePage = new Page<>(1, 20, 1);
+        databasePage.setRecords(List.of(entity));
+        when(groupMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(databasePage);
+
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        org.apache.rocketmq.remoting.protocol.body.ConsumerConnection connection =
+                new org.apache.rocketmq.remoting.protocol.body.ConsumerConnection();
+        java.util.concurrent.ConcurrentHashMap<String, org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> table =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        table.put("orders", new org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData("orders", "*"));
+        connection.setSubscriptionTable(table);
+        when(admin.examineConsumerConnectionInfo("cg-orders")).thenReturn(connection);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation
+                        .<org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory.AdminAction<Object>>
+                                getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newProvider();
+
+        PageResult<ConsumerGroupVO> result = provider.listConsumerGroupsPage("instance-a", null, null, 1, 20);
+
+        // The list row is what the drawer, the CSV export and the AI detail read; without this the
+        // group reported zero subscribed topics while its own subscription tab listed them.
+        assertThat(result.getItems().getFirst().getSubscribedTopics()).containsExactly("orders");
+    }
+
+    @Test
     void listConsumerGroupsShouldMarkOnlineInstancesUnknownWhenConnectionLookupFailsTest() throws Exception {
         RmqGroup entity = new RmqGroup();
         entity.setName("cg-unknown-connections");
