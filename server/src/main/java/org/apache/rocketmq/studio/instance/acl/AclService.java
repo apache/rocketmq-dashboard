@@ -86,10 +86,18 @@ public class AclService {
         int normalizedPageSize = requireValidPageSize(pageSize);
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
+            // The remote role API does not guarantee a stable order between calls; sorting
+            // before slicing keeps every rule on exactly one page, matching the deterministic
+            // ORDER BY the Apache path gets from the database and the sort the Tencent
+            // pageUsers path already applies.
             List<AclRuleVO> filtered = tencentAclService.listRules(instanceId, principal).stream()
                     .filter(rule -> containsIgnoreCase(rule.getResource(), resource))
                     .filter(rule -> equalsIgnoreCase(rule.getScope(), scope))
                     .filter(rule -> equalsIgnoreCase(rule.getDecision(), decision))
+                    .sorted(Comparator.comparing(AclRuleVO::getPrincipal,
+                                    Comparator.nullsLast(Comparator.naturalOrder()))
+                            .thenComparing(AclRuleVO::getResource,
+                                    Comparator.nullsLast(Comparator.naturalOrder())))
                     .toList();
             return paginateRules(filtered, normalizedPage, normalizedPageSize);
         }
