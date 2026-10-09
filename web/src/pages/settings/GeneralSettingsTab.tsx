@@ -35,6 +35,7 @@ import type { GeneralSettings, GeneralSettingsUpdate } from '../../api/settings'
 import { useTheme } from '../../theme/useTheme';
 import type { ThemeMode } from '../../theme/themePreference';
 import { useLang } from '../../i18n/LangContext';
+import useAuthStore from '../../stores/authStore';
 
 const { Text } = Typography;
 
@@ -70,6 +71,12 @@ export const GeneralSettingsTab = () => {
   const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
+  const authUserId = useAuthStore((state) => state.userId);
+  const authAdmin = useAuthStore((state) => state.admin);
+  // Mirrors the server policy: POST /api/settings/general/save is admin-only, and the
+  // server also hands redacted webhook values to readers. Without a signed-in studio
+  // user (auth disabled) the caller counts as system, so writes stay allowed.
+  const canWriteSettings = !authUserId || authAdmin === true;
   const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();
@@ -121,6 +128,9 @@ export const GeneralSettingsTab = () => {
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
+    // Readers cannot write the shared record; their preference already applied
+    // locally via useTheme, so skip the round-trip that could only end in 403.
+    if (!canWriteSettings) return;
     setSavingPreference(true);
     try {
       const base = await loadFreshSettings();
@@ -150,7 +160,7 @@ export const GeneralSettingsTab = () => {
   };
 
   const clearDingtalkSigningSecret = async () => {
-    if (!settings) return;
+    if (!settings || !canWriteSettings) return;
     setSavingNotification(true);
     try {
       if (
@@ -169,7 +179,7 @@ export const GeneralSettingsTab = () => {
   };
 
   const handleSecurityFinish = async (values: { sessionTimeout: number }) => {
-    if (securityInFlightRef.current) return;
+    if (!canWriteSettings || securityInFlightRef.current) return;
     securityInFlightRef.current = true;
     setSavingSecurity(true);
     try {
@@ -188,7 +198,7 @@ export const GeneralSettingsTab = () => {
     emailRecipients?: string;
     smsWebhook?: string;
   }) => {
-    if (notifyInFlightRef.current) return;
+    if (!canWriteSettings || notifyInFlightRef.current) return;
     notifyInFlightRef.current = true;
     setSavingNotification(true);
     try {
@@ -202,6 +212,7 @@ export const GeneralSettingsTab = () => {
   };
 
   const sendTest = async (channel: 'dingtalk' | 'email' | 'sms') => {
+    if (!canWriteSettings) return;
     setTestingChannel(channel);
     try {
       const values = await notifyForm.validateFields();
@@ -303,7 +314,12 @@ export const GeneralSettingsTab = () => {
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>
-            <Button type="primary" htmlType="submit" loading={savingSecurity} disabled={loading}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={savingSecurity}
+              disabled={loading || !canWriteSettings}
+            >
               {t('settings.saveSettings')}
             </Button>
           </Form.Item>
@@ -344,6 +360,7 @@ export const GeneralSettingsTab = () => {
                 danger
                 onClick={() => void clearDingtalkSigningSecret()}
                 loading={savingNotification}
+                disabled={!canWriteSettings}
               >
                 {t('settings.clearDingtalkSigningSecret')}
               </Button>
@@ -372,13 +389,22 @@ export const GeneralSettingsTab = () => {
                 <Button
                   onClick={() => void sendTest('dingtalk')}
                   loading={testingChannel === 'dingtalk'}
+                  disabled={!canWriteSettings}
                 >
                   {t('settings.testDingtalk')}
                 </Button>
-                <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                <Button
+                  onClick={() => void sendTest('email')}
+                  loading={testingChannel === 'email'}
+                  disabled={!canWriteSettings}
+                >
                   {t('settings.testEmail')}
                 </Button>
-                <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                <Button
+                  onClick={() => void sendTest('sms')}
+                  loading={testingChannel === 'sms'}
+                  disabled={!canWriteSettings}
+                >
                   {t('settings.testSmsWebhook')}
                 </Button>
               </Space>
@@ -386,7 +412,7 @@ export const GeneralSettingsTab = () => {
                 type="primary"
                 htmlType="submit"
                 loading={savingNotification}
-                disabled={loading}
+                disabled={loading || !canWriteSettings}
               >
                 {t('settings.saveSettings')}
               </Button>
