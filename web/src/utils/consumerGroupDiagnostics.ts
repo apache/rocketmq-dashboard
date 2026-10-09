@@ -30,6 +30,7 @@ export type ConsumerGroupHealthIssueCode =
   | 'HIGH_GROUP_LAG'
   | 'HIGH_CONSUME_DELAY'
   | 'UNKNOWN_QUEUE_LAG'
+  | 'CONSUME_STATS_UNAVAILABLE'
   | 'STALE_HEARTBEAT';
 
 export interface ConsumerGroupHealthIssue {
@@ -141,8 +142,14 @@ const heartbeatAgeSeconds = (lastHeartbeat: string | undefined, now: number): nu
 const knownLag = (progress: QueueProgress[]): number =>
   progress.reduce((sum, queue) => sum + (isLagAvailable(queue.diffTotal) ? queue.diffTotal : 0), 0);
 
-const reportedLag = (group: ConsumerGroup, fallback: number): number | null =>
-  isLagAvailable(group.totalLag) ? group.totalLag : fallback;
+const reportedLag = (group: ConsumerGroup, fallback: number): number | null => {
+  // consumeStatsAvailable=false means the broker-side stats could not be read at all; totalLag is
+  // then the provider's placeholder zero, not a measurement.
+  if (group.consumeStatsAvailable === false) {
+    return null;
+  }
+  return isLagAvailable(group.totalLag) ? group.totalLag : fallback;
+};
 
 const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): number => {
   const topics = new Set<string>();
@@ -299,6 +306,16 @@ const runtimeIssues = (
   >,
 ): ConsumerGroupHealthIssue[] => {
   const issues: ConsumerGroupHealthIssue[] = [];
+  if (group.consumeStatsAvailable === false) {
+    issues.push(
+      issue(
+        'CONSUME_STATS_UNAVAILABLE',
+        'warning',
+        '消费统计不可用',
+        '无法读取 Broker 端消费统计，当前堆积量与消费延迟均为未知值，请先检查 Broker 连接与权限。',
+      ),
+    );
+  }
   if (group.onlineInstances < 0) {
     issues.push(
       issue(

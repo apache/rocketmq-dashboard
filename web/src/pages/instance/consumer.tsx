@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { SortOrder } from 'antd/es/table/interface';
 import {
   Alert,
   Table,
@@ -103,7 +104,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
-import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
+import { UNKNOWN_LAG, formatLag, isLagAvailable } from '../../utils/consumerLag';
 import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -118,6 +119,24 @@ const { Text } = Typography;
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
 const UNAVAILABLE_LAG_LABEL = '不可用';
+
+/**
+ * A group whose broker consume stats could not be read at all carries consumeStatsAvailable=false
+ * next to the placeholder zeros the provider keeps (RocketMQMetadataProvider: "No consume stats
+ * (e.g. POP-only group without an offset table), keep zeros"), so its backlog is unknown rather
+ * than zero.
+ */
+const isGroupLagAvailable = (group: ConsumerGroup): boolean =>
+  group.consumeStatsAvailable !== false && isLagAvailable(group.totalLag);
+
+const groupLagSortValue = (group: ConsumerGroup, sortOrder?: SortOrder): number => {
+  if (isGroupLagAvailable(group)) {
+    return group.totalLag;
+  }
+  // Ant Design negates the comparator for a descending column, so the sentinel has to flip with
+  // the direction to keep unmeasured rows after measured ones in both orders.
+  return sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+};
 
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
@@ -685,6 +704,10 @@ const ConsumerPageContent = ({
   // A failed progress read leaves the queues unknown; the diagnosis stays useful
   // for the loaded data but must never read as "everything is healthy".
   const selectedGroupHealthIsPartial = selectedProgressFailed && selectedSubscriptions.length > 0;
+  // Normalised to the sentinel the colour and formatter already understand, so an unreadable
+  // backlog is shown as unknown instead of a green zero.
+  const selectedGroupLag =
+    selectedGroup && isGroupLagAvailable(selectedGroup) ? selectedGroup.totalLag : UNKNOWN_LAG;
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
@@ -977,9 +1000,10 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
-      render: (lag: number) =>
-        isLagAvailable(lag) ? (
+      sorter: (a, b, sortOrder) =>
+        groupLagSortValue(a, sortOrder) - groupLagSortValue(b, sortOrder),
+      render: (lag: number, record: ConsumerGroup) =>
+        isGroupLagAvailable(record) ? (
           lag.toLocaleString()
         ) : (
           <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
@@ -1701,19 +1725,19 @@ const ConsumerPageContent = ({
                         <Card
                           size="small"
                           style={{
-                            borderTop: `3px solid ${lagColor(selectedGroup.totalLag)}`,
+                            borderTop: `3px solid ${lagColor(selectedGroupLag)}`,
                             borderRadius: 8,
                           }}
                         >
                           <Statistic
                             title="总堆积"
-                            value={selectedGroup.totalLag}
+                            value={selectedGroupLag}
                             formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
                             prefix={
-                              <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
+                              <ArrowsClockwise size={18} color={lagColor(selectedGroupLag)} />
                             }
                             valueStyle={{
-                              color: lagColor(selectedGroup.totalLag),
+                              color: lagColor(selectedGroupLag),
                             }}
                           />
                         </Card>
