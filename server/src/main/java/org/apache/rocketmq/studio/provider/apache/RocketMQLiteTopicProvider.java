@@ -459,13 +459,18 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                     // counts would build the ratio out of two different master sets.
                     continue;
                 }
+                Properties brokerConfig = brokerConfig(admin, master);
+                if (brokerConfig == null) {
+                    // Same master-set rule as above: without this master's session cap its
+                    // sessions must not be counted against the remaining masters' caps, which
+                    // would report a session usage ratio above 100% out of two master sets.
+                    log.warn("Skipping master {} for the LiteTopic quota: broker config unavailable", master);
+                    continue;
+                }
                 currentTopics += Math.max(info.getCurrentLmqNum(), 0);
                 maxTopics += Math.max(info.getMaxLmqNum(), 0);
                 currentSessions += Math.max(info.getLiteSubscriptionCount(), 0);
-                Properties brokerConfig = brokerConfig(admin, master);
-                if (brokerConfig != null) {
-                    maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
-                }
+                maxSessions += parsePositiveLong(brokerConfig.getProperty("maxLiteSubscriptionCount"));
             }
 
             LiteTopicQuota quota = new LiteTopicQuota();
