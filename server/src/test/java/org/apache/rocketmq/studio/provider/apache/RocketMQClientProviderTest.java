@@ -258,6 +258,26 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void aFailedSubscriptionGroupScanMarksTheConsumerRowsPartialTest() throws Exception {
+        ClusterInfo topology = clusterInfo("127.0.0.1:10911", "127.0.0.2:10911");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(topology);
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a"));
+        // The second broker's inventory is unreadable, so its groups (and their clients) are absent.
+        when(adminExt.getAllSubscriptionGroup("127.0.0.2:10911", 5000L))
+                .thenThrow(new RemotingConnectException("broker down"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenReturn(consumerConnections(connection("direct", "10.0.0.1:40000")));
+
+        List<ClientConnectionVO> rows = provider.findConnectionsAt("selected:9876", "cluster-a", "Consumer");
+
+        assertThat(rows).extracting(ClientConnectionVO::getClientId).containsExactly("direct");
+        // The page's "partial scan" banner hangs off this flag; without it a missing consumer looks
+        // like a consumer that does not exist.
+        assertThat(rows.getFirst().isPartial()).isTrue();
+    }
+
+    @Test
     void emptyPartialProxyInventoryIsAnErrorTest() throws Exception {
         prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
