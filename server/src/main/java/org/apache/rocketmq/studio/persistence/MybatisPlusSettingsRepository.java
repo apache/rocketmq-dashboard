@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.LikePatterns;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -147,9 +148,15 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         String normalizedType = type == null || type.isBlank() ? null : type.trim();
         QueryWrapper<RmqDataSource> query = new QueryWrapper<RmqDataSource>()
-                .like(normalizedSearch != null, "json", normalizedSearch)
+                // The search text names a data source, and those names contain _ and -: match it
+                // literally rather than as a LIKE pattern.
+                .like(normalizedSearch != null, "json", LikePatterns.escape(normalizedSearch))
+                // The type is spliced into the pattern, so its own _ and % have to be escaped too:
+                // the outer % and the literal "type":" are this fragment's wildcards, not the
+                // caller's.
                 .apply(normalizedType != null,
-                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')", normalizedType)
+                        "LOWER(json) LIKE CONCAT('%\"type\":\"', LOWER({0}), '\"%')",
+                        LikePatterns.escape(normalizedType))
                 .orderByDesc("gmt_modified", "id");
         Page<RmqDataSource> result = dataSourceMapper.selectPage(new Page<>(page, pageSize), query);
         return PageResult.of(result.getRecords().stream().map(this::toDataSourceVO).toList(),

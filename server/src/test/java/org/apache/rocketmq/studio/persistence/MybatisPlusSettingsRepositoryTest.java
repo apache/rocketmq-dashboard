@@ -6,6 +6,8 @@
  */
 package org.apache.rocketmq.studio.persistence;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DuplicateKeyException;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,6 +44,42 @@ class MybatisPlusSettingsRepositoryTest {
         dataSourceMapper = mock(RmqDataSourceMapper.class);
         repository = new MybatisPlusSettingsRepository(settingsMapper, dataSourceMapper,
                 new ObjectMapper());
+    }
+
+    @Test
+    void findDataSourcesMatchesTheSearchTextLiterallyTest() {
+        when(dataSourceMapper.selectPage(any(), any())).thenReturn(
+                new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources("prom_secure", null, 1, 20);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> captor =
+                ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(), captor.capture());
+        QueryWrapper<RmqDataSource> wrapper = captor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("json LIKE");
+        // A data source name is a name, not a pattern: "prom_secure" must not also match
+        // "promXsecure".
+        assertThat(wrapper.getParamNameValuePairs().values()).contains("%prom\\_secure%");
+    }
+
+    @Test
+    void findDataSourcesMatchesTheTypeFilterLiterallyTest() {
+        when(dataSourceMapper.selectPage(any(), any())).thenReturn(
+                new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources(null, "prom_type", 1, 20);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> captor =
+                ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(), captor.capture());
+        QueryWrapper<RmqDataSource> wrapper = captor.getValue();
+        assertThat(wrapper.getSqlSegment()).contains("LOWER(json) LIKE CONCAT");
+        // The type is spliced into a pattern of its own, so its metacharacters need escaping too:
+        // unescaped, "prom_type" would also match "promXtype".
+        assertThat(wrapper.getParamNameValuePairs().values()).contains("prom\\_type");
     }
 
     @Test

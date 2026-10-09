@@ -212,6 +212,22 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listTopicsShouldMatchTheSearchTextLiterally() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(topicMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listTopics(null, null, null, "topic_a")).isEmpty();
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).selectList(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("name LIKE");
+        // _ is a LIKE metacharacter: unescaped, "topic_a" would also match "topicXa" and a lone
+        // "%" would return every topic instead of none.
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains("%topic\\_a%");
+    }
+
+    @Test
     void listConsumerGroupsShouldScopeDatabaseQueryToSelectedInstance() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         when(groupMapper.selectList(any())).thenReturn(List.of());
@@ -223,6 +239,21 @@ class RocketMQMetadataProviderTest {
                 org.mockito.ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper, times(1)).selectList(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("instance_id", "cluster_id");
+    }
+
+    @Test
+    void listConsumerGroupsShouldMatchTheSearchTextLiterally() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(groupMapper.selectList(any())).thenReturn(List.of());
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.listConsumerGroups("instance-a", "cluster-1", "GID_prod-1")).isEmpty();
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper, times(1)).selectList(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("name LIKE");
+        // Group names routinely contain _: unescaped, "GID_prod-1" would also match "GIDXprod-1".
+        assertThat(captor.getValue().getParamNameValuePairs().values()).contains("%GID\\_prod-1%");
     }
 
     @Test
