@@ -229,6 +229,60 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void enqueueStampsBothBookkeepingColumnsInUtcTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.CLUSTER).name("Disk warning")
+                .metric("broker.disk.usage_ratio").threshold(85).channels(List.of("dingtalk")).build();
+        SystemAlertVO alert = SystemAlertVO.builder().id(9L).title("Disk warning").instanceId("local")
+                .currentValue(0.9).labels(java.util.Map.of()).time(LocalDateTime.now()).build();
+        AlertSilenceService silences = mock(AlertSilenceService.class);
+        when(silences.activeUntil(rule, "local", java.util.Map.of(), alert.getTime())).thenReturn(null);
+
+        TimeZone previous = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), silences,
+                    mock(AlertRepository.class), mock(OperationAuditService.class)).enqueue(alert, rule);
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+
+        org.mockito.ArgumentCaptor<RmqAlertNotificationOutbox> row =
+                org.mockito.ArgumentCaptor.forClass(RmqAlertNotificationOutbox.class);
+        verify(mapper).insert(row.capture());
+        // Left to the database default, the columns carry the MySQL session's zone while the
+        // retention cutoff and the delivery page read them as UTC.
+        LocalDateTime utcNow = LocalDateTime.now(ZoneOffset.UTC);
+        assertThat(row.getValue().getGmtCreate()).isBetween(utcNow.minusSeconds(30), utcNow.plusSeconds(5));
+        assertThat(row.getValue().getGmtModified()).isEqualTo(row.getValue().getGmtCreate());
+    }
+
+    @Test
+    void retryingAFailedDeliveryStampsTheModifiedInstantTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(7L);
+        row.setStatus("FAILED");
+        when(mapper.selectById(7L)).thenReturn(row);
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(1);
+
+        new NotificationOutboxService(mapper, mock(SettingsRepository.class),
+                mock(AlertSilenceService.class), mock(AlertRepository.class),
+                mock(OperationAuditService.class)).retryFailedDelivery(7L);
+
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<RmqAlertNotificationOutbox>>
+                update = org.mockito.ArgumentCaptor.forClass(
+                        com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper.class);
+        verify(mapper).update(org.mockito.ArgumentMatchers.isNull(), update.capture());
+        assertThat(update.getValue().getSqlSet()).contains("gmt_modified");
+        assertThat(update.getValue().getParamNameValuePairs().values())
+                .anySatisfy(value -> assertThat((LocalDateTime) value)
+                        .isBetween(LocalDateTime.now(ZoneOffset.UTC).minusSeconds(30),
+                                LocalDateTime.now(ZoneOffset.UTC).plusSeconds(5)));
+    }
+
+    @Test
     void defersDeliveryUntilTheActiveSilenceEndsTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         AlertSilenceService silences = mock(AlertSilenceService.class);
