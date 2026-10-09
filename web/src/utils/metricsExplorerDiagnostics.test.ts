@@ -18,9 +18,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MetricData, MetricMapping } from '../api/metrics';
+import useAuthStore from '../stores/authStore';
 import {
   METRICS_QUERY_HISTORY_LIMIT,
-  METRICS_QUERY_HISTORY_STORAGE_KEY,
   buildMetricCsv,
   buildMetricCsvFilename,
   buildMetricCsvRows,
@@ -28,6 +28,7 @@ import {
   clearMetricsQueryHistory,
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
+  metricsQueryHistoryStorageKey,
   mergeMetricsQueryHistory,
   metricSeriesFullLabel,
   metricSeriesIdentity,
@@ -94,30 +95,44 @@ describe('metrics explorer diagnostics', () => {
     const data: MetricData = {
       resultType: 'matrix',
       warnings: [],
-      series: [{
-        labels: { instance: 'broker-a' },
-        values: [{ timestamp: 2, value: '12' }],
-        histograms: [
-          { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
-          { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
-        ],
-      }],
+      series: [
+        {
+          labels: { instance: 'broker-a' },
+          values: [{ timestamp: 2, value: '12' }],
+          histograms: [
+            { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
+            { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
+          ],
+        },
+      ],
     };
 
-    expect(toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({ timestamp, kind })))
-      .toEqual([
-        { timestamp: 1, kind: 'histogram' },
-        { timestamp: 2, kind: 'scalar' },
-        { timestamp: 3, kind: 'histogram' },
-      ]);
+    expect(
+      toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({
+        timestamp,
+        kind,
+      })),
+    ).toEqual([
+      { timestamp: 1, kind: 'histogram' },
+      { timestamp: 2, kind: 'scalar' },
+      { timestamp: 3, kind: 'histogram' },
+    ]);
     expect(summarizeMetricData(data)).toMatchObject({
-      seriesCount: 1, visibleSeriesCount: 1, sampleCount: 3,
-      scalarSampleCount: 1, histogramSampleCount: 2,
-      earliestTimestamp: 1, latestTimestamp: 3,
+      seriesCount: 1,
+      visibleSeriesCount: 1,
+      sampleCount: 3,
+      scalarSampleCount: 1,
+      histogramSampleCount: 2,
+      earliestTimestamp: 1,
+      latestTimestamp: 3,
     });
     expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({
-      sampleType: 'mixed', sampleCount: 3, latestTimestamp: 3,
-      latestValue: 20, histogramCount: 4, histogramSum: 20,
+      sampleType: 'mixed',
+      sampleCount: 3,
+      latestTimestamp: 3,
+      latestValue: 20,
+      histogramCount: 4,
+      histogramSum: 20,
     });
     const rows = buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' });
     expect(rows.map((row) => row.sampleType)).toEqual(['histogram', 'scalar', 'histogram']);
@@ -276,17 +291,34 @@ describe('metrics explorer diagnostics', () => {
     expect(merged).toHaveLength(METRICS_QUERY_HISTORY_LIMIT);
     expect(merged.find((entry) => entry.queriedAt === 1)).toBeUndefined();
     expect(saveMetricsQueryHistory(merged)).toBe(true);
-    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('password');
+    expect(localStorage.getItem(metricsQueryHistoryStorageKey())).not.toContain('password');
     expect(loadMetricsQueryHistory()[0].queriedAt).toBe(112);
     expect(clearMetricsQueryHistory()).toBe(true);
     expect(loadMetricsQueryHistory()).toEqual([]);
+  });
+
+  it('does not hand one account the query history of another', () => {
+    localStorage.clear();
+    const entry = createHistoryEntry({ queriedAt: 5 });
+    useAuthStore.setState({ user: 'operator-a', userId: 12, admin: false });
+    expect(saveMetricsQueryHistory([entry])).toBe(true);
+    expect(localStorage.getItem(metricsQueryHistoryStorageKey())).not.toBeNull();
+
+    // Logout only clears the keys the auth store owns, so the history has to be keyed by account:
+    // the next operator on this browser must not see the previous one's queries.
+    useAuthStore.setState({ user: 'operator-b', userId: 13, admin: false });
+    expect(loadMetricsQueryHistory()).toEqual([]);
+
+    useAuthStore.setState({ user: 'operator-a', userId: 12, admin: false });
+    expect(loadMetricsQueryHistory()).toHaveLength(1);
+    useAuthStore.setState({ user: null, userId: null, admin: null });
   });
 
   // The unavailable-storage fallbacks are covered by browserStorage.test.ts, which is where
   // the try/catch now lives, so this only asserts the malformed-payload path.
   it('ignores malformed persisted history entries', () => {
     localStorage.clear();
-    localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, '{"broken"');
+    localStorage.setItem(metricsQueryHistoryStorageKey(), '{"broken"');
 
     expect(loadMetricsQueryHistory()).toEqual([]);
   });
