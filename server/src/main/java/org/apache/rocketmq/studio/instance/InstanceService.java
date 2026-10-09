@@ -361,7 +361,11 @@ public class InstanceService {
                                                   CloudImportAccumulator result) {
         log.info("Cloud import finished: vendor={}, credentialId={}, discovered={}, imported={}, skipped={}, failed={}",
                 vendor, credentialId, result.discovered, result.imported, result.skipped, result.failedCount);
-        recordAudit("IMPORT_CLOUD_INSTANCES", "INSTANCE", String.valueOf(credentialId), null,
+        // The resource of an import is the credential it read, not an instance: the timeline drawer
+        // looks rows up by (resourceType, resourceName), so "INSTANCE" + a credential id attributed
+        // the operation to whichever instance happens to carry that id, while the credential's own
+        // history - where an auditor looks for what was done with it - showed nothing.
+        recordAudit("IMPORT_CLOUD_INSTANCES", "CLOUD_CREDENTIAL", String.valueOf(credentialId), null,
                 "vendor=" + vendor + ", imported=" + result.imported + ", skipped=" + result.skipped
                         + ", failed=" + result.failedCount,
                 cloudImportAuditResult(result.imported, result.failedCount));

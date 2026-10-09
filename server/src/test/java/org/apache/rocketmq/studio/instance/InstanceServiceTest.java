@@ -1642,7 +1642,9 @@ class InstanceServiceTest {
         verify(catalog).listCloudInstances(1L, "cn-broken", null);
         verify(catalog).listCloudInstances(1L, "cn-working", null);
         verify(catalog).getCloudInstance(1L, "cn-working", "rmq-working");
-        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+        // The audited resource is the credential the import read: the timeline drawer looks rows up
+        // by (resourceType, resourceName), so "INSTANCE" + this id misattributed the operation.
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("CLOUD_CREDENTIAL"), eq("1"), eq(null),
                 argThat(detail -> detail.contains("imported=1") && detail.contains("failed=1")),
                 eq("PARTIAL"), eq(null));
     }
@@ -1658,7 +1660,9 @@ class InstanceServiceTest {
         assertThat(result.getFailedCount()).isEqualTo(1);
         assertThat(result.getFailed()).containsExactly("regions: invalid credential");
 
-        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("INSTANCE"), eq("1"), eq(null),
+        // The audited resource is the credential the import read: the timeline drawer looks rows up
+        // by (resourceType, resourceName), so "INSTANCE" + this id misattributed the operation.
+        verify(operationAuditService).record(eq("IMPORT_CLOUD_INSTANCES"), eq("CLOUD_CREDENTIAL"), eq("1"), eq(null),
                 argThat(detail -> detail.contains("imported=0") && detail.contains("failed=1")),
                 eq("FAILED"), eq(null));
     }
