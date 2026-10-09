@@ -41,11 +41,12 @@ docker compose logs -f producer consumer
 
 ```bash
 # 集群状态：rocketmq-studio 下两个 broker
-docker compose exec nameserver sh bin/mqadmin clusterList -n nameserver:9876
+# 地址用容器的唯一名，网络共享时服务名 nameserver 可能解析到其他 stack 的容器
+docker compose exec nameserver sh bin/mqadmin clusterList -n rmq-nameserver:9876
 
 # 消息轨迹数据（轨迹写入 RMQ_SYS_TRACE_TOPIC）
 docker compose exec broker-0 sh bin/mqadmin consumeMessage \
-  -n nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5
+  -n rmq-nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5
 ```
 
 更多查询命令（queryMsgByUniqueKey / queryMsgTraceById / queryMsgByKey）见
