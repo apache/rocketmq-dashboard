@@ -112,7 +112,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
 
                 List<ClusterVO> clusters = new ArrayList<>();
-                for (Map.Entry<String, Set<String>> entry : clusterAddrTable.entrySet()) {
+                // The remoting table is a HashMap, so its iteration order changes between
+                // snapshots; sort by cluster name so the discovered list is stable and matches
+                // the ordering RealClusterProvider already applies to its own table walk.
+                List<Map.Entry<String, Set<String>>> entries = new ArrayList<>(clusterAddrTable.entrySet());
+                entries.sort(Map.Entry.comparingByKey());
+                for (Map.Entry<String, Set<String>> entry : entries) {
                     String clusterName = entry.getKey();
                     Set<String> brokerNames = entry.getValue();
 
