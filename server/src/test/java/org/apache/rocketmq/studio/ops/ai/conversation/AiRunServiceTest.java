@@ -216,6 +216,20 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aDegradedConversationShouldTellTheLiveStreamTooTest() {
+        when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
+
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
+
+        // Live and replayed must render alike: the notice is persisted as the run's first event, so
+        // the observer that is still attached has to hear it as well - not only whoever reloads
+        // after the fact.
+        assertThat(AiRunTestSupport.typesOf(inserted)).startsWith("user", "notice");
+        assertThat(emitters.get(0).eventCount("\"type\":\"notice\"")).isEqualTo(1);
+        assertThat(emitters.get(0).eventText()).contains(RmqctlWorkspace.DEGRADED_NOTICE_MESSAGE);
+    }
+
+    @Test
     void aConversationWithNoInstanceShouldSayItIsUnboundRatherThanDegradedTest() {
         conversation.setInstanceId(null);
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
