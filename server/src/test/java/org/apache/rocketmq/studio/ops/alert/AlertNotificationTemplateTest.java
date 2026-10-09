@@ -33,6 +33,33 @@ class AlertNotificationTemplateTest {
     }
 
     @Test
+    void rendersLargeValuesAndThresholdsWithoutScientificNotationTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Consumer lag").metric("consumer.lag.total")
+                .threshold(12000000).thresholdUnit("messages").build();
+        SystemAlertVO alert = SystemAlertVO.builder().level(AlertLevel.warning).title("Consumer lag")
+                .description("FIRING").transition("FIRING").instanceId("local")
+                .currentValue(12500000.0).time(LocalDateTime.of(2026, 8, 23, 12, 0))
+                .labels(Map.of()).build();
+
+        String rendered = AlertNotificationTemplate.render("${value}/${threshold}${thresholdUnit}", alert, rule);
+
+        // Double.toString would deliver the same alert as "1.25E7/1.2E7messages".
+        assertThat(rendered).isEqualTo("12500000/12000000messages");
+    }
+
+    @Test
+    void rendersNonFiniteValuesWithoutAPlainDecimalFormTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Consumer lag").metric("consumer.lag.total")
+                .threshold(100).thresholdUnit("messages").build();
+        SystemAlertVO alert = SystemAlertVO.builder().level(AlertLevel.warning).title("Consumer lag")
+                .description("FIRING").transition("FIRING").instanceId("local")
+                .currentValue(Double.POSITIVE_INFINITY).time(LocalDateTime.of(2026, 8, 23, 12, 0))
+                .labels(Map.of()).build();
+
+        assertThat(AlertNotificationTemplate.render("${value}", alert, rule)).isEqualTo("Infinity");
+    }
+
+    @Test
     void rendersPercentageValuesForPaddedStoredMetricsTest() {
         AlertRuleVO rule = AlertRuleVO.builder().name("Disk threshold").metric(" broker.disk.usage_ratio ")
                 .threshold(85).thresholdUnit("%").build();
