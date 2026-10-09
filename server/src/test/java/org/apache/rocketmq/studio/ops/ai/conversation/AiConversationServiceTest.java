@@ -243,10 +243,16 @@ class AiConversationServiceTest {
     @Test
     void capTitleShouldCutOnCodePointBoundariesTest() {
         String emoji = String.valueOf(Character.toChars(0x1F600));
-        // 512 code points of emoji-bearing text; the old 512-UTF-16-unit cut split the last emoji.
+        // 32 x (15 y + 1 emoji) fills the 512-code-point budget exactly, but it is 544 UTF-16
+        // units, so the old unit-based cut stopped after 30 groups plus two y's: it lost code
+        // points here rather than splitting an emoji. The next case covers the split itself.
         String mixed = ("y".repeat(15) + emoji).repeat(32);
         assertThat(AiConversationService.capTitle(mixed + emoji + "z".repeat(600)))
                 .isEqualTo(mixed);
+        // A three-unit period puts the old 512-unit cut in the middle of a surrogate pair
+        // (512 = 3 x 170 + 2); the cap must drop the whole character instead of storing half of one.
+        assertThat(AiConversationService.capTitle(("y" + emoji).repeat(300)))
+                .isEqualTo(("y" + emoji).repeat(256));
         // 511 ASCII characters plus one emoji is exactly the 512-code-point budget; appending one
         // more emoji must drop it whole instead of leaving half a surrogate pair behind.
         assertThat(AiConversationService.capTitle("y".repeat(511) + emoji + emoji))
