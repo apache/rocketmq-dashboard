@@ -67,6 +67,21 @@ describe('audit presentation helpers', () => {
     });
   });
 
+  it('presents credential reveals as their own localized operations', () => {
+    expect(getAuditOperationPresentation('REVEAL_ACL_USER_CREDENTIALS')).toEqual({
+      labelKey: 'audit.op.REVEAL_ACL_USER_CREDENTIALS',
+      label: 'Reveal ACL User Credentials',
+      color: 'gold',
+      category: 'security',
+    });
+    expect(getAuditOperationPresentation('REVEAL_CLOUD_CREDENTIAL')).toEqual({
+      labelKey: 'audit.op.REVEAL_CLOUD_CREDENTIAL',
+      label: 'Reveal Cloud Credential',
+      color: 'gold',
+      category: 'settings',
+    });
+  });
+
   it('falls back to title-cased labels for new operation codes', () => {
     expect(getAuditOperationPresentation('UPSERT_NEW_RESOURCE')).toEqual({
       label: 'Upsert New Resource',
