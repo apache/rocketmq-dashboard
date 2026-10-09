@@ -1109,3 +1109,65 @@ describe('ACL page', () => {
     );
   });
 });
+
+describe('ACL page refetch loading', () => {
+  it('marks the rules table loading while a filtered query is in flight', async () => {
+    const hanging = deferred<AclRule[]>();
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          principal: 'remote-user',
+          resource: 'remote-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+    await screen.findAllByText('remote-user');
+
+    vi.mocked(aclService.listAclRules).mockReturnValueOnce(hanging.promise);
+    fireEvent.change(screen.getByPlaceholderText('搜索主体'), {
+      target: { value: 'remote' },
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeNull();
+    });
+
+    await act(async () => {
+      hanging.resolve([
+        {
+          id: 2,
+          principal: 'remote-user',
+          resource: 'another-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['SUB'],
+          decision: 'DENY',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-24T00:00:00Z',
+        },
+      ]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
+  });
+});
