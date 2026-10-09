@@ -65,6 +65,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -502,7 +503,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
             List<BrokerRouteVO> routes = new ArrayList<>();
             if (routeData.getQueueDatas() != null) {
-                for (QueueData qd : routeData.getQueueDatas()) {
+                // The queue list order comes from the broker's table walk and is not stable
+                // across snapshots; order by broker name so the route table does not reshuffle.
+                List<QueueData> orderedQueueDatas = new ArrayList<>(routeData.getQueueDatas());
+                orderedQueueDatas.sort(Comparator.comparing(QueueData::getBrokerName,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+                for (QueueData qd : orderedQueueDatas) {
                     BrokerData bd = brokerDataMap.get(qd.getBrokerName());
                     Map<Long, String> brokerAddrs = orderedBrokerAddrs(bd);
                     String masterAddr = brokerAddrs.get(MixAll.MASTER_ID);
