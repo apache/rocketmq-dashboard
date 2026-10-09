@@ -49,6 +49,7 @@ import {
   listAuditRecords,
 } from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
+import { describeApiError } from '../../utils/apiError';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -306,8 +307,10 @@ const AuditPage: React.FC = () => {
       const csv = await exportAuditLogs(activeFilter);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
-    } catch {
-      message.error('导出审计日志失败，请稍后重试');
+    } catch (error) {
+      // The server refuses an export above AuditService.MAX_EXPORT_RECORDS with a 400 that names
+      // the cap and says to narrow the filters; retrying the same request can never succeed.
+      message.error(describeApiError(error, '导出审计日志失败，请稍后重试'));
     } finally {
       setExporting(false);
     }
