@@ -78,12 +78,17 @@ cp "$binary" "${stage}/${bin_name}"
 cp "${legal_dir}/LICENSE" "${stage}/LICENSE"
 cp "${legal_dir}/NOTICE" "${stage}/NOTICE"
 
-# Copy completion scripts if they exist (produced by `make completion`)
-completion_dir="${script_dir}/../bin/completion"
-if [ -d "$completion_dir" ]; then
-    mkdir -p "${stage}/completion"
-    cp "$completion_dir"/* "${stage}/completion/" 2>/dev/null || true
+# The completion scripts must ship with every release archive. They are produced by
+# `make completion`, which `make package` runs before calling this script; honor an explicitly
+# configured build directory. A missing directory or a failed copy is a packaging error,
+# not a silent omission.
+completion_dir="${COMPLETION_DIR:-${script_dir}/../bin/completion}"
+if [ ! -d "$completion_dir" ]; then
+    echo "Missing completion scripts in $completion_dir; run make completion first" >&2
+    exit 1
 fi
+mkdir -p "${stage}/completion"
+cp "$completion_dir"/* "${stage}/completion/"
 
 # The license manifest and the full license texts must ship with the package.
 cp -r "$legal_dir" "${stage}/legal"

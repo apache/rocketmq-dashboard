@@ -91,7 +91,7 @@ build-all: catalog-verify
 
 license-binary: build-all
 
-package: license-binary
+package: license-binary completion
 	@rm -rf $(PACKAGE_DIR)
 	@mkdir -p $(PACKAGE_DIR)
 	@set -e; for target in $(TARGETS); do \
@@ -101,7 +101,7 @@ package: license-binary
 		else \
 			binary=$(BUILD_DIR)/rmqctl-$$os-$$arch; \
 		fi; \
-		GO="$(GO)" bash scripts/package-release.sh "$$binary" "$$os" "$$arch" "$(VERSION)" "$(LEGAL_DIR)/$$target" "$(PACKAGE_DIR)"; \
+		GO="$(GO)" COMPLETION_DIR="$(BUILD_DIR)/completion" bash scripts/package-release.sh "$$binary" "$$os" "$$arch" "$(VERSION)" "$(LEGAL_DIR)/$$target" "$(PACKAGE_DIR)"; \
 	done
 
 checksum: package
