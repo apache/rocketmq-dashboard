@@ -43,6 +43,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -433,6 +434,31 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aWorkerThatStartsAfterFinalisationMustNotResurrectTheRunTest() {
+        // A stop can land between registration and submission, and submit() then finalises the run
+        // itself. The worker task may still be scheduled, and when it eventually runs, markRunning
+        // must not write RUNNING over the terminal row: an active row nobody owns locks the
+        // conversation behind 409s until the orphan sweep reaps it.
+        DeferredExecutorService deferred = new DeferredExecutorService();
+        service = serviceWith(deferred);
+        AiEventSink sink = executor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
+        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofMillis(1));
+        AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation,
+                AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.QUEUED), sink, handle,
+                null, provider.engine(), "hello", null, false, Duration.ofSeconds(300), null);
+
+        handle.requestStop(AbortReason.USER_STOP);
+        executor.submit(context);
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.STOPPED.name());
+
+        deferred.runQueued();
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.STOPPED.name());
+        assertThat(registry.isLive(RUN_ID)).isFalse();
+    }
+
+    @Test
     void onlyOneCallerShouldEverWinTheTerminalWriteTest() {
         AiEventSink sink = executor.newSink(CONVERSATION_ID, RUN_ID, 1, 0);
         AiRunExecutor.RunContext context = new AiRunExecutor.RunContext(conversation,
@@ -568,6 +594,54 @@ class AiRunServiceTest {
     private static RmqctlWorkspace.Preparation preparation() {
         return new RmqctlWorkspace.Preparation("/tmp/ws", "/tmp/ws/home", "/tmp/ws/rmqctl.yaml",
                 "/tmp/ws/mcp.json", "/tmp/ws/agent-system-prompt.txt", "localtest", Map.of());
+    }
+
+    /** An executor that parks each submitted task instead of running it, so a test decides when the
+     * worker starts — the interleaving the stop-before-worker-start race needs. */
+    private static final class DeferredExecutorService
+            extends AbstractExecutorService implements ExecutorService {
+
+        private Runnable queued;
+        private boolean shutdown;
+
+        @Override
+        public void execute(Runnable command) {
+            queued = command;
+        }
+
+        void runQueued() {
+            Runnable task = queued;
+            queued = null;
+            if (task != null) {
+                task.run();
+            }
+        }
+
+        @Override
+        public void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            shutdown = true;
+            return List.of();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
     }
 
     private static RmqAiEvent event(int seq, String type, String payload) {
