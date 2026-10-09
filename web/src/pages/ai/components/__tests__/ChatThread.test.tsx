@@ -239,6 +239,27 @@ describe('ChatThread', () => {
     expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('2');
   });
 
+  it('counts every new message in a batch without counting updates or removals', () => {
+    const initial = [userBubble('first question')];
+    const { rerender } = renderThread({ bubbles: initial });
+    placeReader(600);
+    fireEvent.scroll(screen.getByTestId('ai-thread-scroll'));
+    scrollIntoView.mockClear();
+    const update = (bubbles: Bubble[]) => rerender(
+      <LangProvider><ChatThread bubbles={bubbles} /></LangProvider>,
+    );
+    const batch = [...initial, assistantBubble('first answer'), userBubble('next question'), assistantBubble('next answer')];
+    update(batch);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('3');
+    update([...batch.slice(0, -1), assistantBubble('updated next answer')]);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('3');
+    update(initial);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('3');
+    update([...initial, userBubble('another question'), assistantBubble('another answer')]);
+    expect(screen.getByTestId('ai-thread-unread')).toHaveTextContent('5');
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('jumpsBackToTheLatestAndClearsTheBadgeTest', async () => {
     const user = userEvent.setup();
     renderThread({ bubbles: [userBubble('检查集群状态')] });
