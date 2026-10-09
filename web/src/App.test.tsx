@@ -151,10 +151,7 @@ describe('AuthGate', () => {
   });
 
   it('hides protected content and rechecks the session after another tab signs out', async () => {
-    let resolveRecheck!: (status: {
-      loginRequired: boolean;
-      authenticated: boolean;
-    }) => void;
+    let resolveRecheck!: (status: { loginRequired: boolean; authenticated: boolean }) => void;
     mockedGetAuthStatus
       .mockResolvedValueOnce({
         loginRequired: true,
@@ -207,11 +204,13 @@ describe('AuthGate', () => {
       );
     });
     await waitFor(() => expect(mockedGetAuthStatus).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(useAuthStore.getState()).toMatchObject({
-      user: 'account-b',
-      userId: 8,
-      admin: false,
-    }));
+    await waitFor(() =>
+      expect(useAuthStore.getState()).toMatchObject({
+        user: 'account-b',
+        userId: 8,
+        admin: false,
+      }),
+    );
     expect(await screen.findByText('protected content')).toBeInTheDocument();
   });
 
