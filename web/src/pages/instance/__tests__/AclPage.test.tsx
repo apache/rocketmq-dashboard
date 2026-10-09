@@ -122,6 +122,15 @@ describe('ACL page', () => {
     });
   });
 
+  it('does not offer in-memory sorters on the paged rule and user tables', async () => {
+    renderWithProviders(<AclPage />);
+
+    await screen.findByText('remote-user');
+    // Both inventories are server-paginated and the endpoints have no sort parameter, so a header
+    // sorter reorders the loaded page only while its arrow claims the whole result set is sorted.
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+  });
+
   it('loads ACL rules and users through the service layer', async () => {
     renderWithProviders(<AclPage />);
 

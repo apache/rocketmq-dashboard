@@ -590,7 +590,6 @@ const AclPageContent = ({
       key: 'principal',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 200,
-      sorter: (a, b) => a.principal.localeCompare(b.principal),
       render: (text: string) => (
         <Space size={6}>
           <User size={14} color="#8c8c8c" weight="fill" />
@@ -608,7 +607,6 @@ const AclPageContent = ({
       title: t('acl.resource'),
       key: 'resource',
       minWidth: 240,
-      sorter: (a, b) => a.resource.localeCompare(b.resource),
       render: (_: unknown, record: AclRule) => (
         <Space size={6}>
           <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{record.resource}</span>
@@ -641,7 +639,6 @@ const AclPageContent = ({
       dataIndex: 'decision',
       key: 'decision',
       width: 80,
-      sorter: (a, b) => a.decision.localeCompare(b.decision),
       render: (decision: string) => (
         <Tag color={decision === 'ALLOW' ? 'green' : 'red'} style={{ fontWeight: 600 }}>
           {decision === 'ALLOW' ? t('acl.allow') : t('acl.deny')}
@@ -653,7 +650,6 @@ const AclPageContent = ({
       dataIndex: 'aclVersion',
       key: 'aclVersion',
       width: 100,
-      sorter: (a, b) => String(a.aclVersion).localeCompare(String(b.aclVersion)),
       render: (version: AclRule['aclVersion']) => (
         <Tag color={String(version) === '2.0' ? 'geekblue' : 'default'}>{version}</Tag>
       ),
@@ -663,7 +659,6 @@ const AclPageContent = ({
       dataIndex: 'scope',
       key: 'scope',
       width: 100,
-      sorter: (a, b) => a.scope.localeCompare(b.scope),
       render: (scope: string) => (
         <span style={{ fontSize: 14 }}>
           {scope === 'cluster' ? t('acl.cluster') : t('acl.namespace')}
@@ -675,7 +670,6 @@ const AclPageContent = ({
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
         <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
@@ -725,7 +719,6 @@ const AclPageContent = ({
       key: 'username',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 200,
-      sorter: (a, b) => a.username.localeCompare(b.username),
       render: (text: string, record: NormalizedAclUser) => (
         <Space size={6}>
           <User size={14} color="#8c8c8c" weight="fill" />
@@ -744,7 +737,6 @@ const AclPageContent = ({
       dataIndex: 'accessKey',
       key: 'accessKey',
       width: 220,
-      sorter: (a, b) => a.accessKey.localeCompare(b.accessKey),
       render: (text: string, record: NormalizedAclUser) => {
         const revealed = revealedKeys.has(record.id);
         const fullAccessKey = credentialsByUser[String(record.id)]?.accessKey ?? text;
@@ -792,7 +784,6 @@ const AclPageContent = ({
       dataIndex: 'admin',
       key: 'admin',
       width: 100,
-      sorter: (a, b) => Number(a.admin) - Number(b.admin),
       render: (val: boolean, record: AclUser) => (
         <Switch
           checked={val}
@@ -808,7 +799,6 @@ const AclPageContent = ({
       dataIndex: 'clusters',
       key: 'clusters',
       width: 280,
-      sorter: (a, b) => a.clusters.length - b.clusters.length,
       render: (clusters: string[]) => (
         <Space size={4} wrap>
           {clusters.map((c) => (
@@ -824,7 +814,6 @@ const AclPageContent = ({
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       width: 160,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (iso?: string | null) => (
         <span style={{ fontSize: 14, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
