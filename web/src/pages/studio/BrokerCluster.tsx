@@ -251,12 +251,14 @@ const BrokerClusterPage = () => {
 
   useEffect(() => {
     mountedRef.current = true;
-    const requestId = loadRequestId.current;
     void Promise.resolve().then(() => {
       loadData();
     });
     return () => {
-      loadRequestId.current = requestId + 1;
+      // Monotonic, like every other staleness counter in the repo: loadData
+      // and the visibility poller both increment it, so writing back the
+      // captured value could rewind it to an id that is still in flight.
+      loadRequestId.current += 1;
       mountedRef.current = false;
     };
   }, [loadData]);
