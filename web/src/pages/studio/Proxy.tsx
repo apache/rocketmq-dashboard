@@ -131,6 +131,9 @@ const ProxyPage: React.FC = () => {
         });
       } catch {
         // Health probing is best-effort; keep the unknown status when it is unavailable.
+        // A newer request may have superseded this one while the probe was pending; writing
+        // the fallback here would restore a stale node list over the newer result.
+        if (requestId !== loadRequestId.current) return false;
       }
       setProxyNodes(nodes);
 
