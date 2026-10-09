@@ -30,6 +30,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.TimeZone;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,6 +70,25 @@ class RocketMQConsumerDiagnosticsProviderTest {
         lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         provider = new RocketMQConsumerDiagnosticsProvider(runtimeAdminClientResolver, adminFactory, properties);
+    }
+
+    @Test
+    void getConsumerStackShouldStampTheCaptureTimeAsUtcTest() throws Exception {
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("ConsumeMessageThread_1 TID: 12 STATE: RUNNABLE\n");
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        TimeZone original = TimeZone.getDefault();
+        try {
+            // A default-zone capture under Asia/Shanghai is eight hours ahead of UTC, so a drift
+            // bound far below that discriminates the UTC conversion without a frozen clock.
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
+            assertThat(Duration.between(result.getCapturedAt(),
+                    LocalDateTime.now(ZoneOffset.UTC)).abs().getSeconds()).isLessThan(60);
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

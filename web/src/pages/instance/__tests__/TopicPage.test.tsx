@@ -113,6 +113,18 @@ const selectedInstance = {
   gmtModified: '2026-01-01T00:00:00Z',
 };
 
+const healthyBrokerRoute: BrokerRoute = {
+  brokerName: 'broker-a',
+  brokerAddr: '10.0.0.1:10911',
+  masterAddr: '10.0.0.1:10911',
+  writeQueues: 8,
+  readQueues: 8,
+  perm: 'RW',
+  readable: true,
+  writable: true,
+  replicaCount: 1,
+};
+
 const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
     <App>
@@ -185,7 +197,7 @@ describe('TopicPage', () => {
     });
     topicServiceMocks.sendTopicMessage.mockResolvedValue({
       msgId: 'MSG-0001',
-      sendTime: '2026-01-02T00:00:00Z',
+      sendTime: Date.parse('2026-01-02T00:00:00Z'),
       offsetMsgId: 'OFFSET-0001',
     });
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -566,6 +578,57 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('still loads the routes when the consumer page fails, and does not claim the topic has no route', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '10.101.2.11:10911',
+        writeQueues: 8,
+        readQueues: 8,
+        perm: 'RW',
+      },
+    ]);
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // The route lookup is an independent request: a failed consumer page must not skip it, or the
+    // modal renders the empty fallback as "the broker has no route" for a topic that exists.
+    await waitFor(() =>
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+  });
+
+  it('shows a retry instead of the rebuild action when the route request itself failed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    expect(await screen.findByText('路由诊断：加载失败')).toBeInTheDocument();
+    // Rebuilding an existing topic is not the answer to a failed request.
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('labels an empty consumer table as a failed load instead of as no consumers', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // Those rows never arrived, so an empty table must not read as "nobody consumes this topic".
+    expect(await screen.findByText('消费者加载失败，请重试')).toBeInTheDocument();
+  });
+
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -658,6 +721,39 @@ describe('TopicPage', () => {
     );
     await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(2));
     expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
+  });
+
+  it('drops a deleted topic from the selection so the batch delete cannot re-submit it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const topic = buildTopics(1)[0];
+    let call = 0;
+    topicServiceMocks.listTopicsPage.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? { items: [topic], total: 1, page: 1, size: 20 }
+        : { items: [], total: 0, page: 1, size: 20 };
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    // The row is gone, so a selection still holding its name can only fail on the next batch
+    // delete - and that failure re-seeds the same unusable selection.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument(),
+    );
   });
 
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
@@ -1117,7 +1213,7 @@ describe('TopicPage', () => {
 
     await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
     expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
-    expect(within(dialog).getByText('重复属性会覆盖前面的值：traceId')).toBeInTheDocument();
+    expect(within(dialog).getByText('重复属性仅保留第一个值：traceId')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
@@ -1156,6 +1252,78 @@ describe('TopicPage', () => {
       20,
     );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+  });
+
+  it('renders an unresolvable Topic consumer lag as unavailable instead of -1', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-orders',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          // ConsumerLagResolver.UNKNOWN: the broker answered, but this group's lag is not
+          // resolvable, and metricsAvailable stays true because stats were returned.
+          diffTotal: -1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+    expect(screen.queryByText('-1')).toBeNull();
+  });
+
+  it('renders the broadcasting consumer model from the API value with the broadcast color', async () => {
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'BROADCASTING',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-aliyun-broadcast',
+          consumeType: 'BROADCASTING',
+          messageModel: 'Broadcasting',
+          consumeTps: 0,
+          diffTotal: 0,
+        },
+        {
+          group: 'cg-clustering',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 5,
+          diffTotal: 0,
+        },
+      ],
+      total: 3,
+      page: 1,
+      pageSize: 20,
+    });
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const broadcastTags = await screen.findAllByText('广播消费');
+    expect(broadcastTags).toHaveLength(2);
+    for (const tag of broadcastTags) {
+      expect(tag.closest('.ant-tag')).toHaveClass('ant-tag-orange');
+    }
+    const clusteringTags = await screen.findAllByText('集群消费');
+    expect(clusteringTags).toHaveLength(1);
+    expect(clusteringTags[0].closest('.ant-tag')).toHaveClass('ant-tag-blue');
   });
 
   it('renders subscription group names as links in the topic detail modal', async () => {
@@ -1225,12 +1393,66 @@ describe('TopicPage', () => {
       resolveSecond([healthyRoute]);
       await secondCheck;
     });
-    expect(screen.getByText(/所有 Topic 在 Broker 上均有路由/)).toBeInTheDocument();
+    // The check only looks at the rows of the current page and filter, so the verdict must say so
+    // instead of declaring the whole inventory healthy.
+    expect(
+      screen.getByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由.*只覆盖当前页与当前筛选/),
+    ).toBeInTheDocument();
 
     await act(async () => {
       resolveFirst([]);
       await firstCheck;
     });
     expect(screen.queryByText('缺失路由')).not.toBeInTheDocument();
+  });
+
+  it('reports a failed route check instead of claiming every topic has a route', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(1));
+    topicServiceMocks.getTopicRoutes.mockRejectedValue(new Error('blip'));
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    // A lookup that threw proves nothing about that topic, so the empty state must not fall back
+    // to the healthy verdict: nothing was verified, and the transient toast is long gone by the
+    // time anyone reads the dialog.
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('counts only the topics whose route check succeeded', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(2));
+    topicServiceMocks.getTopicRoutes.mockImplementation(async (name: string) => {
+      if (name === 'topic-02') throw new Error('blip');
+      return [healthyBrokerRoute];
+    });
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/2 个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+  });
+
+  it('scopes the sync verdict to the rows the list actually shows', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    // Rows belonging to another instance are still in state while an instance switch is in
+    // flight, and the table hides them; the verdict must not count topics nobody can see.
+    mockTopicsList([buildTopics(1)[0], { ...buildTopics(2)[1], instanceId: 'instance-other' }]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([healthyBrokerRoute]);
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    expect(screen.queryByText('topic-02')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(
+      await screen.findByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由/),
+    ).toBeInTheDocument();
   });
 });

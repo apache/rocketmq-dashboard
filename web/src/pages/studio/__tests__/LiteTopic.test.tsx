@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
+import type { Instance } from '../../../api/instance';
 import { downloadCsv } from '../../../utils/download';
 import LiteTopic, { formatTime } from '../LiteTopic';
 
@@ -33,6 +34,17 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+const instanceApiMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
+
+vi.mock('../../../api/instance', async () => {
+  const instanceModule =
+    await vi.importActual<typeof import('../../../api/instance')>('../../../api/instance');
+  return {
+    ...instanceModule,
+    listInstances: instanceApiMocks.listInstances,
+  };
+});
 
 vi.mock('../../../utils/download', async () => {
   const downloadModule =
@@ -119,6 +131,36 @@ describe('LiteTopic Page', () => {
       consumedMessages: 0,
       popProgress: 96,
     });
+    instanceApiMocks.listInstances.mockResolvedValue([]);
+  });
+
+  it('sends the owning instance id when extending TTL', async () => {
+    // LiteTopicTTLUpdateDTO requires a non-blank instanceId; only the
+    // Apache-vendor instance is a candidate for the ownership-checked write.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+      { id: 2, name: 'cloud-1', vendor: 'ALIYUN' },
+    ] as unknown as Instance[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('延长 TTL'));
+
+    // exactly one Apache-vendor instance -> auto-selected in the modal
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).not.toHaveBeenCalled();
+      const selected = document.querySelector('.ant-modal .ant-select-selection-item');
+      expect(selected?.textContent).toBe('apache-main');
+    });
+
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    // antd inserts a space between the two CJK chars of the confirm button
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('apache-main', 'order-*', 7200);
+    });
   });
 
   it('returns to the first page when the local TTL filter changes', async () => {
@@ -154,6 +196,32 @@ describe('LiteTopic Page', () => {
     expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
     const popProgressLabel = await screen.findByText('Pop 进度');
     expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
+  });
+
+  it('allows viewing every session linked to the same LiteTopic row', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'order-*', sessionIds: ['session-1', 'session-2'] },
+    ]);
+    apiMocks.queryLiteTopicSession.mockImplementation(async (sessionId: string) => ({
+      sessionId,
+      clientId: sessionId === 'session-1' ? 'first-client' : 'second-client',
+      totalMessages: 100,
+      consumedMessages: 0,
+    }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    expect(await screen.findByText('first-client')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '会话 ID' }));
+    await user.click(
+      await screen.findByText('session-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-2');
+    expect(await screen.findByText('second-client')).toBeInTheDocument();
+    expect(screen.queryByText('first-client')).not.toBeInTheDocument();
   });
 
   it('keeps the latest session detail when an earlier request resolves last', async () => {

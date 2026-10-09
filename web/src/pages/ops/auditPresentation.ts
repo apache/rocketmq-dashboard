@@ -78,6 +78,11 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
   CREATE_ACL_USER: { label: 'Create ACL User', color: 'blue', category: 'security' },
   UPDATE_ACL_USER: { label: 'Update ACL User', color: 'cyan', category: 'security' },
   DELETE_ACL_USER: { label: 'Delete ACL User', color: 'volcano', category: 'security' },
+  REVEAL_ACL_USER_CREDENTIALS: {
+    label: 'Reveal ACL User Credentials',
+    color: 'gold',
+    category: 'security',
+  },
   UPSERT_PLAIN_ACCESS_CONFIG: {
     label: 'Upsert Plain Access Config',
     color: 'purple',
@@ -103,11 +108,18 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
     color: 'volcano',
     category: 'settings',
   },
+  REVEAL_CLOUD_CREDENTIAL: {
+    label: 'Reveal Cloud Credential',
+    color: 'gold',
+    category: 'settings',
+  },
 
   CREATE_ALERT_RULE: { label: 'Create Alert Rule', color: 'blue', category: 'alerts' },
   UPDATE_ALERT_RULE: { label: 'Update Alert Rule', color: 'cyan', category: 'alerts' },
   TOGGLE_ALERT_RULE: { label: 'Toggle Alert Rule', color: 'gold', category: 'alerts' },
   DELETE_ALERT_RULE: { label: 'Delete Alert Rule', color: 'volcano', category: 'alerts' },
+  CREATE_ALERT_SILENCE: { label: 'Create Alert Silence', color: 'blue', category: 'alerts' },
+  DELETE_ALERT_SILENCE: { label: 'Delete Alert Silence', color: 'volcano', category: 'alerts' },
   ACKNOWLEDGE_SYSTEM_ALERT: {
     label: 'Acknowledge System Alert',
     color: 'green',
@@ -118,6 +130,10 @@ const operationPresentation: Record<string, AuditOperationPresentation> = {
     color: 'volcano',
     category: 'alerts',
   },
+
+  IMPORT_CLOUD_INSTANCES: { label: 'Import Cloud Instances', color: 'cyan', category: 'instance' },
+
+  UPDATE_GROUP_SETTINGS: { label: 'Update Group Settings', color: 'purple', category: 'metadata' },
 
   CREATE_INSTANCE: { label: 'Create Instance', color: 'blue', category: 'instance' },
   UPDATE_INSTANCE: { label: 'Update Instance', color: 'cyan', category: 'instance' },
@@ -156,6 +172,7 @@ const resourcePresentation: Record<string, AuditPresentation> = {
   METRICS_DATA_SOURCE: { label: 'Metrics Data Source', color: 'purple' },
   CLOUD_CREDENTIAL: { label: 'Cloud Credential', color: 'cyan' },
   ALERT_RULE: { label: 'Alert Rule', color: 'gold' },
+  ALERT_SILENCE: { label: 'Alert Silence', color: 'gold' },
   SYSTEM_ALERT: { label: 'System Alert', color: 'gold' },
   K8S_CERTIFICATE: { label: 'K8s Certificate', color: 'lime' },
 };

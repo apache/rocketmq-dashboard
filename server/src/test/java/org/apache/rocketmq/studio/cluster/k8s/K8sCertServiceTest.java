@@ -27,6 +27,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,6 +40,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,6 +57,33 @@ class K8sCertServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(
             Instant.parse("2025-07-01T00:00:00Z"), ZoneOffset.UTC);
+
+    /**
+     * Self-signed certificate (CN=k8s-cert-tz-test). Only the instants matter;
+     * the expected values below are derived from this PEM at runtime, so the
+     * fixture never goes stale.
+     */
+    private static final String TEST_CERT_PEM = """
+            -----BEGIN CERTIFICATE-----
+            MIIDFzCCAf+gAwIBAgIUS8uQTyfAomd6WVQ1tFW8ATqGbgIwDQYJKoZIhvcNAQEL
+            BQAwGzEZMBcGA1UEAwwQazhzLWNlcnQtdHotdGVzdDAeFw0yNjEwMDMxNjMxNTla
+            Fw0yNzEwMDMxNjMxNTlaMBsxGTAXBgNVBAMMEGs4cy1jZXJ0LXR6LXRlc3QwggEi
+            MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC9LNaNL5urWlpkE01l28cYPCz7
+            biTd0dB8rpCN0TRFbaPfwVrtLhQMl9yNs62pani8uVHcoR7Uugy0K1TzNDuIMs0v
+            /ztby5KTdnGVSYReBMlP7wp6znc6PR+m9EUj+iPWj2qu0B0uK2C29tSeh8Z3oQyD
+            LWmah3WfPkDviDEjF5q8/DgPpJPT6tzgWK2Hh3jHcxgiZrqaIwvCA77Sz4cz+GVt
+            67OIXYSdKe/0zrJsbQh7g0iWZrq1iup3y19Yc1/U0qwTEHO88L7UEAXe/Zv019sz
+            IBhEjIjpdIzFHpNWV8vTx/k+KzXfV7sgHkkNb7bwfnjgXxc89KyIq/Q5parbAgMB
+            AAGjUzBRMB0GA1UdDgQWBBSZnmdGM6T9+cNOgy/PYMjBlOSstjAfBgNVHSMEGDAW
+            gBSZnmdGM6T9+cNOgy/PYMjBlOSstjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
+            DQEBCwUAA4IBAQCSBliRrjNdOhAokNP7hVtiXiEs/E1m3QNNYWglcebOSHNt4XMB
+            sp7OSXV1GDvgb0MS/O+jesuhQLrspUnDiJCJsQUnWYZ9fzHLBanAxkiXi+jHlvAo
+            sBENGoRcp4ZGO/nP0xfxhYzcrnfgUuitMB5vCgnbwy48AjVsv4TGHABUetBgn4td
+            OmBY2N8aAhUfh928233ByzCCwqXfuQsc0pSKNJC21ScTZ7WkBOMBC/8moV9pOppH
+            yNw2C1e3c5YgLLrIM+QrcbQ7gfhDkEtPVeChqUDoBu2tEpEODJ0d4bRLPzxvU+fi
+            aqsTjYPp29NKoyKrL7wGyAiDMwsAgXrE16n9
+            -----END CERTIFICATE-----
+            """;
 
     @Mock
     private K8sCertRepository k8sCertRepository;
@@ -139,6 +171,38 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getDaysRemaining()).isEqualTo(180);
         assertThat(expiringCert.getStatus()).isEqualTo(CertStatus.expired);
         assertThat(expiringCert.getDaysRemaining()).isEqualTo(-1);
+    }
+
+    @Test
+    void createCertShouldParseCertificateInstantsAsUtcWallTimeTest() throws Exception {
+        // The API serializes notBefore/notAfter as zoneless LocalDateTime; the
+        // frontend contract (formatUtcDateTime) treats those values as UTC. The
+        // service used to convert X509 instants with ZoneId.systemDefault(), so
+        // on a server whose OS zone is not UTC the stored wall time carried the
+        // server offset and every viewer saw a shifted expiry.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            CreateCertDTO command = CreateCertDTO.builder()
+                    .k8sId("tz-check-cert")
+                    .cluster("tz-cluster")
+                    .type("TLS")
+                    .certPem(TEST_CERT_PEM)
+                    .build();
+            when(k8sCertRepository.save(any(K8sCertVO.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+
+            K8sCertVO result = k8sCertService.createCert(command);
+
+            X509Certificate parsed = (X509Certificate) CertificateFactory.getInstance("X.509")
+                    .generateCertificate(new ByteArrayInputStream(TEST_CERT_PEM.getBytes(StandardCharsets.UTF_8)));
+            assertThat(result.getNotAfter())
+                    .isEqualTo(LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneOffset.UTC));
+            assertThat(result.getNotBefore())
+                    .isEqualTo(LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneOffset.UTC));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

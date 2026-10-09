@@ -123,6 +123,13 @@ export async function listDLQGroups(
   pageSize = 20,
 ): Promise<DLQGroupPage> {
   if (isMockMode()) {
+    // Mirror the backend pagination contract (DLQService: page >= 1,
+    // pageSize 1..100 -> 400 "Invalid page or pageSize"): without this the
+    // mock accepts out-of-range values and a negative page slices from the
+    // end of the list.
+    if (page < 1 || pageSize < 1 || pageSize > 100) {
+      return Promise.reject(new Error('Invalid page or pageSize'));
+    }
     const groups = (mockDLQGroups as unknown as DLQGroup[]).filter(
       (group) => !search || group.groupName.includes(search) || group.dlqTopic.includes(search),
     );
@@ -173,7 +180,14 @@ export async function listDLQMessages(params: {
   pageSize?: number;
 }): Promise<DLQMessagePage> {
   if (isMockMode()) {
-    return { items: [], total: 0, page: params.page ?? 1, size: params.pageSize ?? 20 };
+    // Mirror the backend contract (DLQController @Min(1) page/pageSize,
+    // @Max(100) pageSize -> 400).
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 20;
+    if (page < 1 || pageSize < 1 || pageSize > 100) {
+      return Promise.reject(new Error('Invalid page or pageSize'));
+    }
+    return { items: [], total: 0, page, size: pageSize };
   }
   return messageApi.listDLQMessages(params);
 }

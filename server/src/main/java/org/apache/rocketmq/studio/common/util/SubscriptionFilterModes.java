@@ -18,7 +18,7 @@ package org.apache.rocketmq.studio.common.util;
 
 /**
  * Maps a subscription filter expression type to the studio {@code filterMode} display value.
- * Shared by the Apache and Aliyun providers so consumer-group subscription tables render the
+ * Shared by the Apache, Aliyun and Tencent providers so consumer-group subscription tables render the
  * same values across instance types: {@code SQL92} is normalized to {@code SQL}, {@code CLASS_FILTER}
  * is kept, and anything else (including a null/unknown type) defaults to {@code TAG}.
  */

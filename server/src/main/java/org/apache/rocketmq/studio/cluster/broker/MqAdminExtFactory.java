@@ -26,10 +26,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
@@ -38,7 +41,8 @@ import java.util.stream.Collectors;
  * <p>This is the single real-network entry point shared by every live cluster/metadata provider.
  * Admin clients are created lazily, started once and cached per NameServer address and credential
  * reference so subsequent calls reuse the established connection without crossing identities. All
- * cached clients are shut down on context destruction.
+ * cached clients are shut down on context destruction. Retired clients leave the cache immediately
+ * and shut down after their admitted actions finish.
  *
  * <p>The {@link RPCHook} parameter carries Remoting authentication when a selected instance has
  * an externally configured admin credential.
@@ -50,7 +54,8 @@ public class MqAdminExtFactory {
     /** Default admin RPC timeout in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MILLIS = 5000L;
 
-    private final Map<AdminClientCacheKey, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
+    private final Map<AdminClientCacheKey, ClientLease<DefaultMQAdminExt>> cache = new ConcurrentHashMap<>();
+    private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock(true);
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -90,22 +95,46 @@ public class MqAdminExtFactory {
         }
         AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
                 normalizeAuthenticationIdentity(authenticationIdentity));
-        DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
-                key -> {
-                    // Re-check under the cache lock so a request that passed the initial closed check
-                    // cannot create a fresh connection while the factory is shutting down.
-                    if (closed) {
-                        throw new BusinessException(503, "Admin factory is shutting down");
-                    }
-                    return createAndStart(key.namesrvAddr(), rpcHook);
-                });
+        ClientLease<DefaultMQAdminExt> lease;
+        while (true) {
+            if (closed) {
+                throw new BusinessException(503, "Admin factory is shutting down");
+            }
+            lease = cache.computeIfAbsent(cacheKey, key -> {
+                // Re-check before client creation; admission re-checks again after creation.
+                if (closed) {
+                    throw new BusinessException(503, "Admin factory is shutting down");
+                }
+                return new ClientLease<>(
+                        createAndStart(key.namesrvAddr(), rpcHook), this::safeShutdown);
+            });
+            boolean acquired;
+            Lock admissionLock = lifecycleLock.readLock();
+            admissionLock.lock();
+            try {
+                if (closed) {
+                    cache.remove(cacheKey, lease);
+                    lease.retire();
+                    throw new BusinessException(503, "Admin factory is shutting down");
+                }
+                acquired = lease.acquire();
+            } finally {
+                admissionLock.unlock();
+            }
+            if (acquired) {
+                break;
+            }
+            cache.remove(cacheKey, lease);
+        }
         try {
-            return action.apply(admin);
+            return action.apply(lease.client());
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
             log.warn("Admin action failed against namesrv {}: {}", namesrvAddr, ex.getMessage());
             throw new BusinessException(502, "RocketMQ admin call failed: " + rootMessage(ex));
+        } finally {
+            lease.release();
         }
     }
 
@@ -126,7 +155,7 @@ public class MqAdminExtFactory {
             if (!entry.getKey().namesrvAddr().equals(normalizedNamesrvAddr)) {
                 return false;
             }
-            safeShutdown(entry.getValue());
+            entry.getValue().retire();
             return true;
         });
         log.info("Released RocketMQ admin clients for namesrv {}", normalizedNamesrvAddr);
@@ -143,9 +172,9 @@ public class MqAdminExtFactory {
         }
         AdminClientCacheKey key = new AdminClientCacheKey(normalizedNamesrvAddr,
                 normalizeAuthenticationIdentity(authenticationIdentity));
-        DefaultMQAdminExt admin = cache.remove(key);
-        if (admin != null) {
-            safeShutdown(admin);
+        ClientLease<DefaultMQAdminExt> lease = cache.remove(key);
+        if (lease != null) {
+            lease.retire();
             log.info("Released RocketMQ admin client for namesrv {} and identity {}",
                     normalizedNamesrvAddr, key.authenticationIdentity());
         }
@@ -212,9 +241,17 @@ public class MqAdminExtFactory {
 
     @PreDestroy
     public void shutdown() {
-        closed = true;
-        cache.values().forEach(this::safeShutdown);
-        cache.clear();
+        List<ClientLease<DefaultMQAdminExt>> leases;
+        Lock shutdownLock = lifecycleLock.writeLock();
+        shutdownLock.lock();
+        try {
+            closed = true;
+            leases = List.copyOf(cache.values());
+            cache.clear();
+        } finally {
+            shutdownLock.unlock();
+        }
+        leases.forEach(ClientLease::retire);
         log.info("Shut down all RocketMQ admin clients");
     }
 

@@ -586,10 +586,10 @@ describe('AI API', () => {
       expect(result).toEqual([]);
     });
 
-    it('scopes tool discovery to the selected cluster', async () => {
-      mock.onGet('/ai/tools', { params: { cluster: 'cluster-a' } }).reply(200, { data: [] });
+    it('scopes tool discovery to the selected instance', async () => {
+      mock.onGet('/ai/tools', { params: { instanceId: 'instance-a' } }).reply(200, { data: [] });
 
-      await expect(listTools('cluster-a')).resolves.toEqual([]);
+      await expect(listTools('instance-a')).resolves.toEqual([]);
     });
 
     it('should handle server error', async () => {
