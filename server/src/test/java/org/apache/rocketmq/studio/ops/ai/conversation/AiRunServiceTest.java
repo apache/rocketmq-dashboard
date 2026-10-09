@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -56,6 +57,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -223,6 +225,29 @@ class AiRunServiceTest {
         service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("hello"));
 
         assertThat(inserted.get(1).getPayload()).contains(RmqctlWorkspace.UNBOUND_NOTICE_MESSAGE);
+    }
+
+    @Test
+    void anHttpTurnShouldNotPrepareAnAgentWorkspaceItCannotUseTest() {
+        when(llmClient.supports(any())).thenReturn(true);
+        doAnswer(invocation -> {
+            Consumer<String> tokens = invocation.getArgument(3);
+            tokens.accept("pong");
+            return null;
+        }).when(llmClient).stream(any(), any(), any(), any());
+        when(workspace.prepare(anyLong(), any()))
+                .thenThrow(new BusinessException(500, "the workspace directory is unusable"));
+
+        service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
+                "hello", null, LlmConfigVO.ENGINE_HTTP, null, false, null));
+
+        // A completion turn has no agent CLI, so it never reads the workspace: a broken tools
+        // configuration must not fail it, and an unbound conversation must not be warned about
+        // tools this engine never had.
+        verify(workspace, never()).prepare(anyLong(), any());
+        assertThat(AiRunTestSupport.typesOf(inserted)).containsExactly("user", "text", "run_status");
+        assertThat(runUpdates.get(runUpdates.size() - 1).getStatus())
+                .isEqualTo(RunStatus.COMPLETED.name());
     }
 
     @Test
