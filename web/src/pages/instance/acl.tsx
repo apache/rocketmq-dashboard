@@ -195,6 +195,16 @@ const AclPageContent = ({
   useEffect(() => {
     let mounted = true;
 
+    // Every dependency change issues a new query; without re-engaging the
+    // spinners the tables keep presenting the previous page's rows as if they
+    // already matched the new filters while that query is on the wire. Deferred
+    // to a microtask like the cluster page's registry loading flag.
+    void Promise.resolve().then(() => {
+      if (!mounted) return;
+      setRulesLoading(true);
+      setUsersLoading(true);
+    });
+
     void listAclRules({
       instanceId: selectedInstanceId,
       principal: rulePrincipalFilter || undefined,
