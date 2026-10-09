@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
@@ -75,6 +75,37 @@ describe('MessageQueryHistoryDrawer', () => {
       page: 1,
       size: 20,
     });
+  });
+
+  it.each(['messages', 'traces'] as const)('recovers an out-of-range %s page after changing instance', async (tab) => {
+    const user = userEvent.setup();
+    const row = tab === 'messages'
+      ? { id: 1, queryType: 'KEY', topic: 'orders', messageKey: 'remaining-record', resultCount: 1, queriedBy: 'alice', queriedAt: '' }
+      : { id: 1, msgId: 'remaining-record', topic: 'orders', nodeCount: 1, consumerCount: 1, queriedBy: 'alice', queriedAt: '' };
+    const list = tab === 'messages' ? vi.mocked(listMessageQueryHistory) : vi.mocked(listTraceQueryHistory);
+    list.mockImplementation(async ({ clusterId, page = 1 }) => ({
+      items: clusterId === 'instance-a' || page === 1 ? [row] : [],
+      total: clusterId === 'instance-a' ? 60 : 1,
+      page, size: 20,
+    }) as never);
+    const drawer = (clusterId: string) => (
+      <App><LangProvider><MessageQueryHistoryDrawer open clusterId={clusterId} onClose={vi.fn()} /></LangProvider></App>
+    );
+    const view = render(drawer('instance-a'));
+    if (tab === 'traces') await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
+    expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+    await user.click(within(screen.getByRole('tabpanel')).getByTitle('3'));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 })));
+    view.rerender(drawer('instance-b'));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ clusterId: 'instance-b', page: 1 })));
+    expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+  });
+
+  it('does not offer a page size that the fixed-size API request ignores', async () => {
+    vi.mocked(listMessageQueryHistory).mockResolvedValue({ items: [], total: 60, page: 1, size: 20 });
+    render(<App><LangProvider><MessageQueryHistoryDrawer open onClose={vi.fn()} /></LangProvider></App>);
+    await screen.findByTitle('3');
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
 
   it('loads persisted message and trace history by instance', async () => {
