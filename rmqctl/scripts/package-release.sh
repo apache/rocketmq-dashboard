@@ -100,13 +100,30 @@ if [ "$os" = "windows" ]; then
     if command -v zip >/dev/null 2>&1; then
         zip -r -q "$archive" .
     else
-        python3 - "$archive" <<'PY'
+        # "python3" on Windows may resolve to the Microsoft Store execution-alias
+        # stub, which exists on PATH but exits silently with a nonzero code;
+        # probe candidates with an actual import before using one.
+        py=""
+        for candidate in python3 python; do
+            if command -v "$candidate" >/dev/null 2>&1 \
+                && "$candidate" -c "import zipfile" >/dev/null 2>&1; then
+                py="$candidate"
+                break
+            fi
+        done
+        if [ -z "$py" ]; then
+            echo "Neither zip nor a working Python (with zipfile) is available to build the archive" >&2
+            exit 1
+        fi
+        "$py" - "$archive" <<'PY'
 import zipfile, os, sys
 with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
     for root, dirs, files in os.walk('.'):
         for f in files:
             path = os.path.join(root, f)
-            z.write(path, os.path.relpath(path, '.'))
+            # Zip entry names must use forward slashes on every platform;
+            # os.path.relpath yields backslashes on Windows.
+            z.write(path, os.path.relpath(path, '.').replace(os.sep, '/'))
 PY
     fi
 else
