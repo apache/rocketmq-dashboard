@@ -258,6 +258,26 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void aFailedSubscriptionGroupScanMarksTheConsumerRowsPartialTest() throws Exception {
+        ClusterInfo topology = clusterInfo("127.0.0.1:10911", "127.0.0.2:10911");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(topology);
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-a"));
+        // The second broker's inventory is unreadable, so its groups (and their clients) are absent.
+        when(adminExt.getAllSubscriptionGroup("127.0.0.2:10911", 5000L))
+                .thenThrow(new RemotingConnectException("broker down"));
+        when(adminExt.examineConsumerConnectionInfo("group-a", "127.0.0.1:10911"))
+                .thenReturn(consumerConnections(connection("direct", "10.0.0.1:40000")));
+
+        List<ClientConnectionVO> rows = provider.findConnectionsAt("selected:9876", "cluster-a", "Consumer");
+
+        assertThat(rows).extracting(ClientConnectionVO::getClientId).containsExactly("direct");
+        // The page's "partial scan" banner hangs off this flag; without it a missing consumer looks
+        // like a consumer that does not exist.
+        assertThat(rows.getFirst().isPartial()).isTrue();
+    }
+
+    @Test
     void emptyPartialProxyInventoryIsAnErrorTest() throws Exception {
         prepareProxyGroup(adminExt, "127.0.0.1:10911", "10.0.0.8");
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L))
@@ -364,6 +384,26 @@ class RocketMQClientProviderTest {
         assertThat(result).isEmpty();
         verify(adminFactory).execute(eq("10.0.1.31:9876"), any(), any(MqAdminExtFactory.AdminAction.class));
         verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void aFailedProducerTableReadMarksTheProducerRowsPartialTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        clusters.put("10.0.0.12:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-order", List.of(new ProducerInfo(
+                "client-1", "10.0.0.21:49152", LanguageCode.JAVA, 500, 1000L)));
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(new ProducerTableInfo(data));
+        // The second broker's producer table is unreadable, so its producers never appear.
+        when(adminExt.getAllProducerInfo("10.0.0.12:10911"))
+                .thenThrow(new RemotingConnectException("broker down"));
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("selected:9876", "cluster-a", "Producer");
+
+        assertThat(connections).extracting(ClientConnectionVO::getClientId).containsExactly("client-1");
+        assertThat(connections.get(0).isPartial()).isTrue();
     }
 
     @Test
