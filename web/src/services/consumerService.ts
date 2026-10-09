@@ -18,6 +18,7 @@ import type {
 } from '../api/metadata';
 import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../mock/consumers';
 import { formatOnlineInstances } from '../utils/consumerConnections';
+import { isLagAvailable } from '../utils/consumerLag';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
@@ -33,7 +34,12 @@ const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
     header: 'Online Instances',
     value: (group) => formatOnlineInstances(group.onlineInstances, 'unknown'),
   },
-  { header: 'Total Lag', value: (group) => group.totalLag },
+  // The sentinels mean "not measured", which the server's own CSV writes as `unknown`
+  // (MetadataService.lagText); exporting the -1 would put a fabricated number in a spreadsheet.
+  {
+    header: 'Total Lag',
+    value: (group) => (isLagAvailable(group.totalLag) ? group.totalLag : 'unknown'),
+  },
   { header: 'Delay Seconds', value: (group) => group.delaySeconds },
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },

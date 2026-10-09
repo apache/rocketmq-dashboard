@@ -349,6 +349,32 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('renders an unavailable total lag as unknown instead of the sentinel', async () => {
+    const unavailableLag = {
+      ...mockConsumerGroups[0],
+      name: 'cg-lag-unavailable',
+      namespace: 'ns',
+      clusterId: 'cluster-a',
+      subscriptionMode: 'Push' as const,
+      consumeType: 'CLUSTERING' as const,
+      onlineInstances: 5,
+      totalLag: -1,
+    };
+    mockConsumerGroups.push(unavailableLag);
+    try {
+      const csv = await exportConsumerGroups({ names: ['cg-lag-unavailable'] });
+
+      // The server's own exporter writes `unknown` for the same sentinel
+      // (MetadataService.lagText), and the page renders 不可用 for it.
+      expect(csv).toContain(
+        '"cg-lag-unavailable","ns","cluster-a","Push","CLUSTERING","5","unknown"',
+      );
+      expect(csv).not.toContain('"-1"');
+    } finally {
+      mockConsumerGroups.splice(mockConsumerGroups.indexOf(unavailableLag), 1);
+    }
+  });
+
   it('renders an unavailable connection count as unknown instead of the sentinel', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],
