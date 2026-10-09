@@ -422,6 +422,25 @@ class AiConversationServiceTest {
     }
 
     @Test
+    void retentionShouldSkipAConversationWhoseRunIsStillInFlightTest() {
+        when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(500)))
+                .thenReturn(List.of(1L, 2L));
+        when(runRepository.findActiveByConversationId(2L))
+                .thenReturn(Optional.of(AiRunTestSupport.run(21L, 2L, 3, RunStatus.RUNNING)));
+        when(conversationRepository.deleteByIds(anyList())).thenReturn(1);
+
+        service.purgeExpired();
+
+        // The on-request delete stops the active run before it removes anything; a retention pass
+        // that deletes the rows and the workspace of a conversation mid-run leaves the worker
+        // writing into a directory that no longer exists. Retention defers to a later pass instead.
+        verify(eventRepository).deleteByConversationIds(List.of(1L));
+        verify(runRepository).deleteByConversationIds(List.of(1L));
+        verify(conversationRepository).deleteByIds(List.of(1L));
+        verify(workspace, never()).delete(2L);
+    }
+
+    @Test
     void retentionShouldKeepBatchingUntilTheBacklogIsGoneOrTheCapIsReachedTest() {
         properties.setCleanupBatchSize(2);
         properties.setCleanupMaxBatches(3);

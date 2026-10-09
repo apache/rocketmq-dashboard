@@ -1494,3 +1494,38 @@ describe('Cluster page', () => {
     );
   });
 });
+
+describe('Cluster page proxy restart failure', () => {
+  it('shows an error message when restarting a proxy fails', async () => {
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
+    clusterServiceMocks.listRegistryClusters.mockReset().mockResolvedValue([buildCluster()]);
+    clusterServiceMocks.listK8sCerts.mockReset().mockResolvedValue([]);
+    clusterServiceMocks.listNameserverRegistry.mockReset().mockResolvedValue([]);
+    clusterServiceMocks.restartProxy.mockReset().mockRejectedValue(new Error('restart failed'));
+
+    renderWithProviders(<ClusterPage />);
+    fireEvent.click(await screen.findByRole('tab', { name: /Proxy 管理/ }));
+    const proxyRow = await screen.findByRole('row', { name: /10\.101\.2\.21:8081/ });
+    fireEvent.click(within(proxyRow).getByRole('button', { name: /重启/ }));
+    const dialog = (await screen.findAllByText('确认重启'))[0].closest('.ant-modal');
+    expect(dialog).not.toBeNull();
+    fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledTimes(1));
+  });
+});

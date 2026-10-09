@@ -1774,9 +1774,15 @@ const ClusterPage = () => {
                   okText: t('common.confirm'),
                   cancelText: t('common.cancel'),
                   onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    try {
+                      await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                      await requestRefresh('operation');
+                      message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                    } catch {
+                      // A rejected restart used to fail without any feedback while the
+                      // confirm dialog closed — surface it like the other operations.
+                      message.error(t('common.operationFailed'));
+                    }
                   },
                 });
               }}
