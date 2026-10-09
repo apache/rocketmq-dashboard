@@ -49,6 +49,8 @@ public class DLQMessageExcelRow {
     private String keys;
     @ExcelProperty("Body")
     private String body;
+    @ExcelProperty("Body Base64")
+    private String bodyBase64;
 
     public static DLQMessageExcelRow from(DLQMessageVO vo) {
         DLQMessageExcelRow row = new DLQMessageExcelRow();
@@ -61,6 +63,7 @@ public class DLQMessageExcelRow {
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
         row.setBody(vo.getBody());
+        row.setBodyBase64(vo.getBody() == null ? vo.getBodyBase64() : null);
         return row;
     }
 }

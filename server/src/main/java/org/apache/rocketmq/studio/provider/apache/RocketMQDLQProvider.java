@@ -56,6 +56,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -415,8 +418,12 @@ public class RocketMQDLQProvider implements DLQProvider {
             return null;
         }
         try {
-            return new String(body, StandardCharsets.UTF_8);
-        } catch (Exception ignored) {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(body))
+                    .toString();
+        } catch (CharacterCodingException ignored) {
             return null;
         }
     }
