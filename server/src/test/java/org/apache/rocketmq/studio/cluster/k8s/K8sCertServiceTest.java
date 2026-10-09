@@ -326,9 +326,11 @@ class K8sCertServiceTest {
 
         String bounded = K8sCertService.boundedIssuer(derived);
 
+        // The marker is part of the budget: 256 must fit the column, not 256 plus "...".
         assertThat(org.apache.rocketmq.studio.common.util.TextBounds.codePointCount(bounded))
-                .isEqualTo(259);
+                .isEqualTo(256);
         assertThat(bounded).endsWith("...");
+        assertThat(bounded).startsWith("CN=");
         assertThat(K8sCertService.boundedIssuer("CN=short")).isEqualTo("CN=short");
     }
 

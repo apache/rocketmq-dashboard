@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 public class K8sCertService {
     /** `issuer VARCHAR(256)`; the other identity fields are VARCHAR(128). */
     private static final int ISSUER_MAX_LENGTH = 256;
+    private static final String TRUNCATION_MARKER = "...";
     private static final int IDENTITY_MAX_LENGTH = 128;
 
 
@@ -100,7 +101,10 @@ public class K8sCertService {
             // renders it in the viewer's zone, matching every other date API.
             notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneOffset.UTC);
             notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneOffset.UTC);
-            issuer = parsed.getIssuerX500Principal().getName();
+            // The DN is derived from the uploaded PEM, so the caller cannot shorten it: bound it to
+            // the column (marker included) instead of failing the whole registration - issuer is
+            // informational, and an enterprise CA DN can exceed 256 characters.
+            issuer = boundedIssuer(parsed.getIssuerX500Principal().getName());
             san = extractSubjectAlternativeNames(parsed);
         }
 
@@ -188,9 +192,14 @@ public class K8sCertService {
         }
     }
 
-    /** The derived issuer must fit {@code issuer VARCHAR(256)}; a cut is marked so it is visible. */
+    /**
+     * The derived issuer must fit {@code issuer VARCHAR(256)} - marker included, so the suffix is
+     * subtracted from the budget instead of overflowing the column (the same rule
+     * {@code InstanceService} applies to its bounded remark).
+     */
     static String boundedIssuer(String issuer) {
-        return TextBounds.truncate(issuer, ISSUER_MAX_LENGTH, "...");
+        return TextBounds.truncate(issuer, ISSUER_MAX_LENGTH - TRUNCATION_MARKER.length(),
+                TRUNCATION_MARKER);
     }
 
     private String normalizeOptionalIdentity(String value, String field) {
