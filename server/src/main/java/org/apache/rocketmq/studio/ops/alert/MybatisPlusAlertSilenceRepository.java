@@ -116,15 +116,46 @@ public class MybatisPlusAlertSilenceRepository implements AlertSilenceRepository
 
     private AlertSilenceVO toVo(RmqAlertSilence entity) {
         return AlertSilenceVO.builder().id(entity.getId())
-                .domain(entity.getDomain() == null ? null : AlertDomain.valueOf(entity.getDomain()))
+                .domain(parseDomain(entity.getDomain()))
                 .ruleId(entity.getRuleId()).instanceId(entity.getInstanceId())
                 .labels(readLabels(entity.getLabelsJson()))
                 .startsAt(entity.getStartsAt()).endsAt(entity.getEndsAt())
-                .recurrence(entity.getRecurrence() == null ? AlertSilenceRecurrence.ONCE
-                        : AlertSilenceRecurrence.valueOf(entity.getRecurrence()))
+                .recurrence(parseRecurrence(entity.getRecurrence()))
                 .timeZone(entity.getTimeZone()).recurrenceDays(readDays(entity.getRecurrenceDaysJson()))
                 .recurrenceUntil(entity.getRecurrenceUntil())
                 .reason(entity.getReason()).createdBy(entity.getCreatedBy()).build();
+    }
+
+    /**
+     * A single silence row written by a different console build (or restored from a backup) may
+     * carry a domain value this build does not know. The alert repository treats such values as
+     * business-domain data instead of letting one unknown row break the whole inventory read,
+     * so silence rows get the same tolerance.
+     */
+    private static AlertDomain parseDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return null;
+        }
+        try {
+            return AlertDomain.valueOf(domain.trim());
+        } catch (IllegalArgumentException unknownValue) {
+            return AlertDomain.BUSINESS;
+        }
+    }
+
+    /**
+     * Unknown recurrence spellings fall back to the same one-shot default that rows written
+     * before recurring silences existed already get.
+     */
+    private static AlertSilenceRecurrence parseRecurrence(String recurrence) {
+        if (recurrence == null || recurrence.isBlank()) {
+            return AlertSilenceRecurrence.ONCE;
+        }
+        try {
+            return AlertSilenceRecurrence.valueOf(recurrence.trim());
+        } catch (IllegalArgumentException unknownValue) {
+            return AlertSilenceRecurrence.ONCE;
+        }
     }
 
     private String writeLabels(Map<String, String> labels) {
