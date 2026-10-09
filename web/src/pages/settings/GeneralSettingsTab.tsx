@@ -193,6 +193,15 @@ export const GeneralSettingsTab = () => {
     setSavingNotification(true);
     try {
       if (await mergeAndSave(values)) {
+        if ((values.dingtalkSigningSecret ?? '').trim()) {
+          // The server stores the secret and never echoes it, so the form's own state falls out of
+          // date: reveal the clear action for it (mergeAndSave reconciles from a read taken before
+          // the write) and empty the field so the next save does not resubmit the same secret.
+          setSettings((current) =>
+            current ? { ...current, dingtalkSigningSecretConfigured: true } : current,
+          );
+          notifyForm.setFieldValue('dingtalkSigningSecret', '');
+        }
         message.success(t('settings.saveSuccess'));
       }
     } finally {
