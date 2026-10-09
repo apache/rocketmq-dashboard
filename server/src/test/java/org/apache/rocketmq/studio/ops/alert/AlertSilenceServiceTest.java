@@ -44,6 +44,26 @@ class AlertSilenceServiceTest {
     private OperationAuditService operationAuditService;
 
     @Test
+    void createShouldRejectAnInstanceIdLongerThanItsColumnTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        LocalDateTime start = LocalDateTime.of(2026, 8, 22, 9, 0);
+        CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
+        request.setDomain(AlertDomain.BUSINESS);
+        request.setInstanceId("i".repeat(129));
+        request.setStartsAt(start.atOffset(ZoneOffset.UTC));
+        request.setEndsAt(start.plusHours(1).atOffset(ZoneOffset.UTC));
+
+        // instance_id is VARCHAR(128); without the bound the insert failed with a data-too-long
+        // error that the API reported as a generic 500, and the operator believed the maintenance
+        // window existed.
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Silence instanceId must not exceed 128 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
     void createsInstanceScopedSilenceAndMatchesOnlyItsScopeTest() {
         AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
         LocalDateTime start = LocalDateTime.of(2026, 8, 22, 9, 0);
