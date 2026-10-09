@@ -511,6 +511,30 @@ class AiRunServiceTest {
         assertThat(emitters.get(0).eventText()).contains("and since");
     }
 
+    @Test
+    void attachShouldRegisterTheObserverBeforeTheReplayQueryTest() {
+        // The documented invariant of the reconnect path: the observer joins BEFORE the replay is
+        // queried, so a frame the run publishes while the replay is in flight is buffered by the
+        // session and drained after the replayed rows, not lost in the gap between the query and
+        // the registration. Losing it would leave a hole in the transcript that only another
+        // reload could fill.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        registry.register(RUN_ID, new AgentRunHandle(RUN_ID, Duration.ofMillis(1)));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenAnswer(invocation -> {
+            registry.publish(RUN_ID, 2L, new LiveEvent.TextDelta("written while the replay query ran"));
+            return List.of(event(1, "text", "{\"type\":\"text\",\"text\":\"so far\"}"));
+        });
+
+        service.attach(RUN_ID, 0);
+
+        assertThat(emitters.get(0).eventText())
+                .contains("so far")
+                .contains("written while the replay query ran")
+                .doesNotContain("event:done");
+        assertThat(emitters.get(0).completed()).isFalse();
+    }
+
     // --- resolution ------------------------------------------------------------
 
     @Test
