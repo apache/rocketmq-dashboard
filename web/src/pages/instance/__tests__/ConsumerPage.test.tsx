@@ -125,6 +125,13 @@ const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/c
     </App>,
   );
 
+// The details modal re-diagnoses every 2s on a real-timer interval; under
+// parallel load a tick can land mid-test and steal a queued mock response
+// or swap the row under a click (the CI flake). Faking only setInterval
+// keeps the tick off wall-clock time - the same pattern the diagnostics
+// race test uses. The shared afterEach restores real timers.
+const fakeModalDiagnosticInterval = () => vi.useFakeTimers({ toFake: ['setInterval'] });
+
 beforeAll(installBrowserMocks);
 
 // antd's Spin keys its `.ant-spin-blur` class on internal state that follows the Table's
@@ -345,6 +352,7 @@ describe('Consumer page', () => {
       Modal.destroyAll();
     });
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
+    vi.useRealTimers();
   });
 
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
@@ -1120,6 +1128,8 @@ describe('Consumer page', () => {
   });
 
   it('keeps the latest client stack when an older request resolves last', async () => {
+    fakeModalDiagnosticInterval();
+
     const firstStack = {
       groupName: 'remote-cg',
       clientId: 'client-1',
@@ -1203,6 +1213,8 @@ describe('Consumer page', () => {
   });
 
   it('loads a consumer client stack trace from the selected instance', async () => {
+    fakeModalDiagnosticInterval();
+
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
         {
@@ -1241,6 +1253,8 @@ describe('Consumer page', () => {
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    fakeModalDiagnosticInterval();
+
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
@@ -1293,39 +1307,39 @@ describe('Consumer page', () => {
   });
 
   it('refreshes the subscription verdict on the 2s modal auto-refresh', async () => {
-    vi.mocked(consumerService.getConsumerSubscriptions)
-      .mockResolvedValueOnce([
-        {
-          topic: 'remote-topic',
-          expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
-          consistency: 'consistent',
-        },
-        {
-          topic: 'stale-topic',
-          expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
-          consistency: 'inconsistent',
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          topic: 'remote-topic',
-          expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
-          consistency: 'consistent',
-        },
-        {
-          topic: 'stale-topic',
-          expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
-          consistency: 'consistent',
-        },
-      ]);
+    // Fake the interval and drive the 2s tick explicitly: with real timers the
+    // tick fires whenever the machine is loaded (two ticks make the exact
+    // call-count assertion below unsatisfiable and a mid-test tick can steal a
+    // queued response - the CI flake), and in isolation it may not fire at all.
+    fakeModalDiagnosticInterval();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockImplementation(
+      // First load: one inconsistent subscription. Every later call (the 2s
+      // tick and any sibling refresh) returns the reconciled state, so the
+      // verdict the test awaits is the response of whichever call landed last.
+      (() => {
+        let calls = 0;
+        return () => {
+          calls += 1;
+          const consistent = calls > 1;
+          return Promise.resolve([
+            {
+              topic: 'remote-topic',
+              expression: '*',
+              type: 'NORMAL',
+              filterMode: '全量',
+              consistency: 'consistent',
+            },
+            {
+              topic: consistent ? 'reconciled-topic' : 'stale-topic',
+              expression: 'important',
+              type: 'NORMAL',
+              filterMode: 'Tag 过滤',
+              consistency: consistent ? 'consistent' : 'inconsistent',
+            },
+          ]);
+        };
+      })(),
+    );
 
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ConsumerPage />);
@@ -1335,13 +1349,26 @@ describe('Consumer page', () => {
     // The modal advertises that the diagnostic result refreshes every 2 seconds. Without any
     // further user action the subscription consistency verdict must be re-checked alongside
     // the progress table, not stay frozen at whatever the first load returned.
-    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
-      timeout: 10000,
+    await screen.findByText('stale-topic');
+    const callsBeforeTick = vi.mocked(consumerService.getConsumerSubscriptions).mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
     });
+    // The 2s tick must have re-checked the subscriptions; assert the behavior
+    // (a fresh call plus the refreshed verdict), not an exact count - the
+    // modal also drives other intervals whose calls land in the same window.
+    expect(vi.mocked(consumerService.getConsumerSubscriptions).mock.calls.length).toBeGreaterThan(
+      callsBeforeTick,
+    );
     expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
   it('ignores stale subscription responses after a newer diagnostic request completes', async () => {
+    // The two queued one-shot mocks and the exact call-count assertion below are
+    // exactly what a stray real-timer 2s tick would eat (the staleness guard in
+    // the product code ignores the out-of-order response, but the mock the click
+    // expected is still gone), so keep the modal's interval off wall-clock time.
+    fakeModalDiagnosticInterval();
     const firstRequest =
       deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
     const latestRequest =
@@ -1764,6 +1791,8 @@ describe('Consumer page', () => {
   });
 
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
+    fakeModalDiagnosticInterval();
+
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
@@ -1846,6 +1875,8 @@ describe('Consumer page', () => {
   });
 
   it('ignores settings responses from a previously closed group modal', async () => {
+    fakeModalDiagnosticInterval();
+
     const otherGroup = { ...group, name: 'other-cg' };
     const firstSettings = deferred<{
       groupName: string;
