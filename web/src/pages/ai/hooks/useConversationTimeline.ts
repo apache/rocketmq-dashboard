@@ -38,6 +38,7 @@ import { describeThrownMessage } from '../../../utils/apiError';
 export const TIMELINE_PAGE_LIMIT = 200;
 /** 25 pages x 200 events: far past any real conversation, small enough to stay a bounded walk. */
 export const TIMELINE_MAX_PAGES = 25;
+const EMPTY_TIMELINE_ITEMS: TimelineItem[] = [];
 
 /** Fold the envelope's per-run stats into the speed map; null entries never overwrite. */
 function collectRunSpeeds(
@@ -63,6 +64,8 @@ export interface UseConversationTimelineOptions {
  * state below still holds the previous one's run for at least a commit — and a run id is the only
  * thing the attach endpoint needs, so acting on it would stream the previous conversation's frames
  * into the transcript on screen. See {@link UseConversationTimelineResult.activeRun}.
+ * This also identifies the owner of the rows and cursor committed with the run, even when the run
+ * is null. Keep that snapshot during a same-conversation refresh, but hide it after a switch.
  */
 interface LoadedActiveRun {
   conversationId: number;
@@ -105,6 +108,7 @@ export function useConversationTimeline(
   const [runSpeeds, setRunSpeeds] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const hasCurrentSnapshot = loadedActiveRun?.conversationId === conversationId;
   const refetchRequestId = useRef(0);
   const activeRefetchRef = useRef<number | null>(null);
   const loadMoreRequestId = useRef(0);
@@ -176,7 +180,13 @@ export function useConversationTimeline(
   }, [conversationId, limit, maxPages]);
 
   const loadMore = useCallback(async (): Promise<void> => {
-    if (conversationId === null || nextAfter === null || loadingMoreRef.current !== null) return;
+    if (
+      conversationId === null ||
+      !hasCurrentSnapshot ||
+      nextAfter === null ||
+      loadingMoreRef.current !== null
+    )
+      return;
 
     const after = nextAfter;
     const id = ++loadMoreRequestId.current;
@@ -204,7 +214,7 @@ export function useConversationTimeline(
         if (activeRefetchRef.current === null) setLoading(false);
       }
     }
-  }, [conversationId, limit, nextAfter]);
+  }, [conversationId, hasCurrentSnapshot, limit, nextAfter]);
 
   useEffect(() => {
     // Loading is asynchronous; state updates happen after the timeline API resolves.
@@ -218,8 +228,12 @@ export function useConversationTimeline(
     };
   }, [refetch]);
 
-  const bubbles = useMemo(() => groupIntoBubbles(items, runSpeeds), [items, runSpeeds]);
-  const lastSeq = items.length ? items[items.length - 1].seq : 0;
+  const visibleItems = hasCurrentSnapshot ? items : EMPTY_TIMELINE_ITEMS;
+  const bubbles = useMemo(
+    () => groupIntoBubbles(visibleItems, runSpeeds),
+    [visibleItems, runSpeeds],
+  );
+  const lastSeq = visibleItems.length ? visibleItems[visibleItems.length - 1].seq : 0;
   // Only the run of the conversation on screen: a run loaded for another one is not this
   // conversation's to attach, and it is not this conversation's to render either.
   const activeRun =
@@ -228,13 +242,13 @@ export function useConversationTimeline(
       : null;
 
   return {
-    items,
+    items: visibleItems,
     bubbles,
     activeRun,
     lastSeq,
     loading,
     error,
-    hasMore: nextAfter !== null,
+    hasMore: hasCurrentSnapshot && nextAfter !== null,
     refetch,
     loadMore,
   };
