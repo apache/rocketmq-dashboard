@@ -45,6 +45,7 @@ import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { describeThrownMessage } from '../../utils/apiError';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeClientConnections,
@@ -132,38 +133,28 @@ const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
 
 type ClientTableFilters = Parameters<NonNullable<TableProps<ClientConnection>['onChange']>>[1];
 
-const countBy = (values: string[]) =>
+const countBy = (values: Array<string | null>) =>
   [
-    ...values.reduce(
-      (counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1),
-      new Map<string, number>(),
-    ),
+    ...values
+      .map(displayMetadata)
+      .reduce(
+        (counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1),
+        new Map<string, number>(),
+      ),
   ]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
-type ApiErrorLike = {
-  message?: unknown;
-  response?: {
-    data?: {
-      message?: unknown;
-    };
-  };
-};
-
-function getLoadErrorMessage(error: unknown): string {
-  const apiError = error as ApiErrorLike;
-  const responseMessage = apiError.response?.data?.message;
-  if (typeof responseMessage === 'string' && responseMessage.trim()) {
-    return responseMessage;
-  }
-  if (typeof apiError.message === 'string' && apiError.message.trim()) {
-    return apiError.message;
-  }
-  return DEFAULT_LOAD_ERROR;
-}
-
 const displayMetadata = (value: string | null | undefined) => value || '-';
+
+/**
+ * Bucket key for a connection whose broker-reported `LanguageCode` has no `ClientLanguage`
+ * counterpart, so the API sends `language: null`. The visible label is localized on render.
+ */
+const UNKNOWN_LANGUAGE = 'unknown';
+
+/** Filter sentinel for rows whose protocol the Proxy response could not confirm. */
+const UNKNOWN_PROTOCOL = 'unknown';
 
 /* ═══════════════════════════════════════════
    ClientsPage
@@ -235,7 +226,7 @@ const ClientsPage = () => {
         setRegistryClusters([]);
         setSelectedEndpoint(undefined);
         setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
+        setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
       })
       .finally(() => {
         if (registryRequestRef.current === requestId) setLoading(false);
@@ -267,7 +258,7 @@ const ClientsPage = () => {
           setConnections([]);
           setClusterFilter('ALL');
           setSelectedConnection(null);
-          setLoadError(getLoadErrorMessage(error));
+          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
         }
       })
       .finally(() => {
@@ -314,7 +305,10 @@ const ClientsPage = () => {
       consumers: instances.filter((connection) => connection.type === 'Consumer').length,
       protocols: countBy(instances.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map((connection) => `${connection.language} ${connection.version}`),
+        instances.map(
+          (connection) =>
+            `${connection.language ?? UNKNOWN_LANGUAGE} ${connection.version ?? UNKNOWN_LANGUAGE}`,
+        ),
       ),
     };
   }, [clusterConnections]);
@@ -368,7 +362,7 @@ const ClientsPage = () => {
   );
 
   const exportConnections = useMemo(() => {
-    const matches = (key: string, value: string) => {
+    const matches = (key: string, value: string | null) => {
       const selected = columnFilters[key];
       return !selected?.length || selected.some((filterValue) => String(filterValue) === value);
     };
@@ -376,8 +370,8 @@ const ClientsPage = () => {
       (connection) =>
         matches('clusterName', connection.clusterName) &&
         matches('type', connection.type) &&
-        matches('protocol', connection.protocol) &&
-        matches('language', connection.language),
+        matches('protocol', connection.protocol ?? UNKNOWN_PROTOCOL) &&
+        matches('language', connection.language ?? ''),
     );
   }, [columnFilters, filtered]);
 
@@ -393,6 +387,15 @@ const ClientsPage = () => {
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
      ═══════════════════════════════════════════ */
+  const renderLanguageTag = (language?: string | null) => {
+    const config = languageConfig[language ?? ''];
+    return (
+      <Tag color={config?.color ?? 'default'}>
+        {config?.label ?? (language || t('common.unknown'))}
+      </Tag>
+    );
+  };
+
   const columns: ColumnsType<ClientConnection> = [
     {
       title: t('clients.cluster'),
@@ -462,11 +465,16 @@ const ClientsPage = () => {
       filters: [
         { text: 'gRPC', value: 'gRPC' },
         { text: 'Remoting', value: 'Remoting' },
+        { text: t('common.unknown'), value: UNKNOWN_PROTOCOL },
       ],
       filteredValue: columnFilters.protocol ?? null,
-      onFilter: (value, record) => record.protocol === value,
-      render: (protocol: string) => {
-        const cfg = protocolConfig[protocol] ?? { color: 'default', label: protocol };
+      onFilter: (value, record) =>
+        value === UNKNOWN_PROTOCOL ? !record.protocol : record.protocol === value,
+      render: (protocol: string | null) => {
+        const cfg = protocolConfig[protocol ?? ''] ?? {
+          color: 'default',
+          label: displayMetadata(protocol),
+        };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
@@ -490,16 +498,14 @@ const ClientsPage = () => {
       })),
       filteredValue: columnFilters.language ?? null,
       onFilter: (value, record) => record.language === value,
-      render: (lang: string) => {
-        const cfg = languageConfig[lang] ?? { color: 'default', label: lang };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
+      render: (lang?: string | null) => renderLanguageTag(lang),
     },
     {
       title: t('common.version'),
       dataIndex: 'version',
       key: 'version',
       width: 90,
+      render: displayMetadata,
     },
     {
       title: t('cluster.heartbeat'),
@@ -727,7 +733,7 @@ const ClientsPage = () => {
         <Alert
           showIcon
           type="warning"
-          message="Producer connections are sampled because the topic scan limit was reached."
+          message={t('clients.partialScan')}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -839,7 +845,11 @@ const ClientsPage = () => {
               connectionStats.languageVersions.map(({ label, count }) => {
                 const [language, ...versionParts] = label.split(' ');
                 const version = versionParts.join(' ');
-                const config = languageConfig[language] ?? { color: 'default', label: language };
+                const config =
+                  languageConfig[language] ??
+                  (language === UNKNOWN_LANGUAGE
+                    ? { color: 'default', label: t('common.unknown') }
+                    : { color: 'default', label: language });
                 return (
                   <Tag key={label} color={config.color}>
                     {config.label} {version}: {count}
@@ -997,8 +1007,9 @@ const ClientsPage = () => {
               {selectedConnection.groupOrTopic}
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.protocol')}>
-              <Tag color={protocolConfig[selectedConnection.protocol]?.color ?? 'default'}>
-                {protocolConfig[selectedConnection.protocol]?.label ?? selectedConnection.protocol}
+              <Tag color={protocolConfig[selectedConnection.protocol ?? '']?.color ?? 'default'}>
+                {protocolConfig[selectedConnection.protocol ?? '']?.label ??
+                  displayMetadata(selectedConnection.protocol)}
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label={t('common.address')}>
@@ -1007,12 +1018,10 @@ const ClientsPage = () => {
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label={t('clients.language')}>
-              <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>
-                {languageConfig[selectedConnection.language]?.label ?? selectedConnection.language}
-              </Tag>
+              {renderLanguageTag(selectedConnection.language)}
             </Descriptions.Item>
             <Descriptions.Item label={t('common.version')}>
-              {selectedConnection.version}
+              {displayMetadata(selectedConnection.version)}
             </Descriptions.Item>
             <Descriptions.Item label={t('cluster.heartbeat')}>
               {selectedConnection.connectedAt ?? '-'}

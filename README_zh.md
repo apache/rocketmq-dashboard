@@ -14,7 +14,7 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 ```text
 从当前仓库在本地拉起并运行 RocketMQ Studio：
 1. 确认已安装 Docker 与 Docker Compose；若未安装，告诉我安装方式并停止。
-2. 创建共享网络：`docker network create rocketmq_net`（若已存在，忽略报错）。
+2. 若共享网络不存在则创建：`docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`。
 3. 构建并启动 Studio：`docker compose -f deploy/docker-compose.yml up -d --build`。
 4. 等待后端健康检查通过后，打开 http://127.0.0.1:6789 确认页面正常加载。
 最后报告运行中的容器与任何错误。不要修改源码，也不要提交任何改动。
@@ -29,7 +29,7 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 
 ```bash
 # 1. 创建共享 Docker 网络（compose 文件以 external 方式引用它）
-docker network create rocketmq_net
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 
 # 2. 构建并启动 RocketMQ Studio（mysql + rocketmq-server + rocketmq-web）
 docker compose -f deploy/docker-compose.yml up -d --build
@@ -41,7 +41,12 @@ docker compose -f deploy/docker-compose.yml up -d --build
 RocketMQ 集群。要管理真实资源，请注册一个指向你自己 RocketMQ 的实例，或启动下方的
 「内置 RocketMQ 集群（可选）」。
 
-**Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
+默认 schema 只创建 Studio 所需的表，不写入实例、Topic、消费组或 ACL 示例数据。开发用的演示数据需从
+`deploy/mysql/` 显式导入，不属于默认部署的一部分：先导入 `upgrade-demo-instance.sql`，再导入
+`upgrade-demo-acl.sql`。两个脚本都按当前数字主键 schema 编写、可重复执行，只是示例数据装载器而非
+升级迁移脚本，切勿导入生产数据库。
+
+**Studio 服务端口：** 前端 6789（Nginx，同时代理 `/api`）、后端 8888（Spring Boot，仅容器内可达；后端在 compose 之外直接运行时才对外暴露）
 
 共享环境可复制 `deploy/.env.example` 为 `deploy/.env`，设置
 `STUDIO_AUTH_LOGIN_REQUIRED=true`，并配置 `STUDIO_AUTH_ADMIN_USERNAME` /
@@ -86,7 +91,7 @@ docker compose -f deploy/rocketmq/docker-compose.yml up -d
 |------|------|
 | **监控面板** | 集群/ Broker / Topic / 消费组全局统计，TPS 趋势图 |
 | **实例管理** | 多实例接入（Proxy / Direct 模式），实例 CRUD |
-| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新 |
+| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新、NameServer 配置漂移检测 |
 | **K8s 证书** | Studio 本地 TLS / mTLS / ServiceAccount 证书配置 |
 | **Topic 管理** | Topic CRUD、路由查看、消费者列表、多类型支持（Normal / FIFO / Delay / Transaction / Lite） |
 | **消费组管理** | 消费组 CRUD、消费进度、订阅详情、位点重置、配置导入导出 |

@@ -89,6 +89,14 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		}
 		return decodedMCPMessage{notification: &notification}, nil
 	}
+	if hasID {
+		// A frame with an id but no method is a JSON-RPC response, which the stdio
+		// proxy never originates. Name it explicitly instead of the misleading
+		// "missing method" (see the review on #4637).
+		return decodedMCPMessage{}, fmt.Errorf(
+			"invalid MCP JSON-RPC message: response frame (id without method); " +
+				"this transport only forwards client-originated requests and notifications")
+	}
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
 }
 

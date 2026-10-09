@@ -56,10 +56,13 @@ package_source() {
   # deploy/.env 是环境专属配置（如 STUDIO_METRICS_PROMETHEUS_BASE_URL），不随源码覆盖远端
   # rmqctl 必须随包上传：server 镜像构建上下文是仓库根目录，Dockerfile 的 Go 阶段要 COPY rmqctl/
   # （rmqctl/bin 是本地构建产物，不上传）
+  # LICENSE and NOTICE travel with the package for the same reason: the rmqctl stage of
+  # server/Dockerfile runs `COPY LICENSE NOTICE /src/` against the repository root as its build
+  # context, so building in a fresh remote directory fails at that step without them.
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
     --exclude='deploy/.env' --exclude='rmqctl/bin' \
-    server web deploy rmqctl
+    LICENSE NOTICE server web deploy rmqctl
   log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
 }
 

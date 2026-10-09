@@ -8,7 +8,7 @@ import type {
   UpdateInstanceRequest,
   InstanceCapabilities,
 } from '../api/instance';
-import { mockInstances } from '../mock/instances';
+import { getMockInstanceCapabilities, mockInstances } from '../mock/instances';
 
 // Compile-time switch: mock or real API
 
@@ -21,24 +21,14 @@ function matchesType(instance: Instance, type?: Instance['type']) {
   return instance.type === type;
 }
 
-const APACHE_CAPABILITIES: InstanceCapabilities['capabilities'] = [
-  'TOPIC_MANAGEMENT',
-  'CONSUMER_GROUP_MANAGEMENT',
-  'MESSAGE_QUERY',
-  'MESSAGE_TRACE',
-  'ACL_MANAGEMENT',
-  'DLQ_MANAGEMENT',
-];
-
-const CLOUD_CAPABILITIES: InstanceCapabilities['capabilities'] = [
-  'TOPIC_MANAGEMENT',
-  'CONSUMER_GROUP_MANAGEMENT',
-  'MESSAGE_QUERY',
-  'MESSAGE_TRACE',
-  'ACL_MANAGEMENT',
-];
-
 const inflightListRequests = new Map<string, Promise<Instance[]>>();
+
+// A mutation that just completed must not be shadowed by a list request that
+// started earlier: callers issuing a read after a write would otherwise join
+// the stale inflight snapshot, so drop them after every successful mutation.
+function invalidateInflightListRequests(): void {
+  inflightListRequests.clear();
+}
 
 export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   const mockMode = isMockMode();
@@ -80,7 +70,7 @@ export async function getInstanceCapabilities(instanceId: string): Promise<Insta
     instanceId: instance.name,
     vendor,
     accessType: instance.type,
-    capabilities: [...(vendor === 'APACHE' ? APACHE_CAPABILITIES : CLOUD_CAPABILITIES)],
+    capabilities: getMockInstanceCapabilities(instance),
   };
 }
 
@@ -101,9 +91,12 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
       gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
     mockInstances.push(instance);
+    invalidateInflightListRequests();
     return copyInstance(instance);
   }
-  return instanceApi.createInstance(data);
+  const created = await instanceApi.createInstance(data);
+  invalidateInflightListRequests();
+  return created;
 }
 
 export async function importCloudInstances(data: {
@@ -111,9 +104,13 @@ export async function importCloudInstances(data: {
   credentialId: number;
 }): Promise<instanceApi.CloudImportResult> {
   if (isMockMode()) {
-    return { discovered: 0, imported: 0, skipped: 0, failed: [] };
+    const result = { discovered: 0, imported: 0, skipped: 0, failed: [] };
+    invalidateInflightListRequests();
+    return result;
   }
-  return instanceApi.importCloudInstances(data);
+  const result = await instanceApi.importCloudInstances(data);
+  invalidateInflightListRequests();
+  return result;
 }
 
 export async function deleteInstancesBatch(ids: string[]): Promise<instanceApi.BatchDeleteResult> {
@@ -126,9 +123,12 @@ export async function deleteInstancesBatch(ids: string[]): Promise<instanceApi.B
       const idx = mockInstances.findIndex((instance) => instance.name === id);
       if (idx >= 0) mockInstances.splice(idx, 1);
     }
+    invalidateInflightListRequests();
     return { deleted: ids.length - failed.length, failed };
   }
-  return instanceApi.deleteInstancesBatch(ids);
+  const result = await instanceApi.deleteInstancesBatch(ids);
+  invalidateInflightListRequests();
+  return result;
 }
 
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {
@@ -139,11 +139,14 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
       Object.assign(mockInstances[idx], changes, {
         gmtModified: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
+      invalidateInflightListRequests();
       return copyInstance(mockInstances[idx]);
     }
     throw new Error('Instance not found');
   }
-  return instanceApi.updateInstance(data);
+  const updated = await instanceApi.updateInstance(data);
+  invalidateInflightListRequests();
+  return updated;
 }
 
 export async function deleteInstance(instanceId: string): Promise<void> {
@@ -151,7 +154,9 @@ export async function deleteInstance(instanceId: string): Promise<void> {
     const idx = mockInstances.findIndex((i) => i.name === instanceId);
     if (idx < 0) throw new Error(`Instance not found: ${instanceId}`);
     mockInstances.splice(idx, 1);
+    invalidateInflightListRequests();
     return;
   }
-  return instanceApi.deleteInstance(instanceId);
+  await instanceApi.deleteInstance(instanceId);
+  invalidateInflightListRequests();
 }

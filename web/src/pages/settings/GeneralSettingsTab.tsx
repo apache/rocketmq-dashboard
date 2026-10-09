@@ -70,8 +70,15 @@ export const GeneralSettingsTab = () => {
   const [testingChannel, setTestingChannel] = useState<string>();
   const securityInFlightRef = useRef(false);
   const notifyInFlightRef = useRef(false);
+  const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();
+
+  // The load effect below fills both forms from the server snapshot and must therefore run only
+  // once per mount, while the translation function changes identity with the display language.
+  useEffect(() => {
+    translationRef.current = t;
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +95,7 @@ export const GeneralSettingsTab = () => {
         });
       })
       .catch(() => {
-        if (!cancelled) message.error(t('settings.loadFailed'));
+        if (!cancelled) message.error(translationRef.current('settings.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -97,18 +104,17 @@ export const GeneralSettingsTab = () => {
     return () => {
       cancelled = true;
     };
-  }, [message, notifyForm, securityForm, t]);
+  }, [message, notifyForm, securityForm]);
 
   // Other tabs (AI assistant settings) write the same settings record while this tab stays
   // mounted, so every save must be built from a fresh read instead of the mount-time snapshot.
-  const loadFreshSettings = async (fallback: GeneralSettings): Promise<GeneralSettings> => {
-    try {
-      const fresh = await getGeneralSettings();
-      setSettings(fresh);
-      return fresh;
-    } catch {
-      return fallback;
-    }
+  // When that fresh read fails the save aborts here and the callers report it: falling back to
+  // the mount-time snapshot would write a whole record of stale values over what another tab
+  // just saved.
+  const loadFreshSettings = async (): Promise<GeneralSettings> => {
+    const fresh = await getGeneralSettings();
+    setSettings(fresh);
+    return fresh;
   };
 
   const persistPreference = async (patch: Partial<GeneralSettings>) => {
@@ -117,7 +123,7 @@ export const GeneralSettingsTab = () => {
     setSettings(next);
     setSavingPreference(true);
     try {
-      const base = await loadFreshSettings(settings);
+      const base = await loadFreshSettings();
       await saveGeneralSettings(buildPayload({ ...base, ...patch }));
       setSettings({ ...base, ...patch });
       message.success(t('settings.saveSuccess'));
@@ -131,7 +137,7 @@ export const GeneralSettingsTab = () => {
   const mergeAndSave = async (patch: Partial<GeneralSettings>) => {
     if (!settings) return false;
     try {
-      const base = await loadFreshSettings(settings);
+      const base = await loadFreshSettings();
       await saveGeneralSettings(buildPayload({ ...base, ...patch }));
       const statePatch = { ...patch };
       delete statePatch.clearDingtalkSigningSecret;

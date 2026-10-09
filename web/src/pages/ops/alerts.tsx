@@ -496,6 +496,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   const openEditModal = (rule: AlertRule) => {
     setEditingRule(rule);
+    setTestResult(null);
     form.setFieldsValue({
       ...rule,
       metric: normalizeMetric(rule.metric),
@@ -812,7 +813,13 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         );
         message.success(t('alerts.ruleUpdated'));
       } else {
-        await (domain === 'CLUSTER' ? createAlertRule(payload) : createAlertRule(payload, domain));
+        // The dialog has no enable control, and the server models `enabled` as a primitive boolean,
+        // so leaving it out quietly created a rule that never evaluates (the column default is 1
+        // and the import path keeps whatever the file says). A rule created here starts enabled.
+        const createPayload = { ...payload, enabled: true } as Partial<AlertRule>;
+        await (domain === 'CLUSTER'
+          ? createAlertRule(createPayload)
+          : createAlertRule(createPayload, domain));
         setPage(1);
         refreshRules();
         message.success(t('alerts.ruleCreated'));
@@ -1045,7 +1052,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             pageSize={pageSize}
             total={totalRules}
             showSizeChanger
-            showTotal={(total) => t('alerts.totalRules', { count: total })}
+            showTotal={(total) => t('alerts.totalRulesWithCount', { count: total })}
             pageSizeOptions={[10, 20, 50, 100]}
             onChange={(nextPage, nextPageSize) => {
               setPage(nextPage);

@@ -59,12 +59,13 @@ import SendStopButton, { type SendStopState } from './SendStopButton';
  * ```ts
  * const generating = isStreaming && !stopRequested;
  * state = stopRequested ? 'stopping' : generating ? 'stop' : 'send';
- * canSend = value.trim() && !disabled && !readOnlyRole && llmReady && !generating;
+ * canSend = value.trim() && !disabled && !readOnlyRole && llmReady && !isStreaming;
  * ```
  *
  * `stopRequested` is what separates "the stop is on its way" from "the run is still going": the stop
  * is a server round-trip and the stream stays open to deliver the terminal frames, so the button sits
- * in `stopping` until they arrive rather than flipping straight back to `send`.
+ * in `stopping` until they arrive rather than flipping straight back to `send`. `canSend` follows the
+ * whole streaming window, so the keyboard cannot submit into that same window.
  *
  * ─── Keyboard ──────────────────────────────────────────────────
  * Enter sends, Shift+Enter inserts a newline, and Escape stops while generating. The `isComposing`
@@ -247,7 +248,10 @@ const Composer = ({
 
   const generating = isStreaming && !stopRequested;
   const sendStopState: SendStopState = stopRequested ? 'stopping' : generating ? 'stop' : 'send';
-  const canSend = !disabled && !readOnlyRole && llmReady && !generating && value.trim().length > 0;
+  // `isStreaming`, not `generating`: while the stop is still in flight the button is in its
+  // disabled `stopping` state because the stream guard would refuse a new run, and Enter must not
+  // be a hidden second way in - it used to clear the draft for a send that silently never left.
+  const canSend = !disabled && !readOnlyRole && llmReady && !isStreaming && value.trim().length > 0;
 
   const contextPercent = Math.min(100, Math.round((contextTokens / CONTEXT_WINDOW_TOKENS) * 100));
   const contextColor =
@@ -549,7 +553,7 @@ const Composer = ({
                         />
                         <span
                           style={{
-                            fontSize: 13,
+                            fontSize: 14,
                             color: token.colorTextSecondary,
                             fontVariantNumeric: 'tabular-nums',
                           }}

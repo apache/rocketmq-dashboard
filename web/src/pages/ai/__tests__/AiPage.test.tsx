@@ -36,7 +36,9 @@ import type {
   TimelineItem,
 } from '../../../api/aiEvents';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
+import type { Instance } from '../../../api/instance';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
+import { listInstances } from '../../../services/instanceService';
 import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
@@ -81,6 +83,10 @@ vi.mock('../../../api/llm', () => ({
 
 vi.mock('../../../api/cluster', () => ({
   listClusters: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 vi.mock('../../../stores/dataModeStore', () => ({
@@ -234,6 +240,7 @@ describe('AiPage', () => {
       stopReason: 'USER_STOP',
     });
     vi.mocked(listClusters).mockResolvedValue([]);
+    vi.mocked(listInstances).mockResolvedValue([]);
     vi.mocked(listTools).mockResolvedValue([]);
   });
 
@@ -517,6 +524,7 @@ describe('AiPage', () => {
 
     await user.click(screen.getByRole('button', { name: '工具' }));
     await waitFor(() => expect(listClusters).not.toHaveBeenCalled());
+    expect(listInstances).not.toHaveBeenCalled();
     expect(listTools).not.toHaveBeenCalled();
   });
 
@@ -571,7 +579,14 @@ describe('AiPage', () => {
   it('opensTheToolPlaygroundLoadsTheCatalogAndExecutesAToolTest', async () => {
     const user = userEvent.setup();
     vi.mocked(listClusters).mockResolvedValue([
-      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+      { id: 'physical-cluster-a', name: 'Physical Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 17,
+        name: 'studio-instance-a',
+        endpoint: 'nameserver-a:9876',
+      } as Instance,
     ]);
     vi.mocked(listTools).mockResolvedValue([
       {
@@ -586,25 +601,30 @@ describe('AiPage', () => {
         permission: 'cluster:read',
       },
     ]);
-    vi.mocked(executeTool).mockResolvedValue({ instanceId: 'cluster-a', capabilities: ['GRPC'] });
+    vi.mocked(executeTool).mockResolvedValue({
+      instanceId: 'studio-instance-a',
+      capabilities: ['GRPC'],
+    });
     renderPage();
     await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: '工具' }));
     const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
-    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(1));
+    expect(listClusters).not.toHaveBeenCalled();
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('studio-instance-a'));
     expect(within(dialog).getByText('rmq.instance.capabilities')).toBeInTheDocument();
     expect(within(dialog).getByText('L1')).toBeInTheDocument();
 
     const toolInput = within(dialog).getByRole('textbox', { name: '工具参数 JSON' });
-    expect(toolInput).toHaveValue('{\n  "instanceId": "cluster-a"\n}');
+    expect(toolInput).toHaveValue('{\n  "instanceId": "studio-instance-a"\n}');
     await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
 
     await waitFor(() =>
       expect(executeTool).toHaveBeenCalledWith(
         'rmq.instance.capabilities',
-        { instanceId: 'cluster-a' },
-        'cluster-a',
+        { instanceId: 'studio-instance-a' },
+        'studio-instance-a',
       ),
     );
     expect(await within(dialog).findByTestId('tool-result')).toHaveTextContent('"GRPC"');
@@ -613,7 +633,14 @@ describe('AiPage', () => {
   it('rejectsToolInputThatIsNotAJsonObjectTest', async () => {
     const user = userEvent.setup();
     vi.mocked(listClusters).mockResolvedValue([
-      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+      { id: 'physical-cluster-a', name: 'Physical Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 17,
+        name: 'studio-instance-a',
+        endpoint: 'nameserver-a:9876',
+      } as Instance,
     ]);
     vi.mocked(listTools).mockResolvedValue([
       { name: 'rmq.topic.list', description: 'List topics.', parameters: {} },

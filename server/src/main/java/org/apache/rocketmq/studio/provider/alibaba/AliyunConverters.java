@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -144,9 +145,15 @@ final class AliyunConverters {
                 return TopicType.DELAY;
             case "TRANSACTION":
                 return TopicType.TRANSACTION;
+            case "LITE":
+                // Aliyun RocketMQ 5.0 publishes lite topics as a first class message type
+                // (messageType=LITE), spelled exactly like TopicType.LITE. The Apache and Tencent
+                // converters already resolve it through TopicType.valueOf, so only this switch
+                // needs the case to keep the three vendors reporting the same type.
+                return TopicType.LITE;
             default:
-                // Unknown message types fall back to NORMAL so read paths (web
-                // detail, AI rmq.topic.list) never see a null type, matching the
+                // Message types this Studio build does not know yet fall back to NORMAL so read
+                // paths (web detail, AI rmq.topic.list) never see a null type, matching the
                 // Apache provider's parseTopicType fallback.
                 return TopicType.NORMAL;
         }
@@ -157,6 +164,11 @@ final class AliyunConverters {
                 .group(data.getConsumerGroupId())
                 .consumeType(toConsumeType(data.getMessageModel()))
                 .messageModel(data.getMessageModel())
+                // ListTopicSubscriptions carries no lag or TPS field, so the VO defaults (0/0)
+                // would render as measured "0 backlog / 0 TPS" in the console and in the AI tool
+                // output. Flag them unavailable, the same way the Apache provider does when
+                // consume stats cannot be read.
+                .metricsAvailable(false)
                 .build();
     }
 
@@ -169,6 +181,9 @@ final class AliyunConverters {
         // consumer groups are push consumers. Read paths (web detail, AI rmq.group.list) require
         // a non-null subscriptionMode, mirroring the Apache provider invariant.
         vo.setSubscriptionMode(SubscriptionMode.Push);
+        if (data.getTopicName() != null && !data.getTopicName().isBlank()) {
+            vo.setSubscribedTopics(List.of(data.getTopicName()));
+        }
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
         return vo;
@@ -188,12 +203,14 @@ final class AliyunConverters {
             for (Map.Entry<String, DataTopicLagMapValue> entry : topicLagMap.entrySet()) {
                 long ready = entry.getValue() == null || entry.getValue().getReadyCount() == null
                         ? 0L : entry.getValue().getReadyCount();
+                // The Aliyun API reports the lag per topic, so the row carries no queue offsets;
+                // report the unknown sentinel instead of a zero that reads like a measurement.
                 rows.add(QueueProgressVO.builder()
                         .topic(entry.getKey())
                         .broker("topic:" + entry.getKey())
                         .queueId(0)
-                        .brokerOffset(0L)
-                        .consumerOffset(0L)
+                        .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                        .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                         .diffTotal(ready)
                         .build());
             }
@@ -206,8 +223,8 @@ final class AliyunConverters {
             rows.add(QueueProgressVO.builder()
                     .broker("total")
                     .queueId(0)
-                    .brokerOffset(0L)
-                    .consumerOffset(0L)
+                    .brokerOffset(QueueProgressVO.UNKNOWN_OFFSET)
+                    .consumerOffset(QueueProgressVO.UNKNOWN_OFFSET)
                     .diffTotal(totalLag.getReadyCount())
                     .build());
         }
@@ -220,13 +237,12 @@ final class AliyunConverters {
                 .expression(data.getFilterExpression())
                 .type(data.getFilterExpressionType())
                 .filterMode(SubscriptionFilterModes.fromExpressionType(data.getFilterExpressionType()))
-                .consistency(data.getConsistency() == null ? null : String.valueOf(data.getConsistency()))
+                .consistency(SubscriptionConsistency.fromBoolean(data.getConsistency()))
                 .build();
     }
 
     static MessageRecordVO toMessageRecord(ListMessagesResponseBody.List data) {
-        String rawBody = data.getBody();
-        String decodedBody = tryBase64Decode(rawBody);
+        Body body = decodeBody(data.getBody());
         MessageRecordVO.MessageRecordVOBuilder builder = MessageRecordVO.builder()
                 .msgId(data.getMessageId())
                 .topic(data.getTopicName())
@@ -237,10 +253,8 @@ final class AliyunConverters {
                 .storeTime(parseTimeMillis(data.getStoreTime()))
                 .properties(data.getUserProperties())
                 .size(data.getBodySize() == null ? 0 : data.getBodySize());
-        if (decodedBody != null) {
-            builder.body(decodedBody).bodyEncoding("UTF-8");
-        } else {
-            builder.body(rawBody).bodyEncoding("TEXT");
+        if (body != null) {
+            builder.body(body.value()).bodyEncoding(body.encoding());
         }
         return builder.build();
     }
@@ -256,7 +270,7 @@ final class AliyunConverters {
                 nodes.add(TraceNodeVO.builder()
                         .title("Producer")
                         .timestamp(parseTimeMillis(record.getProduceTime()))
-                        .status(record.getProduceStatus())
+                        .status(toTraceStatus(record.getProduceStatus()))
                         .costTime(record.getProduceDuration() == null ? 0L : record.getProduceDuration())
                         .description(joinParts(", ", record.getClientHost(), record.getMessageSource()))
                         .build());
@@ -270,6 +284,10 @@ final class AliyunConverters {
                 nodes.add(TraceNodeVO.builder()
                         .title("Broker " + operation.getOperateType())
                         .timestamp(parseTimeMillis(operation.getOperateTime()))
+                        // GetTrace reports no status for broker operations (only operateTime and
+                        // operateType), so normalise the absent value to the Steps default instead
+                        // of leaving TraceNodeVO.status null, which the frontend cannot render.
+                        .status(toTraceStatus(null))
                         .build());
             }
         }
@@ -282,7 +300,7 @@ final class AliyunConverters {
                     String status = consumerInfo.getConsumeStatus();
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
-                            .status(status)
+                            .status(toTraceStatus(status))
                             .build());
                     consumerStatuses.add(consumerStatus(
                             consumerInfo.getConsumerGroupId(), status, 0L));
@@ -297,7 +315,7 @@ final class AliyunConverters {
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
                             .timestamp(consumeTime)
-                            .status(record.getConsumeStatus())
+                            .status(toTraceStatus(record.getConsumeStatus()))
                             .description(joinParts(", ", record.getClientHost(), record.getUserName()))
                             .build());
                     consumerStatuses.add(consumerStatus(
@@ -335,6 +353,26 @@ final class AliyunConverters {
                 .build();
     }
 
+    static String toTraceStatus(String rawStatus) {
+        // The trace Steps component accepts only wait / process / finish / error. Cloud
+        // providers return vendor vocabulary (SUCCESS / SEND_OK / CONSUME_FAILED / PRODUCING),
+        // so translate instead of leaking it into the API response.
+        if (rawStatus == null || rawStatus.isBlank()) {
+            return "wait";
+        }
+        String status = rawStatus.toUpperCase(Locale.ROOT);
+        if (status.contains("SUCCESS") || status.contains("OK")) {
+            return "finish";
+        }
+        if (status.contains("FAIL")) {
+            return "error";
+        }
+        if (status.contains("ING")) {
+            return "process";
+        }
+        return "wait";
+    }
+
     static java.time.LocalDateTime parseDateTime(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -363,7 +401,17 @@ final class AliyunConverters {
                 LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ALIYUN_TIME_ZONE));
     }
 
-    static String tryBase64Decode(String raw) {
+    /**
+     * ListMessages hands the body over Base64-encoded. Resolve it to the value/encoding pair the
+     * shared {@code MessageRecordVO} contract publishes - {@code docs/api-spec.md} documents
+     * {@code UTF-8} / {@code BASE64}, and {@code RocketMQMessageProvider.displayBody} produces
+     * exactly those two. A payload that decodes to text is returned as text; a payload that does
+     * not is binary, so the Base64 the API gave us is its faithful display form and is labelled
+     * {@code BASE64}. A body that is not Base64 in the first place is already literal text and
+     * keeps its own value. No body yields no pair, leaving both fields null the way the Apache and
+     * Tencent providers do.
+     */
+    private static Body decodeBody(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -371,17 +419,21 @@ final class AliyunConverters {
         try {
             bytes = Base64.getDecoder().decode(raw);
         } catch (IllegalArgumentException ignored) {
-            return null;
+            return new Body(raw, "UTF-8");
         }
         try {
-            return StandardCharsets.UTF_8.newDecoder()
+            String text = StandardCharsets.UTF_8.newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes))
                     .toString();
+            return new Body(text, "UTF-8");
         } catch (CharacterCodingException ignored) {
-            return null;
+            return new Body(raw, "BASE64");
         }
+    }
+
+    private record Body(String value, String encoding) {
     }
 
     private static String joinMessageKeys(List<String> keys) {
