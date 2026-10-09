@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -56,6 +57,26 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RocketMQClusterProviderTest {
+
+    @Test
+    void discoverClustersShouldDeduplicateRepeatedNameServerSegments() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876;10.0.0.2:9876;10.0.0.1:9876");
+        MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
+        when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
+        RocketMQClusterProvider provider =
+                new RocketMQClusterProvider(adminFactory, properties, mock(RuntimeAdminClientResolver.class));
+
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        // The admin connection deduplicates the endpoint before use; the reported rows must too.
+        assertThat(clusters.get(0).getNameServers()).extracting(NameServerVO::getAddr)
+                .containsExactly("10.0.0.1:9876", "10.0.0.2:9876");
+    }
 
     @Test
     void discoverClustersShouldParseRuntimeTpsWithExtraWhitespace() throws Exception {

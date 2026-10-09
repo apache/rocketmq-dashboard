@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -407,9 +408,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         String[] addrs = namesrvAddr.split("[;,]");
+        Set<String> seen = new LinkedHashSet<>();
         for (String addr : addrs) {
             String trimmed = addr.trim();
-            if (!trimmed.isEmpty()) {
+            if (!trimmed.isEmpty() && seen.add(trimmed)) {
+                // Deduplicate: the admin connection treats a repeated segment as one node, so
+                // the reported rows must not repeat it either.
                 nameServers.add(NameServerVO.builder()
                         .addr(trimmed)
                         .status(ClusterStatus.healthy)
