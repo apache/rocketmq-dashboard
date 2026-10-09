@@ -79,10 +79,21 @@ public class GroupResetOffsetToolHandler extends MutationToolHandler<GroupResetO
         return new ResetOffsetOutput(input.groupName(), input.topicName(), timestamp);
     }
 
-    /** Decision 13: no server-side default — rmqctl fills the current time client-side. */
+    /**
+     * Decision 13: no server-side default — rmqctl fills the current time client-side.
+     *
+     * <p>The value must also be strictly positive, the rule the console's own contract enforces
+     * ({@code ResetConsumerOffsetDTO}: {@code @NotNull @Positive}). The broker resolves a timestamp
+     * at or before the first stored message to the queue's minimum offset, so a caller passing 0 or
+     * a negative placeholder got a plan rated WARNING that was still executable - i.e. every queue
+     * rewound to the beginning - while the same values are a 400 through the REST endpoint.</p>
+     */
     private static long requireTimestamp(GroupResetOffsetInput input) {
         if (input.timestamp() == null) {
             throw new BusinessException(400, "timestamp is required");
+        }
+        if (input.timestamp() <= 0) {
+            throw new BusinessException(400, "timestamp must be positive");
         }
         return input.timestamp();
     }
