@@ -349,6 +349,39 @@ describe('consumer service mock data', () => {
 });
 
 describe('consumer group CSV export', () => {
+  it('renders an unmeasurable consume delay as unknown instead of the placeholder zero', async () => {
+    const unmeasured = {
+      ...mockConsumerGroups[0],
+      name: 'cg-delay-unmeasured',
+      namespace: 'ns',
+      clusterId: 'cluster-a',
+      subscriptionMode: 'Push' as const,
+      consumeType: 'CLUSTERING' as const,
+      delaySeconds: 0,
+      consumptionTimestampAvailable: false,
+    };
+    const measuredZero = {
+      ...unmeasured,
+      name: 'cg-delay-zero',
+      consumptionTimestampAvailable: true,
+    };
+    mockConsumerGroups.push(unmeasured, measuredZero);
+    try {
+      const csv = await exportConsumerGroups({ names: ['cg-delay-unmeasured', 'cg-delay-zero'] });
+
+      expect(csv).toContain(
+        '"cg-delay-unmeasured","ns","cluster-a","Push","CLUSTERING","0","0","unknown"',
+      );
+      // A measured zero must stay numeric, otherwise the column loses its meaning entirely.
+      expect(csv).toContain(
+        '"cg-delay-zero","ns","cluster-a","Push","CLUSTERING","0","0","0"',
+      );
+    } finally {
+      mockConsumerGroups.pop();
+      mockConsumerGroups.pop();
+    }
+  });
+
   it('renders an unavailable connection count as unknown instead of the sentinel', async () => {
     const unavailable = {
       ...mockConsumerGroups[0],
