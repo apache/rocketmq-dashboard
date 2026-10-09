@@ -310,7 +310,7 @@ public class AclService {
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
-        String auditDetail = "admin=" + saved.isAdmin()
+        String auditDetail = "admin=" + Boolean.TRUE.equals(saved.getAdmin())
                 + ", whiteRemoteAddressConfigured="
                 + StringUtils.hasText(saved.getWhiteRemoteAddress());
         recordAudit("UPSERT_PLAIN_ACCESS_CONFIG", "ACL_USER", saved.getAccessKey(), null,

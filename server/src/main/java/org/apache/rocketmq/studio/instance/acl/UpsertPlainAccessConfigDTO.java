@@ -39,7 +39,11 @@ public class UpsertPlainAccessConfigDTO {
 
     private String whiteRemoteAddress;
 
-    private boolean admin;
+    /**
+     * Null when the request does not mention the flag, in which case an existing account keeps the
+     * stored value instead of being reset to false; a new account defaults to false.
+     */
+    private Boolean admin;
 
     private String defaultTopicPerm;
 

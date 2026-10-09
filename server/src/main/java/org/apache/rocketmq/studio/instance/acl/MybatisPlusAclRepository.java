@@ -262,7 +262,13 @@ public class MybatisPlusAclRepository implements AclRepository {
             // Blank secret on an existing account keeps the stored secret unchanged.
             entity.setSecretKey(existing.getSecretKey());
         }
-        entity.setAdmin(config.isAdmin());
+        // An omitted flag keeps an existing account's stored value; the sibling user update does the
+        // same ("Null when the admin flag was not part of the partial update"), and the secret below
+        // is handled the same way.
+        boolean effectiveAdmin = config.getAdmin() != null
+                ? config.getAdmin()
+                : existing != null && Boolean.TRUE.equals(existing.getAdmin());
+        entity.setAdmin(effectiveAdmin);
         entity.setClusters(null);
         entity.setWhiteRemoteAddress(normalizeWhiteRemoteAddress(config.getWhiteRemoteAddress()));
         entity.setGmtModified(LocalDateTime.now());
@@ -292,7 +298,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 // hidden (read-back views always mask it).
                 .secretKey(secretProvided ? config.getSecretKey() : null)
                 .whiteRemoteAddress(entity.getWhiteRemoteAddress())
-                .admin(config.isAdmin())
+                .admin(effectiveAdmin)
                 .defaultTopicPerm(config.getDefaultTopicPerm())
                 .defaultGroupPerm(config.getDefaultGroupPerm())
                 .topicPerms(config.getTopicPerms() == null ? null : new ArrayList<>(config.getTopicPerms()))
