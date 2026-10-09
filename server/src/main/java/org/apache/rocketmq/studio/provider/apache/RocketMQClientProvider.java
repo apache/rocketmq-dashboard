@@ -93,6 +93,17 @@ public class RocketMQClientProvider implements ClientProvider {
         if (clientType == null || clientType == ClientType.Consumer) {
             connections.addAll(findConsumerConnections(adminExt, clusterId));
         }
+        // The rows are aggregated by walking the broker/proxy tables, whose iteration order is
+        // hash-based and changes between snapshots; sort by a stable key so the client list
+        // does not reshuffle between two views of the same cluster.
+        connections.sort(Comparator
+                .comparing(ClientConnectionVO::getType, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ClientConnectionVO::getGroupOrTopic,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ClientConnectionVO::getClientId,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ClientConnectionVO::getAddress,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
         return connections;
     }
 
