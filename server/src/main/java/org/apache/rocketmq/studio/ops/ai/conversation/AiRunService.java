@@ -379,11 +379,22 @@ public class AiRunService {
         if (registry.stop(run.getId(), AbortReason.USER_STOP)) {
             log.info("agent run {} is being stopped at the user's request", run.getId());
         } else {
-            // The row says active but nothing in this process owns it, so no worker will ever write the
-            // terminal state. Writing it here is what keeps the stop button from spinning until the
-            // orphan sweep gets around to it.
+            // The row said active but the worker may have finalised between the read at the top of
+            // this method and the registry lookup, whose empty result is what reached this branch.
+            // Re-read before writing anything: a terminal write over a finished run would duplicate
+            // the run_status event and flip a run the user watched complete to STOPPED.
+            RmqAiRun current = runRepository.findById(runId).orElse(run);
+            RunStatus currentStatus = statusOf(current.getStatus());
+            if (currentStatus == null || currentStatus.isTerminal()) {
+                log.debug("stop of run {} found it already terminal ({})", run.getId(), current.getStatus());
+                return current;
+            }
+            // The row really is active with no owner in this process, so no worker will ever write
+            // the terminal state. Writing it here is what keeps the stop button from spinning until
+            // the orphan sweep gets around to it.
             log.warn("run {} is non-terminal with no owner in this process; stopping it directly", run.getId());
-            runExecutor.terminate(detachedContext(run), RunStatus.STOPPED, StopReason.USER_STOP, null, null);
+            runExecutor.terminate(detachedContext(current), RunStatus.STOPPED, StopReason.USER_STOP, null, null);
+            return runRepository.findById(runId).orElse(current);
         }
         return runRepository.findById(runId).orElse(run);
     }

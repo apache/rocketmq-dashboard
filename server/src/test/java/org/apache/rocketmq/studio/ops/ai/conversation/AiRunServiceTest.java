@@ -398,6 +398,26 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aStopThatLosesTheFinalisationRaceMustNotWriteASecondTerminalTest() {
+        // The run row is read once at the top of stop(); the worker can finalise between that read
+        // and the registry lookup, whose empty result then looks like "nobody owns this run".
+        // Writing the terminal state on that stale read would duplicate the run_status event and
+        // flip a run the user watched complete to STOPPED, so the row is re-read first.
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        when(runRepository.findById(RUN_ID))
+                .thenReturn(Optional.of(running))
+                .thenReturn(Optional.of(finished));
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID)).thenReturn(Optional.of(running));
+
+        RmqAiRun stopped = service.stop(RUN_ID);
+
+        assertThat(stopped.getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(runUpdates).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
     void stopOfARunNobodyOwnsAnyMoreShouldStillWriteTheTerminalStateTest() {
         // The row says active, but nothing in this process owns it: the worker is gone and will never
         // finalise. Writing the terminal state here is what keeps the stop button from spinning until the
