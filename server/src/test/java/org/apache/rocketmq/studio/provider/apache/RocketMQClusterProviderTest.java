@@ -338,6 +338,33 @@ class RocketMQClusterProviderTest {
                 .isEqualTo("10.0.3.5:8080");
     }
 
+    @Test
+    void discoverClustersShouldOrderClustersByNameRegardlessOfTableOrder() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+
+        ClusterInfo clusterInfo = new ClusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.11:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("zeta-cluster", "broker-a", addrs));
+        HashMap<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        // Inserted in reverse order so the table's own iteration order differs from name order.
+        clusterAddrTable.put("zeta-cluster", Set.of("broker-a"));
+        clusterAddrTable.put("alpha-cluster", Set.of("broker-a"));
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        // RealClusterProvider already returns clusters sorted by name; the instance-backed
+        // discovery must agree so the cluster list does not reshuffle between requests.
+        assertThat(clusters).extracting(ClusterVO::getId)
+                .containsExactly("alpha-cluster", "zeta-cluster");
+    }
+
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
