@@ -1250,6 +1250,58 @@ class RocketMQAdminClientImplTest {
                 org.mockito.ArgumentMatchers.contains("retryMaxTimes=" + retryMaxTimes), eq("SUCCESS"));
     }
 
+    @Test
+    void updateConsumerGroupAppliesTheRequestedDeliveryOrderTypeTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setConsumeMessageOrderly(false);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+        RmqGroup entity = new RmqGroup();
+        entity.setId(7L);
+        when(groupMapper.selectOne(any())).thenReturn(entity);
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId("instance-a");
+        group.setName("cg-orders");
+        group.setRetryMaxTimes(16);
+        // The ordered spelling the create form and the AI tool contract submit for this field.
+        group.setDeliveryOrderType("MESSAGES_ORDER");
+
+        adminClient.updateConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> written = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(adminExt).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), written.capture());
+        // The plan offered the switch, so the update has to reach consumeMessageOrderly instead of
+        // reporting success for a field it never wrote.
+        assertThat(written.getValue().isConsumeMessageOrderly()).isTrue();
+    }
+
+    @Test
+    void updateConsumerGroupKeepsTheBrokerFlagWhenNoDeliveryOrderTypeIsRequestedTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setConsumeMessageOrderly(true);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+        RmqGroup entity = new RmqGroup();
+        entity.setId(7L);
+        when(groupMapper.selectOne(any())).thenReturn(entity);
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId("instance-a");
+        group.setName("cg-orders");
+        group.setRetryMaxTimes(16);
+
+        adminClient.updateConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> written = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(adminExt).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), written.capture());
+        assertThat(written.getValue().isConsumeMessageOrderly()).isTrue();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"missing", "unavailable"})
     void updateConsumerGroupReadsAllConfigurationsBeforeWriting(String failure) throws Exception {
