@@ -412,7 +412,55 @@ class AuthServiceDatabaseTest {
 
         assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
 
-        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("last_seen_at", "gmt_modified");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs()).containsValue(UTC_CLOCK_INSTANT);
+    }
+
+    @Test
+    void userAndSessionUpdatesStampTheUtcAuditInstantTest() {
+        RmqStudioUser target = user(1L, "admin-one", true, true, "password-1");
+        RmqStudioUser other = user(2L, "admin-two", true, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(target);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(target, other));
+
+        authService.setUserEnabled(1L, false);
+
+        // rmq_studio_user.gmt_modified is ON UPDATE CURRENT_TIMESTAMP, which is the database
+        // session's zone; the API serializes every zone-less timestamp as UTC, so the app has to
+        // write the instant itself.
+        org.mockito.ArgumentCaptor<RmqStudioUser> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(RmqStudioUser.class);
+        verify(userMapper).updateById(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getGmtModified()).isEqualTo(UTC_CLOCK_INSTANT);
+    }
+
+    @Test
+    void revokingSessionsStampsTheUtcModifiedInstantTest() {
+        RmqStudioUser user = user(1L, "operator", false, true, "password-1");
+        when(userMapper.selectById(1L)).thenReturn(user);
+        when(sessionMapper.update(isNull(), any(Wrapper.class))).thenReturn(2);
+
+        authService.revokeSessionsForUser(1L);
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at", "gmt_modified");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs()).containsValue(UTC_CLOCK_INSTANT);
+    }
+
+    @Test
+    void loggingOutStampsTheUtcModifiedInstantTest() {
+        authService.logout("Bearer token-1");
+
+        org.mockito.ArgumentCaptor<UpdateWrapper<RmqStudioSession>> updateCaptor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sessionMapper).update(isNull(), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("revoked_at", "gmt_modified");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs()).containsValue(UTC_CLOCK_INSTANT);
     }
 
     @Test

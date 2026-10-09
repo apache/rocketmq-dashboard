@@ -169,10 +169,12 @@ public class AuthService {
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(token -> {
             if (databaseBacked()) {
+                LocalDateTime current = now();
                 sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                         .eq("token_hash", tokenHash(token))
                         .isNull("revoked_at")
-                        .set("revoked_at", now()));
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
             } else {
                 activeTokens.remove(token);
             }
@@ -342,7 +344,11 @@ public class AuthService {
                 throw new BusinessException(409, "The last enabled administrator cannot be disabled");
             }
         }
-        userMapper.updateById(userWithEnabled(user, enabled));
+        RmqStudioUser enableUpdate = userWithEnabled(user, enabled);
+        // updateById only writes non-null fields, so without this the column's ON UPDATE
+        // CURRENT_TIMESTAMP - the database session's zone, not UTC - would be the audit instant.
+        enableUpdate.setGmtModified(now());
+        userMapper.updateById(enableUpdate);
         if (!enabled) {
             revokeUserSessions(user.getId());
         }
@@ -454,7 +460,8 @@ public class AuthService {
                 || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                     .eq("id", session.getId())
-                    .set("last_seen_at", current));
+                    .set("last_seen_at", current)
+                    .set("gmt_modified", current));
         }
         return Optional.of(userInfo(user));
     }
@@ -528,7 +535,8 @@ public class AuthService {
                 .eq("user_id", userId)
                 .isNull("revoked_at")
                 .gt("expires_at", current)
-                .set("revoked_at", current));
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
     }
 
     private Set<Long> normalizeUserIds(Collection<Long> userIds) {
