@@ -153,4 +153,16 @@ describe('DashboardTrafficInsights', () => {
     // Findings render as one joined line, so match on a substring rather than the exact node text.
     expect(screen.getByText(/未检测到活跃流量/u)).toBeInTheDocument();
   });
+
+  it('formats findings with locale-neutral separators for English users', () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    renderPanel();
+
+    const alert = screen.getByText(/Traffic signals to review/);
+    const text = alert.textContent ?? '';
+    expect(text).toContain('Traffic signals to review');
+    expect(text).not.toContain('、');
+    expect(text).not.toContain('：');
+    expect(text).toContain('; ');
+  });
 });

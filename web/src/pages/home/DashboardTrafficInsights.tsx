@@ -64,8 +64,12 @@ const issueTextKey = (issue: DashboardTrafficIssue) => {
 };
 
 const DashboardTrafficInsights = ({ insights }: Props) => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const visibleIssues = insights.issues.slice(0, 4);
+  // Locale-aware separators: the findings line is prose, and CJK punctuation in an
+  // English sentence reads as noise. Same convention as instance batch-delete toasts.
+  const listSeparator = lang === 'zh' ? '、' : '; ';
+  const labelSeparator = lang === 'zh' ? '：' : ': ';
 
   const issueText = (issue: DashboardTrafficIssue) =>
     t(issueTextKey(issue), {
@@ -156,7 +160,7 @@ const DashboardTrafficInsights = ({ insights }: Props) => {
                 ? 'warning'
                 : 'info'
           }
-          message={`${t('dashboardTraffic.findings')}：${visibleIssues.map(issueText).join('、')}`}
+          message={`${t('dashboardTraffic.findings')}${labelSeparator}${visibleIssues.map(issueText).join(listSeparator)}`}
           style={{ marginBottom: 16 }}
         />
       )}
