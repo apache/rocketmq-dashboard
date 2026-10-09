@@ -196,7 +196,13 @@ public class NotificationOutboxService {
             row.setStatus(NotificationOutboxStatus.PENDING.name());
             row.setAttemptCount(0);
             row.setMessageContent(AlertNotificationTemplate.render(rule.getNotificationTemplate(), alert, rule));
-            row.setNextAttemptAt(silenceEndsAt == null ? utcNow() : silenceEndsAt);
+            LocalDateTime queuedAt = utcNow();
+            row.setNextAttemptAt(silenceEndsAt == null ? queuedAt : silenceEndsAt);
+            // gmt_create/gmt_modified otherwise fall back to the database session's
+            // CURRENT_TIMESTAMP, while the retention cutoff, the delivery time filter and the
+            // console all use UTC.
+            row.setGmtCreate(queuedAt);
+            row.setGmtModified(queuedAt);
             mapper.insert(row);
         }
     }
@@ -250,7 +256,8 @@ public class NotificationOutboxService {
         int updated = mapper.update(null, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("attempt_count", 0)
                 .set("next_attempt_at", now).set("sending_started_at", null).set("claim_token", null)
-                .set("last_error", null).eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
+                .set("last_error", null).set("gmt_modified", now)
+                .eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
         if (updated != 1) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
@@ -386,7 +393,7 @@ public class NotificationOutboxService {
             if (!updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
                     .set("status", NotificationOutboxStatus.DELIVERED.name()).set("delivered_at", deliveredAt)
                     .set("sending_started_at", null)
-                    .set("last_error", null).set("claim_token", null))) {
+                    .set("last_error", null).set("claim_token", null).set("gmt_modified", deliveredAt))) {
                 return;
             }
             recordDeliverySafely(row, "DELIVER_ALERT_NOTIFICATION", "SUCCESS", null);
@@ -412,7 +419,8 @@ public class NotificationOutboxService {
     private void deferUntilSilenceEnds(RmqAlertNotificationOutbox row, LocalDateTime silenceEndsAt, String claimToken) {
         updateClaimed(row, claimToken, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("next_attempt_at", silenceEndsAt)
-                .set("sending_started_at", null).set("claim_token", null));
+                .set("sending_started_at", null).set("claim_token", null)
+                .set("gmt_modified", utcNow()));
     }
 
     private void sendWebhook(GeneralSettingsVO settings, SystemAlertVO alert, String channel, String content) {
@@ -531,6 +539,7 @@ public class NotificationOutboxService {
                         : NotificationOutboxStatus.RETRY_WAIT).name())
                 .set("next_attempt_at", now.plusSeconds(Math.min(300, 5L << Math.min(attempts - 1, 5))))
                 .set("sending_started_at", null)
+                .set("gmt_modified", now)
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
