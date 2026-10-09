@@ -17,6 +17,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/studio"
 	"github.com/spf13/cobra"
@@ -62,6 +64,12 @@ func (a *App) newMCPConfigCommand(runtime commandRuntime) *cobra.Command {
 		Short: "Print an MCP client configuration snippet",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// `mcp stdio` refuses to start without an instance identifier (there is deliberately
+			// no default), so a snippet generated without one would exit 1 in the client and the
+			// tools would silently never appear. Fail closed instead of emitting it.
+			if strings.TrimSpace(runtime.options.instanceID) == "" {
+				return invalidArgument("--instance-id is required to generate a usable MCP client snippet")
+			}
 			out := cmd.OutOrStdout()
 			stdioArgs := []string{"mcp", "stdio"}
 			if runtime.options.configPath != "" {
