@@ -159,7 +159,11 @@ public class NativeAlertProcessor {
             AlertStateUpdate update = stateMachine.advance(active.state(), clear,
                     Math.max(1, rule.getConsecutiveSamples()), AlertRuleDuration.parse(rule.getDuration()),
                     AlertRuleDuration.parse(rule.getReminderInterval()), resolvedAt);
-            if (update.transition() != AlertStateTransition.RESOLVED) {
+            // A vanished fingerprint ends the episode even when it was only pending (the state machine
+            // leaves PENDING for OK with no transition), so persist whenever the status moved; only a
+            // real resolution produces a lifecycle event.
+            boolean statusChanged = update.state().status() != active.state().status();
+            if (update.transition() != AlertStateTransition.RESOLVED && !statusChanged) {
                 continue;
             }
             try {
@@ -175,8 +179,10 @@ public class NativeAlertProcessor {
                     if (!stateRepository.save(active.key(), update.state())) {
                         return;
                     }
-                    emitLifecycleEvent(rule, active.key(), update, scope.domain(),
-                            active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
+                    if (update.transition() == AlertStateTransition.RESOLVED) {
+                        emitLifecycleEvent(rule, active.key(), update, scope.domain(),
+                                active.instanceId(), rule.getMetric(), active.labels(), resolvedAt);
+                    }
                 });
             } catch (RuntimeException error) {
                 failedLifecycleEmits++;

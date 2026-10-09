@@ -97,6 +97,45 @@ class MybatisPlusAlertStateRepositoryTest {
     }
 
     @Test
+    void findActiveQueriesPendingEpisodesTooTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        RmqAlertState state = new RmqAlertState();
+        state.setRuleId(4L);
+        state.setFingerprint("fingerprint");
+        state.setStatus(AlertStateStatus.PENDING.name());
+        when(mapper.selectList(any())).thenReturn(List.of(state));
+        RmqSystemAlert alert = new RmqSystemAlert();
+        alert.setRuleId(4L);
+        alert.setFingerprint("fingerprint");
+        alert.setInstanceId("local");
+        alert.setLabelsJson("{\"consumerGroup\":\"orders\"}");
+        RmqSystemAlertMapper alertMapper = mock(RmqSystemAlertMapper.class);
+        when(alertMapper.selectList(any())).thenReturn(List.of(alert));
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper, alertMapper);
+        AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS).enabled(true)
+                .instanceId("local").metric("consumer.lag.total").build();
+
+        List<ActiveAlertState> active = repository.findActive(new MetricCollectionScope(AlertDomain.BUSINESS,
+                "local", Set.of("consumer.lag.total")), List.of(rule));
+
+        // A pending episode whose metric stops being collected has to be visible to the reconcile
+        // loop; excluding it left its firstPendingAt standing, so the rule fired on the first sample
+        // that returned instead of waiting for its configured duration.
+        org.mockito.ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<RmqAlertState>>
+                wrapper = org.mockito.ArgumentCaptor.forClass(
+                        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        // The bound values only exist once MyBatis renders the statement, so pin the shape: three
+        // status parameters (PENDING/FIRING/ACKED) instead of the two the query used to bind.
+        String segment = wrapper.getValue().getSqlSegment();
+        String statusClause = segment.substring(segment.indexOf("status IN ("));
+        statusClause = statusClause.substring(0, statusClause.indexOf(')'));
+        assertThat(statusClause).contains("MPGENVAL2", "MPGENVAL3", "MPGENVAL4");
+        assertThat(active).singleElement()
+                .extracting(item -> item.state().status()).isEqualTo(AlertStateStatus.PENDING);
+    }
+
+    @Test
     void findsActiveStatesForRulesWithPaddedStoredMetricsTest() {
         // NativeAlertProcessor keeps rules whose stored metric has surrounding whitespace
         // (legacy rows) by matching trimWhitespace(rule.getMetric()) against the scope keys;

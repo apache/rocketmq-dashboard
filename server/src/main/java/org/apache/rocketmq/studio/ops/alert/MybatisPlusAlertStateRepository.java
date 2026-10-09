@@ -110,9 +110,14 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         if (scopedRules.isEmpty()) {
             return List.of();
         }
+        // PENDING is an active state too: its episode has been started and the reconcile loop is the
+        // only thing that can end it when the metric stops being collected (a PENDING anchor that
+        // survives a collection gap makes the rule fire on the first sample that returns instead of
+        // waiting for its required duration).
         List<RmqAlertState> activeStates = mapper.selectList(new QueryWrapper<RmqAlertState>()
                         .in("rule_id", scopedRules.keySet())
-                        .in("status", List.of(AlertStateStatus.FIRING.name(), AlertStateStatus.ACKED.name())));
+                        .in("status", List.of(AlertStateStatus.PENDING.name(),
+                                AlertStateStatus.FIRING.name(), AlertStateStatus.ACKED.name())));
         Map<AlertStateKey, RmqSystemAlert> latestAlerts = findLatestAlerts(scope, activeStates);
         return activeStates
                 .stream()
