@@ -384,6 +384,39 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('reports a failed broker runtime-stats read as unavailable instead of 0% and 0 TPS', async () => {
+    const cluster = buildCluster();
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...cluster,
+        brokers: [
+          {
+            ...cluster.brokers[0],
+            // The shape RocketMQClusterProvider leaves behind when the stats read fails.
+            runtimeStatsAvailable: false,
+            diskUsage: 0,
+            tpsIn: 0,
+            tpsOut: 0,
+          },
+        ],
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    expect(within(brokerRow).queryByText('0%')).not.toBeInTheDocument();
+    expect(within(brokerRow).getAllByText('不可用')).toHaveLength(3);
+
+    // A descending sort must not promote the unmeasured broker either.
+    const [tpsInHeader] = screen.getAllByText('TPS In');
+    await user.click(tpsInHeader);
+    await user.click(tpsInHeader);
+    expect(
+      within(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).getAllByText('不可用'),
+    ).toHaveLength(3);
+  });
+
   it('previews broker config changes before submitting the update', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
