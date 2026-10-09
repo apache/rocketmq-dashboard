@@ -967,8 +967,9 @@ const ConsumerPageContent = ({
       key: 'onlineInstances',
       width: 100,
       align: 'center',
-      sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
+      sorter: (a, b, sortOrder) =>
+        onlineInstancesSortValue(a.onlineInstances, sortOrder) -
+        onlineInstancesSortValue(b.onlineInstances, sortOrder),
       render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
     },
     {
@@ -977,7 +978,8 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
+      sorter: (a, b, sortOrder) =>
+        lagSortValue(a.totalLag, sortOrder) - lagSortValue(b.totalLag, sortOrder),
       render: (lag: number) =>
         isLagAvailable(lag) ? (
           lag.toLocaleString()

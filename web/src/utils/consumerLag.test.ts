@@ -42,4 +42,12 @@ describe('consumer lag helpers', () => {
     expect(lagSortValue(UNKNOWN_LAG)).toBe(Number.MAX_SAFE_INTEGER);
     expect(lagSortValue(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
+
+  it('keeps unknown lags after known ones in the descending order too', () => {
+    // Ant Design negates the comparator for a descending column, so an unknown row would land
+    // first if the sentinel stayed the largest number.
+    expect(lagSortValue(UNKNOWN_LAG, 'descend')).toBe(Number.MIN_SAFE_INTEGER);
+    expect(lagSortValue(null, 'descend')).toBe(Number.MIN_SAFE_INTEGER);
+    expect(lagSortValue(15000, 'descend')).toBe(15000);
+  });
 });

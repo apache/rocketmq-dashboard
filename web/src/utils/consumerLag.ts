@@ -28,6 +28,17 @@ export const formatLag = (
   unavailableLabel: string = String(UNKNOWN_LAG),
 ): string => (isLagAvailable(lag) ? lag.toLocaleString() : unavailableLabel);
 
-/** Sort key that pushes unknown lags to the end of an ascending list. */
-export const lagSortValue = (lag: number | null | undefined): number =>
-  isLagAvailable(lag) ? lag : Number.MAX_SAFE_INTEGER;
+/**
+ * Sort key that keeps an unknown lag after every known value in both sort directions.
+ *
+ * Ant Design computes a descending column by negating the comparator's result, so an unknown
+ * value cannot simply be the largest number: the sentinel has to flip with the direction, or the
+ * descending order lists the rows that carry no measurement first.
+ */
+export const lagSortValue = (
+  lag: number | null | undefined,
+  sortOrder?: 'ascend' | 'descend' | null,
+): number => {
+  if (isLagAvailable(lag)) return lag;
+  return sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+};

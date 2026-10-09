@@ -48,4 +48,12 @@ describe('consumer connection helpers', () => {
     expect(onlineInstancesSortValue(UNKNOWN_ONLINE_INSTANCES)).toBe(Number.MAX_SAFE_INTEGER);
     expect(onlineInstancesSortValue(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
+
+  it('keeps unavailable connection counts last in the descending order too', () => {
+    expect(onlineInstancesSortValue(UNKNOWN_ONLINE_INSTANCES, 'descend')).toBe(
+      Number.MIN_SAFE_INTEGER,
+    );
+    expect(onlineInstancesSortValue(null, 'descend')).toBe(Number.MIN_SAFE_INTEGER);
+    expect(onlineInstancesSortValue(12, 'descend')).toBe(12);
+  });
 });

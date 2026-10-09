@@ -1975,6 +1975,36 @@ describe('Consumer page', () => {
     });
   });
 
+  it('keeps an unknown lag after known backlogs in the descending order too', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
+        { ...group, name: 'known-lag-cg', totalLag: 15000 },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+    await screen.findByRole('row', { name: /unknown-lag-cg/ });
+
+    const [lagHeader] = screen.getAllByText('总堆积量');
+    // Ascending, then descending: the row with no measurement must not lead either list.
+    await user.click(lagHeader);
+    await user.click(lagHeader);
+    await waitFor(() => {
+      const order = Array.from(document.querySelectorAll('tbody tr'))
+        .map((row) => row.textContent ?? '')
+        .map((text) =>
+          text.includes('unknown-lag-cg')
+            ? 'unknown'
+            : /\bknown-lag-cg\b/.test(text)
+              ? 'known'
+              : '',
+        )
+        .filter(Boolean);
+      expect(order).toEqual(['known', 'unknown']);
+    });
+  });
+
   it('sorts groups with unavailable connections after known client counts', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
