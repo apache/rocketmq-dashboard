@@ -96,21 +96,22 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void cleanupLogsShouldUseProvidedRetention() throws Exception {
-        when(auditService.cleanupLogs(90)).thenReturn(7);
+        when(auditService.cleanupLogs(90)).thenReturn(new AuditService.CleanupOutcome(7, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("beforeDays", 90))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.deleted").value(7));
+                .andExpect(jsonPath("$.data.deleted").value(7))
+                .andExpect(jsonPath("$.data.truncated").value(false));
 
         verify(auditService).cleanupLogs(90);
     }
 
     @Test
     void cleanupLogsShouldDefaultRetentionWhenBodyIsEmpty() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(new AuditService.CleanupOutcome(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup"))
                 .andExpect(status().isOk())
@@ -121,7 +122,7 @@ class AuditControllerTest extends WebMvcAuthTestSupport {
 
     @Test
     void cleanupLogsShouldDefaultRetentionWhenBeforeDaysIsMissing() throws Exception {
-        when(auditService.cleanupLogs(30)).thenReturn(3);
+        when(auditService.cleanupLogs(30)).thenReturn(new AuditService.CleanupOutcome(3, false));
 
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)

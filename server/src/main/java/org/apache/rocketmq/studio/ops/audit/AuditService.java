@@ -140,7 +140,11 @@ public class AuditService {
         log.info("Audit recorded: {} on {} -> {}", operationType, target, result);
     }
 
-    public int cleanupLogs(int beforeDays) {
+    /** {@code truncated} means the sweep hit its batch ceiling and expired rows may remain. */
+    public record CleanupOutcome(int deleted, boolean truncated) {
+    }
+
+    public CleanupOutcome cleanupLogs(int beforeDays) {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");
         }
@@ -149,7 +153,11 @@ public class AuditService {
         }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
-        return auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        int deleted = auditRepository.deleteBefore(cutoff, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES);
+        // The sweep is bounded (500 rows x 20 batches). Answering with the count alone made a
+        // truncated cleanup indistinguishable from a complete one, so the operator (and the
+        // retention policy) believed the window was applied while older rows survived.
+        return new CleanupOutcome(deleted, deleted >= CLEANUP_BATCH_SIZE * CLEANUP_MAX_BATCHES);
     }
 
     private void validatePagination(int page, int pageSize) {

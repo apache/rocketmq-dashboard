@@ -290,10 +290,16 @@ const AuditPage: React.FC = () => {
 
   const handleCleanup = async () => {
     try {
-      await cleanupAuditLogs(cleanupDays);
+      const outcome = await cleanupAuditLogs(cleanupDays);
       setPage(1);
       setRefreshKey((key) => key + 1);
-      message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
+      if (outcome.truncated) {
+        // The sweep is bounded (10000 rows per call): saying the cleanup succeeded while older
+        // rows survive leaves the operator with the retention policy they did not get.
+        message.warning(t('audit.cleanupTruncated', { n: outcome.deleted, days: cleanupDays }));
+      } else {
+        message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
+      }
       setCleanupModalOpen(false);
     } catch {
       message.error('清理审计日志失败，请稍后重试');

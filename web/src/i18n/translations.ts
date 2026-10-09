@@ -1615,6 +1615,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.cleanupDays': { zh: '清理 {n} 天之前的日志', en: 'Clean logs older than {n} days' },
   'audit.cleanupConfirm': { zh: '确认清理', en: 'Confirm Cleanup' },
   'audit.cleanupSuccess': { zh: '已清理 {n} 天之前的日志', en: 'Cleaned logs older than {n} days' },
+  'audit.cleanupTruncated': {
+    zh: '已删除 {n} 条日志，但仍有 {days} 天之前的记录（单次清理上限 10000 条），请再次执行',
+    en: 'Deleted {n} logs, but older entries remain (the per-call cap is 10000); run the cleanup again',
+  },
   'audit.summaryMatched': { zh: '匹配记录', en: 'Matched Records' },
   'audit.summarySuccessRate': { zh: '成功率', en: 'Success Rate' },
   'audit.summaryOperators': { zh: '操作人数', en: 'Operators' },

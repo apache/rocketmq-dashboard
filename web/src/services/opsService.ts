@@ -13,6 +13,7 @@ import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type {
   AlertRule,
+  AuditCleanupResult,
   AlertRuleQuery,
   AlertRuleRuntime,
   AlertRuleBulkResult,
@@ -535,14 +536,13 @@ export async function getAuditSummary(params: AuditSummaryFilter = {}): Promise<
   };
 }
 
-export async function cleanupAuditLogs(beforeDays: number): Promise<number> {
+export async function cleanupAuditLogs(beforeDays: number): Promise<AuditCleanupResult> {
   if (isMockMode()) {
     const cutoff = new Date(Date.now() - beforeDays * 24 * 60 * 60 * 1000);
     const remaining = auditRecordsState.filter((record) => new Date(record.timestamp) >= cutoff);
     const deleted = auditRecordsState.length - remaining.length;
     auditRecordsState = remaining;
-    return deleted;
+    return { deleted, truncated: false };
   }
-  const result = await opsApi.cleanupAuditLogs(beforeDays);
-  return result.deleted;
+  return opsApi.cleanupAuditLogs(beforeDays);
 }
