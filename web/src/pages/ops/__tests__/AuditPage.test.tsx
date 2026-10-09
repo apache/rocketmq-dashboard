@@ -344,7 +344,7 @@ describe('Audit page', () => {
     vi.mocked(opsService.getAuditFilterOptions)
       .mockImplementationOnce(() => new Promise(() => {}))
       .mockImplementationOnce(() => staleOptions.promise);
-    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue(3);
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue({ deleted: 3 });
 
     renderWithProviders(<AuditPage />);
 
@@ -376,9 +376,30 @@ describe('Audit page', () => {
     expect(opsService.listAuditRecords).toHaveBeenCalled();
   });
 
+  it('discloses a cleanup that hit the per-call cap', async () => {
+    const user = userEvent.setup();
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue({ deleted: 10000, truncated: true });
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清理日志' }));
+    await user.click(await screen.findByRole('button', { name: '确认清理' }));
+
+    // The success wording would claim the retention window was applied while older rows survive.
+    // The warning has to say "possibly": a sweep that ends exactly on the ceiling may have been
+    // complete, and asserting that rows remain would be wrong in that case.
+    expect(
+      await screen.findByText(
+        '已删除 10000 条日志，可能仍有 30 天之前的记录（单次清理上限 10000 条），请再次执行',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('已清理 30 天之前的日志')).not.toBeInTheDocument();
+  });
+
   it('refreshes filter options after audit logs are cleaned up', async () => {
     const user = userEvent.setup();
-    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue(3);
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue({ deleted: 3 });
 
     renderWithProviders(<AuditPage />);
 

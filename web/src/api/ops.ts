@@ -396,8 +396,14 @@ export async function listAuditRecords(params?: AuditQuery) {
   return res.data.data;
 }
 
+export interface AuditCleanupResult {
+  deleted: number;
+  /** The sweep hit its batch ceiling, so expired rows may remain. */
+  truncated?: boolean;
+}
+
 export async function cleanupAuditLogs(beforeDays: number) {
-  const res = await client.post<{ data: { deleted: number } }>('/audit-logs/cleanup', {
+  const res = await client.post<{ data: AuditCleanupResult }>('/audit-logs/cleanup', {
     beforeDays,
   });
   return res.data.data;
