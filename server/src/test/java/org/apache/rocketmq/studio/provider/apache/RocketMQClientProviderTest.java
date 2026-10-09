@@ -387,6 +387,26 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void aFailedProducerTableReadMarksTheProducerRowsPartialTest() throws Exception {
+        Map<String, String> clusters = new HashMap<>();
+        clusters.put("10.0.0.11:10911", "cluster-a");
+        clusters.put("10.0.0.12:10911", "cluster-a");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(clusters));
+        Map<String, List<ProducerInfo>> data = new HashMap<>();
+        data.put("pg-order", List.of(new ProducerInfo(
+                "client-1", "10.0.0.21:49152", LanguageCode.JAVA, 500, 1000L)));
+        when(adminExt.getAllProducerInfo("10.0.0.11:10911")).thenReturn(new ProducerTableInfo(data));
+        // The second broker's producer table is unreadable, so its producers never appear.
+        when(adminExt.getAllProducerInfo("10.0.0.12:10911"))
+                .thenThrow(new RemotingConnectException("broker down"));
+
+        List<ClientConnectionVO> connections = provider.findConnectionsAt("selected:9876", "cluster-a", "Producer");
+
+        assertThat(connections).extracting(ClientConnectionVO::getClientId).containsExactly("client-1");
+        assertThat(connections.get(0).isPartial()).isTrue();
+    }
+
+    @Test
     void connectionVersionShouldBeResolvedFromMQVersionCodeTest() throws Exception {
         Map<String, String> clusters = new HashMap<>();
         clusters.put("10.0.0.11:10911", "cluster-a");

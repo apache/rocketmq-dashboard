@@ -240,6 +240,7 @@ public class RocketMQClientProvider implements ClientProvider {
             MQAdminExt adminExt, String clusterId) {
         BrokerTopology topology = discoverBrokerTopology(adminExt, clusterId, "producer connections");
         Map<String, ClientConnectionVO> connections = new LinkedHashMap<>();
+        int attemptedBrokers = topology.brokerAddresses().size();
         int successfulBrokers = 0;
         for (String brokerAddress : topology.brokerAddresses()) {
             try {
@@ -250,8 +251,14 @@ public class RocketMQClientProvider implements ClientProvider {
                 log.warn("Failed to fetch producer connections from broker={}, skipping", brokerAddress, e);
             }
         }
-        if (!topology.brokerAddresses().isEmpty() && successfulBrokers == 0) {
+        if (attemptedBrokers > 0 && successfulBrokers == 0) {
             throw new BusinessException(502, "Failed to query producer connections from all brokers");
+        }
+        if (successfulBrokers < attemptedBrokers) {
+            // A broker whose producer table could not be read hides every producer that only
+            // connects to it, so the rows that survived are partial too - the page's banner hangs
+            // off this flag, and without it a missing producer looks like one that is not running.
+            connections.values().forEach(connection -> connection.setPartial(true));
         }
         return new ArrayList<>(connections.values());
     }
