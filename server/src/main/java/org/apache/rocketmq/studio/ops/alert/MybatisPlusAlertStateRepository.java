@@ -110,14 +110,19 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         if (scopedRules.isEmpty()) {
             return List.of();
         }
+        // PENDING is an active state too: its episode has been started and the reconcile loop is the
+        // only thing that can end it when the metric stops being collected (a PENDING anchor that
+        // survives a collection gap makes the rule fire on the first sample that returns instead of
+        // waiting for its required duration).
         List<RmqAlertState> activeStates = mapper.selectList(new QueryWrapper<RmqAlertState>()
                         .in("rule_id", scopedRules.keySet())
-                        .in("status", List.of(AlertStateStatus.FIRING.name(), AlertStateStatus.ACKED.name())));
+                        .in("status", List.of(AlertStateStatus.PENDING.name(),
+                                AlertStateStatus.FIRING.name(), AlertStateStatus.ACKED.name())));
         Map<AlertStateKey, RmqSystemAlert> latestAlerts = findLatestAlerts(scope, activeStates);
         return activeStates
                 .stream()
-                .map(state -> toActiveState(state, latestAlerts.get(new AlertStateKey(state.getRuleId(),
-                        state.getFingerprint()))))
+                .map(state -> toActiveState(scope.instanceId(), state,
+                        latestAlerts.get(new AlertStateKey(state.getRuleId(), state.getFingerprint()))))
                 .flatMap(Optional::stream)
                 .toList();
     }
@@ -161,9 +166,18 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
                         alert -> alert, (latest, ignored) -> latest));
     }
 
-    private Optional<ActiveAlertState> toActiveState(RmqAlertState state, RmqSystemAlert alert) {
+    private Optional<ActiveAlertState> toActiveState(String instanceId, RmqAlertState state, RmqSystemAlert alert) {
         if (alert == null) {
-            return Optional.empty();
+            // A PENDING episode has no event row (only FIRING/REMINDER/RESOLVED are emitted), so
+            // requiring one hid exactly the states the reconcile loop must be able to end: the
+            // episode kept its firstPendingAt across a collection gap and the rule then fired on
+            // the first sample that came back. Ending a pending episode emits nothing, so the
+            // labels the event row would supply are not needed.
+            if (!AlertStateStatus.PENDING.name().equals(state.getStatus())) {
+                return Optional.empty();
+            }
+            return Optional.of(new ActiveAlertState(new AlertStateKey(state.getRuleId(), state.getFingerprint()),
+                    toState(state), instanceId, Map.of()));
         }
         return Optional.of(new ActiveAlertState(new AlertStateKey(state.getRuleId(), state.getFingerprint()),
                 toState(state), alert.getInstanceId(), readLabels(alert.getLabelsJson())));

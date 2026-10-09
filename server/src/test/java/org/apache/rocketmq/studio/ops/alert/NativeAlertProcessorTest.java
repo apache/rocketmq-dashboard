@@ -240,6 +240,39 @@ class NativeAlertProcessorTest {
         verify(states, never()).save(eq(key), any(AlertRuleState.class));
     }
 
+    @Test
+    void aPendingEpisodeEndsWhenItsFingerprintIsNoLongerCollectedTest() {
+        AlertService service = mock(AlertService.class);
+        AlertRuleVO rule = rule("local", "orders", 1);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        AlertStateKey key = new AlertStateKey(rule.getId(),
+                AlertFingerprint.of(rule.getId(), "local", Map.of("consumerGroup", "orders")));
+        Instant pendingAt = Instant.parse("2026-09-29T00:00:00Z");
+        AlertRuleState pending = new AlertRuleState(AlertStateStatus.PENDING, 1, 20D,
+                pendingAt, null, null, null);
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.findActive(any(MetricCollectionScope.class), any()))
+                .thenReturn(List.of(new ActiveAlertState(key, pending, "local", Map.of("consumerGroup", "orders"))));
+        when(states.save(any(AlertStateKey.class), any(AlertRuleState.class))).thenReturn(true);
+        NativeAlertProcessor processor = new NativeAlertProcessor(service,
+                mock(NativeAlertEvaluationService.class), new AlertStateMachine(), states,
+                mock(AlertRepository.class), mock(NotificationOutboxService.class), suppression(), mockTxManager());
+
+        // The metric is no longer collected, so the pending episode has to end here: left standing,
+        // its firstPendingAt lets the rule fire on the first sample that returns instead of waiting
+        // for the configured duration, and the runtime column keeps showing PENDING.
+        processor.processSuccessfulCollection(
+                new MetricCollectionScope(AlertDomain.BUSINESS, "local",
+                        java.util.Set.of("consumer.lag.total")),
+                List.of(sample("payments")));
+
+        org.mockito.ArgumentCaptor<AlertRuleState> saved =
+                org.mockito.ArgumentCaptor.forClass(AlertRuleState.class);
+        verify(states).save(eq(key), saved.capture());
+        assertThat(saved.getValue().status()).isEqualTo(AlertStateStatus.OK);
+        assertThat(saved.getValue().firstPendingAt()).isNull();
+    }
+
     private static MetricSample cloudAvailabilitySample(String status, Instant collectedAt) {
         return new MetricSample("cloud.instance.availability", AlertDomain.CLUSTER, "cloud-local", null,
                 Map.of("cloudInstanceId", "rmq-cloud", "cloudStatus", status), null,
