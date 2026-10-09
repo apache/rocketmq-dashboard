@@ -615,6 +615,35 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 (admin, cluster) -> createConsumerGroup(admin, group, cluster, importing));
     }
 
+    /**
+     * The config to write for one master on a plain create. A group that already exists there keeps
+     * every setting the request does not carry: create is not a way to reset a live group to the
+     * creation defaults (retryQueueNums 1, consumption re-enabled, concurrent consumption), which a
+     * resubmitted form or the AI upsert - it calls create whenever the metadata table has no row,
+     * even for a group that exists on the broker - used to do silently.
+     */
+    private SubscriptionGroupConfig createConfigForMaster(MQAdminExt admin, String addr,
+                                                          SubscriptionGroupConfig creationDefaults,
+                                                          ConsumerGroupVO group) throws Exception {
+        SubscriptionGroupConfig existing;
+        try {
+            existing = admin.examineSubscriptionGroupConfig(addr, creationDefaults.getGroupName());
+        } catch (Exception failure) {
+            if (MqResponseCodes.hasResponseCode(failure, ResponseCode.SUBSCRIPTION_GROUP_NOT_EXIST)) {
+                return creationDefaults;
+            }
+            throw failure;
+        }
+        if (existing == null) {
+            return creationDefaults;
+        }
+        existing.setRetryMaxTimes(creationDefaults.getRetryMaxTimes());
+        if (StringUtils.hasText(group.getDeliveryOrderType())) {
+            existing.setConsumeMessageOrderly(creationDefaults.isConsumeMessageOrderly());
+        }
+        return existing;
+    }
+
     @Override
     public ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group) {
         String instanceId = ownershipGuard.requireInstance(group == null ? null : group.getInstanceId()).getName();
@@ -791,11 +820,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             boolean consumeMessageOrderly = isOrderlyDelivery(group.getDeliveryOrderType());
             config.setConsumeMessageOrderly(consumeMessageOrderly);
 
-            boolean physicalExists = importing && verifyGroupImport(admin, brokerAddrs, config);
-            if (!physicalExists) {
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateSubscriptionGroupConfig(addr, config);
-                }
+            for (String addr : brokerAddrs) {
+                admin.createAndUpdateSubscriptionGroupConfig(addr,
+                        importing ? config : createConfigForMaster(admin, addr, config, group));
             }
 
             persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());

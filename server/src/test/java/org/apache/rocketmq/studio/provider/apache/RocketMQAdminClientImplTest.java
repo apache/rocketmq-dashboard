@@ -1092,6 +1092,39 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createConsumerGroupKeepsTheExistingBrokerSettingsOfAnAlreadyPresentGroupTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        SubscriptionGroupConfig existing = new SubscriptionGroupConfig();
+        existing.setGroupName("cg-orders");
+        existing.setRetryQueueNums(5);
+        existing.setConsumeEnable(false);
+        existing.setConsumeBroadcastEnable(false);
+        existing.setConsumeMessageOrderly(true);
+        existing.setRetryMaxTimes(3);
+        when(adminExt.examineSubscriptionGroupConfig("10.0.0.1:10911", "cg-orders")).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("open-source-local");
+        group.setRetryMaxTimes(8);
+
+        adminClient.createConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> written = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(adminExt).createAndUpdateSubscriptionGroupConfig(eq("10.0.0.1:10911"), written.capture());
+        // Create must not reset a live group to the creation defaults: the request only carries the
+        // retry limit, so every other setting stays as the broker has it.
+        assertThat(written.getValue().getRetryMaxTimes()).isEqualTo(8);
+        assertThat(written.getValue().getRetryQueueNums()).isEqualTo(5);
+        assertThat(written.getValue().isConsumeEnable()).isFalse();
+        assertThat(written.getValue().isConsumeBroadcastEnable()).isFalse();
+        assertThat(written.getValue().isConsumeMessageOrderly()).isTrue();
+    }
+
+    @Test
     void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
