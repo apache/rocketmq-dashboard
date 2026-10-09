@@ -1068,6 +1068,21 @@ class AlertServiceTest {
     }
 
     @Test
+    void updateRuleShouldReturnTheStoredRuleInsteadOfTheRequestTest() {
+        AlertRuleVO update = AlertRuleVO.builder().id(1L).name("CPU Alert").threshold(90.0).build();
+        AlertRuleVO stored = AlertRuleVO.builder().id(1L).name("CPU Alert").threshold(90.0)
+                .lastTriggered("2026-10-01T10:00:00").build();
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(stored));
+
+        AlertRuleVO result = alertService.updateRule(update);
+
+        // The request carries no lastTriggered (the repository preserves the stored one), and the
+        // page replaces its row with this response, so echoing the request lost the stamp.
+        assertThat(result.getLastTriggered()).isEqualTo("2026-10-01T10:00:00");
+    }
+
+    @Test
     void updateRuleShouldRejectNullRequestTest() {
         assertThatThrownBy(() -> alertService.updateRule(null))
                 .isInstanceOf(BusinessException.class)

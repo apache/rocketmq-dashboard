@@ -206,7 +206,11 @@ public class AlertService {
         }
         alertStateRepository.deleteByRuleId(id);
         auditRule("UPDATE_ALERT_RULE", rule, null);
-        return rule;
+        // The stored row, not the request: an update does not own every field (the repository keeps
+        // the stored lastTriggered), and the console adopts this response as the table row - so
+        // echoing the request made an edited rule read "Never Triggered" until the list reloaded.
+        // toggleRule already answers with the stored row.
+        return alertRepository.findRuleById(id).orElse(rule);
     }
 
     @Transactional
