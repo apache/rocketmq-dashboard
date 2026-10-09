@@ -326,6 +326,28 @@ describe('MessagePage async request ownership', () => {
     ).toBeInTheDocument();
   });
 
+  it('reports a failed trace request on the verify tab instead of an empty consumer table', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockRejectedValue(
+      new Error('Message query provider is not configured'),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+
+    // Both tabs read the same payload, so the verify tab must not present the failure as
+    // "no consumer groups consumed this message".
+    await user.click(within(dialog).getByText('验证'));
+    expect(
+      await within(dialog).findByText('Message query provider is not configured'),
+    ).toBeInTheDocument();
+  });
+
   it('loads a message trace lazily and reuses it for the same message', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     serviceMocks.getMessageTrace.mockResolvedValue(createTrace('cached-trace'));
