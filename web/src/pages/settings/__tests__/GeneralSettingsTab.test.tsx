@@ -214,6 +214,27 @@ describe('GeneralSettingsTab', () => {
     expect(saveGeneralSettings).not.toHaveBeenCalled();
   });
 
+  it('reveals the clear action once a signing secret has been saved', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    const user = userEvent.setup();
+    renderTab();
+
+    // The fixture has no configured secret, and the save is reconciled from a read taken before the
+    // write, so the marker has to come from the submission itself.
+    expect(screen.queryByRole('button', { name: '清除钉钉签名密钥' })).not.toBeInTheDocument();
+    const secretInput = await screen.findByLabelText('钉钉机器人 Signing Secret');
+    await user.type(secretInput, 'SEC-abc');
+    fireEvent.submit(secretInput.closest('form')!);
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dingtalkSigningSecret: 'SEC-abc' }),
+      ),
+    );
+    expect(await screen.findByRole('button', { name: '清除钉钉签名密钥' })).toBeInTheDocument();
+    expect(secretInput).toHaveValue('');
+  });
+
   it('can explicitly clear a configured DingTalk signing secret', async () => {
     vi.mocked(getGeneralSettings).mockResolvedValue({
       theme: 'system',
