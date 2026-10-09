@@ -42,6 +42,36 @@ class AlertRuleRequestDTOTest {
     }
 
     @Test
+    void textFieldsShouldBeBoundedToTheirColumnsTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("n".repeat(129));
+        request.setDescription("d".repeat(513));
+        request.setConsumerGroup("g".repeat(256));
+        request.setTopic("t".repeat(256));
+
+        // The columns are name/metric/brokerName/clusterName/instanceId 128, description 512,
+        // consumerGroup/topic 255; without the bound the first check was the database write, which
+        // answers 500 instead of 400.
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getMessage())
+                .containsExactlyInAnyOrder("name must not exceed 128 characters",
+                        "description must not exceed 512 characters",
+                        "consumerGroup must not exceed 255 characters",
+                        "topic must not exceed 255 characters");
+    }
+
+    @Test
+    void textFieldsAtTheirColumnWidthAreAcceptedTest() {
+        AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+        request.setName("n".repeat(128));
+        request.setDescription("d".repeat(512));
+        request.setConsumerGroup("g".repeat(255));
+        request.setTopic("t".repeat(255));
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
     void durationShouldAcceptCompositePrometheusDurationTest() {
         AlertRuleRequestDTO request = new AlertRuleRequestDTO();
         request.setName("High Lag");

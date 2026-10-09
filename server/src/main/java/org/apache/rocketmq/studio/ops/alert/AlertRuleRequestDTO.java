@@ -30,13 +30,16 @@ public class AlertRuleRequestDTO {
 
     private Long id;
     @NotBlank(message = "name is required")
+    @Size(max = 128, message = "name must not exceed 128 characters")
     private String name;
+    @Size(max = 128, message = "metric must not exceed 128 characters")
     private String metric;
     @Pattern(regexp = ">|>=|<|<=|==|!=|UNAVAILABLE", message = "operator is invalid")
     private String operator;
     private double threshold;
     private String thresholdUnit;
     @Pattern(regexp = PROMETHEUS_DURATION_REGEXP, message = "duration is invalid")
+    @Size(max = 32, message = "duration must not exceed 32 characters")
     private String duration;
     @Pattern(regexp = "LAST|MAX|MIN|AVG|SUM", flags = Pattern.Flag.CASE_INSENSITIVE,
             message = "aggregation is invalid")
@@ -47,18 +50,25 @@ public class AlertRuleRequestDTO {
             @Pattern(regexp = "dingtalk|sms|email", flags = Pattern.Flag.CASE_INSENSITIVE,
                     message = "channel is unsupported") String> channels;
     private boolean enabled;
+    @Size(max = 512, message = "description must not exceed 512 characters")
     private String description;
+    @Size(max = 128, message = "brokerName must not exceed 128 characters")
     private String brokerName;
+    @Size(max = 128, message = "clusterName must not exceed 128 characters")
     private String clusterName;
     @Pattern(regexp = "critical|warning|info", flags = Pattern.Flag.CASE_INSENSITIVE,
             message = "severity is invalid")
     private String severity;
+    @Size(max = 128, message = "instanceId must not exceed 128 characters")
     private String instanceId;
+    @Size(max = 255, message = "consumerGroup must not exceed 255 characters")
     private String consumerGroup;
+    @Size(max = 255, message = "topic must not exceed 255 characters")
     private String topic;
     @Min(value = 1, message = "consecutiveSamples must be at least 1")
     private Integer consecutiveSamples;
     @Pattern(regexp = "(?:[0-9]+(?:ms|s|m|h|d|w|y))+", message = "reminderInterval is invalid")
+    @Size(max = 32, message = "reminderInterval must not exceed 32 characters")
     private String reminderInterval;
     @Size(max = 4000, message = "notificationTemplate must not exceed 4000 characters")
     private String notificationTemplate;
