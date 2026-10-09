@@ -169,10 +169,12 @@ public class AuthService {
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(token -> {
             if (databaseBacked()) {
+                LocalDateTime current = now();
                 sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                         .eq("token_hash", tokenHash(token))
                         .isNull("revoked_at")
-                        .set("revoked_at", now()));
+                        .set("revoked_at", current)
+                        .set("gmt_modified", current));
             } else {
                 activeTokens.remove(token);
             }
@@ -307,7 +309,13 @@ public class AuthService {
         user.setPasswordHash(passwordHasher.hash(password));
         user.setAdmin(admin);
         user.setEnabled(true);
-        user.setPasswordChangedAt(now());
+        LocalDateTime current = now();
+        user.setPasswordChangedAt(current);
+        // An omitted gmt_create/gmt_modified falls back to the database session's
+        // CURRENT_TIMESTAMP, which is not UTC on a server running in another zone, while the
+        // API serializes every zone-less timestamp as UTC.
+        user.setGmtCreate(current);
+        user.setGmtModified(current);
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
@@ -336,7 +344,11 @@ public class AuthService {
                 throw new BusinessException(409, "The last enabled administrator cannot be disabled");
             }
         }
-        userMapper.updateById(userWithEnabled(user, enabled));
+        RmqStudioUser enableUpdate = userWithEnabled(user, enabled);
+        // updateById only writes non-null fields, so without this the column's ON UPDATE
+        // CURRENT_TIMESTAMP - the database session's zone, not UTC - would be the audit instant.
+        enableUpdate.setGmtModified(now());
+        userMapper.updateById(enableUpdate);
         if (!enabled) {
             revokeUserSessions(user.getId());
         }
@@ -367,7 +379,8 @@ public class AuthService {
         userMapper.update(null, new UpdateWrapper<RmqStudioUser>()
                 .eq("id", user.getId())
                 .set("password_hash", passwordHasher.hash(newPassword))
-                .set("password_changed_at", now()));
+                .set("password_changed_at", now())
+                .set("gmt_modified", now()));
         revokeUserSessions(user.getId());
     }
 
@@ -411,6 +424,8 @@ public class AuthService {
         session.setTokenHash(tokenHash(token));
         session.setLastSeenAt(current);
         session.setExpiresAt(current.plusSeconds(tokenTtlSeconds));
+        session.setGmtCreate(current);
+        session.setGmtModified(current);
         sessionMapper.insert(session);
         return loginResponse(userInfo(user), token, tokenTtlSeconds);
     }
@@ -445,7 +460,8 @@ public class AuthService {
                 || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
             sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
                     .eq("id", session.getId())
-                    .set("last_seen_at", current));
+                    .set("last_seen_at", current)
+                    .set("gmt_modified", current));
         }
         return Optional.of(userInfo(user));
     }
@@ -480,7 +496,10 @@ public class AuthService {
             user.setPasswordHash(passwordHasher.hash(configuredUser.getPassword()));
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
-            user.setPasswordChangedAt(now());
+            LocalDateTime current = now();
+            user.setPasswordChangedAt(current);
+            user.setGmtCreate(current);
+            user.setGmtModified(current);
             try {
                 userMapper.insert(user);
             } catch (DuplicateKeyException exception) {
@@ -516,7 +535,8 @@ public class AuthService {
                 .eq("user_id", userId)
                 .isNull("revoked_at")
                 .gt("expires_at", current)
-                .set("revoked_at", current));
+                .set("revoked_at", current)
+                .set("gmt_modified", current));
     }
 
     private Set<Long> normalizeUserIds(Collection<Long> userIds) {
