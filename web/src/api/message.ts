@@ -156,10 +156,9 @@ export async function queryMessagePage(
   return { ...res.data.data, items: sortMessagesByStoreTimeDesc(res.data.data.items) };
 }
 
-// The backend reports business statuses ("finish" | "failed") on trace nodes,
-// while the Ant Design Steps component only understands
-// 'error' | 'wait' | 'process' | 'finish'. Map at the API boundary so the UI
-// never sees a status it cannot render.
+// Current providers use the Ant Design step vocabulary. Keep the legacy Apache
+// "failed" mapping for older backends during rolling upgrades, and map unknown
+// or missing values to "wait" at the API boundary.
 const mapTraceNodeStatus = (status: unknown): TraceNode['status'] => {
   if (status === 'failed') return 'error';
   if (status === 'finish' || status === 'process' || status === 'error' || status === 'wait') {

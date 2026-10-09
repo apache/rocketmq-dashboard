@@ -869,6 +869,25 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceParsesFailedConsumeAsErrorTest() throws Exception {
+        String subAfter = traceContext("SubAfter", "req-1", "msg-123", "20", "false", "key1",
+                "3", "3000", "cons-group");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(subAfter).getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).hasSize(1);
+        assertThat(record.getNodes().get(0).getTitle()).isEqualTo("consume");
+        assertThat(record.getNodes().get(0).getStatus()).isEqualTo("error");
+        assertThat(record.getConsumerStatus()).hasSize(1);
+        assertThat(record.getConsumerStatus().get(0).getDeliveryStatus())
+                .isEqualTo(DeliveryStatus.failed);
+    }
+
+    @Test
     void getMessageTraceParsesEndTransactionState() throws Exception {
         String body = traceBody(traceContext("EndTransaction", "2000", "cn", "tx-group", "TopicA",
                 "msg-tx", "tag2", "key2", "broker:10911", "0", "tx-1", "COMMIT_MESSAGE", "false"));
