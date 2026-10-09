@@ -203,10 +203,14 @@ public class AiRunService {
 
         // Prepared at admission, not on the worker: an unusable workspace configuration is an operator
         // error the caller should hear about now, and a degraded conversation must say so in its first
-        // persisted event rather than in a log line nobody reads.
+        // persisted event rather than in a log line nobody reads. The http engine is the exception: it
+        // has no agent CLI and never reads the workspace, so preparing one would let a broken tools
+        // configuration fail - and a missing one warn on every turn of - a plain completion.
+        boolean httpEngine = AiRunExecutor.isHttpEngine(engine);
         RmqctlWorkspace.Preparation preparation;
         try {
-            preparation = workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+            preparation = httpEngine ? null
+                    : workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
         } catch (RuntimeException exception) {
             // The row is already inserted and would otherwise stay QUEUED with no owner: every later
             // message would be refused 409 until the orphan sweep reaps it. Finalize it here — through
@@ -232,7 +236,10 @@ public class AiRunService {
             // is persisted, and it reaches the timeline as a thinking block with source=enhance — which
             // is where it belongs, since merging it into the model's reasoning is the bug this design
             // exists to prevent.
-            TimelineEvent.Notice degraded = preparation == null ? degradedNotice(conversation) : null;
+            // One verdict, used by both the persisted row and the live frame below: an http-engine
+            // turn has no workspace to be degraded about, so it gets neither.
+            TimelineEvent.Notice degraded =
+                    preparation == null && !httpEngine ? degradedNotice(conversation) : null;
             int admissionSeq = sink.writeUser(message, null);
             if (degraded != null) {
                 admissionSeq = sink.writeTimeline(degraded);
