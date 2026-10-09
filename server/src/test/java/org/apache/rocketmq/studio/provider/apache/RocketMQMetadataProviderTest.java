@@ -814,11 +814,13 @@ class RocketMQMetadataProviderTest {
         try {
             ConsumerGroupVO returned = provider.listConsumerGroups("instance-a", null, null).get(0);
             assertThat(connectionStarted.getCount()).isZero();
-            assertThat(returned.getOnlineInstances()).isZero();
+            // The enrichment never ran, so the inventory is unavailable (-1), not "zero online
+            // clients": the health verdict must not read a fabricated zero as a measured one.
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
 
             releaseConnection.countDown();
             assertThat(statsRead.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(returned.getOnlineInstances()).isZero();
+            assertThat(returned.getOnlineInstances()).isEqualTo(-1);
             assertThat(returned.getInstances()).isEmpty();
         } finally {
             releaseConnection.countDown();

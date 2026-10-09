@@ -294,8 +294,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private record GroupLiveSnapshot(List<ConsumerInstanceVO> instances, int onlineInstances,
             boolean consumeStatsAvailable, long totalLag, int delaySeconds,
             boolean consumptionTimestampAvailable) {
-        private static GroupLiveSnapshot empty() {
-            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+        /**
+         * The state of a group whose enrichment never ran (the batch deadline cancelled it before it
+         * started). `onlineInstances` is the -1 "unavailable" sentinel, not 0: the inventory was not
+         * read at all, and a fabricated zero reads as "this group has no online clients", which the
+         * health verdict then turns into a critical failure.
+         */
+        private static GroupLiveSnapshot unknown() {
+            return new GroupLiveSnapshot(List.of(), -1, false, 0L, 0, false);
         }
     }
 
@@ -338,7 +344,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         List<AtomicReference<GroupLiveSnapshot>> snapshots = new ArrayList<>(groups.size());
         for (ConsumerGroupVO vo : groups) {
             String groupName = vo.getName();
-            AtomicReference<GroupLiveSnapshot> snapshot = new AtomicReference<>(GroupLiveSnapshot.empty());
+            AtomicReference<GroupLiveSnapshot> snapshot = new AtomicReference<>(GroupLiveSnapshot.unknown());
             snapshots.add(snapshot);
             futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, groupName, snapshot)));
         }
