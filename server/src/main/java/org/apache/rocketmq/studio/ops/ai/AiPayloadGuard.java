@@ -28,7 +28,7 @@ import java.util.Map;
  * sufficient here because provider requests, CLI arguments and tool payloads are encoded as
  * UTF-8 before leaving Studio.
  */
-final class AiPayloadGuard {
+public final class AiPayloadGuard {
 
     /**
      * The two halves of the outbound prompt budget. No inbound validator reads them any more — the
@@ -46,7 +46,7 @@ final class AiPayloadGuard {
     private AiPayloadGuard() {
     }
 
-    static void validateToolInvocation(String name, Map<String, Object> input, ObjectMapper objectMapper) {
+    public static void validateToolInvocation(String name, Map<String, Object> input, ObjectMapper objectMapper) {
         requireText(name, "Tool name is required");
         requireWithin(name, MAX_TOOL_NAME_BYTES, "Tool name");
         requireJsonWithin(input, MAX_TOOL_INPUT_BYTES, "Tool input", objectMapper);
