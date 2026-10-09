@@ -347,6 +347,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topic.setId(entity.getId());
                 topic.setWriteQueues(writeQueues);
                 topic.setReadQueues(readQueues);
+                // Report what was persisted: the create path applies defaults the request may omit
+                // (perm RW, the resolved cluster, type NORMAL), so echoing the request told every
+                // client the topic has no perm, no cluster and no type.
+                applyStoredTopicProjection(topic, entity);
                 return topic;
             } catch (BusinessException e) {
                 recordAudit("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
@@ -437,6 +441,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     // Report the persisted remark so a clear or an omitted remark cannot be
                     // mistaken for a value the update did not write.
                     topic.setRemark(existing.getRemark());
+                    applyStoredTopicProjection(topic, existing);
                 }
                 return topic;
             } catch (BusinessException e) {
@@ -1332,6 +1337,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
             return 2;
         }
         return 6;
+    }
+
+    /**
+     * Copies the persisted columns an omitted request field would otherwise hide from the response
+     * (the applied permission, the resolved cluster and the stored type).
+     */
+    private void applyStoredTopicProjection(TopicVO topic, RmqTopic entity) {
+        topic.setClusterId(entity.getClusterId());
+        topic.setPerm(fromRocketMQPerm(entity.getPerm()));
+        if (topic.getType() == null) {
+            topic.setType(parseStoredTopicType(entity.getTopicType()));
+        }
+    }
+
+    private static TopicType parseStoredTopicType(String type) {
+        if (!StringUtils.hasText(type)) {
+            return TopicType.NORMAL;
+        }
+        try {
+            return TopicType.valueOf(type);
+        } catch (IllegalArgumentException ignored) {
+            return TopicType.NORMAL;
+        }
     }
 
     private TopicPerm fromRocketMQPerm(Integer perm) {
