@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.metrics;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
 import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
+import org.apache.rocketmq.studio.instance.InstanceService;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,9 @@ class MetricsServiceTest {
 
     @Mock
     private SettingsService settingsService;
+
+    @Mock
+    private InstanceService instanceService;
 
     @InjectMocks
     private MetricsService metricsService;
@@ -455,6 +459,27 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryByDataSourceShouldAcceptLegacyNumericIdForNameBoundSourceTest() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest("7");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("none")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(instanceService.normalizeIdentifier("7")).thenReturn("instance-a");
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryByDataSource("ds-1", request);
+
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
     void queryByDataSourceShouldRejectDifferentInstanceBinding() {
         MetricsDataSourceQueryRequest request = dataSourceRequest("instance-b");
         DataSourceVO dataSource = DataSourceVO.builder()
@@ -576,6 +601,21 @@ class MetricsServiceTest {
         metricsService.queryInstance("instance-a", rawQuery());
 
         verify(settingsService).getDataSource("ds-dedicated");
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryInstanceShouldMatchBindingRecordedAsLegacyNumericIdTest() {
+        DataSourceVO dedicated = dataSource("ds-legacy", List.of("7"));
+        when(settingsService.listDataSources()).thenReturn(List.of(dedicated));
+        when(settingsService.getDataSource("ds-legacy")).thenReturn(dedicated);
+        when(instanceService.normalizeIdentifier("7")).thenReturn("instance-a");
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryInstance("instance-a", rawQuery());
+
+        verify(settingsService).getDataSource("ds-legacy");
         verify(metricsSource).query(any(MetricQueryDTO.class));
     }
 
