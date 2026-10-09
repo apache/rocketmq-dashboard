@@ -36,6 +36,8 @@ import org.apache.rocketmq.remoting.protocol.header.GetConsumerRunningInfoReques
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
+import java.util.HashSet;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -97,6 +99,10 @@ public class ProxyConsumerResolver {
             return ConsumerConnectionResolution.available(null);
         }
         boolean queryUnavailable = false;
+        // Each proxy knows only the clients connected to it, so the group's inventory is the union
+        // over every proxy - returning the first answer reported one proxy's channels as the whole
+        // group (the sibling client scan unions in RocketMQClientProvider).
+        ConsumerConnection merged = null;
         for (String addr : discovery.addresses()) {
             try {
                 ProxyQueryResolution result = queryProxyStatus(addr, group);
@@ -104,15 +110,59 @@ public class ProxyConsumerResolver {
                     queryUnavailable = true;
                     continue;
                 }
-                if (result.connection() != null) {
-                    return ConsumerConnectionResolution.available(result.connection());
-                }
+                merged = merge(merged, result.connection());
             } catch (Exception e) {
                 queryUnavailable = true;
                 log.debug("Proxy consumer connection query failed for {} via {}: {}", group, addr, e.getMessage());
             }
         }
+        if (merged != null) {
+            return ConsumerConnectionResolution.available(merged);
+        }
         return queryUnavailable ? ConsumerConnectionResolution.unavailable() : ConsumerConnectionResolution.available(null);
+    }
+
+    /**
+     * One group can be served by several proxies; each reports its own channels. Union them by
+     * client identity and subscription topic, keeping the first non-null model/consume-type: every
+     * proxy describes the same group, and the fields that differ per channel are merged, not picked.
+     */
+    private static ConsumerConnection merge(ConsumerConnection current, ConsumerConnection next) {
+        if (next == null) {
+            return current;
+        }
+        if (current == null) {
+            return next;
+        }
+        if (next.getConnectionSet() != null) {
+            if (current.getConnectionSet() == null) {
+                current.setConnectionSet(new HashSet<>());
+            }
+            for (Connection connection : next.getConnectionSet()) {
+                boolean known = current.getConnectionSet().stream()
+                        .anyMatch(existing -> Objects.equals(existing.getClientId(), connection.getClientId())
+                                && Objects.equals(existing.getClientAddr(), connection.getClientAddr()));
+                if (!known) {
+                    current.getConnectionSet().add(connection);
+                }
+            }
+        }
+        if (next.getSubscriptionTable() != null) {
+            if (current.getSubscriptionTable() == null) {
+                current.setSubscriptionTable(new ConcurrentHashMap<>());
+            }
+            next.getSubscriptionTable().forEach(current.getSubscriptionTable()::putIfAbsent);
+        }
+        if (current.getConsumeType() == null) {
+            current.setConsumeType(next.getConsumeType());
+        }
+        if (current.getMessageModel() == null) {
+            current.setMessageModel(next.getMessageModel());
+        }
+        if (current.getConsumeFromWhere() == null) {
+            current.setConsumeFromWhere(next.getConsumeFromWhere());
+        }
+        return current;
     }
 
     ConsumerConnection queryProxy(String proxyAddr, String group) throws Exception {
