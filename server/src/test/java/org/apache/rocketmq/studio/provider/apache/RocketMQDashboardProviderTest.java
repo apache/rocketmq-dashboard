@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -684,6 +685,33 @@ class RocketMQDashboardProviderTest {
         when(instanceRepository.findAll()).thenReturn(instances);
         return new RocketMQDashboardProvider(adminFactory, properties, resolver, instanceRepository);
     }
+
+    @Test
+    void dashboardClusterOverviewShouldOrderClustersByName() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.11:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("zeta-cluster", "broker-a", new HashMap<>(addrs)));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        // Reverse insertion order so the table's iteration order differs from name order.
+        clusterAddrTable.put("zeta-cluster", Set.of("broker-a"));
+        clusterAddrTable.put("alpha-cluster", Set.of("broker-a"));
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        // The overview list must be stable across snapshots like the cluster list is.
+        assertThat(dashboard.getClusters()).extracting(ClusterOverviewVO::getId)
+                .containsExactly("alpha-cluster", "zeta-cluster");
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
