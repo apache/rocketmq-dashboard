@@ -144,6 +144,19 @@ const NotificationDeliveriesPage = () => {
     void listAlertDeliveriesPage({ channel, status, instanceId, search, ...timeRange, page, pageSize })
       .then((result) => {
         if (cancelled) return;
+        // Delivered records are cleaned up server-side, so the result set can
+        // shrink under the user. A page past the last valid one must re-query
+        // the final page instead of rendering a permanently empty table,
+        // matching the alerts/audit pages' clamp. Skip storing the empty
+        // result so the rows only ever come from the clamped page; setPage
+        // triggers the follow-up request.
+        if (result.items.length === 0 && result.total > 0 && page > 1) {
+          const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+          if (lastPage < page) {
+            setPage(lastPage);
+            return;
+          }
+        }
         setItems(result.items);
         setTotal(result.total);
       })
