@@ -44,7 +44,7 @@ func renderTable(w, errOut io.Writer, tool toolcatalog.Tool, result any) error {
 	if tool.Name == "rmq.message.query" || tool.Name == "rmq.message.query_by_topic" {
 		payload, _ := result.(map[string]any)
 		if payload["resultMayBeTruncated"] == true {
-			_, err := fmt.Fprintf(errOut, "WARNING: Results may be incomplete (resultMayBeTruncated=true); skippedCount=%v rows omitted by limit from the provider-bounded result. More messages may exist.\n", payload["skippedCount"])
+			_, err := fmt.Fprintf(errOut, "WARNING: Results may be incomplete (resultMayBeTruncated=true) due to provider budgets, an unfinished scan, or the output limit; skippedCount=%v counts only rows omitted by the output limit. More messages may exist.\n", payload["skippedCount"])
 			return err
 		}
 	}

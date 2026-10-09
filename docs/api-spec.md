@@ -1513,7 +1513,7 @@ GET /api/messages/page
 | `total` | `number` | 当前 Broker 查询结果集大小；可能受 Provider 上限约束 |
 | `page` | `number` | 当前页码 |
 | `size` | `number` | 当前页大小 |
-| `resultMayBeTruncated` | `boolean` | `true` 表示 Provider 结果可能已达到扫描上限，不能视为完整总量 |
+| `resultMayBeTruncated` | `boolean` | `true` 表示 Provider 结果可能因结果数量或扫描预算上限、队列扫描未完成而不完整，不能视为完整总量 |
 
 ### 8.3 按消息 ID 获取轨迹
 
