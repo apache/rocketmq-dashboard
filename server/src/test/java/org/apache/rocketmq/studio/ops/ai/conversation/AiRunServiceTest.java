@@ -40,6 +40,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -470,6 +471,32 @@ class AiRunServiceTest {
         assertThat(text).contains("\"type\":\"run_finished\"").contains("event:done");
         // The user's own turn has no live counterpart: the client renders it from what it sent.
         assertThat(text).doesNotContain("what is lagging");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
+    void attachShouldReplayTheWholeBacklogBeyondOnePageTest() {
+        // A run that kept writing while the client was away can hold more than one page of backlog
+        // (a page is 200 rows and a tool-heavy turn writes several rows per call). The replay has to
+        // page through all of it: stopping after the first page would strand the rows in between,
+        // whose live frames were published before this observer existed and whose rows lie beyond
+        // the cursor the client already holds.
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        List<RmqAiEvent> firstPage = new ArrayList<>();
+        for (int seq = 1; seq <= 200; seq++) {
+            firstPage.add(event(seq, "text", "{\"type\":\"text\",\"text\":\"row " + seq + "\"}"));
+        }
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenReturn(firstPage);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 200, 200)).thenReturn(List.of(
+                event(201, "text", "{\"type\":\"text\",\"text\":\"the last row\"}"),
+                event(202, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        String text = emitters.get(0).eventText();
+        assertThat(text).contains("row 1").contains("the last row");
+        assertThat(text).contains("\"type\":\"run_finished\"");
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
