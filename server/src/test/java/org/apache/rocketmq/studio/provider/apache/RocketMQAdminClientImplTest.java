@@ -712,6 +712,31 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicShouldAnswerWithTheStoredPermClusterAndTypeTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        when(topicMapper.insert(any(RmqTopic.class))).thenAnswer(invocation -> {
+            RmqTopic entity = invocation.getArgument(0);
+            entity.setId(9L);
+            return 1;
+        });
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("open-source-local");
+        topic.setName("orders");
+        // perm, clusterId and type are omitted: the provider applies RW / the resolved cluster /
+        // NORMAL, and the response used to echo the request (all three null).
+        TopicVO created = adminClient.createTopic(topic);
+
+        assertThat(created.getId()).isEqualTo(9L);
+        assertThat(created.getPerm()).isEqualTo(org.apache.rocketmq.studio.common.domain.enums.TopicPerm.RW);
+        assertThat(created.getClusterId()).isNotBlank();
+        assertThat(created.getType()).isEqualTo(org.apache.rocketmq.studio.common.domain.enums.TopicType.NORMAL);
+    }
+
+    @Test
     void createTopicShouldOnlyWriteTargetClusterBrokersInMultiClusterTopology() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = clusterInfoWithTwoClusters();
