@@ -1348,6 +1348,14 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── System Alerts ───
   'sysAlerts.title': { zh: '系统告警', en: 'System Alerts' },
   'sysAlerts.clearAcked': { zh: '清除已确认', en: 'Clear Acknowledged' },
+  'sysAlerts.clearAckedConfirm': {
+    zh: '清除所有已确认告警？',
+    en: 'Clear every acknowledged alert?',
+  },
+  'sysAlerts.clearAckedConfirmDesc': {
+    zh: '会永久删除全部已确认的系统告警及其通知投递记录，无法撤销。',
+    en: 'Permanently deletes every acknowledged system alert and its notification delivery records. This cannot be undone.',
+  },
   'sysAlerts.acknowledge': { zh: '确认', en: 'Acknowledge' },
   'sysAlerts.severe': { zh: '严重', en: 'Critical' },
   'sysAlerts.warning': { zh: '警告', en: 'Warning' },
@@ -1356,8 +1364,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.acknowledged': { zh: '告警已确认', en: 'Alert Acknowledged' },
   'sysAlerts.cleared': { zh: '已清除所有已确认告警', en: 'Cleared all acknowledged alerts' },
   'sysAlerts.subtitle': {
-    zh: '集群运行告警监控，当前 {n} 条未确认',
-    en: 'Cluster alert monitoring, {n} unacknowledged',
+    zh: '集群运行告警监控，本页 {n} 条未确认',
+    en: 'Cluster alert monitoring, {n} unacknowledged on this page',
   },
   'sysAlerts.firing': { zh: '触发中', en: 'Firing' },
   'sysAlerts.resolved': { zh: '已恢复', en: 'Resolved' },

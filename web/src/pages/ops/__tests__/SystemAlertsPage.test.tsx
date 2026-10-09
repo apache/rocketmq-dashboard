@@ -15,6 +15,7 @@ import { formatUtcDateTime } from '../../../utils/format';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
+  clearAcknowledgedAlerts,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
@@ -207,6 +208,73 @@ describe('SystemAlertsPage', () => {
     expect(
       screen.getByText(`确认：admin · ${formatUtcDateTime('2026-08-23T10:40:00.000000')}`),
     ).toBeInTheDocument();
+  });
+
+  it('asks before deleting every acknowledged alert', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          level: 'warning',
+          title: 'Disk recovered',
+          description: 'disk usage returned to normal',
+          time: '2026-08-23T10:35:38.590731',
+          transition: 'RESOLVED',
+          acknowledged: true,
+          acknowledgedBy: 'admin',
+          acknowledgedAt: '2026-08-23T10:40:00.000000',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    // A single click used to purge every acknowledged alert and its delivery records for good.
+    await user.click(await screen.findByRole('button', { name: '清除已确认' }));
+    expect(clearAcknowledgedAlerts).not.toHaveBeenCalled();
+
+    await user.click(await screen.findByRole('button', { name: /^确\s*认$/ }));
+    await waitFor(() => expect(clearAcknowledgedAlerts).toHaveBeenCalledTimes(1));
+  });
+
+  it('scopes the header unacknowledged count to the page it counted', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          level: 'warning',
+          title: 'Disk recovered',
+          description: 'disk usage returned to normal',
+          time: '2026-08-23T10:35:38.590731',
+          transition: 'RESOLVED',
+          acknowledged: true,
+          acknowledgedBy: 'admin',
+          acknowledgedAt: '2026-08-23T10:40:00.000000',
+        },
+        {
+          id: 10,
+          level: 'error',
+          title: 'Broker down',
+          description: 'no heartbeat',
+          time: '2026-08-23T10:36:00.000000',
+          transition: 'FIRING',
+          acknowledged: false,
+          acknowledgedBy: null,
+          acknowledgedAt: null,
+        },
+      ],
+      total: 60,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    // The feed is paged, so the header can only count what this page holds: "当前 n 条未确认"
+    // reads as a feed-wide backlog that changes as the operator pages.
+    expect(await screen.findByText(/本页 1 条未确认/)).toBeInTheDocument();
   });
 
   it('filters backend alert levels case-insensitively', async () => {
