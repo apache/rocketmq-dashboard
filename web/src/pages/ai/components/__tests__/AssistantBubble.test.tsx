@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LangProvider } from '../../../../i18n/LangContext';
 import type { McpTool } from '../../../../api/ai';
@@ -92,6 +92,71 @@ function renderBubble(props: {
 }
 
 describe('AssistantBubble', () => {
+  describe('copy fallback', () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const originalExec = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    const exec = vi.fn();
+    const windowErrors = vi.fn((event: ErrorEvent) => event.preventDefault());
+
+    beforeEach(() => {
+      exec.mockReset();
+      windowErrors.mockClear();
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+      Object.defineProperty(document, 'execCommand', { configurable: true, value: exec });
+      window.addEventListener('error', windowErrors);
+    });
+
+    afterEach(() => {
+      window.removeEventListener('error', windowErrors);
+      if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+      if (originalExec) Object.defineProperty(document, 'execCommand', originalExec);
+      else Reflect.deleteProperty(document, 'execCommand');
+    });
+
+    it('uses the fallback after the Clipboard API rejects and reports successful copying', async () => {
+      const writeText = vi.fn().mockRejectedValue(new Error('permission denied'));
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+      exec.mockImplementation(() => {
+        expect(document.querySelector('textarea')?.value).toBe('answer to copy');
+        return true;
+      });
+      renderBubble({ blocks: appendText([], 'answer to copy') });
+      fireEvent.click(screen.getByTestId('ai-bubble-copy'));
+      await waitFor(() => expect(exec).toHaveBeenCalledWith('copy'));
+      expect(writeText).toHaveBeenCalledWith('answer to copy');
+      expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument();
+      expect(document.querySelector('textarea')).toBeNull();
+    });
+
+    it('keeps Clipboard API success on the primary path', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+      renderBubble({ blocks: appendText([], 'answer to copy') });
+      fireEvent.click(screen.getByTestId('ai-bubble-copy'));
+      expect(await screen.findByRole('button', { name: '已复制' })).toBeInTheDocument();
+      expect(exec).not.toHaveBeenCalled();
+    });
+
+    it.each(['missing', 'throwing', 'false'])(
+      'degrades quietly when the fallback is %s',
+      (mode) => {
+        if (mode === 'missing')
+          Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined });
+        else
+          exec.mockImplementation(() => {
+            if (mode === 'throwing') throw new Error('unsupported copy');
+            return false;
+          });
+        renderBubble({ blocks: appendText([], 'answer to copy') });
+        fireEvent.click(screen.getByTestId('ai-bubble-copy'));
+        expect(windowErrors).not.toHaveBeenCalled();
+        expect(document.querySelector('textarea')).toBeNull();
+        expect(screen.queryByRole('button', { name: '已复制' })).not.toBeInTheDocument();
+      },
+    );
+  });
+
   beforeEach(() => {
     // Labels are asserted in Chinese, which is the default locale once localStorage is cleared.
     localStorage.clear();
