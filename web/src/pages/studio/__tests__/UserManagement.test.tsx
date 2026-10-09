@@ -210,6 +210,14 @@ describe('UserManagementPage', () => {
     renderPage();
     await screen.findByText('operator');
     await applyAdminDisabledFilter(user, 'ops');
+    // The page exports the debounced (committed) search, so the test must let the 300 ms
+    // debounce commit before clicking; without this wait the export races its own filter
+    // and intermittently fires with search: undefined on fast machines (flaky on main).
+    await waitFor(() =>
+      expect(listStudioUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'ops', admin: true, enabled: false }),
+      ),
+    );
     await user.click(screen.getByRole('button', { name: '导出' }));
     const expectedExportQuery = { search: 'ops', admin: true, enabled: false };
     await waitFor(() => expect(downloadStudioUsers).toHaveBeenCalledWith(expectedExportQuery));
