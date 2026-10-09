@@ -1109,3 +1109,47 @@ describe('ACL page', () => {
     );
   });
 });
+
+describe('ACL page header totals', () => {
+  it('reports server totals instead of the current page row counts', async () => {
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          principal: 'remote-user',
+          resource: 'remote-topic',
+          resourceType: 'Topic',
+          resourcePattern: 'LITERAL',
+          actions: ['PUB'],
+          decision: 'ALLOW',
+          scope: 'cluster',
+          aclVersion: 2,
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 45,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: [
+        {
+          id: 11,
+          username: 'remote-admin',
+          accessKey: 'acce****3456',
+          secretKey: 'secr****7654',
+          admin: true,
+          clusters: ['cluster-a'],
+          gmtCreate: '2026-07-23T00:00:00Z',
+        },
+      ],
+      total: 12,
+      page: 1,
+      size: 20,
+    });
+
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText(/共 45 条规则、12 个用户/)).toBeInTheDocument();
+  });
+});
