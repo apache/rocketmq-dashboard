@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,8 +67,12 @@ public class GrafanaDashboardService {
      * Lists metadata for every bundled Grafana dashboard.
      */
     public List<GrafanaDashboardInfo> listDashboards() {
+        return collectInfos(resolveUniqueResources());
+    }
+
+    private List<GrafanaDashboardInfo> collectInfos(List<Resource> resources) {
         List<GrafanaDashboardInfo> infos = new ArrayList<>();
-        for (Resource resource : resolveUniqueResources()) {
+        for (Resource resource : resources) {
             String uid = uidOf(resource);
             if (uid == null) {
                 continue;
@@ -134,16 +139,26 @@ public class GrafanaDashboardService {
      * the same way as {@link #listDashboards()} so the archive matches the visible dashboard list.
      */
     public byte[] getDashboardsArchive() {
-        List<GrafanaDashboardInfo> dashboards = listDashboards();
+        // Resolve the pattern once and derive both the visible list and the archive bodies from
+        // it; looking each uid up again (as getDashboardJson does) re-scans and re-sorts the
+        // whole classpath pattern for every archive entry.
+        List<Resource> resources = resolveUniqueResources();
+        List<GrafanaDashboardInfo> dashboards = collectInfos(resources);
         if (dashboards.isEmpty()) {
             throw new BusinessException(404, "No Grafana dashboards are available");
+        }
+        Map<String, Resource> resourcesByUid = new HashMap<>();
+        for (Resource resource : resources) {
+            resourcesByUid.put(uidOf(resource), resource);
         }
         try (ByteArrayOutputStream output = new ByteArrayOutputStream();
              ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             for (GrafanaDashboardInfo dashboard : dashboards) {
                 ZipEntry entry = new ZipEntry(dashboard.uid() + ".json");
                 zip.putNextEntry(entry);
-                zip.write(getDashboardJson(dashboard.uid()).getBytes(StandardCharsets.UTF_8));
+                try (InputStream in = resourcesByUid.get(dashboard.uid()).getInputStream()) {
+                    in.transferTo(zip);
+                }
                 zip.closeEntry();
             }
             zip.finish();
