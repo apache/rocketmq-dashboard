@@ -218,7 +218,7 @@ $SSH 'cd /opt/rocketmq/rocketmq && docker compose up -d nameserver broker-0 brok
 ```bash
 $SSH 'cd /opt/rocketmq/rocketmq && docker compose ps'
 $SSH 'cd /opt/rocketmq/rocketmq && \
-  docker compose exec -T nameserver sh bin/mqadmin clusterList -n nameserver:9876'
+  docker compose exec -T nameserver sh bin/mqadmin clusterList -n rmq-nameserver:9876'
 ```
 
 通过标准：clusterList 能看到 `rocketmq-studio` 集群下 `rocketmq-studio-0`、
@@ -254,8 +254,8 @@ producer / consumer 服务说明（容器名均带 `rmq-` 前缀）：
 
 | 服务 | 说明 |
 |------|------|
-| producer | 编译并运行 `clients/TraceProducer.java`，1 TPS 发送到 `StudioTest`（带 Key `studio-key-<n>`），`enableMsgTrace=true`，直连 `nameserver:9876` |
-| consumer | 编译并运行 `clients/TraceConsumer.java`，Push 消费 `StudioTest`，`enableMsgTrace=true`，直连 `nameserver:9876` |
+| producer | 编译并运行 `clients/TraceProducer.java`，1 TPS 发送到 `StudioTest`（带 Key `studio-key-<n>`），`enableMsgTrace=true`，直连 `rmq-nameserver:9876` |
+| consumer | 编译并运行 `clients/TraceConsumer.java`，Push 消费 `StudioTest`，`enableMsgTrace=true`，直连 `rmq-nameserver:9876` |
 
 producer / consumer 直接用运行镜像自带 JDK + `lib/*` 依赖现场编译，无需额外构建。
 
@@ -267,7 +267,7 @@ $SSH 'docker logs -f --tail 50 rmq-producer'
 
 # 消息轨迹已落盘（RMQ_SYS_TRACE_TOPIC 有数据即轨迹链路打通）
 $SSH 'cd /opt/rocketmq/rocketmq && docker compose exec -T broker-0 \
-  sh bin/mqadmin consumeMessage -n nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5'
+  sh bin/mqadmin consumeMessage -n rmq-nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5'
 ```
 
 验证通过标准：模式 B 的 clusterList 标准之外，producer 日志持续输出 `SEND_OK`；
@@ -473,7 +473,7 @@ msgId / Key 可从 producer 日志获取：`send #16 SEND_OK <msgId> key=studio-
 ### 查看集群状态 clusterList
 
 ```bash
-docker compose exec nameserver sh bin/mqadmin clusterList -n nameserver:9876
+docker compose exec nameserver sh bin/mqadmin clusterList -n rmq-nameserver:9876
 ```
 
 输出每个 broker 的地址、版本、InTPS/OutTPS（测试集群稳态约 1.0，对应 1 TPS 收发）、
@@ -483,7 +483,7 @@ docker compose exec nameserver sh bin/mqadmin clusterList -n nameserver:9876
 
 ```bash
 docker compose exec nameserver sh bin/mqadmin queryMsgByUniqueKey \
-  -n nameserver:9876 -t StudioTest -i <msgId>
+  -n rmq-nameserver:9876 -t StudioTest -i <msgId>
 ```
 
 - `-i` 传客户端 msgId（即 UNIQ_KEY，producer 日志里那个）。
@@ -494,7 +494,7 @@ docker compose exec nameserver sh bin/mqadmin queryMsgByUniqueKey \
 
 ```bash
 docker compose exec nameserver sh bin/mqadmin queryMsgTraceById \
-  -n nameserver:9876 -i <msgId>
+  -n rmq-nameserver:9876 -i <msgId>
 ```
 
 - 从 `RMQ_SYS_TRACE_TOPIC` 检索该消息的轨迹：Pub（发送）与 Sub（消费）记录，
@@ -506,7 +506,7 @@ docker compose exec nameserver sh bin/mqadmin queryMsgTraceById \
 
 ```bash
 docker compose exec nameserver sh bin/mqadmin queryMsgByKey \
-  -n nameserver:9876 -t StudioTest -k studio-key-16
+  -n rmq-nameserver:9876 -t StudioTest -k studio-key-16
 ```
 
 - 依赖发送时 `msg.setKeys(...)` 建立的索引（测试集群 producer 已设置
