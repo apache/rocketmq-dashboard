@@ -198,8 +198,8 @@ const AclPageContent = ({
     // Every re-run of this effect (instance switch, paging, filter change, manual refresh)
     // issues new requests, so the loading flags have to be re-armed before they start —
     // otherwise they stay false after the first successful load and the tables keep
-    // showing stale rows. They are set inside the async loaders rather than in the effect
-    // body so each run does not cascade an extra render.
+    // showing stale rows. Keep each flag next to the request it guards for readability;
+    // React batches these updates the same way as updates in the effect body.
     const loadRules = async () => {
       setRulesLoading(true);
       try {

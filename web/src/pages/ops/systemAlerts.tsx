@@ -201,8 +201,8 @@ const SystemAlertsPage = () => {
 
     // Re-arm the loading flag before every request (paging, filters, manual refresh);
     // otherwise it stays false after the first load and the table keeps rendering stale
-    // rows. It is set inside the async loader rather than in the effect body so the page
-    // does not cascade an extra render on each run.
+    // rows. Keep the flag next to the request it guards for readability; React batches
+    // this update the same way as an update in the effect body.
     const loadAlerts = async () => {
       setLoading(true);
       try {
