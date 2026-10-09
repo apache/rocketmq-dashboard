@@ -398,6 +398,14 @@ describe('Cluster page', () => {
             tpsIn: 0,
             tpsOut: 0,
           },
+          // A second, measured broker: without one the order assertions below could never fail.
+          {
+            ...cluster.brokers[1],
+            runtimeStatsAvailable: true,
+            diskUsage: 42,
+            tpsIn: 950_000,
+            tpsOut: 12_345,
+          },
         ],
       },
     ]);
@@ -407,14 +415,23 @@ describe('Cluster page', () => {
     const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
     expect(within(brokerRow).queryByText('0%')).not.toBeInTheDocument();
     expect(within(brokerRow).getAllByText('不可用')).toHaveLength(3);
+    const measuredRow = screen.getByRole('row', { name: /10\.101\.2\.12:10911/ });
+    expect(within(measuredRow).getByText('950,000')).toBeInTheDocument();
+    expect(within(measuredRow).queryByText('不可用')).not.toBeInTheDocument();
 
-    // A descending sort must not promote the unmeasured broker either.
-    const [tpsInHeader] = screen.getAllByText('TPS In');
+    const tpsInHeader = screen.getAllByText('TPS In')[0];
+    const brokerRowOrder = () =>
+      Array.from(document.querySelectorAll('tbody tr')).map((row) => row.textContent ?? '');
+    const unmeasuredIndex = () =>
+      brokerRowOrder().findIndex((text) => text.includes('10.101.2.11:10911'));
+    const measuredIndex = () =>
+      brokerRowOrder().findIndex((text) => text.includes('10.101.2.12:10911'));
+
+    // Neither direction may promote the unmeasured broker above the measured one.
     await user.click(tpsInHeader);
+    expect(measuredIndex()).toBeLessThan(unmeasuredIndex());
     await user.click(tpsInHeader);
-    expect(
-      within(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).getAllByText('不可用'),
-    ).toHaveLength(3);
+    expect(measuredIndex()).toBeLessThan(unmeasuredIndex());
   });
 
   it('previews broker config changes before submitting the update', async () => {
