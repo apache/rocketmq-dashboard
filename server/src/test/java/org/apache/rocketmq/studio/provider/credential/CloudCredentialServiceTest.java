@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -135,6 +136,36 @@ class CloudCredentialServiceTest {
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ALIYUN or TENCENT");
+    }
+
+    @Test
+    void createShouldRejectFieldsThatExceedTheirColumnsTest() {
+        CloudCredentialVO request = new CloudCredentialVO();
+        request.setName("n".repeat(129));
+        request.setVendor(InstanceVendor.ALIYUN);
+        request.setAccessKey("LTAI5tGoodKey00000000001");
+        request.setSecretKey("sk-value");
+
+        // name VARCHAR(128), access_key VARCHAR(255), secret_key VARCHAR(512) holding the base64 of
+        // the secret: without the bounds the database rejected the write and the API answered 500.
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential name must not exceed 128 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        request.setName("ok");
+        request.setAccessKey("A".repeat(256));
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential accessKey must not exceed 255 characters");
+
+        request.setAccessKey("LTAI5tGoodKey00000000001");
+        request.setSecretKey("s".repeat(400));
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential secretKey encodes to more than 512 characters");
+
+        verifyNoInteractions(credentialRepository);
     }
 
     @Test
