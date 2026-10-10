@@ -33,6 +33,51 @@ const connection = (overrides: Partial<ClientConnection>): ClientConnection => (
 });
 
 describe('client connection diagnostics', () => {
+  it.each([
+    ['IPv4', '192.0.2.10:51001', '192.0.2.10:51002'],
+    ['IPv4 socket notation', '/192.0.2.10:51001', '192.0.2.10:51002'],
+    ['IPv6', '[2001:db8::10]:51001', '[2001:db8::10]:51002'],
+  ])(
+    'keeps one client connected to multiple brokers without a collision (%s) Test',
+    (_, first, second) => {
+      const diagnostics = analyzeClientConnections([
+        connection({ clientId: '192.0.2.10@4242', protocol: 'Remoting', address: first }),
+        connection({ clientId: '192.0.2.10@4242', protocol: 'Remoting', address: second }),
+      ]);
+      expect(diagnostics.issues.map((item) => item.code)).not.toContain('CLIENT_ID_COLLISION');
+      expect(diagnostics.issues.map((item) => item.code)).not.toContain(
+        'EXACT_DUPLICATE_CONNECTION',
+      );
+      expect(diagnostics.status).toBe('healthy');
+      expect(diagnostics.summary).toMatchObject({ totalConnections: 2, uniqueAddressCount: 2 });
+    },
+  );
+
+  it.each([
+    ['192.0.2.10:51001', '192.0.2.11:51002'],
+    ['[2001:db8::10]:51001', '[2001:db8::11]:51002'],
+  ])('still reports the same client ID on different hosts (%s, %s) Test', (first, second) => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clientId: 'shared-client', address: first }),
+      connection({ clientId: 'shared-client', address: second }),
+    ]);
+    expect(diagnostics.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'CLIENT_ID_COLLISION',
+        severity: 'critical',
+        evidence: [first, second],
+      }),
+    );
+  });
+
+  it('keeps distinct unrecognized addresses distinct Test', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clientId: 'shared-client', address: 'unknown-a' }),
+      connection({ clientId: 'shared-client', address: 'unknown-b' }),
+    ]);
+    expect(diagnostics.issues.map((item) => item.code)).toContain('CLIENT_ID_COLLISION');
+  });
+
   it('marks a consistent multi-client inventory as healthy', () => {
     const diagnostics = analyzeClientConnections([
       connection({ clientId: 'producer-a', address: '10.0.1.10:49152' }),
