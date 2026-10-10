@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.credential;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -98,8 +99,14 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
     }
 
     @Override
-    public boolean replace(CloudCredentialVO credential) {
-        return credential.getId() != null && credentialMapper.updateById(toEntity(credential)) > 0;
+    public boolean updateFields(Long id, String name, String secretKey, String remark) {
+        UpdateWrapper<RmqCloudCredential> update = new UpdateWrapper<RmqCloudCredential>()
+                .eq("id", id)
+                .set(name != null, "name", name)
+                .set(secretKey != null, "secret_key", CredentialUtils.encodeBase64(secretKey))
+                .set(remark != null, "remark", remark)
+                .set("gmt_modified", LocalDateTime.now());
+        return credentialMapper.update(null, update) > 0;
     }
 
     @Override

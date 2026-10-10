@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -58,6 +59,7 @@ const NotificationDeliveriesPage = () => {
   const [search, setSearch] = useState<string>();
   const [timeRange, setTimeRange] = useState<{ from?: string; to?: string }>({});
   const [instanceLoadFailed, setInstanceLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [instanceReloadNonce, setInstanceReloadNonce] = useState(0);
   const [selectedDelivery, setSelectedDelivery] = useState<NotificationDeliveryRecord>();
   const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
@@ -68,10 +70,12 @@ const NotificationDeliveriesPage = () => {
 
   const refresh = () => {
     setLoading(true);
+    setLoadFailed(false);
     setRefreshNonce((current) => current + 1);
   };
 
   const retryDelivery = async (record: NotificationDeliveryRecord) => {
+    if (loading || loadFailed) return;
     if (retryingVisibleInFlight.current || retryingIdsInFlight.current.has(record.id)) return;
     retryingIdsInFlight.current.add(record.id);
     setRetryingIds((current) => new Set(current).add(record.id));
@@ -97,6 +101,7 @@ const NotificationDeliveriesPage = () => {
   };
 
   const retryVisibleFailures = async () => {
+    if (loading || loadFailed) return;
     const ids = items.filter((item) => item.status === 'FAILED').map((item) => item.id);
     if (ids.length === 0) return;
     if (retryingVisibleInFlight.current || ids.some((id) => retryingIdsInFlight.current.has(id)))
@@ -141,14 +146,27 @@ const NotificationDeliveriesPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listAlertDeliveriesPage({ channel, status, instanceId, search, ...timeRange, page, pageSize })
+    void listAlertDeliveriesPage({
+      channel,
+      status,
+      instanceId,
+      search,
+      ...timeRange,
+      page,
+      pageSize,
+    })
       .then((result) => {
         if (cancelled) return;
         setItems(result.items);
         setTotal(result.total);
+        setLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('deliveries.loadFailed'));
+        if (cancelled) return;
+        setItems([]);
+        setTotal(0);
+        setSelectedDelivery(undefined);
+        setLoadFailed(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -160,6 +178,8 @@ const NotificationDeliveriesPage = () => {
 
   const resetPage = (change: () => void) => {
     setLoading(true);
+    setLoadFailed(false);
+    setSelectedDelivery(undefined);
     change();
     setPage(1);
   };
@@ -232,6 +252,7 @@ const NotificationDeliveriesPage = () => {
             size="small"
             icon={<Eye size={18} />}
             aria-label={t('deliveries.viewDetails')}
+            disabled={loading || loadFailed}
             onClick={() => setSelectedDelivery(record)}
           />
           {record.status === 'FAILED' && (
@@ -242,6 +263,7 @@ const NotificationDeliveriesPage = () => {
                 icon={<ArrowClockwise size={18} />}
                 aria-label={t('deliveries.retry')}
                 loading={retryingIds.has(record.id)}
+                disabled={loading || loadFailed}
                 onClick={() => void retryDelivery(record)}
               />
             </Tooltip>
@@ -259,7 +281,7 @@ const NotificationDeliveriesPage = () => {
           <Flex gap={12} wrap="wrap" style={{ marginBottom: 20 }}>
             <Button
               icon={<ArrowClockwise size={18} />}
-              disabled={!items.some((item) => item.status === 'FAILED')}
+              disabled={loading || loadFailed || !items.some((item) => item.status === 'FAILED')}
               loading={retryingVisible}
               onClick={() => void retryVisibleFailures()}
             >
@@ -339,6 +361,15 @@ const NotificationDeliveriesPage = () => {
               </Tooltip>
             )}
           </Flex>
+          {loadFailed && (
+            <Alert
+              type="error"
+              showIcon
+              message={t('deliveries.loadFailed')}
+              action={<Button onClick={refresh}>{t('common.retry')}</Button>}
+              style={{ marginBottom: 16 }}
+            />
+          )}
           <Table
             rowKey="id"
             columns={columns}
@@ -354,6 +385,7 @@ const NotificationDeliveriesPage = () => {
               showTotal: (count) => `${t('common.total')} ${count}`,
               onChange: (nextPage, nextPageSize) => {
                 setLoading(true);
+                setLoadFailed(false);
                 setPage(nextPage);
                 setPageSize(nextPageSize);
               },
@@ -409,6 +441,7 @@ const NotificationDeliveriesPage = () => {
               <Button
                 icon={<ArrowClockwise size={18} />}
                 loading={retryingIds.has(selectedDelivery.id)}
+                disabled={loading || loadFailed}
                 onClick={() => void retryDelivery(selectedDelivery)}
               >
                 {t('deliveries.retry')}

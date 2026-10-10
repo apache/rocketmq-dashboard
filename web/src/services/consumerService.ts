@@ -121,6 +121,15 @@ export async function listConsumerGroupPage(
   if (isMockMode()) {
     const page = params.page ?? 1;
     const pageSize = params.pageSize ?? 20;
+    // Mirror the backend pagination contract (MetadataService
+    // validatePagination: page >= 1, pageSize 1..100 -> 400): without this
+    // the mock accepts out-of-range values and a negative page slices from
+    // the end of the list.
+    if (page < 1 || pageSize < 1 || pageSize > 100) {
+      return Promise.reject(
+        new Error('page must be greater than zero and pageSize must be between 1 and 100'),
+      );
+    }
     const groups = filterConsumerGroups(params);
     const from = Math.min((page - 1) * pageSize, groups.length);
     return {

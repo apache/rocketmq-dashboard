@@ -61,13 +61,19 @@ public class AliyunClientFactory {
 
     public AsyncClient client(Long credentialId, String region) {
         String key = cacheKey(credentialId, region);
-        return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        AsyncClient cached = clients.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        }
     }
 
     /**
      * Releases all clients created with a credential so the next call observes rotated secrets.
      */
-    public void invalidateCredential(Long credentialId) {
+    public synchronized void invalidateCredential(Long credentialId) {
         String prefix = credentialId + "#";
         clients.entrySet().removeIf(entry -> {
             if (!entry.getKey().startsWith(prefix)) {

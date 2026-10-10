@@ -23,6 +23,7 @@ import { getAuthStatus } from './api/auth';
 import App, { AuthGate, LazyRouteOutlet } from './App';
 import { LangProvider } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
+import { USER_STORAGE_KEY } from './stores/authStorage';
 
 vi.mock('./api/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api/auth')>();
@@ -147,6 +148,70 @@ describe('AuthGate', () => {
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
+  });
+
+  it('hides protected content and rechecks the session after another tab signs out', async () => {
+    let resolveRecheck!: (status: { loginRequired: boolean; authenticated: boolean }) => void;
+    mockedGetAuthStatus
+      .mockResolvedValueOnce({
+        loginRequired: true,
+        authenticated: true,
+        user: { userId: 7, username: 'studio-admin', admin: true },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRecheck = resolve;
+          }),
+      );
+
+    renderGate();
+    expect(await screen.findByText('protected content')).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: USER_STORAGE_KEY, newValue: null }));
+    });
+    expect(screen.queryByText('protected content')).not.toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '加载中' })).toBeInTheDocument();
+    await waitFor(() => expect(mockedGetAuthStatus).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveRecheck({ loginRequired: true, authenticated: false });
+    });
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+  });
+
+  it('refreshes the account identity after another tab signs in', async () => {
+    mockedGetAuthStatus
+      .mockResolvedValueOnce({
+        loginRequired: true,
+        authenticated: true,
+        user: { userId: 7, username: 'account-a', admin: true },
+      })
+      .mockResolvedValueOnce({
+        loginRequired: true,
+        authenticated: true,
+        user: { userId: 8, username: 'account-b', admin: false },
+      });
+
+    renderGate();
+    expect(await screen.findByText('protected content')).toBeInTheDocument();
+    expect(useAuthStore.getState().user).toBe('account-a');
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: USER_STORAGE_KEY, newValue: 'account-b' }),
+      );
+    });
+    await waitFor(() => expect(mockedGetAuthStatus).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(useAuthStore.getState()).toMatchObject({
+        user: 'account-b',
+        userId: 8,
+        admin: false,
+      }),
+    );
+    expect(await screen.findByText('protected content')).toBeInTheDocument();
   });
 
   it('fails closed and retries the status check', async () => {
