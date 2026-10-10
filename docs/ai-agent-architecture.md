@@ -167,8 +167,9 @@ onError` 接到 `cancel()`，TCP 一断就杀 worker。改造后：事件先落�
    flush 它的 `result` 帧，于是 `session_id` 保得住，**停止之后下一轮 `--resume` 仍然可用**。这是
    相对硬杀的真实收益，也是优先优雅的理由。
 
-`AbortReason` 是判别的（`USER_STOP` / `SHUTDOWN` / `TIMEOUT` / `ORPHANED`），好让 `@PreDestroy` 的
-drain 写 `SHUTDOWN` 而不是把一次重新部署误标成用户取消。停止接口带 `expectedRunId` 语义：已终态则
+`AbortReason` 是判别的（`USER_STOP` / `SHUTDOWN` / `TIMEOUT` / `ORPHANED` / `RETENTION`），好让 `@PreDestroy` 的
+drain 写 `SHUTDOWN` 而不是把一次重新部署误标成用户取消，retention 清理写 `RETENTION` 而不是与
+孤儿回收的 `ORPHANED` 混淆。停止接口带 `expectedRunId` 语义：已终态则
 200 空操作，当前活跃的是另一个 run 则 409 —— 陈旧的停止请求必须 fail closed，绝不能杀掉新 run。
 
 ## 9. 安全不变量
