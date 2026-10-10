@@ -433,7 +433,13 @@ public class AuthService {
         revokeUserSessions(user.getId());
     }
 
-    @Scheduled(fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
+    // The first pass waits a full interval instead of running at startup: a startup run of the
+    // idle-revocation pass would fire a session update the moment a context comes up, which the
+    // auth integration tests' strict invocation-count verifications cannot tolerate (the dev
+    // profile stretches this interval to a day, so a test context never sees a scheduled pass;
+    // the purge itself is covered by direct method calls).
+    @Scheduled(initialDelayString = "${studio.auth.session-cleanup-interval:PT5M}",
+            fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
     public void purgeExpiredSessions() {
         if (databaseBacked()) {
             LocalDateTime current = now();
