@@ -558,7 +558,9 @@ const ConsumerPageContent = ({
 
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
+    const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
+    if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
     if (original && values.consumeEnable === false && original.consumeEnable !== false) {
@@ -583,7 +585,7 @@ const ConsumerPageContent = ({
           onCancel: () => resolve(false),
         });
       });
-      if (!confirmed) return;
+      if (!confirmed || requestId !== settingsRequestIdRef.current) return;
     }
     setSettingsSubmitting(true);
     try {
@@ -592,6 +594,13 @@ const ConsumerPageContent = ({
         name: settingsGroup.name,
         ...values,
       });
+      if (requestId !== settingsRequestIdRef.current) return;
+      // Subsequent edits must be compared with the settings the broker just accepted,
+      // not the snapshot from when this modal was first opened.
+      originalSettingsRef.current = {
+        consumeEnable: values.consumeEnable,
+        consumeMessageOrderly: values.consumeMessageOrderly,
+      };
       setGroups((current) =>
         current.map((group) =>
           group.name === settingsGroup.name
@@ -606,9 +615,11 @@ const ConsumerPageContent = ({
       );
       message.success('消费组配置已保存');
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      if (requestId === settingsRequestIdRef.current) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
     } finally {
-      setSettingsSubmitting(false);
+      if (requestId === settingsRequestIdRef.current) setSettingsSubmitting(false);
     }
   };
 
@@ -1654,6 +1665,8 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsSubmitting(false);
+          originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
         width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
