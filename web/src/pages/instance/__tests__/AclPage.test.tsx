@@ -175,6 +175,47 @@ describe('ACL page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('shows the rule table as loading again while a later reload is pending', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    vi.mocked(aclService.deleteAclRule).mockResolvedValue(undefined);
+    vi.mocked(aclService.listAclRules)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            principal: 'remote-user',
+            resource: 'remote-topic',
+            resourceType: 'Topic',
+            resourcePattern: 'LITERAL',
+            actions: ['PUB'],
+            decision: 'ALLOW',
+            scope: 'cluster',
+            aclVersion: 2,
+            gmtCreate: '2026-07-23T00:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    renderWithProviders(<AclPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-topic/ });
+    const rulesTable = row.closest('.ant-spin-nested-loading');
+    expect(rulesTable?.querySelector('.ant-spin-spinning')).toBeNull();
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() => expect(aclService.listAclRules).toHaveBeenCalledTimes(2));
+    // The stale rows stay visible only behind the spinner until the pending page arrives.
+    await waitFor(() => expect(rulesTable?.querySelector('.ant-spin-spinning')).not.toBeNull());
+    confirmSpy.mockRestore();
+  });
+
   it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.pageAclUsers).mockResolvedValue({
