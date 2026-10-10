@@ -61,6 +61,7 @@ import org.apache.rocketmq.studio.common.util.SubscriptionConsistency;
 import org.apache.rocketmq.studio.common.util.SubscriptionFilterModes;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -494,6 +495,14 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (StringUtils.hasText(response.getConsumeModel())) {
                 group.setConsumeType(toConsumeType(response.getConsumeModel()));
             }
+            // The detail response carries the two numbers the list cannot see. A missing or
+            // negative value stays unavailable instead of turning into a measured zero.
+            Long consumerNum = response.getConsumerNum();
+            group.setOnlineInstances(consumerNum == null || consumerNum < 0L
+                    ? UNKNOWN_ONLINE_INSTANCES : toInt(consumerNum));
+            Long consumerLag = response.getConsumerLag();
+            group.setTotalLag(consumerLag == null || consumerLag < 0L
+                    ? ConsumerLagResolver.UNKNOWN : consumerLag);
         } catch (BusinessException ignored) {
             // A single group detail lookup failure should not fail the whole list.
         }
@@ -1039,6 +1048,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
         group.setSubscribedTopics(java.util.List.of());
         group.setInstances(java.util.List.of());
+        // DescribeConsumerGroupList carries neither the online client count nor the backlog;
+        // enrichConsumerGroupDetail fills both from the detail response it already fetches. Until
+        // then they are unavailable, not the 0 the VO defaults would render as a measurement.
+        group.setOnlineInstances(UNKNOWN_ONLINE_INSTANCES);
+        group.setTotalLag(ConsumerLagResolver.UNKNOWN);
         return group;
     }
 
@@ -1100,6 +1114,9 @@ public class TencentInstanceProvider implements InstanceProvider {
                 && (deliveryOrderType.toUpperCase(Locale.ROOT).contains("FIFO")
                 || deliveryOrderType.toUpperCase(Locale.ROOT).contains("ORDER"));
     }
+
+    /** The online client count is unavailable; the console renders a negative count as "unknown". */
+    private static final int UNKNOWN_ONLINE_INSTANCES = -1;
 
     private static int toInt(Long value) {
         if (value == null || value <= 0L) {
