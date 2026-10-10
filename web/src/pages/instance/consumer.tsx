@@ -885,9 +885,11 @@ const ConsumerPageContent = ({
     },
     {
       title: '说明',
-      dataIndex: 'message',
       key: 'message',
-      render: (text?: string) => text || '-',
+      render: (_: unknown, record) =>
+        record.issues
+          ? record.issues.map((issue) => t(issue.key, issue.params)).join(t('common.listSeparator'))
+          : (record.message ?? '-'),
     },
   ];
 

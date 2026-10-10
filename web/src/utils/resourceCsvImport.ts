@@ -24,12 +24,21 @@ export interface CsvRecord {
   values: Record<string, string>;
 }
 
+/** A row-level validation finding: a translation key plus optional params. */
+export interface ImportIssue {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
 export interface ResourceImportRow<T> {
   key: string;
   lineNumber: number;
   name: string;
   payload: T;
   status: 'pending' | 'invalid' | 'success' | 'failed';
+  /** Validation findings from this util, resolved by the page through t(key, params). */
+  issues?: ImportIssue[];
+  /** Result-phase text set by the page after the import request settles. */
   message?: string;
 }
 
@@ -53,16 +62,18 @@ export const RESOURCE_NAME_MAX_LENGTH = { topic: 127, group: 120 } as const;
 
 export type ResourceNameKind = keyof typeof RESOURCE_NAME_MAX_LENGTH;
 
-export const validateResourceName = (name: string, kind: ResourceNameKind): string | null => {
+// Returns a translation key (with optional params) instead of display text; callers resolve
+// it through t(key, params).
+export const validateResourceName = (name: string, kind: ResourceNameKind): ImportIssue | null => {
   if (!name) {
-    return 'Name 不能为空';
+    return { key: 'csvImport.nameEmpty' };
   }
   const maxLength = RESOURCE_NAME_MAX_LENGTH[kind];
   if (name.length > maxLength) {
-    return `Name 长度不能超过 ${maxLength} 个字符`;
+    return { key: 'csvImport.nameTooLong', params: { max: maxLength } };
   }
   if (!RESOURCE_NAME_PATTERN.test(name)) {
-    return 'Name 仅支持字母、数字、下划线、短横线、% 和 |';
+    return { key: 'csvImport.nameInvalidChars' };
   }
   return null;
 };
@@ -94,13 +105,13 @@ const parseInteger = (
 ): number => {
   if (!value) return fallback;
   if (!/^-?\d+$/.test(value)) {
-    errors.push(`${fieldName} 必须是整数`);
+    errors.push({ key: 'csvImport.fieldInteger', params: { field: fieldName } });
     return fallback;
   }
 
   const parsed = Number(value);
   if (parsed < min || parsed > max) {
-    errors.push(`${fieldName} 必须在 ${min}..${max} 之间`);
+    errors.push({ key: 'csvImport.fieldRange', params: { field: fieldName, min, max } });
     return fallback;
   }
   return parsed;
@@ -231,9 +242,9 @@ export const parseCsvTable = (content: string): CsvRecord[] => {
   return records;
 };
 
-const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> => {
+const buildDuplicateNameLines = (records: CsvRecord[]): Map<number, number> => {
   const firstLineByName = new Map<string, number>();
-  const messagesByLine = new Map<number, string>();
+  const lineByDuplicate = new Map<number, number>();
 
   records.forEach((record) => {
     const name = normalizeValue(record.values.Name);
@@ -241,24 +252,24 @@ const buildDuplicateNameMessages = (records: CsvRecord[]): Map<number, string> =
 
     const firstLine = firstLineByName.get(name);
     if (firstLine != null) {
-      messagesByLine.set(record.lineNumber, `Name 与第 ${firstLine} 行重复：${name}`);
+      lineByDuplicate.set(record.lineNumber, firstLine);
     } else {
       firstLineByName.set(name, record.lineNumber);
     }
   });
 
-  return messagesByLine;
+  return lineByDuplicate;
 };
 
 export const validateTopicCsvImport = (
   records: CsvRecord[],
   selectedInstanceId?: string,
 ): ResourceImportValidation<Partial<Topic>> => {
-  const duplicateMessages = buildDuplicateNameMessages(records);
+  const duplicateLines = buildDuplicateNameLines(records);
   const rows: ResourceImportRow<Partial<Topic>>[] = [];
 
   records.forEach((record, index) => {
-    const rowErrors: string[] = [];
+    const rowErrors: ImportIssue[] = [];
     const name = normalizeValue(record.values.Name);
     const type = normalizeValue(record.values.Type) || 'NORMAL';
     const writeQueues = parseInteger(
@@ -279,18 +290,20 @@ export const validateTopicCsvImport = (
     );
     const perm = normalizeValue(record.values.Permission) || 'RW';
     const remark = normalizeValue(record.values.Remark);
-    const duplicateMessage = duplicateMessages.get(record.lineNumber);
-    if (duplicateMessage) rowErrors.push(duplicateMessage);
+    const duplicateLine = duplicateLines.get(record.lineNumber);
+    if (duplicateLine != null) {
+      rowErrors.push({ key: 'csvImport.nameDuplicate', params: { line: duplicateLine, name } });
+    }
 
     const nameError = validateResourceName(name, 'topic');
     if (nameError) {
       rowErrors.push(nameError);
     }
     if (!TOPIC_TYPES.has(type)) {
-      rowErrors.push(`Type 不支持：${type}`);
+      rowErrors.push({ key: 'csvImport.unsupportedType', params: { value: type } });
     }
     if (!TOPIC_PERMISSIONS.has(perm)) {
-      rowErrors.push(`Permission 不支持：${perm}`);
+      rowErrors.push({ key: 'csvImport.unsupportedPermission', params: { value: perm } });
     }
 
     rows.push({
@@ -307,7 +320,7 @@ export const validateTopicCsvImport = (
         ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
       },
       status: rowErrors.length > 0 ? 'invalid' : 'pending',
-      message: rowErrors.join('；') || undefined,
+      issues: rowErrors.length > 0 ? rowErrors : undefined,
     });
   });
 
@@ -318,11 +331,11 @@ export const validateConsumerGroupCsvImport = (
   records: CsvRecord[],
   selectedInstanceId?: string,
 ): ResourceImportValidation<Partial<ConsumerGroup>> => {
-  const duplicateMessages = buildDuplicateNameMessages(records);
+  const duplicateLines = buildDuplicateNameLines(records);
   const rows: ResourceImportRow<Partial<ConsumerGroup>>[] = [];
 
   records.forEach((record, index) => {
-    const rowErrors: string[] = [];
+    const rowErrors: ImportIssue[] = [];
     const name = normalizeValue(record.values.Name);
     const subscriptionMode = normalizeValue(record.values['Subscription Mode']) || 'Push';
     const consumeType = normalizeValue(record.values['Consume Type']) || 'CLUSTERING';
@@ -339,28 +352,39 @@ export const validateConsumerGroupCsvImport = (
     const deliveryOrderType = normalizeDeliveryOrderType(
       normalizeValue(record.values['Delivery Order Type']),
     );
-    const duplicateMessage = duplicateMessages.get(record.lineNumber);
-    if (duplicateMessage) rowErrors.push(duplicateMessage);
+    const duplicateLine = duplicateLines.get(record.lineNumber);
+    if (duplicateLine != null) {
+      rowErrors.push({ key: 'csvImport.nameDuplicate', params: { line: duplicateLine, name } });
+    }
 
     const nameError = validateResourceName(name, 'group');
     if (nameError) {
       rowErrors.push(nameError);
     }
     if (!GROUP_SUBSCRIPTION_MODES.has(subscriptionMode)) {
-      rowErrors.push(`Subscription Mode 不支持：${subscriptionMode}`);
+      rowErrors.push({
+        key: 'csvImport.unsupportedSubscriptionMode',
+        params: { value: subscriptionMode },
+      });
     }
     if (!GROUP_CONSUME_TYPES.has(consumeType)) {
-      rowErrors.push(`Consume Type 不支持：${consumeType}`);
+      rowErrors.push({ key: 'csvImport.unsupportedConsumeType', params: { value: consumeType } });
     }
     if (!GROUP_SUBSCRIPTION_DATA_TYPES.has(subscriptionDataType)) {
-      rowErrors.push(`Subscription Data Type 不支持：${subscriptionDataType}`);
+      rowErrors.push({
+        key: 'csvImport.unsupportedSubscriptionDataType',
+        params: { value: subscriptionDataType },
+      });
     }
     if (
       deliveryOrderType &&
       subscriptionDataType === 'FIFO' &&
       !GROUP_DELIVERY_ORDER_TYPES.has(deliveryOrderType)
     ) {
-      rowErrors.push(`Delivery Order Type 不支持：${deliveryOrderType}`);
+      rowErrors.push({
+        key: 'csvImport.unsupportedDeliveryOrderType',
+        params: { value: deliveryOrderType },
+      });
     }
 
     rows.push({
@@ -378,7 +402,7 @@ export const validateConsumerGroupCsvImport = (
         ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
       },
       status: rowErrors.length > 0 ? 'invalid' : 'pending',
-      message: rowErrors.join('；') || undefined,
+      issues: rowErrors.length > 0 ? rowErrors : undefined,
     });
   });
 

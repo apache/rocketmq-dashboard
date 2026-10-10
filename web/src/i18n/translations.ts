@@ -3600,6 +3600,50 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
+  'common.listSeparator': { zh: '；', en: '; ' },
+  // ─── Resource CSV import validation (utils return keys; the page translates) ───
+  'csvImport.nameEmpty': { zh: 'Name 不能为空', en: 'Name cannot be empty' },
+  'csvImport.nameTooLong': {
+    zh: 'Name 长度不能超过 {max} 个字符',
+    en: 'Name must not exceed {max} characters',
+  },
+  'csvImport.nameInvalidChars': {
+    zh: 'Name 仅支持字母、数字、下划线、短横线、% 和 |',
+    en: 'Name supports only letters, digits, underscore, hyphen, % and |',
+  },
+  'csvImport.nameDuplicate': {
+    zh: 'Name 与第 {line} 行重复：{name}',
+    en: 'Name duplicates line {line}: {name}',
+  },
+  'csvImport.fieldInteger': {
+    zh: '{field} 必须是整数',
+    en: '{field} must be an integer',
+  },
+  'csvImport.fieldRange': {
+    zh: '{field} 必须在 {min}..{max} 之间',
+    en: '{field} must be between {min} and {max}',
+  },
+  'csvImport.unsupportedType': { zh: 'Type 不支持：{value}', en: 'Unsupported Type: {value}' },
+  'csvImport.unsupportedPermission': {
+    zh: 'Permission 不支持：{value}',
+    en: 'Unsupported Permission: {value}',
+  },
+  'csvImport.unsupportedSubscriptionMode': {
+    zh: 'Subscription Mode 不支持：{value}',
+    en: 'Unsupported Subscription Mode: {value}',
+  },
+  'csvImport.unsupportedConsumeType': {
+    zh: 'Consume Type 不支持：{value}',
+    en: 'Unsupported Consume Type: {value}',
+  },
+  'csvImport.unsupportedSubscriptionDataType': {
+    zh: 'Subscription Data Type 不支持：{value}',
+    en: 'Unsupported Subscription Data Type: {value}',
+  },
+  'csvImport.unsupportedDeliveryOrderType': {
+    zh: 'Delivery Order Type 不支持：{value}',
+    en: 'Unsupported Delivery Order Type: {value}',
+  },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.logout': { zh: '退出', en: 'Logout' },
   'common.submit': { zh: '提交', en: 'Submit' },
