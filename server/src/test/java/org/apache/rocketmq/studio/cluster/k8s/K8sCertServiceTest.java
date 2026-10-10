@@ -301,6 +301,40 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void createCertShouldRejectAnIdentityLongerThanItsColumnTest() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("k".repeat(129))
+                .cluster("cluster-a")
+                .type("TLS")
+                .build();
+
+        // k8s_id is VARCHAR(128): letting the value through reached the database, whose rejection
+        // the API reported as a generic 500 instead of naming the limit.
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate k8sId must not exceed 128 characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(k8sCertRepository, never()).save(any());
+    }
+
+    @Test
+    void aDerivedIssuerLongerThanItsColumnIsMarkedInsteadOfFailingTheRegistrationTest() {
+        // The DN comes out of the uploaded PEM, so the caller cannot shorten it: an enterprise CA
+        // DN over 256 characters must not make the certificate impossible to register, but the cut
+        // has to be visible.
+        String derived = "CN=" + "x".repeat(300);
+
+        String bounded = K8sCertService.boundedIssuer(derived);
+
+        // The marker is part of the budget: 256 must fit the column, not 256 plus "...".
+        assertThat(org.apache.rocketmq.studio.common.util.TextBounds.codePointCount(bounded))
+                .isEqualTo(256);
+        assertThat(bounded).endsWith("...");
+        assertThat(bounded).startsWith("CN=");
+        assertThat(K8sCertService.boundedIssuer("CN=short")).isEqualTo("CN=short");
+    }
+
+    @Test
     void createCertShouldRejectInvalidTypeBeforeSave() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .k8sId("bad-cert")

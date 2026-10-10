@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,11 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class K8sCertService {
+    /** `issuer VARCHAR(256)`; the other identity fields are VARCHAR(128). */
+    private static final int ISSUER_MAX_LENGTH = 256;
+    private static final String TRUNCATION_MARKER = "...";
+    private static final int IDENTITY_MAX_LENGTH = 128;
+
 
     private static final int EXPIRING_THRESHOLD_DAYS = 30;
 
@@ -95,7 +101,10 @@ public class K8sCertService {
             // renders it in the viewer's zone, matching every other date API.
             notBefore = LocalDateTime.ofInstant(parsed.getNotBefore().toInstant(), ZoneOffset.UTC);
             notAfter = LocalDateTime.ofInstant(parsed.getNotAfter().toInstant(), ZoneOffset.UTC);
-            issuer = parsed.getIssuerX500Principal().getName();
+            // The DN is derived from the uploaded PEM, so the caller cannot shorten it: bound it to
+            // the column (marker included) instead of failing the whole registration - issuer is
+            // informational, and an enterprise CA DN can exceed 256 characters.
+            issuer = boundedIssuer(parsed.getIssuerX500Principal().getName());
             san = extractSubjectAlternativeNames(parsed);
         }
 
@@ -183,6 +192,16 @@ public class K8sCertService {
         }
     }
 
+    /**
+     * The derived issuer must fit {@code issuer VARCHAR(256)} - marker included, so the suffix is
+     * subtracted from the budget instead of overflowing the column (the same rule
+     * {@code InstanceService} applies to its bounded remark).
+     */
+    static String boundedIssuer(String issuer) {
+        return TextBounds.truncate(issuer, ISSUER_MAX_LENGTH - TRUNCATION_MARKER.length(),
+                TRUNCATION_MARKER);
+    }
+
     private String normalizeOptionalIdentity(String value, String field) {
         if (value == null) {
             return null;
@@ -190,6 +209,13 @@ public class K8sCertService {
         String normalized = value.trim();
         if (normalized.isEmpty()) {
             throw new BusinessException(400, "Certificate " + field + " cannot be blank");
+        }
+        // k8s_id/cluster are VARCHAR(128), issuer VARCHAR(256); an over-long value reached the
+        // database and the rejection surfaced as a generic 500.
+        int maxLength = "issuer".equals(field) ? ISSUER_MAX_LENGTH : IDENTITY_MAX_LENGTH;
+        if (TextBounds.codePointCount(normalized) > maxLength) {
+            throw new BusinessException(400,
+                    "Certificate " + field + " must not exceed " + maxLength + " characters");
         }
         return normalized;
     }
