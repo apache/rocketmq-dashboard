@@ -52,6 +52,14 @@ interface BrokerRecord {
   tpsOut: number | null;
 }
 
+/**
+ * Sort key that keeps a broker whose runtime stats are unavailable (`null`, rendered as `-`) after
+ * every measured one in both directions: Ant Design negates the comparator for a descending
+ * column, so an unknown value cannot simply sort as the lowest number.
+ */
+const tpsSortValue = (value: number | null, sortOrder?: 'ascend' | 'descend' | null): number =>
+  value ?? (sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER);
+
 interface NameServerRecord {
   key: string;
   k8sCluster: string;
@@ -376,7 +384,8 @@ const BrokerClusterPage = () => {
       render: (value: number | null) => (
         <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
       ),
-      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsIn ?? -1) - (b.tpsIn ?? -1),
+      sorter: (a: BrokerRecord, b: BrokerRecord, sortOrder?: 'ascend' | 'descend' | null) =>
+        tpsSortValue(a.tpsIn, sortOrder) - tpsSortValue(b.tpsIn, sortOrder),
     },
     {
       title: t('brokerCluster.tpsOut'),
@@ -385,7 +394,8 @@ const BrokerClusterPage = () => {
       render: (value: number | null) => (
         <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
       ),
-      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
+      sorter: (a: BrokerRecord, b: BrokerRecord, sortOrder?: 'ascend' | 'descend' | null) =>
+        tpsSortValue(a.tpsOut, sortOrder) - tpsSortValue(b.tpsOut, sortOrder),
     },
   ];
 
