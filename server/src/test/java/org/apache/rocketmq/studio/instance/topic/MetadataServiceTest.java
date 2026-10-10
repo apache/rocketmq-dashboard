@@ -647,6 +647,21 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportTopicsShouldNotPublishStatisticsNoProviderComputesTest() {
+        // No provider assigns TopicVO.messageCount, TopicVO.tps or TopicVO.consumerGroupCount, so the
+        // three statistics columns could only ever export a fabricated 0. They are dropped instead of
+        // being published as measured values; the fixture values above are the only ones that exist.
+        when(apacheProvider.listTopics("instance-a", null, null))
+                .thenReturn(List.of(topic("orders", "default", TopicType.NORMAL)));
+
+        String csv = metadataService.exportTopics("instance-a", null, null, List.of());
+
+        assertThat(csv).doesNotContain("Message Count");
+        assertThat(csv).doesNotContain("TPS");
+        assertThat(csv).doesNotContain("Consumer Groups");
+    }
+
+    @Test
     void importTopicsShouldContinueAfterRowFailureTest() {
         when(apacheProvider.importTopic(eq("instance-a"), any(TopicVO.class))).thenAnswer(invocation -> {
             TopicVO topic = invocation.getArgument(1);
@@ -1259,9 +1274,6 @@ class MetadataServiceTest {
         topic.setWriteQueues(8);
         topic.setReadQueues(8);
         topic.setPerm(TopicPerm.RW);
-        topic.setMessageCount(100);
-        topic.setTps(2.5);
-        topic.setConsumerGroupCount(3);
         topic.setRemark("remark");
         topic.setGmtCreate(LocalDateTime.of(2026, 8, 27, 10, 0));
         topic.setGmtModified(LocalDateTime.of(2026, 8, 27, 11, 0));

@@ -64,9 +64,6 @@ class TopicMutationPlanTest {
         current.setWriteQueues(4);
         current.setReadQueues(4);
         current.setPerm(TopicPerm.RW);
-        current.setMessageCount(100L);
-        current.setTps(12.5);
-        current.setConsumerGroupCount(3);
         when(metadataService.findTopic("instance-a", null, "orders"))
                 .thenReturn(Optional.of(current));
 
@@ -86,8 +83,7 @@ class TopicMutationPlanTest {
                 .containsEntry("instanceId", "instance-a")
                 .containsEntry("topicName", "orders")
                 .containsEntry("writeQueues", 4)
-                .doesNotContainKeys("cluster", "clusterId", "namespace",
-                        "messageCount", "tps", "consumerGroupCount");
+                .doesNotContainKeys("cluster", "clusterId", "namespace");
         assertThat(plan.after())
                 .containsEntry("instanceId", "instance-a")
                 .containsEntry("topicName", "orders")

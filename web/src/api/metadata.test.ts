@@ -111,9 +111,7 @@ describe('topic metadata API', () => {
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
-      messageCount: 0,
-      tps: 0,
-      consumerGroupCount: 0,
+
       remark: '',
       gmtCreate: '2026-07-17T00:00:00Z',
       gmtModified: '2026-07-17T00:00:00Z',

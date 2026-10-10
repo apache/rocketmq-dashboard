@@ -33,9 +33,7 @@ const topic = (name: string, overrides: Partial<Topic> = {}): Topic => ({
   writeQueues: 8,
   readQueues: 8,
   perm: 'RW',
-  messageCount: 100,
-  tps: 12,
-  consumerGroupCount: 2,
+
   remark: '',
   gmtCreate: '2026-09-01 00:00:00',
   gmtModified: '2026-09-01 00:00:00',
@@ -89,9 +87,7 @@ describe('compareTopicInventories', () => {
     const target = topic('orders-created', {
       clusterId: 'cluster-b',
       instanceId: 'target',
-      messageCount: 9_999,
-      tps: 999,
-      consumerGroupCount: 20,
+
       remark: 'different operational note',
       gmtCreate: '2025-01-01 00:00:00',
       gmtModified: '2026-09-04 00:00:00',

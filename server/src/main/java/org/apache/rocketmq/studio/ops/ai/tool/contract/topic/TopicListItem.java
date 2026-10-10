@@ -28,10 +28,7 @@ public record TopicListItem(
         TopicType type,
         int writeQueues,
         int readQueues,
-        TopicPerm perm,
-        long messageCount,
-        double tps,
-        int consumerGroupCount) {
+        TopicPerm perm) {
 
     public static TopicListItem from(TopicVO topic) {
         return new TopicListItem(
@@ -40,9 +37,6 @@ public record TopicListItem(
                 topic.getType(),
                 topic.getWriteQueues(),
                 topic.getReadQueues(),
-                topic.getPerm(),
-                topic.getMessageCount(),
-                topic.getTps(),
-                topic.getConsumerGroupCount());
+                topic.getPerm());
     }
 }
