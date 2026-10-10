@@ -137,7 +137,7 @@ func sendToolsList(session *MCPClientSession) error {
 // recorded. Reconnect-worthiness must therefore come from the recorded
 // initialize request, not from the transport's session id.
 func TestSendWithReconnectRetriesAfterConcurrentSessionClear(t *testing.T) {
-	transport := newReconnectStubTransport("session-1")
+	transport := newReconnectStubTransport("")
 	session := newReconnectTestSession(transport)
 
 	// A concurrent sender just failed with a 404, which cleared the transport
