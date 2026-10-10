@@ -110,6 +110,9 @@ tools:
           type: integer
         consumedMessages:
           type: integer
+        consumedScanTruncated:
+          type: boolean
+          description: "True when consumedMessages only covers the first 200 lite topics of the session, so consumedMessages and totalMessages are lower bounds."
         pendingMessages:
           type: integer
         popProgress:

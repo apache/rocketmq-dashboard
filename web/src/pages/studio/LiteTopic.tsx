@@ -48,6 +48,7 @@ import {
   DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import {
   queryLiteTopicList,
@@ -628,6 +629,9 @@ const LiteTopicPage: React.FC = () => {
       sessionData.totalMessages != null && sessionData.totalMessages > 0
         ? Math.round(((sessionData.consumedMessages ?? 0) / sessionData.totalMessages) * 100)
         : 0;
+    // The consumed-offset scan is capped, so on a session with more lite topics than one scan
+    // covers the consumed and total counts are lower bounds: prefix them and drop the ratio.
+    const consumedTruncated = sessionData.consumedScanTruncated === true;
 
     return (
       <div>
@@ -689,7 +693,11 @@ const LiteTopicPage: React.FC = () => {
               <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.totalMessages')}
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{sessionData.totalMessages ?? 0}</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>
+                {consumedTruncated
+                  ? `≥ ${sessionData.totalMessages ?? 0}`
+                  : (sessionData.totalMessages ?? 0)}
+              </div>
             </Card>
           </Col>
           <Col span={8}>
@@ -701,7 +709,9 @@ const LiteTopicPage: React.FC = () => {
                 {t('liteTopic.consumedMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
-                {sessionData.consumedMessages ?? 0}
+                {consumedTruncated
+                  ? `≥ ${sessionData.consumedMessages ?? 0}`
+                  : (sessionData.consumedMessages ?? 0)}
               </div>
             </Card>
           </Col>
@@ -722,11 +732,19 @@ const LiteTopicPage: React.FC = () => {
 
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.consumptionRate')}</div>
-          <Progress
-            percent={consumptionPercent}
-            status={consumptionPercent >= 100 ? 'success' : 'active'}
-            strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
-          />
+          {consumedTruncated ? (
+            <InfoBanner
+              data-testid="lite-topic-consumed-truncated"
+              title={t('liteTopic.consumedTruncated.title')}
+              description={t('liteTopic.consumedTruncated.description')}
+            />
+          ) : (
+            <Progress
+              percent={consumptionPercent}
+              status={consumptionPercent >= 100 ? 'success' : 'active'}
+              strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
+            />
+          )}
         </div>
 
         {sessionData.popProgress != null && (
