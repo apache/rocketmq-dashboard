@@ -45,6 +45,7 @@ export function formatTimeMs(value: number | string | null | undefined): string 
   const timestamp = typeof value === 'string' ? Date.parse(value) : value;
   if (!Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
   return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
 }
 
@@ -121,6 +122,9 @@ export function formatRelativeTime(
   now = Date.now(),
 ): string {
   if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  if (Number.isNaN(updatedAt.getTime()) || Number.isNaN(current.getTime())) return '-';
   if (!timestamp) return t('ai.history.justNow');
 
   const elapsed = Math.max(0, now - timestamp);
@@ -128,8 +132,6 @@ export function formatRelativeTime(
   if (minutes < 1) return t('ai.history.justNow');
   if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
 
-  const updatedAt = new Date(timestamp);
-  const current = new Date(now);
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   if (updatedAt.toDateString() === current.toDateString()) {
     return new Intl.DateTimeFormat(locale, {
