@@ -40,7 +40,6 @@ public class LiteTopicSessionVO {
     private Long totalMessages;
     private Long consumedMessages;
     private Long pendingMessages;
-    private Integer popProgress;
     private Integer liteTopicCreationCount;
     private List<SessionLiteTopic> liteTopics;
 

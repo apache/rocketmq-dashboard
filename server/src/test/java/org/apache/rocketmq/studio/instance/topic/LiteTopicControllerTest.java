@@ -108,7 +108,6 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
         LiteTopicSessionVO session = LiteTopicSessionVO.builder()
                 .sessionId("sess-001")
                 .clientId("grpc-client-sess-001")
-                .popProgress(96)
                 .build();
 
         when(liteTopicService.getSession("sess-001")).thenReturn(session);
@@ -116,7 +115,7 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
         mockMvc.perform(get("/api/liteTopic/session/sess-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sessionId").value("sess-001"))
-                .andExpect(jsonPath("$.data.popProgress").value(96));
+                .andExpect(jsonPath("$.data.clientId").value("grpc-client-sess-001"));
     }
 
     @Test

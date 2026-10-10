@@ -60,7 +60,6 @@ export interface LiteTopicSession {
   totalMessages?: number;
   consumedMessages?: number;
   pendingMessages?: number;
-  popProgress?: number;
   liteTopicCreationCount?: number;
   liteTopics?: { topicName: string; status: string; ttlRemaining?: number }[];
 }

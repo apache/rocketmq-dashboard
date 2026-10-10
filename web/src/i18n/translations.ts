@@ -3593,7 +3593,6 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '请选择 Topic 所属的实例',
     en: 'Select the instance that owns the topic',
   },
-  'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
   'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
