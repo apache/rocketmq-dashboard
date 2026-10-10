@@ -562,6 +562,24 @@ describe('SystemAlertsPage', () => {
     });
   });
 
+  it('does not report a failed maintenance-window read as no maintenance windows', async () => {
+    vi.mocked(listAlertSilencesPage).mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+
+    // The windows never arrived, so the dialog must not claim there are none - it is the same
+    // dialog that creates them, so a false answer invites a duplicate.
+    await waitFor(() => expect(listAlertSilencesPage).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('当前没有维护窗口')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(listAlertSilencesPage).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('当前没有维护窗口')).toBeInTheDocument();
+  });
+
   it('shows maintenance windows and creates a scoped silence', async () => {
     vi.mocked(listAlertSilencesPage).mockResolvedValue({
       items: [

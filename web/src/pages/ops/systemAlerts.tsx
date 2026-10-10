@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Card,
   Tag,
   Flex,
@@ -171,6 +172,7 @@ const SystemAlertsPage = () => {
   const [silencesVisible, setSilencesVisible] = useState(false);
   const [silences, setSilences] = useState<AlertSilence[]>([]);
   const [loadingSilences, setLoadingSilences] = useState(false);
+  const [silencesLoadFailed, setSilencesLoadFailed] = useState(false);
   const [silencePage, setSilencePage] = useState(1);
   const [silenceTotal, setSilenceTotal] = useState(0);
   const [savingSilence, setSavingSilence] = useState(false);
@@ -379,8 +381,14 @@ const SystemAlertsPage = () => {
       setSilences(result.items);
       setSilenceTotal(result.total);
       setSilencePage(result.page);
+      setSilencesLoadFailed(false);
     } catch {
-      if (requestId === silenceRequestId.current) message.error(t('sysAlerts.silenceLoadFailed'));
+      if (requestId === silenceRequestId.current) {
+        // The dialog renders an empty list as "no maintenance windows" - a claim a failed read
+        // cannot support, in the very dialog that creates them.
+        setSilencesLoadFailed(true);
+        message.error(t('sysAlerts.silenceLoadFailed'));
+      }
     } finally {
       if (requestId === silenceRequestId.current) setLoadingSilences(false);
     }
@@ -388,6 +396,7 @@ const SystemAlertsPage = () => {
 
   const openSilences = () => {
     setSilencePage(1);
+    setSilencesLoadFailed(false);
     setSilencesVisible(true);
     void loadSilences(1);
   };
@@ -982,8 +991,21 @@ const SystemAlertsPage = () => {
         )}
         <Spin spinning={loadingSilences}>
           <Flex vertical gap={6}>
-            {silences.length === 0 && (
-              <Text type="secondary">{t('sysAlerts.noMaintenanceWindows')}</Text>
+            {silencesLoadFailed ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('sysAlerts.silenceLoadFailed')}
+                action={
+                  <Button size="small" onClick={() => void loadSilences(silencePage)}>
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            ) : (
+              silences.length === 0 && (
+                <Text type="secondary">{t('sysAlerts.noMaintenanceWindows')}</Text>
+              )
             )}
             {silences.map((silence) => (
               <Flex key={silence.id} justify="space-between" align="center" gap={8}>
