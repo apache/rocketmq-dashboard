@@ -149,6 +149,12 @@
 | 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
 | 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
 | 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 108 | GET | `/api/groups/page` | 消费组分页列表 |
+| 109 | GET | `/api/groups/:name/settings` | 消费组运行时设置 |
+| 110 | POST | `/api/groups/settings` | 更新消费组运行时设置 |
+| 111 | GET | `/api/groups/:name/refresh` | 刷新单个消费组 |
+| 112 | GET | `/api/groups/:name/instances/:clientId/stack` | 消费者线程栈 |
+| 113 | POST | `/api/groups/reset-offset/preview` | 预览重置消费位点 |
 
 ## 通用响应格式
 
@@ -1264,6 +1270,148 @@ GET /api/groups/export?names={name1,name2}
 **Response:** `Content-Type: application/json`, `Content-Disposition: attachment`
 
 ---
+
+### 6.10 分页获取消费组列表
+
+```
+GET /api/groups/page?instanceId={instanceId}&clusterId={clusterId}&search={search}&page={page}&pageSize={pageSize}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID，不传时按默认平台集群查询 |
+| `clusterId` | `string` | 否 | 按集群过滤 |
+| `search` | `string` | 否 | 按名称模糊搜索 |
+| `page` | `number` | 否 | 页码，默认 `1` |
+| `pageSize` | `number` | 否 | 每页条数，默认 `20` |
+
+**Response `data`:** `PageResult<ConsumerGroup>`（单条定义同 6.1）
+
+### 6.11 获取消费组运行时设置
+
+```
+GET /api/groups/:name/settings?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+
+**Response `data`:** `ConsumerGroupSettings`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `retryQueueNums` | `number` | 重试队列数 |
+| `retryMaxTimes` | `number` | 最大重试次数 |
+| `consumeEnable` | `boolean` | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 是否允许广播消费 |
+
+运行时设置只在 Apache 实例可用；云实例（Aliyun / Tencent）返回 `501`。
+
+### 6.12 更新消费组运行时设置
+
+```
+POST /api/groups/settings
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `retryQueueNums` | `number` | 是 | 重试队列数 |
+| `retryMaxTimes` | `number` | 是 | 最大重试次数 |
+| `consumeEnable` | `boolean` | 否 | 是否允许消费 |
+| `consumeMessageOrderly` | `boolean` | 否 | 是否顺序消费 |
+| `consumeBroadcastEnable` | `boolean` | 否 | 是否允许广播消费 |
+
+**Response `data`:** `ConsumerGroupSettings`（同 6.11）
+
+运行时设置只在 Apache 实例可用；云实例返回 `501`。
+
+### 6.13 刷新消费组
+
+```
+GET /api/groups/:name/refresh?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+
+**Response `data`:** `ConsumerGroup`（单条定义同 6.1）。消费组已不存在时返回 `200` 且 `data` 为
+`null`，调用方据此保留列表中的现有行。
+
+### 6.14 获取消费者线程栈
+
+```
+GET /api/groups/:name/instances/:clientId/stack?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 否 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称（路径参数） |
+| `clientId` | `string` | 是 | 客户端 ID（路径参数） |
+
+**Response `data`:** `ConsumerStackTrace`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groupName` | `string` | 消费组名称 |
+| `clientId` | `string` | 客户端 ID |
+| `capturedAt` | `string` | 抓取时间 (ISO 8601) |
+| `threadCount` | `number` | 线程数 |
+| `threads` | `object[]` | 线程明细：`threadName` / `threadId` / `state` / `blockedTime` / `waitedTime` / `stackTrace` |
+
+### 6.15 预览重置消费位点
+
+```
+POST /api/groups/reset-offset/preview
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID |
+| `name` | `string` | 是 | 消费组名称 |
+| `topic` | `string` | 是 | 目标 Topic |
+| `timestamp` | `number` | 是 | 目标时间（Unix 毫秒时间戳） |
+
+**Response `data`:** `ResetConsumerOffsetPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `instanceId` | `string` | 所属实例 ID |
+| `groupName` | `string` | 消费组名称 |
+| `topic` | `string` | Topic 名称 |
+| `timestamp` | `number` | 目标时间（Unix 毫秒时间戳） |
+| `complete` | `boolean` | 是否完整读取全部队列 |
+| `allowReset` | `boolean` | 是否允许重置 |
+| `queueCount` | `number` | 队列总数 |
+| `warningCount` | `number` | 有警告的队列数 |
+| `rewindQueueCount` | `number` | 会回退的队列数 |
+| `fastForwardQueueCount` | `number` | 会前跳的队列数 |
+| `currentTotalLag` | `number` | 当前总堆积 |
+| `projectedTotalLag` | `number` | 重置后的预计总堆积 |
+| `totalOffsetDelta` | `number` | 位点变动总量 |
+| `warnings` | `string[]` | 预览过程中的警告 |
+| `queues` | `object[]` | 队列明细：`topic` / `broker` / `queueId` / `minOffset` / `maxOffset` / `brokerOffset` / `consumerOffset` / `targetOffset` / `currentLag` / `projectedLag` / `offsetDelta` |
+
 
 ## 7. ACL 管理
 
