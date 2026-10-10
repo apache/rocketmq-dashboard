@@ -22,6 +22,8 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -35,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -167,4 +170,87 @@ class ProxyConsumerResolverTest {
         assertThat(unavailable.connection()).isNull();
     }
 
+
+    private NettyRemotingClient runningInfoClient(boolean twoProxies) throws Exception {
+        ConsumerConnection syncer = new ConsumerConnection();
+        Connection first = new Connection();
+        first.setClientAddr("192.0.2.1:10911");
+        HashSet<Connection> connections = new HashSet<>(List.of(first));
+        if (twoProxies) {
+            Connection second = new Connection();
+            second.setClientAddr("192.0.2.2:10911");
+            connections.add(second);
+        }
+        syncer.setConnectionSet(connections);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic")).thenReturn(syncer);
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        resolver.setRemotingClientForTest(client);
+        return client;
+    }
+
+    @Test
+    void runningInfoShouldDistinguishOfflineFromFailedResponsesTest() throws Exception {
+        NettyRemotingClient client = runningInfoClient(false);
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "offline"))
+                .thenReturn(null)
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.SYSTEM_ERROR, "failed"))
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.SUCCESS, "missing body"));
+
+        assertThat(resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client").available()).isTrue();
+        for (int i = 0; i < 3; i++) {
+            ProxyConsumerResolver.ConsumerRunningInfoResolution result =
+                    resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client");
+            assertThat(result.available()).isFalse();
+            assertThat(result.runningInfo()).isNull();
+        }
+    }
+
+    @Test
+    void runningInfoShouldKeepDiscoveryFailureUnavailableTest() throws Exception {
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenThrow(new IllegalStateException("discovery failed"));
+        assertThat(resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client").available()).isFalse();
+    }
+
+    @Test
+    void runningInfoShouldUseSuccessfulProxyAfterAnotherFailsTest() throws Exception {
+        NettyRemotingClient client = runningInfoClient(true);
+        ConsumerRunningInfo info = new ConsumerRunningInfo();
+        info.setJstack("worker TID: 1 STATE: RUNNABLE\n");
+        RemotingCommand success = RemotingCommand.createResponseCommand(ResponseCode.SUCCESS, null);
+        success.setBody(info.encode());
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new IllegalStateException("timeout"))
+                .thenReturn(success);
+
+        ProxyConsumerResolver.ConsumerRunningInfoResolution result =
+                resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client");
+        assertThat(result.available()).isTrue();
+        assertThat(result.runningInfo().getJstack()).isEqualTo(info.getJstack());
+    }
+
+    @Test
+    void runningInfoShouldNotHideFailedProxyBehindOfflineProxyTest() throws Exception {
+        NettyRemotingClient client = runningInfoClient(true);
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new IllegalStateException("timeout"))
+                .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "offline"));
+        assertThat(resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client").available()).isFalse();
+    }
+
+    @Test
+    void runningInfoShouldStopQueryingWhenInterruptedTest() throws Exception {
+        NettyRemotingClient client = runningInfoClient(true);
+        when(client.invokeSync(anyString(), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new InterruptedException("cancelled"));
+        try {
+            assertThatThrownBy(() -> resolver.resolveConsumerRunningInfoStatus("instance-a", "group", "client"))
+                    .isInstanceOf(BusinessException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            org.mockito.Mockito.verify(client).invokeSync(anyString(), any(RemotingCommand.class), anyLong());
+        } finally {
+            Thread.interrupted();
+        }
+    }
 }

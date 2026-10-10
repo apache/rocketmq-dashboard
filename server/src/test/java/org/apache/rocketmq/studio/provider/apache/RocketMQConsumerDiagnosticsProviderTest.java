@@ -38,8 +38,10 @@ import java.util.TimeZone;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -214,7 +216,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 ConsumeMessageThread_1                   TID: 7 STATE: RUNNABLE
                 ConsumeMessageThread_1                   com.example.Listener.consume(Listener.java:20)
                 """);
-        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(runningInfo);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1")).thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.available(runningInfo));
         org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
 
         ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
@@ -227,7 +229,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
     @Test
     void getConsumerStackShouldFallBackToBrokerWhenNoProxyAnswersTest() throws Exception {
         ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
-        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(null);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1")).thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.available(null));
         org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
         ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
         runningInfo.setJstack("PullMessageService                       TID: 9 STATE: WAITING\n");
@@ -260,5 +262,101 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to get consumer stack for client-1")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    private void proxyUnavailable() {
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1"))
+                .thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.unavailable());
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+    }
+
+    @Test
+    void proxyFailureAndBrokerOfflineShouldRemainUnavailableTest() throws Exception {
+        proxyUnavailable();
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE, "not online"));
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("proxy query failed")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void proxyFailureAndEmptyBrokerResultShouldRemainUnavailableTest() throws Exception {
+        proxyUnavailable();
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void proxyFailureShouldStillAllowDirectConsumerDiagnosticsTest() throws Exception {
+        proxyUnavailable();
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("PullMessageService TID: 9 STATE: WAITING\n");
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        assertThat(provider.getConsumerStack("instance-a", "cg-orders", "client-1").getThreadCount())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void interruptedBrokerQueryShouldPreserveInterruptionTest() throws Exception {
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true))
+                .thenThrow(new InterruptedException("cancelled"));
+        try {
+            assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    /**
+     * An unknown instance is a request-level error raised while the broker admin client is being
+     * resolved, before any stack lookup runs. A proxy that could not be asked cannot turn it into a
+     * gateway failure, so the 404 and its instance-identifying message must survive unchanged.
+     */
+    @Test
+    void proxyFailureShouldNotMaskUnknownInstanceAsBadGatewayTest() throws Exception {
+        proxyUnavailable();
+        doThrow(new BusinessException(404, "Instance not found: instance-a"))
+                .when(runtimeAdminClientResolver).execute(anyString(), any());
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance not found: instance-a")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+        verify(adminExt, never()).getConsumerRunningInfo(anyString(), anyString(), anyBoolean());
+    }
+
+    /**
+     * The same reasoning covers the instance-level precondition errors the resolver reports before
+     * handing out an admin client: their status code and message are not the proxy's to rewrite.
+     */
+    @Test
+    void proxyFailureShouldNotMaskInstancePreconditionErrorsTest() {
+        proxyUnavailable();
+        doThrow(new BusinessException(422, "Instance has no admin credential reference: legacy"))
+                .when(runtimeAdminClientResolver).execute(anyString(), any());
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance has no admin credential reference: legacy")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(422));
+
+        doThrow(new BusinessException(400, "Instance has no endpoint: instance-a"))
+                .when(runtimeAdminClientResolver).execute(anyString(), any());
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance has no endpoint: instance-a")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 }
