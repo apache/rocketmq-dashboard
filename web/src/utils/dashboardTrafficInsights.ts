@@ -16,6 +16,7 @@
  */
 
 import type { ClusterOverview, DashboardData } from '../api/metrics';
+import { nonNegativeNumber } from './chartSamples';
 
 export type TrafficHealthLevel = 'healthy' | 'notice' | 'warning' | 'critical';
 
@@ -100,12 +101,6 @@ const isHealthyStatus = (status?: string | null) => {
   const normalized = (status ?? '').trim().toLowerCase();
   return normalized === 'healthy' || normalized === 'running';
 };
-
-const finiteNumber = (value: number | null | undefined): number =>
-  typeof value === 'number' && Number.isFinite(value) ? value : 0;
-
-const nonNegativeNumber = (value: number | null | undefined): number =>
-  Math.max(0, finiteNumber(value));
 
 const sanitizeSeries = (values: number[] | null | undefined): number[] =>
   (values ?? []).map(nonNegativeNumber);

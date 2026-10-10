@@ -16,6 +16,7 @@
  */
 
 import { useMemo } from 'react';
+import { nonNegativeNumber } from '../utils/chartSamples';
 
 let _lineId = 0;
 
@@ -47,8 +48,12 @@ const MiniLine = ({
   animated = true,
   responsive = false,
 }: MiniLineProps) => {
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
+  // Same shared rule as MiniBar, so the sparkline family treats an unsanitized sample
+  // consistently: a non-finite or negative value reads as zero instead of poisoning the
+  // scale and collapsing the whole path.
+  const sanitizedData = data.map(nonNegativeNumber);
+  const max = Math.max(...sanitizedData, 1);
+  const min = Math.min(...sanitizedData, 0);
   const range = max - min || 1;
 
   const pad = 4;
@@ -61,7 +66,7 @@ const MiniLine = ({
   if (data.length < 2) return null;
 
   // Build smooth Catmull-Rom → Bezier control points
-  const points = data.map((v, i) => ({
+  const points = sanitizedData.map((v, i) => ({
     x: pad + (i / (data.length - 1)) * innerW,
     y: pad + innerH - ((v - min) / range) * innerH,
   }));
