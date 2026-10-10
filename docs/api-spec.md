@@ -1497,7 +1497,7 @@ GET /api/messages
 | `startTime` | `number` | 否 | 开始时间（Unix 毫秒时间戳） |
 | `endTime` | `number` | 否 | 结束时间（Unix 毫秒时间戳） |
 
-`topic` 与 `msgId` 至少提供一个，否则返回 400（`topic or msgId is required`）；指定 `msgId` 时 `topic` 也必填，否则返回 400（`topic is required when msgId is specified`）。未指定 `msgId` 或 `key` 的 Topic 扫描默认查询最近 1 小时，时间范围最大 7 天。
+`topic` 与 `msgId` 至少提供一个，否则返回 400（`topic or msgId is required`）；指定 `msgId` 时 `topic` 也必填，否则返回 400（`topic is required when msgId is specified`）。未指定 `msgId` 或 `key` 的 Topic 扫描默认查询最近 1 小时，时间范围最大 7 天；未指定时间范围的 `key` 查询走 Broker 的 Key 索引，默认最近 3 天（与 `msgId` 唯一键查询的默认窗口一致）。
 
 **Response `data`:** `MessageRecord[]`
 
