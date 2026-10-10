@@ -39,6 +39,44 @@ function InstanceRouteProbe() {
 }
 
 describe('useInstanceFilter', () => {
+  it.each(['topic', 'consumer', 'message', 'acl', 'dlq'])(
+    'preserves the selected instance and %s section with trailing slashes', async (section) => {
+      instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }, { name: '实例 B' }]);
+      const path = `/instance/${encodeURIComponent('实例 B')}/${section}/`;
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <Routes><Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} /></Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText(`${path}|实例 B`)).toBeInTheDocument();
+    },
+  );
+
+  it.each(['topic', 'consumer', 'message', 'acl', 'dlq'])(
+    'keeps the %s section when a trailing-slash static route chooses an instance', async (section) => {
+      instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }]);
+      render(
+        <MemoryRouter initialEntries={[`/instance/${section}/`]}>
+          <Routes>
+            <Route path="/instance/:section" element={<InstanceRouteProbe />} />
+            <Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText(`/instance/instance-a/${section}|instance-a`)).toBeInTheDocument();
+    },
+  );
+
+  it('retains the section when recovering an unknown instance with a trailing slash', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }]);
+    render(
+      <MemoryRouter initialEntries={['/instance/missing/consumer/']}>
+        <Routes><Route path="/instance/:instanceId/:section" element={<InstanceRouteProbe />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('/instance/instance-a/consumer|instance-a')).toBeInTheDocument();
+  });
+
   it('replaces an unknown route instance with the first available instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
