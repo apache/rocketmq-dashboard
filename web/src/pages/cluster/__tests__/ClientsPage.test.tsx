@@ -77,7 +77,6 @@ const connection: ClientConnection = {
   address: '10.0.1.12:49152',
   language: 'Java',
   version: '5.0.7',
-  connectedAt: '2026-07-01 08:30:00',
   clusterName: 'ns-prod',
 };
 
@@ -91,7 +90,6 @@ const connections: ClientConnection[] = [
     address: '10.0.1.13:49153',
     language: 'Go',
     version: '2.1.0',
-    connectedAt: '2026-07-01 08:31:00',
     clusterName: 'ns-prod',
   },
   {
@@ -102,7 +100,6 @@ const connections: ClientConnection[] = [
     address: '10.0.2.10:49154',
     language: 'Cpp',
     version: '4.9.8',
-    connectedAt: '2026-07-01 08:32:00',
     clusterName: 'ns-audit',
   },
 ];
@@ -500,6 +497,32 @@ describe('Clients page', () => {
     expect(within(distribution).queryByText(/null/)).not.toBeInTheDocument();
   });
 
+  it('does not offer a connection timestamp the backend never sends', async () => {
+    // Every provider builds ClientConnectionVO from the broker ProducerInfo/Connection or from the
+    // proxy consumer list, and none of those carry a connection time, so `connectedAt` is never
+    // populated on a live deployment: the heartbeat column, its CSV counterpart and the detail row
+    // could only ever read "-". The fixture data is what made them look populated.
+    const createObjectURL = vi.fn((_blob: Blob | MediaSource) => 'blob:client-connections');
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClientsPage />);
+
+    const row = await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(within(row.closest('table') as HTMLElement).queryAllByText('心跳时间')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect((await blob.text()).split('\n')[0]).not.toContain('Connected At');
+  });
+
   it('exports the currently filtered client connections as CSV', async () => {
     const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       expect(blob).toBeInstanceOf(Blob);
@@ -534,8 +557,8 @@ describe('Clients page', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toBe(
       [
-        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Connected At","Partial"',
-        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","2026-07-01 08:30:00","false"',
+        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Partial"',
+        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","false"',
       ].join('\n'),
     );
     expect(
@@ -604,7 +627,6 @@ describe('Clients page', () => {
         address: '10.0.3.10:49155',
         language: 'Java',
         version: '5.0.7',
-        connectedAt: '2026-07-02 09:00:00',
         clusterName: 'ns-audit',
       },
     ];
@@ -830,6 +852,5 @@ describe('Clients page', () => {
     expect(within(dialog).getByText('10.0.1.12:49152')).toBeInTheDocument();
     expect(within(dialog).getByText('Java')).toBeInTheDocument();
     expect(within(dialog).getByText('5.0.7')).toBeInTheDocument();
-    expect(within(dialog).getByText('2026-07-01 08:30:00')).toBeInTheDocument();
   });
 });

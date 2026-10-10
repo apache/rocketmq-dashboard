@@ -27,7 +27,6 @@ const connection = (overrides: Partial<ClientConnection>): ClientConnection => (
   address: '10.0.1.10:49152',
   language: 'Java',
   version: '5.0.7',
-  connectedAt: '2026-07-01 08:30:00',
   clusterName: 'ns-prod',
   ...overrides,
 });
@@ -186,7 +185,6 @@ describe('client connection diagnostics', () => {
         protocol: 'Custom',
         language: 'Ruby',
         version: '-',
-        connectedAt: 'not-a-date',
       }),
       connection({ clientId: 'client-b' }),
       connection({ clientId: 'client-c' }),
@@ -200,7 +198,6 @@ describe('client connection diagnostics', () => {
         'UNKNOWN_PROTOCOL',
         'UNKNOWN_LANGUAGE',
         'UNKNOWN_VERSION',
-        'INVALID_CONNECTION_TIME',
         'ADDRESS_CONCENTRATION',
       ]),
     );
