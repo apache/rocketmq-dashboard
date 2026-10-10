@@ -450,6 +450,8 @@ const Composer = ({
               {quickActions.map((action) => (
                 <Tag
                   key={action}
+                  role="button"
+                  tabIndex={0}
                   style={{
                     cursor: 'pointer',
                     borderRadius: 999,
@@ -464,6 +466,12 @@ const Composer = ({
                     transition: 'all 0.2s',
                   }}
                   onClick={() => handleQuickAction(action)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleQuickAction(action);
+                    }
+                  }}
                 >
                   {action}
                 </Tag>
