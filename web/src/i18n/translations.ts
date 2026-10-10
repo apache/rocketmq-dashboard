@@ -860,6 +860,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重投失败：成功 {resent}，失败 {failed}',
     en: 'Resend failed: {resent} succeeded, {failed} failed',
   },
+  'dlq.resendUnmatchedSummary': {
+    zh: '重投不完整：成功 {resent}，{unmatched} 条无法定位',
+    en: 'Resend incomplete: {resent} succeeded, {unmatched} could not be located',
+  },
+  'dlq.resendScanIncompleteSummary': {
+    zh: '重投不完整：成功 {resent}，{queues} 个队列无法扫描',
+    en: 'Resend incomplete: {resent} succeeded, {queues} queues could not be scanned',
+  },
   'dlq.failureDetails': { zh: '失败消息明细', en: 'Failed message details' },
   'dlq.failureMessageId': { zh: '消息 ID', en: 'Message ID' },
   'dlq.failureTargetTopic': { zh: '目标 Topic', en: 'Target topic' },

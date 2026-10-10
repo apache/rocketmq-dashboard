@@ -437,8 +437,22 @@ const DLQPage = () => {
         msgIds,
       });
       if (detailResendRequestIdRef.current !== requestId) return;
+      // The server reports `matched` separately from `resent`: a selected message that can no
+      // longer be resolved (purged, broker gone) is dropped with failed=0, and a queue that could
+      // not be scanned is reported separately too. Mirror the time-range resend handler: never show
+      // the success toast unless every selected message was matched and resent.
+      const unmatched = msgIds.length - result.matched;
       if (result.failed > 0) {
         showResendFailures(result);
+      } else if (unmatched > 0) {
+        message.warning(t('dlq.resendUnmatchedSummary', { resent: result.resent, unmatched }));
+      } else if (result.scanIncomplete) {
+        message.warning(
+          t('dlq.resendScanIncompleteSummary', {
+            resent: result.resent,
+            queues: result.failedQueueCount ?? 0,
+          }),
+        );
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
