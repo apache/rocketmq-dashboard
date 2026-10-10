@@ -823,6 +823,127 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void listMessagesStopsUnmatchedBatchesAtWindowEndTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(13L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation ->
+                new PullResult(PullStatus.NO_MATCHED_MSG, (Long) invocation.getArgument(2) + 1,
+                        0L, 13L, null));
+
+        assertThat(provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20).getTotal()).isZero();
+
+        verify(pullConsumer, times(3)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void listMessagesStopsWhenUnmatchedBatchDoesNotAdvanceTest() throws Exception {
+        String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(topic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(topic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(13L);
+        when(pullConsumer.pull(queue, "*", 10L, 32))
+                .thenReturn(new PullResult(PullStatus.NO_MATCHED_MSG, 10L, 0L, 13L, null));
+
+        assertThat(provider.listMessages("instance-a", "group-a", 100L, 200L, 1, 20).getTotal()).isZero();
+
+        verify(pullConsumer, times(1)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void resendMessagesContinuesAfterUnmatchedBatchTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-after-gap");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        deadLetter.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 20L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(deadLetter));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(50L);
+        when(pullConsumer.pull(queue, "*", 10L, 32)).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("orders"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "orders"))
+                .extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 1, 0, "SUCCESS");
+
+        DefaultMQPullConsumer consumer = pullConsumer;
+        verify(consumer).pull(queue, "*", 10L, 32);
+        verify(consumer).pull(queue, "*", 20L, 32);
+        verify(consumer).pull(queue, "*", 40L, 32);
+        verify(dlqProducer).send(any(Message.class));
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("DLQ"),
+                eq("group-a"),
+                isNull(),
+                contains("matched=1, resent=1, failed=0"),
+                eq("SUCCESS"));
+    }
+
+    @Test
+    void resendMessagesResetsIllegalOffsetCounterAfterUnmatchedBatchTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-after-gap");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        deadLetter.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 17L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(deadLetter));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(queue, 100L)).thenReturn(10L);
+        when(pullConsumer.searchOffset(queue, 201L)).thenReturn(50L);
+        for (long offset : new long[] {10L, 11L, 12L, 17L, 18L, 19L}) {
+            when(pullConsumer.pull(queue, "*", offset, 32))
+                    .thenReturn(new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 50L, null));
+        }
+        when(pullConsumer.pull(queue, "*", 13L, 32)).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+        TopicList existingTargets = new TopicList();
+        existingTargets.setTopicList(Set.of("orders"));
+        when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
+        assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "orders"))
+                .extracting("matched", "resent", "failed", "outcome")
+                .containsExactly(1, 1, 0, "SUCCESS");
+
+        DefaultMQPullConsumer consumer = pullConsumer;
+        verify(consumer).pull(queue, "*", 10L, 32);
+        verify(consumer).pull(queue, "*", 20L, 32);
+        verify(consumer).pull(queue, "*", 40L, 32);
+        verify(dlqProducer).send(any(Message.class));
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("DLQ"),
+                eq("group-a"),
+                isNull(),
+                contains("matched=1, resent=1, failed=0"),
+                eq("SUCCESS"));
+    }
+
+    @Test
     void resendMessagesCountsNonSendOkResultsAsFailures() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
