@@ -281,3 +281,38 @@ func TestRunRejectsReservedInstanceIDFlag(t *testing.T) {
 		t.Fatalf("err = %v, want nested instanceId rejection", err)
 	}
 }
+
+// TestRunMarkdownKeepsTableRowPerTool pins the generated Markdown summary
+// table: free-text cells (descriptions, capabilities) must not break the
+// table. A literal pipe adds a phantom column and a newline splits the row.
+func TestRunMarkdownKeepsTableRowPerTool(t *testing.T) {
+	source := strings.ReplaceAll(platformToolSource,
+		"requiredCapabilities: []",
+		`requiredCapabilities: ["CAP|PIPE", "CAP\nLINE"]`)
+	input, output := writeCatalogSource(t, source)
+	markdown := filepath.Join(t.TempDir(), "rmq-tools.md")
+
+	if err := run([]string{"-input", input, "-output", output, "-markdown", markdown}); err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+	documentation, err := os.ReadFile(markdown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row string
+	for line := range strings.Lines(string(documentation)) {
+		if strings.Contains(line, "`rmq.cluster.list`") && strings.HasPrefix(strings.TrimSpace(line), "|") {
+			row = strings.TrimSuffix(line, "\n")
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("summary table row for rmq.cluster.list not found")
+	}
+	if !strings.Contains(row, `CAP\|PIPE`) {
+		t.Fatalf("pipe in a capabilities cell must be escaped in the table row: %s", row)
+	}
+	if !strings.Contains(row, `CAP\|PIPE, CAP LINE`) {
+		t.Fatalf("newline in a capabilities cell must be folded into the table row: %s", row)
+	}
+}

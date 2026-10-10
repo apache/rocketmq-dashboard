@@ -746,8 +746,10 @@ func renderMarkdown(document catalogDocument, digest string) ([]byte, error) {
 	output.WriteString("|------|-----|------|------------|--------------|\n")
 	for _, tool := range document.Tools {
 		fmt.Fprintf(&output, "| `%s` | `rmqctl %s %s` | %s | `%s` | %s |\n",
-			tool.Name, tool.CLI.Resource, tool.CLI.Verb, tool.RiskLevel, tool.Permission,
-			strings.Join(tool.RequiredCapabilities, ", "))
+			markdownTableCell(tool.Name),
+			markdownTableCell(tool.CLI.Resource), markdownTableCell(tool.CLI.Verb),
+			markdownTableCell(tool.RiskLevel), markdownTableCell(tool.Permission),
+			markdownTableCell(strings.Join(tool.RequiredCapabilities, ", ")))
 	}
 	for _, tool := range document.Tools {
 		fmt.Fprintf(&output, "\n## `%s`\n\n%s\n\n", tool.Name, tool.Description)
@@ -768,6 +770,21 @@ func renderMarkdown(document catalogDocument, digest string) ([]byte, error) {
 		output.WriteString("\n```\n")
 	}
 	return output.Bytes(), nil
+}
+
+// markdownTableCell keeps free-text catalog values (descriptions,
+// capabilities) inside the generated summary table: a literal pipe would add a
+// phantom column and a newline would split the row. Pipes are escaped even
+// inside the code spans because GitHub-flavored Markdown tables split on
+// unescaped pipes regardless of backticks.
+func markdownTableCell(value string) string {
+	folded := strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' {
+			return ' '
+		}
+		return r
+	}, value)
+	return strings.ReplaceAll(folded, "|", `\|`)
 }
 
 func renderSDKContract(source []byte) ([]byte, error) {
