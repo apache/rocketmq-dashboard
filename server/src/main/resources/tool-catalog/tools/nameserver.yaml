@@ -83,10 +83,13 @@ tools:
       type: object
       required:
         - items
+        - resultMayBeTruncated
+        - unreachableEndpoints
       additionalProperties: false
       properties:
         items:
           type: array
+          description: Configuration of the NameServer endpoints that answered.
           items:
             type: object
             required:
@@ -101,5 +104,16 @@ tools:
                   type:
                     - string
                     - 'null'
+        resultMayBeTruncated:
+          type: boolean
+          description: >-
+            True when some NameServer endpoints of the cluster could not be read, so items cover
+            only the reachable endpoints. Weigh the partial coverage before drawing cluster-wide
+            conclusions, and retry or narrow the scope if needed.
+        unreachableEndpoints:
+          type: array
+          description: Addresses of the NameServer endpoints that could not be read.
+          items:
+            type: string
     viewHint: object
     deprecated: false

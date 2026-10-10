@@ -36,7 +36,9 @@ import type {
   TimelineItem,
 } from '../../../api/aiEvents';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
-import { getLlmConfig, getLlmModels } from '../../../api/llm';
+import type { Instance } from '../../../api/instance';
+import { getLlmConfig, getLlmModels, type LlmConfig } from '../../../api/llm';
+import { listInstances } from '../../../services/instanceService';
 import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
@@ -83,6 +85,10 @@ vi.mock('../../../api/cluster', () => ({
   listClusters: vi.fn(),
 }));
 
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
+}));
+
 vi.mock('../../../stores/dataModeStore', () => ({
   useDataModeStore: (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
 }));
@@ -117,6 +123,9 @@ const NavProbe = () => {
       <button type="button" onClick={() => navigate('/ai/c/7')}>
         probe-conversation
       </button>
+      <button type="button" onClick={() => navigate('/')}>
+        probe-home
+      </button>
     </div>
   );
 };
@@ -142,6 +151,14 @@ const renderRouted = (path: string, state?: unknown) =>
           <NavProbe />
           <LocationProbe />
           <Routes>
+            <Route
+              path="/"
+              element={
+                <button type="button" onClick={() => useEngineStore.getState().setEngine('qoder')}>
+                  choose-qoder
+                </button>
+              }
+            />
             <Route path="/ai" element={<AiPage />} />
             <Route path="/ai/c/:conversationId" element={<AiPage />} />
           </Routes>
@@ -234,8 +251,27 @@ describe('AiPage', () => {
       stopReason: 'USER_STOP',
     });
     vi.mocked(listClusters).mockResolvedValue([]);
+    vi.mocked(listInstances).mockResolvedValue([]);
     vi.mocked(listTools).mockResolvedValue([]);
   });
+
+  it.each([new Error('timeline unavailable'), {}])(
+    'offers recovery for a failed timeline load: %s',
+    async (failure) => {
+      vi.mocked(getConversationTimeline).mockRejectedValueOnce(failure);
+      renderRouted('/ai/c/7');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('会话记录加载失败');
+      expect(screen.queryByTestId('ai-welcome-starters')).not.toBeInTheDocument();
+      vi.mocked(getConversationTimeline).mockResolvedValue(
+        timelinePage([item(1, { type: 'user', text: 'recovered transcript' })]),
+      );
+      await userEvent.setup().click(within(alert).getByRole('button', { name: /重\s*试/ }));
+      expect(await screen.findByText('recovered transcript')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(getConversationTimeline).toHaveBeenLastCalledWith(7, { after: 0, limit: 200 });
+    },
+  );
 
   it('rendersThePersistedTimelineOnAColdLoadTest', async () => {
     vi.mocked(getConversationTimeline).mockResolvedValue(
@@ -502,6 +538,41 @@ describe('AiPage', () => {
     expect(openRunStream).not.toHaveBeenCalled();
   });
 
+  it('preservesTheNewEnginePreferenceWhenAnUnmountedRuntimeLoadCompletesTest', async () => {
+    let resolveConfig!: (value: LlmConfig) => void;
+    vi.mocked(getLlmConfig).mockReturnValueOnce(
+      new Promise<LlmConfig>((resolve) => {
+        resolveConfig = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    expect(getLlmConfig).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'probe-home' }));
+    expect(readProbeLocation().pathname).toBe('/');
+    await user.click(screen.getByRole('button', { name: 'choose-qoder' }));
+
+    await act(async () => {
+      resolveConfig({
+        provider: 'openai',
+        engine: 'http',
+        apiBase: 'https://example.invalid',
+        model: 'gpt-test',
+        maxTokens: 1024,
+        temperature: 0,
+        enabled: true,
+        ready: true,
+      });
+    });
+
+    expect(useEngineStore.getState().engine).toBe('qoder');
+    expect(JSON.parse(localStorage.getItem('rocketmq-studio-agent-engine')!)).toMatchObject({
+      state: { engine: 'qoder' },
+    });
+    expect(getLlmModels).not.toHaveBeenCalled();
+  });
+
   it('doesNotLoadTheLlmRuntimeInMockModeAndDisablesTheComposerTest', async () => {
     dataModeMocks.useMock = true;
     const user = userEvent.setup();
@@ -517,6 +588,7 @@ describe('AiPage', () => {
 
     await user.click(screen.getByRole('button', { name: '工具' }));
     await waitFor(() => expect(listClusters).not.toHaveBeenCalled());
+    expect(listInstances).not.toHaveBeenCalled();
     expect(listTools).not.toHaveBeenCalled();
   });
 
@@ -571,7 +643,14 @@ describe('AiPage', () => {
   it('opensTheToolPlaygroundLoadsTheCatalogAndExecutesAToolTest', async () => {
     const user = userEvent.setup();
     vi.mocked(listClusters).mockResolvedValue([
-      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+      { id: 'physical-cluster-a', name: 'Physical Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 17,
+        name: 'studio-instance-a',
+        endpoint: 'nameserver-a:9876',
+      } as Instance,
     ]);
     vi.mocked(listTools).mockResolvedValue([
       {
@@ -586,25 +665,30 @@ describe('AiPage', () => {
         permission: 'cluster:read',
       },
     ]);
-    vi.mocked(executeTool).mockResolvedValue({ instanceId: 'cluster-a', capabilities: ['GRPC'] });
+    vi.mocked(executeTool).mockResolvedValue({
+      instanceId: 'studio-instance-a',
+      capabilities: ['GRPC'],
+    });
     renderPage();
     await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: '工具' }));
     const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
-    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(1));
+    expect(listClusters).not.toHaveBeenCalled();
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('studio-instance-a'));
     expect(within(dialog).getByText('rmq.instance.capabilities')).toBeInTheDocument();
     expect(within(dialog).getByText('L1')).toBeInTheDocument();
 
     const toolInput = within(dialog).getByRole('textbox', { name: '工具参数 JSON' });
-    expect(toolInput).toHaveValue('{\n  "instanceId": "cluster-a"\n}');
+    expect(toolInput).toHaveValue('{\n  "instanceId": "studio-instance-a"\n}');
     await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
 
     await waitFor(() =>
       expect(executeTool).toHaveBeenCalledWith(
         'rmq.instance.capabilities',
-        { instanceId: 'cluster-a' },
-        'cluster-a',
+        { instanceId: 'studio-instance-a' },
+        'studio-instance-a',
       ),
     );
     expect(await within(dialog).findByTestId('tool-result')).toHaveTextContent('"GRPC"');
@@ -613,7 +697,14 @@ describe('AiPage', () => {
   it('rejectsToolInputThatIsNotAJsonObjectTest', async () => {
     const user = userEvent.setup();
     vi.mocked(listClusters).mockResolvedValue([
-      { id: 'cluster-a', name: 'Cluster A' } as ClusterInfo,
+      { id: 'physical-cluster-a', name: 'Physical Cluster A' } as ClusterInfo,
+    ]);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 17,
+        name: 'studio-instance-a',
+        endpoint: 'nameserver-a:9876',
+      } as Instance,
     ]);
     vi.mocked(listTools).mockResolvedValue([
       { name: 'rmq.topic.list', description: 'List topics.', parameters: {} },

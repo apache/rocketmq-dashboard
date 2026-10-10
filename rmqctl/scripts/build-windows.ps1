@@ -29,7 +29,8 @@
     right toolchain automatically.
 
 .PARAMETER Version
-    Value injected into cmd.CLIVersion (default: 1.0.0).
+    Value injected into cmd.CLIVersion (default: 3.0.0, the version the Makefile and
+    cmd.CLIVersion already declare).
 
 .PARAMETER Output
     Output binary path (default: bin\rmqctl.exe).
@@ -42,7 +43,7 @@
     .\scripts\build-windows.ps1 -Version 1.2.3 -RunTests
 #>
 param(
-    [string]$Version = "1.0.0",
+    [string]$Version = "3.0.0",
     [string]$Output = "bin\rmqctl.exe",
     [switch]$RunTests
 )

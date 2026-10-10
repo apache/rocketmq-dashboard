@@ -36,6 +36,7 @@ import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -197,6 +198,194 @@ class MetadataServiceTest {
                 .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha"));
         assertThat(request.getValue().getTag()).isEqualTo("paid");
         assertThat(request.getValue().getKey()).isEqualTo("order-1");
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseATruncatedSourceBodyTest() {
+        // The message explorer hands out a display projection whose body stops at 64 KiB; publishing
+        // that projection as the redelivered payload drops the rest of the source message.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("x".repeat(65536))
+                .bodyEncoding("UTF-8")
+                .bodyTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", "orders-copy"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("truncated")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseABase64SourceBodyTest() {
+        // A binary body is projected as Base64 text; republishing that text stores different bytes.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("AAECAwQ=")
+                .bodyEncoding("BASE64")
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("binary")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseATruncatedSourcePropertySetTest() {
+        // The flag is true AND a visible user property carries an abbreviated value: the
+        // user-property set really is incomplete, so the redelivery must be refused.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(Map.of("tenant", "alpha..."))
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("properties")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowATruncatedFlagCausedOnlyBySystemPropertiesTest() {
+        // propertiesTruncated is computed over the raw map including broker system keys, but
+        // redelivery discards system keys anyway: with no visible user property abbreviated,
+        // the user-property set is intact and the redelivery must go through.
+        Map<String, String> properties = new HashMap<>();
+        properties.put(MessageConst.PROPERTY_KEYS, "order-1");
+        properties.put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "uniq");
+        properties.put(MessageConst.PROPERTY_REAL_TOPIC, "orders");
+        properties.put("tenant", "alpha");
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(properties)
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties()).containsExactlyEntriesOf(Map.of("tenant", "alpha"));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowATruncatedFlagWithAnIntactUserPropertySetBelowTheCapTest() {
+        // MessageConst.STRING_HASH_SET holds 54 system keys, so this projection stays below the
+        // 64-entry cap; with no abbreviated value the two user properties are provably intact.
+        Map<String, String> properties = new HashMap<>();
+        for (String key : MessageConst.STRING_HASH_SET) {
+            properties.put(key, "v");
+        }
+        properties.put("tenant", "alpha");
+        properties.put("region", "cn-hangzhou");
+        assertThat(properties).hasSizeLessThan(MessagePropertyDisplay.MAX_PROPERTIES);
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(properties)
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("tenant", "alpha", "region", "cn-hangzhou"));
+    }
+
+    @Test
+    void redeliverMessageShouldRefuseAPropertySetThatReachedTheDisplayCapTest() {
+        // A projection holding exactly MAX_PROPERTIES entries can only come from a raw map that
+        // had more, and limitProperties dropped the overflow whole - sorted by key, that overflow
+        // is the lowercase user keys, so the republished message would carry fewer properties.
+        Map<String, String> properties = new HashMap<>();
+        for (String key : MessageConst.STRING_HASH_SET) {
+            properties.put(key, "v");
+        }
+        for (int i = properties.size(); i < MessagePropertyDisplay.MAX_PROPERTIES; i++) {
+            properties.put("user" + i, "v");
+        }
+        assertThat(properties).hasSize(MessagePropertyDisplay.MAX_PROPERTIES);
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(properties)
+                .propertiesTruncated(true)
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+
+        assertThatThrownBy(() -> metadataService.redeliverMessage(
+                "instance-a", "group-a", "orders", "msg-original", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("display cap")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(apacheProvider, never()).sendMessage(any(SendMessageDTO.class));
+    }
+
+    @Test
+    void redeliverMessageShouldAllowNonSystemPropertiesWhoseValuesEndInEllipsisTest() {
+        // A complete user value can legitimately end in "...": without propertiesTruncated the
+        // abbreviation marker alone must never refuse a redelivery.
+        MessageRecordVO original = MessageRecordVO.builder()
+                .msgId("msg-original")
+                .topic("orders")
+                .body("payload")
+                .properties(Map.of("tenant", "alpha..."))
+                .build();
+        when(messageService.queryMessages(
+                "instance-a", "orders", "msg-original", null, null, null, null))
+                .thenReturn(List.of(original));
+        when(apacheProvider.sendMessage(any(SendMessageDTO.class)))
+                .thenReturn(SendMessageVO.builder().msgId("msg-new").build());
+
+        metadataService.redeliverMessage("instance-a", "group-a", "orders", "msg-original", null);
+
+        ArgumentCaptor<SendMessageDTO> request = ArgumentCaptor.forClass(SendMessageDTO.class);
+        verify(apacheProvider).sendMessage(request.capture());
+        assertThat(request.getValue().getProperties()).containsExactlyEntriesOf(Map.of("tenant", "alpha..."));
     }
 
     @Test
@@ -998,6 +1187,36 @@ class MetadataServiceTest {
                 .hasMessage("topic name is required")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
 
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectForeignGroupBeforeProviderAccess() {
+        doThrow(new BusinessException(409, "Resource belongs to another instance"))
+                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                        ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true));
+
+        assertThatThrownBy(() -> metadataService.previewResetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Resource belongs to another instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void previewResetOffsetShouldRejectForeignTopicBeforeProviderAccess() {
+        when(ownershipGuard.check(any(), eq(new ResourceOwnershipGuard.Resource(
+                ResourceOwnershipGuard.Kind.GROUP, "cg-orders")), eq(true))).thenReturn(null);
+        doThrow(new BusinessException(409, "Resource belongs to another instance"))
+                .when(ownershipGuard).check(any(), eq(new ResourceOwnershipGuard.Resource(
+                        ResourceOwnershipGuard.Kind.TOPIC, "orders")), eq(true));
+
+        assertThatThrownBy(() -> metadataService.previewResetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Resource belongs to another instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
         verifyNoInteractions(apacheProvider);
     }
 

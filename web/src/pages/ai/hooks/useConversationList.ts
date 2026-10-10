@@ -85,6 +85,16 @@ export function useConversationList(
         archived,
       });
       if (id !== requestId.current) return;
+      // The server total can shrink between queries (archiving or deleting here or in another
+      // client), leaving `page` past the new last page: an empty list with a pager pointing at a
+      // page that no longer exists. Clamp to the new last page and let the page effect re-query;
+      // `page` only decreases, so this cannot loop. total = 0 falls back to page 1.
+      const maxPage = Math.max(1, Math.ceil(result.total / pageSize));
+      if (page > maxPage) {
+        setTotal(result.total);
+        setPage(maxPage);
+        return;
+      }
       setItems(result.items);
       setTotal(result.total);
     } catch (loadError) {

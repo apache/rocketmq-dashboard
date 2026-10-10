@@ -94,10 +94,12 @@ const buildCluster = ({
   tpsIn = 12480,
   tpsOut = 34560,
   connections = 1842,
+  maxMessageSize = 4 * 1024 * 1024,
 }: {
   tpsIn?: number;
   tpsOut?: number;
   connections?: number;
+  maxMessageSize?: number;
 } = {}): ClusterInfo => ({
   id: 'cluster-prod',
   name: 'rocketmq-prod',
@@ -140,7 +142,7 @@ const buildCluster = ({
     flushDiskType: 'SYNC_FLUSH',
     autoCreateTopicEnable: false,
     autoCreateSubscriptionGroup: false,
-    maxMessageSize: 4 * 1024 * 1024,
+    maxMessageSize,
     msgTraceTopicName: 'RMQ_SYS_TRACE_TOPIC',
     fileReservedTime: 72,
     writeQueueNums: 8,
@@ -413,6 +415,117 @@ describe('Cluster page', () => {
     expect(within(dialog).getByRole('row', { name: /写队列数/ })).toHaveTextContent('16');
   });
 
+  it('preservesUntouchedMessageSizeBytesInPreviewAndSaveTest', async () => {
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ maxMessageSize: 5000000 }),
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    expect(within(dialog).getByLabelText('最大消息大小 (MB)')).toHaveValue('5');
+
+    await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ maxMessageSize: 5000000 }),
+      ),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ maxMessageSize: 5000000 }),
+      ),
+    );
+  });
+
+  it('preservesMessageSizeBytesWhenAnotherConfigFieldIsEditedTest', async () => {
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ maxMessageSize: 5000000 }),
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const retentionInput = within(dialog).getByLabelText('文件保留时长 (小时)');
+    await user.clear(retentionInput);
+    await user.type(retentionInput, '96');
+
+    await user.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ maxMessageSize: 5000000, fileReservedTime: 96 }),
+      ),
+    );
+  });
+
+  it.each([
+    { size: '6', expectedBytes: 6291456 },
+    { size: '5', expectedBytes: 5242880 },
+  ])(
+    'appliesExplicitMessageSizeEditTo $size MiBInPreviewAndSaveTest',
+    async ({ size, expectedBytes }) => {
+      clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+        buildCluster({ maxMessageSize: 5000000 }),
+      ]);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ClusterPage />);
+
+      const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+      await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+      const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+      const sizeInput = within(dialog).getByLabelText('最大消息大小 (MB)');
+      expect(sizeInput).toHaveValue('5');
+      await user.clear(sizeInput);
+      await user.type(sizeInput, size);
+
+      await user.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+      await waitFor(() =>
+        expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ maxMessageSize: expectedBytes }),
+        ),
+      );
+      await user.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+      await waitFor(() =>
+        expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ maxMessageSize: expectedBytes }),
+        ),
+      );
+    },
+  );
+
+  it('resetsMessageSizeEditTrackingWhenTheConfigDialogReopensTest', async () => {
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      buildCluster({ maxMessageSize: 5000000 }),
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    const openConfigDialog = async () => {
+      await user.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+      return screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    };
+    let dialog = await openConfigDialog();
+    const sizeInput = within(dialog).getByLabelText('最大消息大小 (MB)');
+    await user.clear(sizeInput);
+    await user.type(sizeInput, '6');
+    await user.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+
+    dialog = await openConfigDialog();
+    expect(within(dialog).getByLabelText('最大消息大小 (MB)')).toHaveValue('5');
+    await user.click(within(dialog).getByRole('button', { name: /^OK$/ }));
+    await waitFor(() =>
+      expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ maxMessageSize: 5000000 }),
+      ),
+    );
+  });
+
   it('keeps the latest broker config preview after a superseded response finishes last', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const stalePreview = deferred<ClusterConfigPreviewResult>();
@@ -483,6 +596,44 @@ describe('Cluster page', () => {
     });
     expect(within(dialog).getByText('defaultTopicQueueNums=24')).toBeInTheDocument();
     expect(within(dialog).queryByText('defaultTopicQueueNums=16')).not.toBeInTheDocument();
+  });
+
+  it('discards broker config previews after a partial update changes the cluster', async () => {
+    const latePreview = deferred<ClusterConfigPreviewResult>();
+    clusterServiceMocks.updateClusterConfig.mockResolvedValue({
+      cluster: buildCluster(),
+      status: 'PARTIAL',
+      successfulBrokers: ['10.101.2.11:10911'],
+      failedBrokers: [{ address: '10.101.2.12:10911', message: 'timeout' }],
+    });
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    fireEvent.click(within(brokerRow).getByRole('button', { name: /^配\s*置$/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    expect(await within(dialog).findByText('defaultTopicQueueNums=8')).toBeInTheDocument();
+
+    clusterServiceMocks.previewClusterConfig.mockReturnValueOnce(latePreview.promise);
+    fireEvent.click(within(dialog).getByRole('button', { name: /预\s*览/ }));
+    await waitFor(() => expect(clusterServiceMocks.previewClusterConfig).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^ok$/i }));
+    expect(await screen.findByText(/部分 Broker 配置已更新/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('defaultTopicQueueNums=8')).not.toBeInTheDocument();
+
+    await act(async () => {
+      latePreview.resolve({
+        cluster: buildCluster(),
+        currentConfig: buildCluster().config!,
+        proposedConfig: { ...buildCluster().config!, writeQueueNums: 24 },
+        targetBrokers: [{ name: 'rocketmq-prod-0', address: '10.101.2.11:10911' }],
+        brokerProperties: { defaultTopicQueueNums: '24' },
+        changes: [],
+        changed: true,
+      });
+      await latePreview.promise;
+    });
+    expect(within(dialog).queryByText('defaultTopicQueueNums=24')).not.toBeInTheDocument();
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {

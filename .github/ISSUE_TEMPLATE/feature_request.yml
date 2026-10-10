@@ -72,7 +72,7 @@ body:
     attributes:
       label: Are You Willing to Implement It?
       description: >
-        Not required. If you plan to implement it, the pull request must target `master`,
+        Not required. If you plan to implement it, the pull request must target `rocketmq-studio`,
         keep the hexagonal architecture constraints green and add tests.
       options:
         - label: Yes, I am willing to submit a pull request once the design is agreed.

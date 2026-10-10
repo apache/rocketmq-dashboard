@@ -29,6 +29,8 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -56,10 +58,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -68,7 +73,9 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Real {@link DLQProvider} backed by the RocketMQ admin API. Lists dead-letter groups by scanning
@@ -154,8 +161,13 @@ public class RocketMQDLQProvider implements DLQProvider {
                     }
                 }
                 if (latestUpdate > 0L) {
+                    // Backend LocalDateTime values are UTC by convention (the metrics and alert
+                    // subsystems write ZoneOffset.UTC, and the frontend renders no-offset strings
+                    // through formatUtcDateTime). Converting in the server's default zone would
+                    // ship a wall clock no viewer can interpret: the serialized string carries no
+                    // offset, so a browser in another zone silently shifts the displayed time.
                     lastEnqueueTime = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(latestUpdate), ZoneId.systemDefault());
+                            Instant.ofEpochMilli(latestUpdate), ZoneOffset.UTC);
                 }
             }
         } catch (Exception e) {
@@ -186,11 +198,10 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (begin >= end) {
             throw new BusinessException(400, "DLQ resend start time must be before end time");
         }
-        if (StringUtils.hasText(targetTopic)) {
-            validateResendTargetTopic(instanceId, targetTopic);
-        }
-
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        if (StringUtils.hasText(targetTopic)) {
+            validateResendTargetTopic(instanceId, dlqTopic, targetTopic);
+        }
 
         DeadLetterScanResult scanResult;
         try {
@@ -259,11 +270,10 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (selected.isEmpty()) {
             throw new BusinessException(400, "At least one valid msgId is required for selected DLQ resend");
         }
-        if (StringUtils.hasText(targetTopic)) {
-            validateResendTargetTopic(instanceId, targetTopic);
-        }
-
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
+        if (StringUtils.hasText(targetTopic)) {
+            validateResendTargetTopic(instanceId, dlqTopic, targetTopic);
+        }
 
         List<MessageExt> deadLetters = runtimeAdminClientResolver.execute(instanceId, admin -> {
             List<MessageExt> resolved = new ArrayList<>(selected.size());
@@ -415,8 +425,12 @@ public class RocketMQDLQProvider implements DLQProvider {
             return null;
         }
         try {
-            return new String(body, StandardCharsets.UTF_8);
-        } catch (Exception ignored) {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(body))
+                    .toString();
+        } catch (CharacterCodingException ignored) {
             return null;
         }
     }
@@ -672,7 +686,7 @@ public class RocketMQDLQProvider implements DLQProvider {
      * create new topics on clusters with autoCreateTopicEnable. Restrict it to valid, existing,
      * non-system topics on the selected instance.
      */
-    private void validateResendTargetTopic(String instanceId, String targetTopic) {
+    private void validateResendTargetTopic(String instanceId, String dlqTopic, String targetTopic) {
         TopicValidator.ValidateResult validity = TopicValidator.validateTopic(targetTopic);
         if (!validity.isValid()) {
             throw new BusinessException(400, "targetTopic is not a valid RocketMQ topic name: "
@@ -700,6 +714,59 @@ public class RocketMQDLQProvider implements DLQProvider {
                     "targetTopic does not exist on the selected instance; create the topic before resending: "
                             + targetTopic);
         }
+        requireSameClusterAsDlqTopic(instanceId, dlqTopic, targetTopic);
+    }
+
+    /**
+     * A resend must land in the cluster the dead-letter topic belongs to. The existence check above
+     * asks the NameServer, and one NameServer can serve several clusters, so a target topic that only
+     * exists in a sibling cluster passes it - and the producer, which routes by topic name across the
+     * whole endpoint, would then publish the replayed messages into that other cluster while the API
+     * and the audit record report success. Sibling write paths (send, offset reset, direct consume)
+     * reject exactly this with {@code ApacheWriteTargetResolver.requireTopicRoute}.
+     *
+     * <p>Only a resolvable route can prove the mismatch, so an unresolvable one is left to the send
+     * itself to fail - in particular a {@code %DLQ%<group>} that has no route yet must keep reaching
+     * the scan's precise 404 rather than being reported as a route failure.
+     */
+    private void requireSameClusterAsDlqTopic(String instanceId, String dlqTopic, String targetTopic) {
+        try {
+            runtimeAdminClientResolver.execute(instanceId, admin -> {
+                Set<String> dlqClusters = clustersOfRoute(admin, dlqTopic);
+                Set<String> targetClusters = clustersOfRoute(admin, targetTopic);
+                if (!dlqClusters.isEmpty() && !targetClusters.isEmpty()
+                        && !dlqClusters.containsAll(targetClusters)) {
+                    throw new BusinessException(409, "targetTopic resolves to a different cluster than "
+                            + dlqTopic + "; resend rejected: " + targetTopic);
+                }
+                return null;
+            });
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(502, "Failed to verify the targetTopic route: " + e.getMessage());
+        }
+    }
+
+    /** An unresolvable route proves nothing, so a failed lookup contributes no cluster. */
+    private Set<String> clustersOfRoute(MQAdminExt admin, String topic) {
+        try {
+            return clustersOf(admin.examineTopicRouteInfo(topic));
+        } catch (Exception e) {
+            log.debug("Cannot resolve the route of {} for the DLQ cluster check: {}", topic, e.getMessage());
+            return Collections.emptySet();
+        }
+    }
+
+    private static Set<String> clustersOf(TopicRouteData route) {
+        if (route == null || route.getBrokerDatas() == null) {
+            return Collections.emptySet();
+        }
+        return route.getBrokerDatas().stream()
+                .filter(Objects::nonNull)
+                .map(BrokerData::getCluster)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
     }
 
     private String resolveTargetTopic(MessageExt deadLetter, String targetTopic) {
