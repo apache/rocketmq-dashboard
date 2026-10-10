@@ -3068,6 +3068,91 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.skipAccumulate': { zh: '跳过堆积', en: 'Skip Accumulate' },
   'topic.deleteWarning': { zh: '删除后无法恢复，请确认。', en: 'This cannot be undone.' },
   'topic.fetchFailed': { zh: '获取主题列表失败', en: 'Failed to fetch topic list' },
+  'topic.precheckBlockedToast': {
+    zh: '发送前预检未通过：{issues}',
+    en: 'Pre-send check failed: {issues}',
+  },
+  'topic.listSeparator': { zh: '；', en: '; ' },
+  // ─── Send pre-check (utils return keys; the page translates) ───
+  'sendCheck.trimmedTag.title': { zh: 'Tag 会去除首尾空白', en: 'Tag will be trimmed' },
+  'sendCheck.trimmedTag.desc': {
+    zh: '发送时会使用去除首尾空白后的 Tag。',
+    en: 'The trimmed Tag is what gets sent.',
+  },
+  'sendCheck.trimmedKey.title': { zh: 'Key 会去除首尾空白', en: 'Key will be trimmed' },
+  'sendCheck.trimmedKey.desc': {
+    zh: '发送时会使用去除首尾空白后的 Key。',
+    en: 'The trimmed Key is what gets sent.',
+  },
+  'sendCheck.emptyBody.title': { zh: '消息体为空', en: 'Message body is empty' },
+  'sendCheck.emptyBody.desc': {
+    zh: '发送消息必须提供 Body。',
+    en: 'A body is required to send a message.',
+  },
+  'sendCheck.bodySizeLimit.title': {
+    zh: '消息体超过默认上限',
+    en: 'Body exceeds the default limit',
+  },
+  'sendCheck.bodySizeLimit.desc': {
+    zh: '当前 Body 为 {bytes} bytes，超过 {max} bytes。',
+    en: 'The body is {bytes} bytes, exceeding the {max}-byte limit.',
+  },
+  'sendCheck.plainTextBody.title': { zh: 'Body 不是 JSON', en: 'Body is not JSON' },
+  'sendCheck.plainTextBody.desc': {
+    zh: 'RocketMQ 支持文本消息，当前 Body 会按原始文本发送。',
+    en: 'RocketMQ supports text messages; this body will be sent as raw text.',
+  },
+  'sendCheck.scalarJsonBody.title': { zh: 'Body 是 JSON 标量', en: 'Body is a JSON scalar' },
+  'sendCheck.scalarJsonBody.desc': {
+    zh: '当前 Body 是合法 JSON，但不是对象或数组。',
+    en: 'The body is valid JSON but not an object or array.',
+  },
+  'sendCheck.emptyPropertyKey.title': { zh: '属性名不能为空', en: 'Property name cannot be empty' },
+  'sendCheck.emptyPropertyKey.desc': {
+    zh: '属性值“{value}”缺少对应属性名。',
+    en: 'The value "{value}" has no property name.',
+  },
+  'sendCheck.duplicatePropertyKey.title': { zh: '属性名重复', en: 'Duplicate property name' },
+  'sendCheck.duplicatePropertyKey.desc': {
+    zh: '重复属性仅保留第一个值：{names}',
+    en: 'Only the first value is kept for duplicated properties: {names}',
+  },
+  'sendCheck.invalidPropertyFormat.title': { zh: '属性格式错误', en: 'Invalid property format' },
+  'sendCheck.reservedPropertyKey.title': {
+    zh: '属性名可能与系统属性冲突',
+    en: 'Property name may clash with a system property',
+  },
+  'sendCheck.reservedPropertyKey.desc': {
+    zh: '建议改用业务属性名，避免覆盖或混淆系统属性：{names}',
+    en: 'Prefer business names to avoid overriding system properties: {names}',
+  },
+  'sendCheck.emptyPropertyValue.title': { zh: '存在空属性值', en: 'Empty property values present' },
+  'sendCheck.emptyPropertyValue.desc': {
+    zh: '这些属性会以空字符串发送：{names}',
+    en: 'These properties will be sent as empty strings: {names}',
+  },
+  'sendCheck.propertyCountLimit.title': { zh: '属性数量较多', en: 'Many properties' },
+  'sendCheck.propertyCountLimit.desc': {
+    zh: '当前 {count} 个属性，建议控制在 {max} 个以内。',
+    en: '{count} properties present; keep it within {max}.',
+  },
+  'sendCheck.propertySizeLimit.title': { zh: '属性总大小较大', en: 'Large total property size' },
+  'sendCheck.propertySizeLimit.desc': {
+    zh: '当前属性约 {bytes} bytes，建议控制在 {max} bytes 以内。',
+    en: 'Properties total about {bytes} bytes; keep it within {max} bytes.',
+  },
+  'propErr.format': {
+    zh: '“{text}”应使用 key=value 格式',
+    en: '"{text}" should use the key=value format',
+  },
+  'propErr.emptyName': {
+    zh: '“{text}”的属性名不能为空',
+    en: '"{text}" is missing a property name',
+  },
+  'propErr.duplicate': {
+    zh: '属性名“{name}”重复',
+    en: 'Duplicate property name "{name}"',
+  },
   'topic.operationSuccess': { zh: 'Topic 操作成功', en: 'Topic operation successful' },
   'topic.filterType': { zh: '消息类型', en: 'Message Type' },
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },

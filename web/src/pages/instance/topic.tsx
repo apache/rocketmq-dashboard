@@ -1412,9 +1412,9 @@ const TopicPageContent = ({
               {item.severity === 'error' ? '阻止' : item.severity === 'warning' ? '关注' : '提示'}
             </Tag>
             <div style={{ minWidth: 0 }}>
-              <Text strong>{item.title}</Text>
+              <Text strong>{t(item.titleKey, item.params)}</Text>
               <Text type="secondary" style={{ display: 'block' }}>
-                {item.description}
+                {t(item.descriptionKey, item.params)}
               </Text>
             </div>
           </Flex>
@@ -1510,7 +1510,11 @@ const TopicPageContent = ({
       });
       if (payloadPreview.blockingIssues.length > 0) {
         message.error(
-          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
+          t('topic.precheckBlockedToast', {
+            issues: payloadPreview.blockingIssues
+              .map((item) => t(item.titleKey, item.params))
+              .join(t('topic.listSeparator')),
+          }),
         );
         return;
       }

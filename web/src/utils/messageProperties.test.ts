@@ -38,7 +38,7 @@ describe('parseMessageProperties', () => {
     const result = parseMessageProperties('traceId=first\r\ntenant=demo\r\ntraceId=second');
 
     expect(result.properties).toEqual({ traceId: 'first', tenant: 'demo' });
-    expect(result.errors).toEqual(['属性名“traceId”重复']);
+    expect(result.errors).toEqual([{ key: 'propErr.duplicate', params: { name: 'traceId' } }]);
   });
 
   it('preserves JavaScript object prototype property names', () => {
@@ -61,6 +61,6 @@ describe('parseMessageProperties', () => {
     const result = parseMessageProperties('__proto__=first\n__proto__=second');
 
     expect(result.properties['__proto__']).toBe('first');
-    expect(result.errors).toEqual(['属性名“__proto__”重复']);
+    expect(result.errors).toEqual([{ key: 'propErr.duplicate', params: { name: '__proto__' } }]);
   });
 });

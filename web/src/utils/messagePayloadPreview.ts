@@ -46,8 +46,9 @@ export interface MessagePropertyInput {
 export interface MessagePayloadIssue {
   code: MessagePayloadIssueCode;
   severity: MessagePayloadIssueSeverity;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
+  params?: Record<string, string | number>;
   field?: 'body' | 'tag' | 'key' | 'properties';
   names?: string[];
 }
@@ -125,15 +126,17 @@ const normalizeText = (value?: string): string => value?.trim() ?? '';
 const issue = (
   code: MessagePayloadIssueCode,
   severity: MessagePayloadIssueSeverity,
-  title: string,
-  description: string,
+  titleKey: string,
+  descriptionKey: string,
   field?: MessagePayloadIssue['field'],
   names?: string[],
+  params?: Record<string, string | number>,
 ): MessagePayloadIssue => ({
   code,
   severity,
-  title,
-  description,
+  titleKey,
+  descriptionKey,
+  params,
   field,
   names,
 });
@@ -179,9 +182,11 @@ export const buildMessagePropertiesFromRows = (
         issue(
           'EMPTY_PROPERTY_KEY',
           'error',
-          '属性名不能为空',
-          `属性值“${value}”缺少对应属性名。`,
+          'sendCheck.emptyPropertyKey.title',
+          'sendCheck.emptyPropertyKey.desc',
           'properties',
+          undefined,
+          { value },
         ),
       );
       return;
@@ -203,14 +208,16 @@ export const buildMessagePropertiesFromRows = (
   });
 
   if (duplicates.size > 0) {
+    const duplicateNames = [...duplicates].sort();
     issues.push(
       issue(
         'DUPLICATE_PROPERTY_KEY',
         'error',
-        '属性名重复',
-        `重复属性仅保留第一个值：${[...duplicates].sort().join(', ')}`,
+        'sendCheck.duplicatePropertyKey.title',
+        'sendCheck.duplicatePropertyKey.desc',
         'properties',
-        [...duplicates].sort(),
+        duplicateNames,
+        { names: duplicateNames.join(', ') },
       ),
     );
   }
@@ -232,8 +239,16 @@ const buildMessagePropertiesFromText = (
 
   return {
     entries,
-    issues: parsed.errors.map((errorText) =>
-      issue('INVALID_PROPERTY_FORMAT', 'error', '属性格式错误', errorText, 'properties'),
+    issues: parsed.errors.map((parseError) =>
+      issue(
+        'INVALID_PROPERTY_FORMAT',
+        'error',
+        'sendCheck.invalidPropertyFormat.title',
+        parseError.key,
+        'properties',
+        undefined,
+        parseError.params,
+      ),
     ),
   };
 };
@@ -257,8 +272,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'TRIMMED_TAG',
         'info',
-        'Tag 会去除首尾空白',
-        '发送时会使用去除首尾空白后的 Tag。',
+        'sendCheck.trimmedTag.title',
+        'sendCheck.trimmedTag.desc',
         'tag',
       ),
     );
@@ -268,8 +283,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'TRIMMED_KEY',
         'info',
-        'Key 会去除首尾空白',
-        '发送时会使用去除首尾空白后的 Key。',
+        'sendCheck.trimmedKey.title',
+        'sendCheck.trimmedKey.desc',
         'key',
       ),
     );
@@ -278,15 +293,19 @@ export const analyzeMessagePayloadPreview = (
   const format = bodyFormat(normalizedBody);
   const bodyBytes = textBytes(normalizedBody);
   if (format === 'empty') {
-    issues.push(issue('EMPTY_BODY', 'error', '消息体为空', '发送消息必须提供 Body。', 'body'));
+    issues.push(
+      issue('EMPTY_BODY', 'error', 'sendCheck.emptyBody.title', 'sendCheck.emptyBody.desc', 'body'),
+    );
   } else if (bodyBytes > maxBodyBytes) {
     issues.push(
       issue(
         'BODY_SIZE_LIMIT',
         'error',
-        '消息体超过默认上限',
-        `当前 Body 为 ${bodyBytes} bytes，超过 ${maxBodyBytes} bytes。`,
+        'sendCheck.bodySizeLimit.title',
+        'sendCheck.bodySizeLimit.desc',
         'body',
+        undefined,
+        { bytes: bodyBytes, max: maxBodyBytes },
       ),
     );
   } else if (format === 'plain-text') {
@@ -294,8 +313,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PLAIN_TEXT_BODY',
         'info',
-        'Body 不是 JSON',
-        'RocketMQ 支持文本消息，当前 Body 会按原始文本发送。',
+        'sendCheck.plainTextBody.title',
+        'sendCheck.plainTextBody.desc',
         'body',
       ),
     );
@@ -304,8 +323,8 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'SCALAR_JSON_BODY',
         'info',
-        'Body 是 JSON 标量',
-        '当前 Body 是合法 JSON，但不是对象或数组。',
+        'sendCheck.scalarJsonBody.title',
+        'sendCheck.scalarJsonBody.desc',
         'body',
       ),
     );
@@ -326,10 +345,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'RESERVED_PROPERTY_KEY',
         'warning',
-        '属性名可能与系统属性冲突',
-        `建议改用业务属性名，避免覆盖或混淆系统属性：${reservedNames.join(', ')}`,
+        'sendCheck.reservedPropertyKey.title',
+        'sendCheck.reservedPropertyKey.desc',
         'properties',
         reservedNames,
+        { names: reservedNames.join(', ') },
       ),
     );
   }
@@ -343,10 +363,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'EMPTY_PROPERTY_VALUE',
         'info',
-        '存在空属性值',
-        `这些属性会以空字符串发送：${emptyValueNames.join(', ')}`,
+        'sendCheck.emptyPropertyValue.title',
+        'sendCheck.emptyPropertyValue.desc',
         'properties',
         emptyValueNames,
+        { names: emptyValueNames.join(', ') },
       ),
     );
   }
@@ -360,9 +381,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PROPERTY_COUNT_LIMIT',
         'warning',
-        '属性数量较多',
-        `当前 ${propertyResult.entries.length} 个属性，建议控制在 ${maxProperties} 个以内。`,
+        'sendCheck.propertyCountLimit.title',
+        'sendCheck.propertyCountLimit.desc',
         'properties',
+        undefined,
+        { count: propertyResult.entries.length, max: maxProperties },
       ),
     );
   }
@@ -371,9 +394,11 @@ export const analyzeMessagePayloadPreview = (
       issue(
         'PROPERTY_SIZE_LIMIT',
         'warning',
-        '属性总大小较大',
-        `当前属性约 ${propertyBytes} bytes，建议控制在 ${maxPropertyBytes} bytes 以内。`,
+        'sendCheck.propertySizeLimit.title',
+        'sendCheck.propertySizeLimit.desc',
         'properties',
+        undefined,
+        { bytes: propertyBytes, max: maxPropertyBytes },
       ),
     );
   }
