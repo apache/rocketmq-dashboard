@@ -60,8 +60,14 @@ export async function listAclRules(params?: AclRuleQuery): Promise<PageResult<Ac
     if (params?.aclVersion) {
       result = result.filter((rule) => String(rule.aclVersion) === params.aclVersion);
     }
-    const page = Math.max(params?.page ?? 1, 1);
-    const pageSize = Math.max(params?.pageSize ?? 20, 1);
+    // Match the backend contract (AclService.requireValidPage/requireValidPageSize):
+    // page < 1 or pageSize outside 1..100 is a 400, not something to clamp —
+    // the sibling mock pageAclUsers enforces the same bound.
+    if ((params?.page ?? 1) < 1 || (params?.pageSize ?? 20) < 1 || (params?.pageSize ?? 20) > 100) {
+      throw new Error('page must be >= 1 and pageSize must be between 1 and 100');
+    }
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
     const fromIndex = Math.min((page - 1) * pageSize, result.length);
     const toIndex = Math.min(fromIndex + pageSize, result.length);
     return {
