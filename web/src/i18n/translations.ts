@@ -1362,6 +1362,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.info': { zh: '信息', en: 'Info' },
   'sysAlerts.noAlerts': { zh: '暂无告警', en: 'No Alerts' },
   'sysAlerts.acknowledged': { zh: '告警已确认', en: 'Alert Acknowledged' },
+  'sysAlerts.acknowledgeAll': { zh: '全部确认', en: 'Acknowledge All' },
+  'sysAlerts.acknowledgeAllConfirmTitle': {
+    zh: '确认全部未确认告警',
+    en: 'Acknowledge all unacknowledged alerts',
+  },
+  'sysAlerts.acknowledgeAllConfirmBody': {
+    zh: '将确认当前筛选条件下的所有未确认告警（跨页生效），这些告警的提醒将停止。',
+    en: 'This acknowledges every unacknowledged alert matching the current filters (across pages); reminders for those alerts stop.',
+  },
+  'sysAlerts.acknowledgeAllSuccess': {
+    zh: '已确认 {n} 条告警',
+    en: 'Acknowledged {n} alerts.',
+  },
+  'sysAlerts.acknowledgeAllFailed': {
+    zh: '批量确认失败，请稍后重试',
+    en: 'Failed to acknowledge alerts. Please try again later.',
+  },
   'sysAlerts.cleared': { zh: '已清除所有已确认告警', en: 'Cleared all acknowledged alerts' },
   'sysAlerts.subtitle': {
     zh: '集群运行告警监控，本页 {n} 条未确认',
