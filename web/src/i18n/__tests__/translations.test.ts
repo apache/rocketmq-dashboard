@@ -38,6 +38,13 @@ const sources = import.meta.glob('../../**/*.{ts,tsx}', {
 const LITERAL_KEY = /\bt\(\s*'([^']+)'/g;
 
 describe('translations dictionary', () => {
+  it('localizes the producer query guard when no instance is selected', () => {
+    expect(translations['producer.selectInstanceBeforeQuery']).toEqual({
+      zh: '请先选择实例后再查询生产者连接',
+      en: 'Select an instance before querying producer connections',
+    });
+  });
+
   it('gives every entry a non-empty Chinese and an English value', () => {
     const incomplete = Object.entries(translations)
       .filter(([, value]) => !value.zh.trim() || !value.en.trim())
