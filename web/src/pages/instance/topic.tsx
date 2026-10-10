@@ -1153,32 +1153,36 @@ const TopicPageContent = ({
                 ) : undefined
               }
             />
-            <Row gutter={[12, 12]}>
-              {renderRouteMetric(
-                'Broker 数',
-                summary.brokerCount,
-                `${summary.addressCount} 个地址`,
-              )}
-              {renderRouteMetric(
-                '可写 Broker',
-                summary.writableBrokerCount,
-                `${summary.totalWriteQueues} 个写队列`,
-              )}
-              {renderRouteMetric(
-                '可读 Broker',
-                summary.readableBrokerCount,
-                `${summary.totalReadQueues} 个读队列`,
-              )}
-              {renderRouteMetric(
-                'Replica 数',
-                summary.replicaCount,
-                summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
-                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
-                  : '队列均衡',
-              )}
-            </Row>
-            {renderRouteIssues(diagnostics.issues)}
-            {renderRouteRecommendations(diagnostics.recommendations)}
+            {!routeLoadFailed && (
+              <>
+                <Row gutter={[12, 12]}>
+                  {renderRouteMetric(
+                    'Broker 数',
+                    summary.brokerCount,
+                    `${summary.addressCount} 个地址`,
+                  )}
+                  {renderRouteMetric(
+                    '可写 Broker',
+                    summary.writableBrokerCount,
+                    `${summary.totalWriteQueues} 个写队列`,
+                  )}
+                  {renderRouteMetric(
+                    '可读 Broker',
+                    summary.readableBrokerCount,
+                    `${summary.totalReadQueues} 个读队列`,
+                  )}
+                  {renderRouteMetric(
+                    'Replica 数',
+                    summary.replicaCount,
+                    summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
+                      ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
+                      : '队列均衡',
+                  )}
+                </Row>
+                {renderRouteIssues(diagnostics.issues)}
+                {renderRouteRecommendations(diagnostics.recommendations)}
+              </>
+            )}
           </Space>
         )}
         <Table<RouteDistribution>

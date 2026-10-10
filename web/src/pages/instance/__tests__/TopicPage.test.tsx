@@ -615,6 +615,10 @@ describe('TopicPage', () => {
     // Rebuilding an existing topic is not the answer to a failed request.
     expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+    // The routes never arrived, so the tiles must not report zeros and the analyzer must not
+    // return its empty-list verdict - the banner just said those conclusions are unavailable.
+    expect(screen.queryByText('Broker 数')).not.toBeInTheDocument();
+    expect(screen.queryByText('Broker 上没有 Topic 路由')).not.toBeInTheDocument();
   });
 
   it('labels an empty consumer table as a failed load instead of as no consumers', async () => {
