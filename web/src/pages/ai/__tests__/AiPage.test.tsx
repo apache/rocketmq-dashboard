@@ -255,6 +255,24 @@ describe('AiPage', () => {
     vi.mocked(listTools).mockResolvedValue([]);
   });
 
+  it.each([new Error('timeline unavailable'), {}])(
+    'offers recovery for a failed timeline load: %s',
+    async (failure) => {
+      vi.mocked(getConversationTimeline).mockRejectedValueOnce(failure);
+      renderRouted('/ai/c/7');
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('会话记录加载失败');
+      expect(screen.queryByTestId('ai-welcome-starters')).not.toBeInTheDocument();
+      vi.mocked(getConversationTimeline).mockResolvedValue(
+        timelinePage([item(1, { type: 'user', text: 'recovered transcript' })]),
+      );
+      await userEvent.setup().click(within(alert).getByRole('button', { name: /重\s*试/ }));
+      expect(await screen.findByText('recovered transcript')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(getConversationTimeline).toHaveBeenLastCalledWith(7, { after: 0, limit: 200 });
+    },
+  );
+
   it('rendersThePersistedTimelineOnAColdLoadTest', async () => {
     vi.mocked(getConversationTimeline).mockResolvedValue(
       timelinePage([
