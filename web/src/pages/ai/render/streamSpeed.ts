@@ -27,10 +27,25 @@
 
 const CJK_TOKEN_PATTERN = /[\u3000-\u9fff\uf900-\ufaff\uff00-\uffef]/g;
 
+/** Number of Unicode characters (code points), the unit the 1-in-4 rule counts in. */
+function characterCount(text: string): number {
+  let count = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    // Skip the low surrogate of a supplementary pair: the pair is one character.
+    if (code >= 0xdc00 && code <= 0xdfff) continue;
+    count += 1;
+  }
+  return count;
+}
+
 /** Rough token count of a delta: one token per CJK character, one per four other characters. */
 export function estimateTokens(text: string): number {
   const cjkChars = text.match(CJK_TOKEN_PATTERN)?.length ?? 0;
-  return cjkChars + Math.max(0, text.length - cjkChars) / 4;
+  // A supplementary character (emoji, CJK extension) is two UTF-16 units but one
+  // character, and it is not in the CJK pattern above, so the remainder must be
+  // counted in characters — not in raw .length, which would double-count it.
+  return cjkChars + Math.max(0, characterCount(text) - cjkChars) / 4;
 }
 
 export interface StreamSpeedTracker {
