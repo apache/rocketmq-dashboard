@@ -62,7 +62,7 @@ export function collectLicenses(moduleIds, base = root) {
   const packages = new Map();
   const files = new Map();
   const components = [];
-  const baseText = (name) => read(path.join(base, name)).toString().split('\nThird-party source materials\n')[0];
+  const baseText = (name) => read(path.join(base, name)).toString().replace(/\r\n/g, '\n').split('\nThird-party source materials\n')[0];
   let license = baseText('LICENSE');
   let notice = baseText('NOTICE');
   const ids = [...new Set(moduleIds)].sort();
@@ -120,8 +120,10 @@ export function collectLicenses(moduleIds, base = root) {
     if (identity === 'toggle-selection@1.0.6') {
       // The 1.0.6 npm package omits LICENSE; the index.js from the immutable upstream commit below is identical to the package, and the MIT text is supplied.
       const fallback = path.join(base, 'licenses/toggle-selection-1.0.6/LICENSE');
+      // Git may convert this tracked text to CRLF; verify and distribute the canonical upstream LF bytes.
+      sourceContent[fallback] = Buffer.from(read(fallback).toString().replace(/\r\n/g, '\n'));
       if (sha(read(path.join(dir, 'index.js'))) !== 'd1a1caf366f8ae5ed3cf4a87c42c46e73bb5536acbcbc5ca479c180d4d3e7756'
-          || sha(read(fallback)) !== '5149051aed807f78acfbf9a43ac66368374a8fa1f9dfc092b73de5a67d42673a') {
+          || sha(sourceContent[fallback]) !== '5149051aed807f78acfbf9a43ac66368374a8fa1f9dfc092b73de5a67d42673a') {
         throw new Error('toggle-selection code or upstream license text does not match the verified source');
       }
       sources.push(fallback, path.join(dir, 'README.md'));
