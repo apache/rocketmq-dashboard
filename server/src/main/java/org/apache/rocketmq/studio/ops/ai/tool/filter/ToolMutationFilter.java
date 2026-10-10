@@ -57,7 +57,6 @@ public class ToolMutationFilter implements ToolExecutionFilter {
             if (context.definition().requiresReason()) {
                 verifyL3Requirements(context);
             }
-            tokenService.verify(context);
         }
 
         ToolPlan plan = invocation.preview();
@@ -69,6 +68,7 @@ public class ToolMutationFilter implements ToolExecutionFilter {
             return new MutationOutput<>(MutationOutput.Status.PLANNED, context.instanceId(), plan, token, null);
         }
 
+        tokenService.verifyAndConsume(context);
         Object result = chain.proceed(invocation);
         return new MutationOutput<>(MutationOutput.Status.EXECUTED, context.instanceId(), plan, null, result);
     }
