@@ -1591,6 +1591,87 @@ describe('Consumer page', () => {
     expect(await screen.findByText('订阅一致性检查失败，当前保留上次检查结果')).toBeInTheDocument();
   });
 
+  const previewCsv = (name: string) =>
+    '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type"\n"' +
+    name +
+    '","Push","CLUSTERING","16","NORMAL"';
+
+  it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-1' }),
+      ),
+    );
+    const input = screen.getByTestId('consumer-group-import-file');
+    await user.upload(input, new File([previewCsv('previous-resource')], 'first.csv'));
+    await screen.findByText('previous-resource');
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    let resolve!: (text: string) => void;
+    const next = new File([], 'second.csv');
+    Object.defineProperty(next, 'text', {
+      value: () =>
+        new Promise<string>((complete) => {
+          resolve = complete;
+        }),
+    });
+    await user.upload(input, next);
+    expect(screen.getByText('导入 Group：second.csv')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+    expect(consumerService.importConsumerGroups).not.toHaveBeenCalled();
+    await act(async () => resolve(previewCsv('current-resource')));
+    await screen.findByText('current-resource');
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-1' }),
+      ]),
+    );
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'ignoresCancelledFileReadCompletionTest (%s)',
+    async (outcome) => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ConsumerPage />);
+      await waitFor(() =>
+        expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+          expect.objectContaining({ instanceId: 'instance-1' }),
+        ),
+      );
+      const input = screen.getByTestId('consumer-group-import-file');
+      let resolve!: (text: string) => void;
+      let reject!: (error: Error) => void;
+      const first = new File([], 'first.csv');
+      Object.defineProperty(first, 'text', {
+        value: () =>
+          new Promise<string>((complete, fail) => {
+            resolve = complete;
+            reject = fail;
+          }),
+      });
+      await user.upload(input, first);
+      await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+      await user.upload(input, new File([previewCsv('current-resource')], 'second.csv'));
+      await screen.findByText('current-resource');
+      await act(async () => {
+        if (outcome === 'success') resolve(previewCsv('previous-resource'));
+        else reject(new Error('obsolete file read failed'));
+      });
+      expect(screen.getByText('current-resource')).toBeInTheDocument();
+      expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+      expect(screen.queryByText('obsolete file read failed')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: '开始导入' }));
+      await waitFor(() =>
+        expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-1', [
+          expect.objectContaining({ name: 'current-resource', instanceId: 'instance-1' }),
+        ]),
+      );
+    },
+  );
+
   it('keeps per-row state when consumer group CSV import partially fails', async () => {
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([]));
     vi.mocked(consumerService.importConsumerGroups).mockResolvedValue({
