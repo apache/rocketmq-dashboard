@@ -93,6 +93,9 @@ function filterConsumerGroups(params?: ConsumerGroupQuery): ConsumerGroup[] {
     const kw = params.search.trim().toLowerCase();
     if (kw) result = result.filter((group) => group.name.toLowerCase().includes(kw));
   }
+  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
+    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
+  }
   return result;
 }
 
@@ -101,9 +104,6 @@ function visibleConsumerGroups(groups: ConsumerGroup[], params?: ConsumerGroupEx
   if (params?.names?.length) {
     const selectedNames = new Set(params.names);
     result = result.filter((group) => selectedNames.has(group.name));
-  }
-  if (params?.subscriptionMode && params.subscriptionMode !== 'ALL') {
-    result = result.filter((group) => group.subscriptionMode === params.subscriptionMode);
   }
   return [...result].sort((left, right) => left.name.localeCompare(right.name));
 }

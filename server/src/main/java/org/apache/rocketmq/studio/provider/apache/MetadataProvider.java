@@ -71,6 +71,17 @@ public interface MetadataProvider {
         return listConsumerGroupsPage(clusterId, search, page, pageSize);
     }
 
+    /**
+     * Instance-scoped consumer-group pagination with an optional subscription-mode filter
+     * ("Push" / "Pop"; blank or "ALL" means no restriction). The default drops the filter;
+     * implementors with a mode-aware store override it so the page and its total describe the
+     * filtered result set.
+     */
+    default PageResult<ConsumerGroupVO> listConsumerGroupsPage(String instanceId, String clusterId,
+            String search, String subscriptionMode, int page, int pageSize) {
+        return listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+    }
+
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
 
