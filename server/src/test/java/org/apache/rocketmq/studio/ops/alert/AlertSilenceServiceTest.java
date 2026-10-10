@@ -140,6 +140,44 @@ class AlertSilenceServiceTest {
     }
 
     @Test
+    void exportsSilencesAsBomPrefixedCsvWithUtcLabelledColumnsTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        AlertSilenceVO oneTime = AlertSilenceVO.builder().id(11L).domain(AlertDomain.BUSINESS)
+                .ruleId(3L).instanceId("local").labels(Map.of("brokerName", "broker-a"))
+                .startsAt(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 1, 11, 0))
+                .reason("deploy").createdBy("alice").build();
+        AlertSilenceVO weekly = AlertSilenceVO.builder().id(12L).domain(AlertDomain.CLUSTER)
+                .recurrence(AlertSilenceRecurrence.WEEKLY).timeZone("Asia/Shanghai")
+                .recurrenceDays(Set.of(5, 1)).recurrenceUntil(LocalDateTime.of(2026, 9, 30, 0, 0))
+                .startsAt(LocalDateTime.of(2026, 9, 2, 2, 0))
+                .endsAt(LocalDateTime.of(2026, 9, 2, 3, 0))
+                .reason("nightly batch").createdBy("bob").build();
+        when(repository.findPage(1, 10_000))
+                .thenReturn(PageResult.of(List.of(oneTime, weekly), 2, 1, 10_000));
+
+        String csv = service.exportSilences();
+
+        assertThat(csv).startsWith("\uFEFFsilenceId,domain,ruleId,instanceId,labels,"
+                + "startsAtUtc,endsAtUtc,recurrence,timeZone,recurrenceDays,recurrenceUntilUtc,reason,createdBy\r\n");
+        assertThat(csv).contains("\"11\",\"BUSINESS\",\"3\",\"local\",\"brokerName=broker-a\","
+                + "\"2026-09-01T10:00\",\"2026-09-01T11:00\",\"\",\"\",\"\",\"\",\"deploy\",\"alice\"");
+        assertThat(csv).contains("\"12\",\"CLUSTER\",\"\",\"\",\"\","
+                + "\"2026-09-02T02:00\",\"2026-09-02T03:00\",\"WEEKLY\",\"Asia/Shanghai\",\"1,5\","
+                + "\"2026-09-30T00:00\",\"nightly batch\",\"bob\"");
+    }
+
+    @Test
+    void rejectsSilenceExportBeyondTheCapTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        when(repository.findPage(1, 10_000)).thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(service::exportSilences)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert silence export exceeds the maximum of 10000 records");
+    }
+
+    @Test
     void activeUntilShouldQueryScopedActiveCandidatesBeforeLabelMatchingTest() {
         AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
         LocalDateTime now = LocalDateTime.of(2026, 8, 22, 10, 0);
