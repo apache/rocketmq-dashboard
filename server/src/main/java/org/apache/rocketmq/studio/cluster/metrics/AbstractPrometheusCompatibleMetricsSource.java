@@ -218,7 +218,13 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
                     throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
                             backendLabel() + " bearer authentication is incomplete");
                 }
-                headers.setBearerAuth(settings.getBearerToken());
+                if (backendType() == MetricsBackendType.ARMS) {
+                    // ARMS V1 token auth matches the Authorization header exactly; a "Bearer "
+                    // prefix breaks it (Aliyun ARMS HTTP API docs: Authorization: {Token}).
+                    headers.set("Authorization", settings.getBearerToken());
+                } else {
+                    headers.setBearerAuth(settings.getBearerToken());
+                }
             }
             default -> throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
                     "Unsupported " + backendLabel() + " authentication mode: " + settings.getAuthType());
