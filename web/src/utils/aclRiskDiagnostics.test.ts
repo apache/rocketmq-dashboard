@@ -56,9 +56,7 @@ describe('ACL risk diagnostics', () => {
       broadWhitelistCount: 0,
       duplicateAccessKeyCount: 0,
     });
-    expect(diagnostics.recommendations).toEqual([
-      '保持默认权限为 DENY，新增账号时继续按业务资源最小授权。',
-    ]);
+    expect(diagnostics.recommendationKeys).toEqual(['aclRisk.recommendation.default']);
   });
 
   it('flags disabled ACL and missing accounts as critical risks', () => {
@@ -162,10 +160,10 @@ describe('ACL risk diagnostics', () => {
         }),
       ]),
     );
-    expect(diagnostics.recommendations).toEqual(
+    expect(diagnostics.recommendationKeys).toEqual(
       expect.arrayContaining([
-        '将通配 Topic 授权收敛为具体 Topic 或业务前缀，并避免 *=ALL。',
-        '按 resource=PUB、resource=SUB、resource=ALL 或 resource=DENY 的格式修正条目。',
+        'aclRisk.wildcardTopicPermission.recommendation',
+        'aclRisk.invalidPermissionEntry.recommendation',
       ]),
     );
   });

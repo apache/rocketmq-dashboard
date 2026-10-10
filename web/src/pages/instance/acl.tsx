@@ -1026,8 +1026,8 @@ const AclPageContent = ({
       minWidth: 260,
       render: (_: unknown, record) => (
         <Space direction="vertical" size={2}>
-          <Typography.Text strong>{record.title}</Typography.Text>
-          <Typography.Text type="secondary">{record.description}</Typography.Text>
+          <Typography.Text strong>{t(record.titleKey)}</Typography.Text>
+          <Typography.Text type="secondary">{t(record.descriptionKey)}</Typography.Text>
         </Space>
       ),
     },
@@ -1064,11 +1064,11 @@ const AclPageContent = ({
     },
     {
       title: t('acl.riskRecommendation'),
-      dataIndex: 'recommendation',
-      key: 'recommendation',
+      dataIndex: 'recommendationKey',
+      key: 'recommendationKey',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 280,
-      render: (text: string) => <Typography.Text>{text}</Typography.Text>,
+      render: (text: string) => <Typography.Text>{t(text)}</Typography.Text>,
     },
   ];
 
@@ -1380,7 +1380,7 @@ const AclPageContent = ({
                                 {t('acl.riskDiagnostics')}
                               </Typography.Title>
                               <Typography.Text type="secondary">
-                                {aclRiskDiagnostics.statusText}
+                                {t(aclRiskDiagnostics.statusKey)}
                               </Typography.Text>
                               <div style={{ marginTop: 8 }}>
                                 <Tag color={aclRiskDiagnostics.statusColor}>
@@ -1422,9 +1422,9 @@ const AclPageContent = ({
                           <div>
                             <Typography.Text strong>{t('acl.riskRecommendations')}</Typography.Text>
                             <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-                              {aclRiskDiagnostics.recommendations.map((item) => (
+                              {aclRiskDiagnostics.recommendationKeys.map((item) => (
                                 <li key={item}>
-                                  <Typography.Text>{item}</Typography.Text>
+                                  <Typography.Text>{t(item)}</Typography.Text>
                                 </li>
                               ))}
                             </ul>

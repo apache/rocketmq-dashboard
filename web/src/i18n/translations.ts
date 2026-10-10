@@ -521,6 +521,197 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.title': { zh: 'Topic 管理', en: 'Topic Management' },
   'group.title': { zh: 'Group 管理', en: 'Group Management' },
   'acl.title': { zh: 'ACL 管理', en: 'ACL Management' },
+  // ─── ACL risk diagnostics (utils return keys; the page translates) ───
+  'aclRisk.statusHealthy': { zh: 'ACL 配置健康', en: 'ACL configuration healthy' },
+  'aclRisk.statusWarning': { zh: 'ACL 配置需要关注', en: 'ACL configuration needs attention' },
+  'aclRisk.statusCritical': { zh: 'ACL 配置存在高风险', en: 'ACL configuration has high risk' },
+  'aclRisk.aclDisabled.title': { zh: 'ACL 未启用', en: 'ACL not enabled' },
+  'aclRisk.aclDisabled.desc': {
+    zh: '当前集群没有启用 ACL，客户端访问主要依赖网络边界。',
+    en: 'ACL is not enabled on this cluster; client access relies on the network boundary.',
+  },
+  'aclRisk.aclDisabled.recommendation': {
+    zh: '在生产集群启用 ACL，并为管理员和应用账号配置最小权限。',
+    en: 'Enable ACL on production clusters and configure least privilege for admin and app accounts.',
+  },
+  'aclRisk.legacyAclVersion.title': {
+    zh: 'ACL 版本较旧或未知',
+    en: 'ACL version legacy or unknown',
+  },
+  'aclRisk.legacyAclVersion.desc': {
+    zh: '当前版本不是明确的 ACL 2.0，部分细粒度权限能力可能不可用。',
+    en: 'The version is not clearly ACL 2.0; some fine-grained permission capabilities may be unavailable.',
+  },
+  'aclRisk.legacyAclVersion.recommendation': {
+    zh: '确认集群 ACL 版本，并在升级窗口评估迁移到 ACL 2.0。',
+    en: 'Confirm the cluster ACL version and evaluate migrating to ACL 2.0 in an upgrade window.',
+  },
+  'aclRisk.noPlainAccessAccounts.title': {
+    zh: '未配置 Plain Access 账号',
+    en: 'No plain access accounts',
+  },
+  'aclRisk.noPlainAccessAccounts.desc': {
+    zh: '集群配置中没有 Plain Access 账号，启用 ACL 后可能导致客户端或运维账号无法认证。',
+    en: 'No plain access accounts exist; enabling ACL may block client or operator authentication.',
+  },
+  'aclRisk.noPlainAccessAccounts.recommendation': {
+    zh: '至少配置一个受控管理员账号和必要的应用账号，再启用严格 ACL 策略。',
+    en: 'Configure at least one controlled admin account and the necessary app accounts before strict ACL.',
+  },
+  'aclRisk.broadGlobalWhitelist.title': {
+    zh: '全局 IP 白名单范围过大',
+    en: 'Global IP whitelist too broad',
+  },
+  'aclRisk.broadGlobalWhitelist.desc': {
+    zh: '全局白名单会绕过账号级权限判断，过宽网段会降低 ACL 的实际隔离效果。',
+    en: 'A global whitelist bypasses per-account checks; an overly wide range weakens ACL isolation.',
+  },
+  'aclRisk.broadGlobalWhitelist.recommendation': {
+    zh: '删除全局通配白名单，改为按账号配置必要的应用出口地址。',
+    en: 'Remove the global wildcard whitelist and configure per-account app egress addresses.',
+  },
+  'aclRisk.multipleAdminAccounts.title': {
+    zh: '管理员账号数量偏多',
+    en: 'Too many admin accounts',
+  },
+  'aclRisk.multipleAdminAccounts.desc': {
+    zh: '多个长期管理员账号会增加凭据轮转和误授权的管理成本。',
+    en: 'Multiple long-lived admin accounts raise credential-rotation and misauthorization overhead.',
+  },
+  'aclRisk.multipleAdminAccounts.recommendation': {
+    zh: '保留最少数量的管理员账号，并将日常应用访问改为非管理员账号。',
+    en: 'Keep the fewest admin accounts and move routine app access to non-admin accounts.',
+  },
+  'aclRisk.missingAccessKey.title': { zh: 'Access Key 缺失', en: 'Access key missing' },
+  'aclRisk.missingAccessKey.desc': {
+    zh: 'Plain Access 账号缺少 Access Key，无法形成可审计的身份边界。',
+    en: 'A plain access account has no access key, so no auditable identity boundary exists.',
+  },
+  'aclRisk.missingAccessKey.recommendation': {
+    zh: '补全 Access Key，或删除无法识别身份的账号配置。',
+    en: 'Complete the access key or remove the unidentifiable account configuration.',
+  },
+  'aclRisk.duplicateAccessKey.title': { zh: 'Access Key 重复', en: 'Duplicate access key' },
+  'aclRisk.duplicateAccessKey.desc': {
+    zh: '同一个 Access Key 出现在多个 Plain Access 账号中，权限合并结果容易被误判。',
+    en: 'The same access key appears in multiple plain access accounts; the merged permissions are easy to misread.',
+  },
+  'aclRisk.duplicateAccessKey.recommendation': {
+    zh: '保留唯一账号定义，合并必要权限后删除重复条目。',
+    en: 'Keep one account definition, merge the needed permissions, and delete the duplicates.',
+  },
+  'aclRisk.broadAccountWhitelist.title': {
+    zh: '账号 IP 白名单范围过大',
+    en: 'Account IP whitelist too broad',
+  },
+  'aclRisk.broadAccountWhitelist.desc': {
+    zh: '该账号的 IP 白名单覆盖范围过宽，弱化了 ACL 账号和网络来源的双重约束。',
+    en: "This account's IP whitelist is too wide, weakening the dual account-plus-network constraint.",
+  },
+  'aclRisk.broadAccountWhitelist.recommendation': {
+    zh: '将账号白名单收敛到应用出口地址或可信网段。',
+    en: 'Converge the account whitelist onto app egress addresses or trusted ranges.',
+  },
+  'aclRisk.adminWithBroadAccess.title': {
+    zh: '管理员账号可从宽网段访问',
+    en: 'Admin reachable from broad ranges',
+  },
+  'aclRisk.adminWithBroadAccess.desc': {
+    zh: '管理员账号叠加宽松 IP 白名单后，误用或泄露影响范围会扩大到整个集群。',
+    en: 'An admin account with a loose IP whitelist magnifies misuse or leak impact to the whole cluster.',
+  },
+  'aclRisk.adminWithBroadAccess.recommendation': {
+    zh: '为管理员账号配置专用 Access Key、强约束 IP 白名单，并尽量减少长期管理员账号。',
+    en: 'Give admin accounts dedicated keys and tight whitelists, and minimize long-lived admins.',
+  },
+  'aclRisk.defaultTopicAllowCritical.title': {
+    zh: '默认 Topic 权限过大',
+    en: 'Default topic permission too broad',
+  },
+  'aclRisk.defaultTopicAllowCritical.desc': {
+    zh: '该账号默认允许所有 Topic 操作，新增 Topic 会自动继承高权限。',
+    en: 'This account allows all topic operations by default; new topics inherit elevated access.',
+  },
+  'aclRisk.defaultTopicAllow.recommendation': {
+    zh: '将默认 Topic 权限改为 DENY，并为确需访问的 Topic 配置最小权限。',
+    en: 'Change the default topic permission to DENY and grant least privilege per topic.',
+  },
+  'aclRisk.defaultTopicAllowWarning.title': {
+    zh: '默认 Topic 权限非 DENY',
+    en: 'Default topic permission not DENY',
+  },
+  'aclRisk.defaultTopicAllowWarning.desc': {
+    zh: '该账号会自动获得新增 Topic 的默认访问能力，权限边界依赖命名规范。',
+    en: 'This account automatically gains default access to new topics; the boundary relies on naming discipline.',
+  },
+  'aclRisk.defaultTopicDenyFirst.recommendation': {
+    zh: '优先使用 DENY 作为默认 Topic 权限，再通过 Topic 权限列表授权。',
+    en: 'Prefer DENY as the default topic permission and grant access via the topic list.',
+  },
+  'aclRisk.defaultGroupAllowCritical.title': {
+    zh: '默认 Group 权限过大',
+    en: 'Default group permission too broad',
+  },
+  'aclRisk.defaultGroupAllowCritical.desc': {
+    zh: '该账号默认允许所有 Consumer Group 操作，新增 Group 会自动继承高权限。',
+    en: 'This account allows all consumer group operations by default; new groups inherit elevated access.',
+  },
+  'aclRisk.defaultGroupAllow.recommendation': {
+    zh: '将默认 Group 权限改为 DENY，并为确需订阅的 Group 配置最小权限。',
+    en: 'Change the default group permission to DENY and grant least privilege per group.',
+  },
+  'aclRisk.defaultGroupAllowWarning.title': {
+    zh: '默认 Group 权限非 DENY',
+    en: 'Default group permission not DENY',
+  },
+  'aclRisk.defaultGroupAllowWarning.desc': {
+    zh: '该账号会自动获得新增 Consumer Group 的默认访问能力。',
+    en: 'This account automatically gains default access to new consumer groups.',
+  },
+  'aclRisk.defaultGroupDenyFirst.recommendation': {
+    zh: '优先使用 DENY 作为默认 Group 权限，再通过 Group 权限列表授权。',
+    en: 'Prefer DENY as the default group permission and grant access via the group list.',
+  },
+  'aclRisk.wildcardTopicPermission.title': {
+    zh: 'Topic 通配授权过大',
+    en: 'Wildcard topic grant too broad',
+  },
+  'aclRisk.wildcardTopicPermission.desc': {
+    zh: '该账号通过通配资源获得 Topic 访问能力，可能覆盖未来新增 Topic。',
+    en: 'This account gains topic access through a wildcard resource, potentially covering future topics.',
+  },
+  'aclRisk.wildcardTopicPermission.recommendation': {
+    zh: '将通配 Topic 授权收敛为具体 Topic 或业务前缀，并避免 *=ALL。',
+    en: 'Converge wildcard topic grants to specific topics or prefixes and avoid *=ALL.',
+  },
+  'aclRisk.wildcardGroupPermission.title': {
+    zh: 'Group 通配授权过大',
+    en: 'Wildcard group grant too broad',
+  },
+  'aclRisk.wildcardGroupPermission.desc': {
+    zh: '该账号通过通配资源获得 Consumer Group 访问能力，可能覆盖未来新增 Group。',
+    en: 'This account gains consumer group access through a wildcard resource, potentially covering future groups.',
+  },
+  'aclRisk.wildcardGroupPermission.recommendation': {
+    zh: '将通配 Group 授权收敛为具体 Group 或业务前缀，并避免 *=ALL。',
+    en: 'Converge wildcard group grants to specific groups or prefixes and avoid *=ALL.',
+  },
+  'aclRisk.invalidPermissionEntry.title': {
+    zh: '权限条目格式无法识别',
+    en: 'Unrecognizable permission entry',
+  },
+  'aclRisk.invalidPermissionEntry.desc': {
+    zh: '该权限条目没有明确的 PUB、SUB、ALL 或 DENY 决策，诊断无法判断最终权限。',
+    en: 'The entry has no clear PUB, SUB, ALL, or DENY decision, so the effective permission is unknown.',
+  },
+  'aclRisk.invalidPermissionEntry.recommendation': {
+    zh: '按 resource=PUB、resource=SUB、resource=ALL 或 resource=DENY 的格式修正条目。',
+    en: 'Fix the entry to the resource=PUB, resource=SUB, resource=ALL, or resource=DENY format.',
+  },
+  'aclRisk.recommendation.default': {
+    zh: '保持默认权限为 DENY，新增账号时继续按业务资源最小授权。',
+    en: 'Keep the default permissions as DENY and grant least privilege per business resource.',
+  },
   'message.title': { zh: '消息查询', en: 'Message Search' },
 
   // ─── Message Page ───
