@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class TopicUpdateToolHandler extends MutationToolHandler<TopicUpdateInput, TopicOutput> {
@@ -62,6 +63,11 @@ public class TopicUpdateToolHandler extends MutationToolHandler<TopicUpdateInput
                 .warningIf(before != null && before.equals(after),
                         "The requested topic configuration already matches the current state.")
                 .build();
+    }
+
+    @Override
+    public Map<String, Object> confirmationState(ToolPlan plan) {
+        return Map.of("before", plan.before(), "after", plan.after());
     }
 
     @Override

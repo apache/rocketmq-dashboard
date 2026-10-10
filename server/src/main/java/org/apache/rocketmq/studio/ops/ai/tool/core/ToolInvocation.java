@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.ai.tool.core;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.apache.rocketmq.studio.ops.ai.tool.handler.MutationToolHandler;
 
+import java.util.Map;
+
 /**
  * A tool call and its request context. Input conversion is deferred until the
  * preview or terminal invocation so failures remain inside the validation and audit chain.
@@ -35,6 +37,14 @@ public record ToolInvocation(ToolExecutionContext context, ToolHandler<?, ?> han
                     + context.definition().name());
         }
         return preview(mutation, context);
+    }
+
+    public Map<String, Object> confirmationState(ToolPlan plan) {
+        if (!(handler instanceof MutationToolHandler<?, ?> mutation)) {
+            throw new IllegalStateException("Mutation tool requires MutationToolHandler: "
+                    + context.definition().name());
+        }
+        return mutation.confirmationState(plan);
     }
 
     private static <I> ToolPlan preview(MutationToolHandler<I, ?> handler, ToolExecutionContext context) {

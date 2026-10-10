@@ -36,6 +36,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -49,10 +50,11 @@ public class ToolTokenService {
     private static final String TOKEN_VERSION = "v1";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     private static final int SIGNATURE_BYTES = 32;
-    // Base64 of "v1." + at most 19 decimal digits + "." + 32 signature bytes.
-    private static final int MAX_TOKEN_LENGTH = 76;
+    private static final String PLAN_TOKEN_VERSION = "v1p";
+    // Base64 of "v1p." + 19 decimal digits + "." + 64 digest digits + "." + 32 HMAC bytes.
+    private static final int MAX_TOKEN_LENGTH = 164;
     private static final Pattern TOKEN_PREFIX = Pattern.compile(
-            Pattern.quote(TOKEN_VERSION) + "\\.([1-9][0-9]{0,18})\\.");
+            "v1\\.([1-9][0-9]{0,18})\\.|v1p\\.([1-9][0-9]{0,18})\\.([0-9a-f]{64})\\.");
 
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -95,20 +97,44 @@ public class ToolTokenService {
         requireConfiguredSecret();
         long expiresAt = clock.instant().plus(TOKEN_TTL).getEpochSecond();
         byte[] signature = sign(signingPayload(context, expiresAt));
-        return new ConfirmationToken(expiresAt, signature).format();
+        return new ConfirmationToken(expiresAt, signature, null).format();
+    }
+
+    public String issue(ToolExecutionContext context, Map<String, Object> confirmationState) {
+        requireConfiguredSecret();
+        long expiresAt = clock.instant().plus(TOKEN_TTL).getEpochSecond();
+        String digest = planDigest(confirmationState);
+        byte[] signature = sign(signingPayload(context, expiresAt, digest));
+        return new ConfirmationToken(expiresAt, signature, digest).format();
     }
 
     public void verify(ToolExecutionContext context) {
+        authenticatedToken(context);
+    }
+
+    public void verifyPlan(ToolExecutionContext context, Map<String, Object> confirmationState) {
+        ConfirmationToken token = authenticatedToken(context);
+        if (token.planDigest() == null) {
+            throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(context.definition().name());
+        }
+        if (!MessageDigest.isEqual(token.planDigest().getBytes(StandardCharsets.US_ASCII),
+                planDigest(confirmationState).getBytes(StandardCharsets.US_ASCII))) {
+            throw ToolError.CONFIRMATION_PLAN_CHANGED.exception(context.definition().name());
+        }
+    }
+
+    private ConfirmationToken authenticatedToken(ToolExecutionContext context) {
         requireConfiguredSecret();
         String toolName = context.definition().name();
         ConfirmationToken token = ConfirmationToken.parse(context.confirmToken(), toolName);
         if (clock.instant().getEpochSecond() >= token.expiresAt()) {
             throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
         }
-        byte[] expected = sign(signingPayload(context, token.expiresAt()));
+        byte[] expected = sign(signingPayload(context, token.expiresAt(), token.planDigest()));
         if (!MessageDigest.isEqual(expected, token.signature())) {
             throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
         }
+        return token;
     }
 
     private void requireConfiguredSecret() {
@@ -129,6 +155,29 @@ public class ToolTokenService {
             return objectMapper.writeValueAsBytes(payload);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Unable to create tool confirm token payload", e);
+        }
+    }
+
+    private byte[] signingPayload(ToolExecutionContext context, long expiresAt, String digest) {
+        if (digest == null) {
+            return signingPayload(context, expiresAt);
+        }
+        try {
+            return objectMapper.writeValueAsBytes(new PlanSignaturePayload(
+                    PLAN_TOKEN_VERSION, expiresAt, context.definition().name(),
+                    subjectBinding(context), context.instanceId(),
+                    canonicalInput(context.businessInput()), digest));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to create tool confirm token payload", exception);
+        }
+    }
+
+    private String planDigest(Map<String, Object> confirmationState) {
+        try {
+            byte[] state = objectMapper.writeValueAsBytes(canonicalInput(confirmationState));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(state));
+        } catch (JsonProcessingException | NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("Unable to digest tool confirmation state", exception);
         }
     }
 
@@ -172,7 +221,7 @@ public class ToolTokenService {
         }
     }
 
-    private record ConfirmationToken(long expiresAt, byte[] signature) {
+    private record ConfirmationToken(long expiresAt, byte[] signature, String planDigest) {
 
         private static ConfirmationToken parse(String token, String toolName) {
             if (token == null || token.isBlank()) {
@@ -192,21 +241,34 @@ public class ToolTokenService {
                 if (!matcher.matches()) {
                     throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
                 }
-                return new ConfirmationToken(Long.parseLong(matcher.group(1)),
-                        Arrays.copyOfRange(content, prefixLength, content.length));
+                String expiry = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+                return new ConfirmationToken(Long.parseLong(expiry),
+                        Arrays.copyOfRange(content, prefixLength, content.length), matcher.group(3));
             } catch (IllegalArgumentException exception) {
                 throw ToolError.CONFIRMATION_TOKEN_INVALID.exception(toolName);
             }
         }
 
         private String format() {
-            byte[] prefix = (TOKEN_VERSION + "." + expiresAt + ".").getBytes(StandardCharsets.UTF_8);
+            String header = planDigest == null ? TOKEN_VERSION + "." + expiresAt + "."
+                    : PLAN_TOKEN_VERSION + "." + expiresAt + "." + planDigest + ".";
+            byte[] prefix = header.getBytes(StandardCharsets.UTF_8);
             byte[] content = ByteBuffer.allocate(prefix.length + signature.length)
                     .put(prefix)
                     .put(signature)
                     .array();
             return Base64.getEncoder().encodeToString(content);
         }
+    }
+
+    private record PlanSignaturePayload(
+            String version,
+            long expiresAt,
+            String tool,
+            String subject,
+            String instanceId,
+            Map<String, Object> input,
+            String planDigest) {
     }
 
     private record SignaturePayload(

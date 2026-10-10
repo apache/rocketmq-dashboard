@@ -117,3 +117,23 @@ mvn -B -ntp -Dtest=AuthServiceTest test  # 运行指定测试类；可替换为�
 禁止内部/商业版本号；禁用 `com.aliyun.openservices:ons-client`，客户端收发用开源
 `rocketmq-client`；云厂商管控面走 OpenAPI SDK（`alibabacloud-rocketmq20220801` /
 `tencentcloud-sdk-java-trocket`）。
+
+
+## Topic update confirmation
+
+`rmq.topic.update` confirms both the requested arguments and the stable Topic
+configuration shown by dry-run. If the Topic was created, deleted, or its
+configuration changed before the execution preview, apply returns HTTP 409 with
+code `CONFLICT` and requests a fresh dry-run. Review that new plan and use its token.
+
+The binding covers the before/after Topic configuration (name, Instance, type,
+queue counts, permission and remark). Message count, TPS, consumer group count,
+summary, impact descriptions and warnings do not affect confirmation. Other
+mutation tools retain request-only confirmation until they define a stable projection.
+
+After upgrading, previously issued request-only Topic update tokens require a
+fresh dry-run. Token values remain opaque to clients; request and response fields
+and the ten-minute expiry are unchanged. This comparison detects stale previews,
+but does not make Broker writes atomic with the configuration check. Changes
+occurring after that check remain possible. Single-use token consumption is a
+separate requirement; this binding alone does not guarantee one execution per token.
