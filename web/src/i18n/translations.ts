@@ -2838,6 +2838,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.allRoles': { zh: '全部权限', en: 'All roles' },
   'userMgmt.roleAdmin': { zh: '管理员', en: 'Administrator' },
   'userMgmt.roleUser': { zh: '普通用户', en: 'Regular user' },
+  'userMgmt.roleGranted': { zh: '已授予管理员权限', en: 'Administrator role granted' },
+  'userMgmt.roleRevoked': { zh: '已撤销管理员权限', en: 'Administrator role revoked' },
+  'userMgmt.updateRoleFailed': {
+    zh: '修改权限失败，请稍后重试',
+    en: 'Failed to change the role. Please try again later.',
+  },
+  'userMgmt.grantRoleConfirmTitle': {
+    zh: '将「{username}」提升为管理员？',
+    en: 'Grant the administrator role to "{username}"?',
+  },
+  'userMgmt.revokeRoleConfirmTitle': {
+    zh: '撤销「{username}」的管理员权限？',
+    en: 'Revoke the administrator role from "{username}"?',
+  },
+  'userMgmt.roleChangeConfirmBody': {
+    zh: '该用户的所有会话将被注销，需要重新登录后新权限才会生效。',
+    en: 'All of this user\'s sessions will be signed out; the new role takes effect after they sign in again.',
+  },
   'userMgmt.filterByStatus': { zh: '按状态筛选', en: 'Filter by status' },
   'userMgmt.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'userMgmt.totalUsers': { zh: '共 {count} 个用户', en: '{count} users in total' },
@@ -2869,6 +2887,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.revokeAll': { zh: '注销全部', en: 'Revoke All' },
   'userMgmt.accountStatus': { zh: '账号状态', en: 'Account Status' },
   'userMgmt.passwordChangedAt': { zh: '密码修改时间', en: 'Password Changed At' },
+  'userMgmt.loginLockouts': { zh: '登录锁定', en: 'Login lockouts' },
+  'userMgmt.loginLockoutRemaining': {
+    zh: '{seconds} 秒后自动解锁',
+    en: 'unlocks in {seconds}s',
+  },
+  'userMgmt.loginLockoutHelp': {
+    zh: '该用户名连续登录失败达到上限被临时锁定，锁定期满自动解除，无需人工干预。',
+    en: 'This username exhausted its failed-login budget and is temporarily locked; the lock lifts by itself when it expires.',
+  },
+  'userMgmt.passwordMustChange': { zh: '待改密', en: 'Rotation due' },
+  'userMgmt.passwordMustChangeHelp': {
+    zh: '该账号的当前密码由他人设定（创建或管理员重置），所有者下次登录时必须修改。',
+    en: 'The current password was chosen by someone else (creation or admin reset); its owner must replace it at the next login.',
+  },
   'userMgmt.noActiveSessions': { zh: '暂无活跃会话', en: 'No active sessions' },
   'userMgmt.createTitle': { zh: '新建 Studio 用户', en: 'Create Studio User' },
   'userMgmt.initialPassword': { zh: '初始密码', en: 'Initial Password' },
@@ -2911,6 +2943,16 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'userMgmt.nothingToRevoke': { zh: '没有可注销的活跃会话', en: 'No active sessions to revoke' },
   'userMgmt.revokeFailed': { zh: '注销用户会话失败', en: 'Failed to revoke user sessions' },
+  'userMgmt.deleteConfirm': {
+    zh: '删除用户 {username}？',
+    en: 'Delete user {username}?',
+  },
+  'userMgmt.deleteDescription': {
+    zh: '该账号及其全部会话将被永久删除，此操作不可恢复。',
+    en: 'The account and all of its sessions are removed permanently; this cannot be undone.',
+  },
+  'userMgmt.deleted': { zh: '已删除用户 {username}', en: 'Deleted user {username}' },
+  'userMgmt.deleteFailed': { zh: '删除用户失败', en: 'Failed to delete user' },
   'userMgmt.exportedCount': { zh: '已导出 {count} 个用户', en: 'Exported {count} users' },
   'userMgmt.exportFailed': {
     zh: '导出用户列表失败，请稍后重试',
@@ -2927,6 +2969,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'login.passwordRequired': { zh: '密码为必填项', en: 'Password is required' },
   'login.success': { zh: '登录成功', en: 'Login successful' },
   'login.failed': { zh: '登录失败', en: 'Login failed' },
+  'login.changeFailed': { zh: '修改密码失败', en: 'Failed to change password' },
+  'login.mustChangePrompt': {
+    zh: '当前密码由管理员设定，请先修改密码',
+    en: 'This password was set by an administrator; change it to continue',
+  },
+  'login.rotationDescription': {
+    zh: '账号 {username} 的当前密码由他人设定，请设置新密码后进入控制台。',
+    en: 'The current password of {username} was chosen by someone else. Set a new one to enter the console.',
+  },
+  'login.newPassword': { zh: '新密码', en: 'New password' },
+  'login.newPasswordPlaceholder': { zh: '请输入新密码', en: 'Enter the new password' },
+  'login.newPasswordRequired': { zh: '请输入新密码', en: 'Enter the new password' },
+  'login.confirmNewPassword': { zh: '确认新密码', en: 'Confirm new password' },
+  'login.confirmNewPasswordPlaceholder': { zh: '请再次输入新密码', en: 'Repeat the new password' },
+  'login.confirmNewPasswordRequired': { zh: '请再次输入新密码', en: 'Repeat the new password' },
+  'login.passwordMismatch': { zh: '两次输入的密码不一致', en: 'The passwords do not match' },
+  'login.rotationSubmit': { zh: '修改密码并进入', en: 'Change password and continue' },
   'login.brandEyebrow': { zh: '控制台', en: 'Control plane' },
   'login.brandTitle': {
     zh: '统一管理每一条消息链路',
