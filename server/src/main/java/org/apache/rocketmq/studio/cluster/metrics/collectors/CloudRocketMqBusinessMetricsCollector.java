@@ -104,9 +104,9 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
         } catch (RuntimeException error) {
             log.warn("Failed to collect cloud consumer lag for group {} on instance {}: {}", group.getName(),
                     instance.getName(), error.getMessage());
-            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, labels, collectedAt),
-                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, labels, collectedAt),
-                    unavailable(TOPIC_BACKLOG_TOTAL, instance, labels, collectedAt));
+            return List.of(unavailable(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, collectedAt),
+                    unavailable(TOPIC_BACKLOG_TOTAL, instance, group.getClusterId(), labels, collectedAt));
         }
     }
 
@@ -118,7 +118,12 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
 
     private static MetricSample unavailable(String metric, InstanceVO instance, Map<String, String> labels,
             Instant collectedAt) {
-        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), null, labels, null,
+        return unavailable(metric, instance, null, labels, collectedAt);
+    }
+
+    private static MetricSample unavailable(String metric, InstanceVO instance, String clusterId,
+            Map<String, String> labels, Instant collectedAt) {
+        return new MetricSample(metric, AlertDomain.BUSINESS, instance.getName(), clusterId, labels, null,
                 MetricAvailability.UNAVAILABLE, collectedAt);
     }
 }
