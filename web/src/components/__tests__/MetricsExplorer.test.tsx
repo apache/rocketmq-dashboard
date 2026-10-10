@@ -1135,6 +1135,36 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
   });
 
+  it('keeps the active query unchanged when history references a removed profile', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          profileId: 'removed-profile',
+          profileName: 'Removed Profile',
+          metricName: 'Removed Metric',
+        }),
+      ]),
+    );
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog).getByText('Removed Metric').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    expect(screen.getByRole('dialog', { name: '指标查询历史' })).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected')?.textContent,
+    ).toBe('1h');
+    expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+    expect(vi.mocked(queryMetrics)).toHaveBeenCalledTimes(queryCount);
+  });
+
   it('keeps the current data source when cancelling a protected history restore', async () => {
     const user = userEvent.setup();
     vi.mocked(listDataSources).mockResolvedValue([

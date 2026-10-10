@@ -174,6 +174,71 @@ describe('AI API', () => {
       expect(events[4]).toEqual({ type: 'text_delta', content: '集群当前有 2 个 broker。' });
     });
 
+    it.each(['send', 'attach'] as const)(
+      'rejectsPrematureEofAfterPartialAgentOutputFor%sTest',
+      async (operation) => {
+        vi.stubGlobal(
+          'fetch',
+          vi
+            .fn()
+            .mockResolvedValue(
+              eventStreamResponse([agentFrame({ type: 'text_delta', content: 'partial' })]),
+            ),
+        );
+        const onEvent = vi.fn();
+        const stream =
+          operation === 'send'
+            ? openRunStream(7, body, { onEvent })
+            : attachRunStream(41, 0, { onEvent });
+
+        await expect(stream).rejects.toMatchObject({
+          name: 'AiStreamError',
+          code: 'llm.stream.unexpected_eof',
+        });
+        expect(onEvent).toHaveBeenCalledExactlyOnceWith({
+          type: 'text_delta',
+          content: 'partial',
+        });
+      },
+    );
+
+    it.each([
+      ['empty', ''],
+      ['heartbeat-only', ':hb\n\n'],
+      ['unterminated-agent', 'event: agent\ndata: {"type":"text_delta","content":"partial"}'],
+    ])('rejectsPrematureEofFor%sResponseTest', async (_name, content) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(eventStreamResponse([content])));
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).rejects.toMatchObject({
+        name: 'AiStreamError',
+        code: 'llm.stream.unexpected_eof',
+      });
+    });
+
+    it('acceptsATerminalControlFrameWithoutATrailingBlankLineTest', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(eventStreamResponse(['event: done\ndata: {}'])),
+      );
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).resolves.toBeUndefined();
+    });
+
+    it('preservesReaderAbortErrorsInsteadOfReplacingThemWithPrematureEofTest', async () => {
+      const abort = new DOMException('The operation was aborted.', 'AbortError');
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(abort);
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+      await expect(attachRunStream(41, 0, { onEvent: vi.fn() })).rejects.toBe(abort);
+    });
+
     it('terminatesOnTheDoneEventNameAndCancelsTheReaderTest', async () => {
       const onCancel = vi.fn();
       vi.stubGlobal(
@@ -586,10 +651,10 @@ describe('AI API', () => {
       expect(result).toEqual([]);
     });
 
-    it('scopes tool discovery to the selected cluster', async () => {
-      mock.onGet('/ai/tools', { params: { cluster: 'cluster-a' } }).reply(200, { data: [] });
+    it('scopes tool discovery to the selected instance', async () => {
+      mock.onGet('/ai/tools', { params: { instanceId: 'instance-a' } }).reply(200, { data: [] });
 
-      await expect(listTools('cluster-a')).resolves.toEqual([]);
+      await expect(listTools('instance-a')).resolves.toEqual([]);
     });
 
     it('should handle server error', async () => {

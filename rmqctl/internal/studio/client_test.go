@@ -16,7 +16,14 @@
  */
 package studio
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 // TestValidateServerSchemeAdaptiveHTTP verifies the adaptive scheme policy:
 // HTTPS is always accepted, plain HTTP is accepted for loopback / RFC1918
@@ -74,5 +81,37 @@ func TestIsPrivateHost(t *testing.T) {
 		if isPrivateHost(host) {
 			t.Errorf("isPrivateHost(%q) = true, want false", host)
 		}
+	}
+}
+
+// The passthrough commands decode the studio payload into an `any`, where encoding/json
+// would represent every number as float64 and silently corrupt int64 values beyond 2^53
+// (RocketMQ offsets and timestamps). The client must keep the literal via json.Number.
+func TestRequestPreservesLargeIntegersInPassthroughPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":200,"message":"ok","data":{"items":[{"msgOffset":9007199254740993}]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(http.DefaultClient)
+	target := Target{
+		Server:     server.URL,
+		InstanceID: "instance-1",
+		Credential: Credential{AccessKey: "ak", SecretKey: "sk"},
+		Timeout:    DefaultTimeout,
+	}
+
+	var payload any
+	if err := client.request(context.Background(), target, http.MethodGet, "/api/brokers", nil, &payload); err != nil {
+		t.Fatalf("request returned error: %v", err)
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if !strings.Contains(string(encoded), "9007199254740993") {
+		t.Fatalf("payload lost integer precision: %s", encoded)
 	}
 }

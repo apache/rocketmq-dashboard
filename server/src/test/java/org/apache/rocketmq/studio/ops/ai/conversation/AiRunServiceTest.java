@@ -320,12 +320,14 @@ class AiRunServiceTest {
             service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("a long answer"));
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(registry.isLive(RUN_ID)).isTrue();
+            // Capture the handle before stopping: stop() cancels the worker, and the worker's own
+            // finalisation removes the registration, so looking it up again afterwards races with
+            // that cleanup and is legitimately empty on a loaded machine.
+            AgentRunHandle handle = registry.handle(RUN_ID).orElseThrow();
 
             RmqAiRun stopped = service.stop(RUN_ID);
 
-            assertThat(registry.handle(RUN_ID))
-                    .get()
-                    .satisfies(handle -> assertThat(handle.abortReason()).contains(AbortReason.USER_STOP));
+            assertThat(handle.abortReason()).contains(AbortReason.USER_STOP);
             release.countDown();
             assertThat(stopped.getId()).isEqualTo(RUN_ID);
             assertThat(awaitRunStatus(RunStatus.STOPPED, Duration.ofSeconds(5))).isTrue();
@@ -346,6 +348,26 @@ class AiRunServiceTest {
         // Idempotent, so the stop button is safe to press twice and a client that missed the terminal
         // frame can still ask.
         assertThat(service.stop(RUN_ID)).isSameAs(finished);
+        assertThat(runUpdates).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
+    void secondStopOfAnAbortingRunShouldNotWriteItsOwnTerminalStateTest() {
+        RmqAiRun running = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(running));
+        when(runRepository.findActiveByConversationId(CONVERSATION_ID))
+                .thenReturn(Optional.of(running));
+        // A worker in this process owns the run and is already aborting, which is exactly what
+        // registry.stop() reports as false - the same value it returns for a run nobody owns here.
+        AgentRunHandle handle = new AgentRunHandle(RUN_ID, Duration.ofSeconds(3));
+        registry.register(RUN_ID, handle);
+        assertThat(handle.requestStop(AbortReason.USER_STOP)).isTrue();
+
+        service.stop(RUN_ID);
+
+        // The worker writes the terminal state itself; a fabricated one here would append a second
+        // terminal row and close the observers mid-flush.
         assertThat(runUpdates).isEmpty();
         assertThat(inserted).isEmpty();
     }

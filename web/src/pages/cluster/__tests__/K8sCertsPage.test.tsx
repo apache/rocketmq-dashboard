@@ -36,8 +36,8 @@ const certs: K8sCertInfo[] = [
     cluster: 'prod-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
-    notBefore: '2026-01-01T00:00:00Z',
-    notAfter: '2027-01-01T00:00:00Z',
+    notBefore: '2026-01-01T00:00:00',
+    notAfter: '2027-01-01T00:00:00',
     status: 'valid',
     daysRemaining: 365,
     san: ['broker.prod.example.com'],
@@ -60,8 +60,8 @@ const certs: K8sCertInfo[] = [
     cluster: 'staging-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
-    notBefore: '2026-01-01T00:00:00Z',
-    notAfter: '2027-01-01T00:00:00Z',
+    notBefore: '2026-01-01T00:00:00',
+    notAfter: '2027-01-01T00:00:00',
     status: 'valid',
     daysRemaining: 365,
     // The backend returns null when SAN is omitted.
@@ -109,6 +109,33 @@ describe('K8sCertsPage', () => {
     expect(screen.queryByText('SAN')).not.toBeInTheDocument();
   });
 
+  it('renders the zoneless backend expiry timestamp in the viewer timezone', async () => {
+    // The backend serializes notAfter as a UTC LocalDateTime without a zone
+    // designator. The column must interpret it as UTC and render it in the
+    // viewer's timezone; parsing it as browser-local (Date(value)) silently
+    // shifts the displayed expiry by the viewer's UTC offset.
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date('2027-01-01T00:00:00Z'));
+    const value = (type: string) => parts.find((part) => part.type === type)?.value;
+    const expected =
+      `${value('year')}-${value('month')}-${value('day')} ` +
+      `${value('hour')}:${value('minute')}:${value('second')}`;
+
+    expect(screen.getAllByText(expected).length).toBeGreaterThan(0);
+  });
+
   it('renders and sorts incomplete certificate metadata safely', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -130,10 +157,12 @@ describe('K8sCertsPage', () => {
   });
 
   it('shows future-dated certificates as not yet valid', async () => {
-    vi.mocked(listK8sCerts).mockResolvedValue([{
-      ...certs[0],
-      status: 'not_yet_valid',
-    }]);
+    vi.mocked(listK8sCerts).mockResolvedValue([
+      {
+        ...certs[0],
+        status: 'not_yet_valid',
+      },
+    ]);
     renderPage();
 
     expect(await screen.findByText('尚未生效')).toBeInTheDocument();
