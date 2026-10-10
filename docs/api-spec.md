@@ -915,9 +915,6 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `writeQueues` | `number` | 写队列数 |
 | `readQueues` | `number` | 读队列数 |
 | `perm` | `string` | 权限: `RW` / `RO` / `WO` |
-| `messageCount` | `number` | 消息总量 |
-| `tps` | `number` | 当前 TPS |
-| `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
 | `createdAt` | `string` | 创建时间 (ISO 8601) |
 | `updatedAt` | `string` | 更新时间 (ISO 8601) |

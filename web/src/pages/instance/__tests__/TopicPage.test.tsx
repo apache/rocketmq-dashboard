@@ -92,9 +92,6 @@ const buildTopics = (count: number): Topic[] =>
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
-      messageCount: index,
-      tps: index,
-      consumerGroupCount: 0,
       remark: `Topic ${suffix}`,
       gmtCreate: '2026-01-01T00:00:00Z',
       gmtModified: '2026-01-01T00:00:00Z',
@@ -1252,6 +1249,27 @@ describe('TopicPage', () => {
       20,
     );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+  });
+
+  it('does not present topic statistics that no provider computes', async () => {
+    // The topic APIs never fill messageCount, tps or consumerGroupCount: every provider builds
+    // TopicVO without them, so the detail drawer could only ever show 0 for 今日消息量, TPS and
+    // 消费者组数. They are removed rather than rendered as measured zeros.
+    const user = userEvent.setup();
+    mockTopicsList([buildTopics(1)[0]]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-descriptions')).not.toBeNull(),
+    );
+    const labels = [...document.querySelectorAll('.ant-modal .ant-descriptions-item-label')].map(
+      (label) => label.textContent,
+    );
+
+    expect(labels).not.toContain('今日消息量');
+    expect(labels).not.toContain('TPS');
+    expect(labels).not.toContain('消费者组数');
   });
 
   it('renders an unresolvable Topic consumer lag as unavailable instead of -1', async () => {

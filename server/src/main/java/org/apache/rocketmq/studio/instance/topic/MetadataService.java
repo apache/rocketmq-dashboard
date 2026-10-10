@@ -896,12 +896,11 @@ public class MetadataService {
     private String buildTopicCsv(List<TopicVO> topics) {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Type", "Cluster ID", "Write Queues", "Read Queues",
-                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark", "Created At", "Updated At");
+                "Permission", "Remark", "Created At", "Updated At");
         for (TopicVO topic : topics) {
             CsvUtil.appendRow(csv, topic.getName(), topic.getNamespace(), toText(topic.getType()), topic.getClusterId(),
-                    topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()), topic.getMessageCount(),
-                    topic.getTps(), topic.getConsumerGroupCount(), topic.getRemark(),
-                    topic.getGmtCreate(), topic.getGmtModified());
+                    topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()),
+                    topic.getRemark(), topic.getGmtCreate(), topic.getGmtModified());
         }
         return csv.toString();
     }

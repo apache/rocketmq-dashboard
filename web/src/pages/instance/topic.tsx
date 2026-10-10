@@ -1222,9 +1222,6 @@ const TopicPageContent = ({
         <Descriptions.Item label="权限">
           <Tag>{PERM_LABEL[topic.perm]}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
-        <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
-        <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
         <Descriptions.Item label="创建时间" span={2}>
           {formatDateTime(topic.gmtCreate)}
         </Descriptions.Item>
