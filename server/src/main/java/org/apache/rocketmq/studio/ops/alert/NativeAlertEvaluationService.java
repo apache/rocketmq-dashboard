@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -68,6 +69,11 @@ public class NativeAlertEvaluationService {
         }
 
         LocalDateTime eventTime = LocalDateTime.ofInstant(sample.collectedAt(), ZoneOffset.UTC);
+        Map<String, String> eventLabels = new TreeMap<>(sample.labels());
+        // Preserve incident fingerprints while carrying the authoritative cluster into correlation.
+        if (StringUtils.hasText(sample.clusterId())) {
+            eventLabels.put("clusterId", sample.clusterId().trim());
+        }
         SystemAlertVO event = SystemAlertVO.builder()
                 .level(level(rule.getSeverity()))
                 .title(rule.getName())
@@ -80,7 +86,7 @@ public class NativeAlertEvaluationService {
                 .transition(update.transition().name())
                 .instanceId(sample.instanceId())
                 .currentValue(update.state().currentValue())
-                .labels(Map.copyOf(new TreeMap<>(sample.labels())))
+                .labels(Map.copyOf(eventLabels))
                 .build();
         applyNotificationSuppression(event, sample.domain(), update.transition());
 
@@ -92,7 +98,7 @@ public class NativeAlertEvaluationService {
             alertRepository.markRuleTriggered(rule.getId(), eventTime.toString());
         }
         if (!event.isNotificationSuppressed()) {
-            notificationOutboxService.enqueue(event, rule, sample.labels());
+            notificationOutboxService.enqueue(event, rule, event.getLabels());
         }
     }
 

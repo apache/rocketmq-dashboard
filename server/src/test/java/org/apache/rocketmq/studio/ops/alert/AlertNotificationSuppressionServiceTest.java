@@ -96,6 +96,24 @@ class AlertNotificationSuppressionServiceTest {
     }
 
     @Test
+    void newerResolvedClusterIdentitySupersedesLegacyUnscopedFiringTest() {
+        AlertRepository repository = mock(AlertRepository.class);
+        LocalDateTime now = LocalDateTime.now();
+        SystemAlertVO firing = event(1L, AlertDomain.CLUSTER, "FIRING", "broker-a", now.minusMinutes(3));
+        firing.setFingerprint("stable-broker-incident");
+        SystemAlertVO resolved = event(2L, AlertDomain.CLUSTER, "RESOLVED", "broker-a", now.minusMinutes(1));
+        resolved.setFingerprint(firing.getFingerprint());
+        resolved.setLabels(Map.of("brokerName", "broker-a", "clusterId", "cluster-a"));
+        SystemAlertVO business = SystemAlertVO.builder().id(3L).domain(AlertDomain.BUSINESS)
+                .transition("FIRING").instanceId("local").time(now)
+                .labels(Map.of("consumerGroup", "orders", "clusterId", "cluster-b")).build();
+        when(repository.findAlertsPage(any())).thenReturn(PageResult.of(List.of(resolved, firing), 2, 1, 100));
+
+        assertThat(new AlertNotificationSuppressionService(repository).findSuppressingClusterAlert(business))
+                .isEmpty();
+    }
+
+    @Test
     void doesNotSuppressAcrossDifferentBrokerScopesTest() {
         AlertRepository repository = mock(AlertRepository.class);
         LocalDateTime now = LocalDateTime.now();
