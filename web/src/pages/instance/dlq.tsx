@@ -201,6 +201,11 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
+          // The error banner explains the failure; the rows beneath it must not keep
+          // listing the previous search's groups as if they were current.
+          setGroups([]);
+          setTotal(0);
+          setSelectedGroupNames([]);
           setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
           setLoading(false);
         }
@@ -409,6 +414,10 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
+        // A failed page change inside the drawer must not keep the previous page's
+        // messages listed under the advanced pager.
+        setDetailMessages([]);
+        setDetailTotal(0);
         setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
       }
     } finally {

@@ -559,6 +559,10 @@ const MessagePageContent = ({
       message.success(t('messagePage.queryCompleted', { total: result.total }));
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
+        // The error banner explains the failure; the results table beneath it must not
+        // keep listing the previous query's rows as if they answered the new inputs.
+        setMessages([]);
+        setMessageTotal(0);
         setQueryError(describeThrownMessage(error) || t('messagePage.queryFailed'));
       }
     } finally {
