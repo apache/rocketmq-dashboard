@@ -188,6 +188,17 @@ class AliyunCatalogServiceTest {
     }
 
     @Test
+    void listCloudInstancesShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(instancesResponse(List.of(instanceRow("rmq-a", "A")), 2L));
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(502);
+    }
+
+    @Test
     void getCloudInstanceShouldMapEndpointsTest() {
         GetInstanceResponse response = GetInstanceResponse.create().toBuilder()
                 .statusCode(200)

@@ -129,21 +129,30 @@ public class AliyunCatalogService implements CloudCatalogProvider {
             ListInstancesResponseBody body = response == null ? null : response.getBody();
             ListInstancesResponseBody.Data data = body == null ? null : body.getData();
             List<ListInstancesResponseBody.List> list = data == null ? null : data.getList();
-            if (list == null || list.isEmpty()) {
+            Long totalCount = data == null ? null : data.getTotalCount();
+            int returned = list == null ? 0 : list.size();
+            if (isIncompletePage((long) (page - 1) * AliyunConverters.PAGE_SIZE, returned, totalCount)) {
+                throw new BusinessException(502, "Aliyun instance catalog returned an incomplete page");
+            }
+            if (returned == 0) {
                 break;
             }
             all.addAll(list);
-            Long totalCount = data.getTotalCount();
             if (totalCount != null && totalCount < 0) {
                 throw new BusinessException(502, "Aliyun instance catalog returned a negative totalCount");
             }
-            if (list.size() < AliyunConverters.PAGE_SIZE
+            if (returned < AliyunConverters.PAGE_SIZE
                     || totalCount != null && all.size() >= totalCount
                     || totalCount == null && page >= AliyunConverters.MAX_PAGES) {
                 break;
             }
         }
         return all;
+    }
+
+    private static boolean isIncompletePage(long offset, int returned, Long totalCount) {
+        return totalCount != null && totalCount >= 0L
+                && returned < AliyunConverters.PAGE_SIZE && offset + returned < totalCount;
     }
 
     private static boolean matchesSearch(String search, CloudInstanceOptionVO vo) {
