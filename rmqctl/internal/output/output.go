@@ -51,11 +51,43 @@ func JSON(w io.Writer, value any) error {
 func YAML(w io.Writer, value any) error {
 	encoder := yaml.NewEncoder(w)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(value); err != nil {
+	if err := encoder.Encode(restoreNumbers(value)); err != nil {
 		_ = encoder.Close()
 		return err
 	}
 	return encoder.Close()
+}
+
+// restoreNumbers turns json.Number values back into numbers. The studio client decodes with
+// UseNumber() so integer literals survive untouched, and json.Number is a string type: yaml.v3
+// would emit it quoted, so `size: 3` came out as `size: "3"` and the YAML no longer round-tripped
+// to the payload the server sent. The JSON path needs no such step because encoding/json marshals
+// json.Number as a bare literal.
+func restoreNumbers(value any) any {
+	switch typed := value.(type) {
+	case json.Number:
+		if i, err := typed.Int64(); err == nil {
+			return i
+		}
+		if f, err := typed.Float64(); err == nil {
+			return f
+		}
+		return typed.String()
+	case map[string]any:
+		restored := make(map[string]any, len(typed))
+		for key, entry := range typed {
+			restored[key] = restoreNumbers(entry)
+		}
+		return restored
+	case []any:
+		restored := make([]any, len(typed))
+		for i, entry := range typed {
+			restored[i] = restoreNumbers(entry)
+		}
+		return restored
+	default:
+		return value
+	}
 }
 
 func Structured(w io.Writer, format string, value any) error {
@@ -180,6 +212,15 @@ func stringify(value any) string {
 	}
 	if f, ok := value.(float64); ok {
 		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	// Nested objects and arrays decoded from the tool output are JSON to begin with;
+	// render them as JSON instead of Go's default map/slice syntax ("map[k:v]"),
+	// which is noisy and not what the server sent.
+	switch value.(type) {
+	case map[string]any, []any:
+		if encoded, err := json.Marshal(value); err == nil {
+			return string(encoded)
+		}
 	}
 	return fmt.Sprint(value)
 }

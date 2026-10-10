@@ -19,8 +19,10 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,5 +209,71 @@ func TestClientDefaultNowSatisfiesRequiredValidation(t *testing.T) {
 	}
 	if _, exists := request.Arguments["timestamp"]; !exists {
 		t.Fatalf("arguments = %#v, want the filled timestamp", request.Arguments)
+	}
+}
+
+func syntheticConfirmedResetTool() toolcatalog.Tool {
+	return toolcatalog.Tool{
+		Name:                 "rmq.synthetic.confirmed-reset",
+		CLI:                  toolcatalog.CLI{Resource: "synthetic-confirmed-reset", Verb: "run"},
+		Description:          "Synthetic L2 tool combining an x-client-default NOW field with the two-phase handshake.",
+		RiskLevel:            "L2",
+		Permission:           "synthetic:write",
+		RequiredCapabilities: []string{},
+		InputSchema: toolcatalog.InputSchema{
+			Fields: []toolcatalog.Field{
+				{Name: "instanceId", Flag: "instance-id", Kind: toolcatalog.StringField, Required: true, MinLength: 1},
+				{Name: "groupName", Flag: "group-name", Kind: toolcatalog.StringField, Required: true, MinLength: 1},
+				{Name: "timestamp", Flag: "timestamp", Kind: toolcatalog.IntegerField, Required: true, ClientDefault: toolcatalog.ClientDefaultNow},
+				{Name: "dry_run", Flag: "dry-run", Kind: toolcatalog.BooleanField},
+				{Name: "confirm_token", Flag: "confirm-token", Kind: toolcatalog.StringField, MinLength: 1},
+			},
+		},
+		ViewHint: "object",
+	}
+}
+
+// TestConfirmTokenReplayWithAutoFilledTimestampIsRefused verifies the
+// two-phase handshake against the server's signing rules: the token signs the
+// previewed business input, including the timestamp of a group reset-offset
+// preview, while an x-client-default: NOW field is filled on every invocation.
+// A replay that carries a --confirm-token but omits the flag therefore cannot
+// ever match its preview, so the CLI refuses it up front and names the flag to
+// pin instead of sending a call the server is guaranteed to answer with a
+// preview-mismatch error.
+func TestConfirmTokenReplayWithAutoFilledTimestampIsRefused(t *testing.T) {
+	const pinnedNow = int64(1757600000000)
+	original := nowMillis
+	nowMillis = func() int64 { return pinnedNow }
+	defer func() { nowMillis = original }()
+
+	request, stderr, err := executeSyntheticTool(t, syntheticConfirmedResetTool(),
+		"--group-name", "gid-orders", "--confirm-token", "server-issued", "--yes")
+	if err == nil {
+		t.Fatalf("a confirm-token replay with an auto-filled timestamp must be refused, request=%#v", request)
+	}
+	var cliError *types.CLIError
+	if !errors.As(err, &cliError) || cliError.Code != types.CodeInvalidArgument {
+		t.Fatalf("err = %v, want INVALID_ARGUMENT", err)
+	}
+	if !strings.Contains(cliError.Hint, "--timestamp") {
+		t.Fatalf("hint = %q, want it to name the flag to pin", cliError.Hint)
+	}
+	if request.Name != "" {
+		t.Fatalf("refused replay must not reach the server, observed %q, stderr=%s", request.Name, stderr)
+	}
+}
+
+// TestExplicitTimestampStillReplaysConfirmToken verifies the refusal is
+// specific to the auto-filled value: pinning the previewed timestamp keeps the
+// token usable, which is the path the hint points at.
+func TestExplicitTimestampStillReplaysConfirmToken(t *testing.T) {
+	request, stderr, err := executeSyntheticTool(t, syntheticConfirmedResetTool(),
+		"--group-name", "gid-orders", "--timestamp", "1791394886405", "--confirm-token", "server-issued", "--yes")
+	if err != nil {
+		t.Fatalf("an explicit timestamp must keep the token usable: %v, stderr=%s", err, stderr)
+	}
+	if request.Arguments["confirm_token"] != "server-issued" {
+		t.Fatalf("arguments = %#v, want the confirm token to be sent", request.Arguments)
 	}
 }
