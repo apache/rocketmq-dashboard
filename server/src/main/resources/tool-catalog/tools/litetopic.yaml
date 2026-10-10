@@ -181,3 +181,81 @@ tools:
           type: number
     viewHint: object
     deprecated: false
+  - name: rmq.litetopic.extend_ttl
+    cli:
+      resource: litetopic
+      verb: extend-ttl
+    description: "Extend the LiteTopic TTL of a registered Lite parent topic on the selected Instance (L2 mutation: dry-run first, then apply with the returned confirm_token). Rewrites the lite.topic.expiration attribute on every broker master; lite topics under the pattern inherit the new TTL. Broker granularity is one minute and the cap is 30 days. Fails with 409 when the pattern is not a registered Lite parent topic and 501 when the cluster has no LiteTopic support. Current pattern state and quota come from rmq.litetopic.list / rmq.litetopic.quota."
+    riskLevel: L2
+    permission: litetopic:write
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - instanceId
+        - topicPattern
+        - newTtlMillis
+      additionalProperties: false
+      properties:
+        instanceId:
+          type: string
+          description: Studio Instance identifier.
+          minLength: 1
+        topicPattern:
+          type: string
+          description: Registered Lite parent topic whose lite topics' TTL is extended.
+          minLength: 1
+        newTtlMillis:
+          type: integer
+          minimum: 1
+          description: New TTL in milliseconds; the broker rounds to whole minutes and caps at 30 days.
+        dry_run:
+          type: boolean
+          description: When true, preview the mutation without executing it; omit to apply with a confirm_token.
+        confirm_token:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - status
+        - instanceId
+        - plan
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - PLANNED
+            - EXECUTED
+        instanceId:
+          type: string
+        confirm_token:
+          type: string
+        plan:
+          type: object
+          required:
+            - summary
+            - impact
+            - before
+            - after
+            - warnings
+          additionalProperties: false
+          properties:
+            summary:
+              type: string
+            impact:
+              type: array
+              items:
+                type: string
+            before:
+              type: object
+            after:
+              type: object
+            warnings:
+              type: array
+              items:
+                type: string
+        result:
+          type: object
+    viewHint: object
+    deprecated: false
