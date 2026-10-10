@@ -914,6 +914,7 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `clusterId` | `string` | 所属集群 ID |
 | `writeQueues` | `number` | 写队列数 |
 | `readQueues` | `number` | 读队列数 |
+| `queueCountsAvailable` | `boolean` | 该厂商是否上报队列数；`false` 时 `writeQueues`/`readQueues` 是占位值（0），控制台显示为未知，导出留空 |
 | `perm` | `string` | 权限: `RW` / `RO` / `WO` |
 | `messageCount` | `number` | 消息总量 |
 | `tps` | `number` | 当前 TPS |
@@ -1021,6 +1022,7 @@ GET /api/topics/:name/routes
 | `brokerAddr` | `string` | Broker 地址 |
 | `writeQueues` | `number` | 写队列数 |
 | `readQueues` | `number` | 读队列数 |
+| `queueCountsAvailable` | `boolean` | 该厂商是否上报队列数；`false` 时 `writeQueues`/`readQueues` 是占位值（0），控制台显示为未知，导出留空 |
 | `perm` | `string` | 权限 |
 
 ### 5.7 获取 Topic 消费者列表

@@ -15,6 +15,8 @@ export interface Topic {
   writeQueues: number;
   readQueues: number;
   perm: string;
+  /** False when the vendor API carries no queue counts; the two numbers are placeholders. */
+  queueCountsAvailable?: boolean;
   messageCount: number;
   tps: number;
   consumerGroupCount: number;

@@ -160,6 +160,16 @@ const TOPIC_TYPE_CARDS = [
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
+// A vendor API that carries no queue counts leaves the two integers at 0, so they are rendered as
+// unknown rather than as a topic without queues, and they are never written back to the broker.
+const queueCount = (topic: Topic, field: 'writeQueues' | 'readQueues') =>
+  topic.queueCountsAvailable === false ? '-' : topic[field];
+
+const queueCountsForWrite = (topic: Topic): Partial<Topic> =>
+  topic.queueCountsAvailable === false
+    ? {}
+    : { writeQueues: topic.writeQueues, readQueues: topic.readQueues };
+
 type SendMessageFormValues = {
   topic: string;
   tag?: string;
@@ -581,8 +591,7 @@ const TopicPageContent = ({
       await createTopic({
         name: topic.name,
         type: topic.type,
-        writeQueues: topic.writeQueues,
-        readQueues: topic.readQueues,
+        ...queueCountsForWrite(topic),
         instanceId,
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
@@ -679,8 +688,7 @@ const TopicPageContent = ({
       await createTopic({
         name: topic.name,
         type: topic.type,
-        writeQueues: topic.writeQueues,
-        readQueues: topic.readQueues,
+        ...queueCountsForWrite(topic),
         instanceId,
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
@@ -1217,8 +1225,8 @@ const TopicPageContent = ({
             {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
-        <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
+        <Descriptions.Item label="写队列数">{queueCount(topic, 'writeQueues')}</Descriptions.Item>
+        <Descriptions.Item label="读队列数">{queueCount(topic, 'readQueues')}</Descriptions.Item>
         <Descriptions.Item label="权限">
           <Tag>{PERM_LABEL[topic.perm]}</Tag>
         </Descriptions.Item>

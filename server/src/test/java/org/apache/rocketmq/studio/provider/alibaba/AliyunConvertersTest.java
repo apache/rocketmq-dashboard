@@ -64,6 +64,24 @@ class AliyunConvertersTest {
     }
 
     @Test
+    void toTopicVoShouldMarkTheQueueCountsItCannotReadUnavailableTest() {
+        // ListTopicsResponseBody.List carries only createTime, instanceId, messageType, regionId,
+        // remark, status, topicName and updateTime - no queue counts. Leaving the VO defaults would
+        // present 0 write / 0 read queues as measurements: the console would show a topic without
+        // queues and the topic comparison would report drift against every other instance.
+        ListTopicsResponseBody.List data = ListTopicsResponseBody.List.builder()
+                .topicName("orders")
+                .messageType("NORMAL")
+                .build();
+
+        TopicVO topic = AliyunConverters.toTopicVO(data, "7");
+
+        assertThat(topic.isQueueCountsAvailable()).isFalse();
+        assertThat(topic.getWriteQueues()).isZero();
+        assertThat(topic.getReadQueues()).isZero();
+    }
+
+    @Test
     void toTopicConsumerVoShouldMarkTheUngettableLagAndTpsUnavailableTest() {
         // ListTopicSubscriptionsResponseBody.Data carries only consistency, consumerGroupId,
         // filterExpression, filterExpressionType, messageModel, subscriptionStatus and topicName -

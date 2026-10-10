@@ -61,8 +61,20 @@ const valueOf = (topic: Topic, field: TopicConfigField): string | number => {
   return typeof value === 'string' ? value.trim() : value;
 };
 
+const QUEUE_COUNT_FIELDS: TopicConfigField[] = ['writeQueues', 'readQueues'];
+
+/**
+ * A vendor API that carries no queue counts reports them as 0, so comparing them against a real
+ * count would report drift for every cloud topic: the two fields are only compared when both sides
+ * measured them.
+ */
+const isComparable = (field: TopicConfigField, source: Topic, target: Topic) =>
+  !QUEUE_COUNT_FIELDS.includes(field) ||
+  (source.queueCountsAvailable !== false && target.queueCountsAvailable !== false);
+
 const differencesBetween = (source: Topic, target: Topic): TopicFieldDifference[] =>
   TOPIC_CONFIG_FIELDS.flatMap((field) => {
+    if (!isComparable(field, source, target)) return [];
     const sourceValue = valueOf(source, field);
     const targetValue = valueOf(target, field);
     return sourceValue === targetValue ? [] : [{ field, sourceValue, targetValue }];
