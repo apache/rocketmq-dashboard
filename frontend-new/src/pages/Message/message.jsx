@@ -18,6 +18,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Button, DatePicker, Form, Input, notification, Select, Spin, Table, Tabs, Typography} from 'antd';
 import moment from 'moment';
+import dayjs from 'dayjs';
 import {SearchOutlined} from '@ant-design/icons';
 import {useLanguage} from '../../i18n/LanguageContext';
 import MessageDetailViewDialog from "../../components/MessageDetailViewDialog"; // Keep this path
@@ -35,8 +36,11 @@ const MessageQueryPage = () => {
 
     const [allTopicList, setAllTopicList] = useState([]);
     const [selectedTopic, setSelectedTopic] = useState(null);
-    const [timepickerBegin, setTimepickerBegin] = useState(moment().subtract(1, 'hour'));
-    const [timepickerEnd, setTimepickerEnd] = useState(moment());
+    // antd v5's DatePicker is dayjs-based, and its generateConfig helpers never clone
+    // (they assume dayjs' immutability). Passing Moment objects therefore makes the
+    // picker mutate these state objects in place while only hovering the panel.
+    const [timepickerBegin, setTimepickerBegin] = useState(dayjs().subtract(1, 'hour'));
+    const [timepickerEnd, setTimepickerEnd] = useState(dayjs());
     const [messageShowList, setMessageShowList] = useState([]);
     const [paginationConf, setPaginationConf] = useState({
         current: 1,
