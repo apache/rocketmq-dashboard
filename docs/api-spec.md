@@ -1891,7 +1891,6 @@ GET /api/clients?namesrvAddr={namesrvAddr}&clusterId={clusterId}&type={type}
 | `address` | `string` | 客户端地址 |
 | `language` | `string / null` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `C++` / `C#` / `Node.js` / `PHP` |
 | `version` | `string / null` | 可确认的 SDK 版本号；未知为 `null` |
-| `connectedAt` | `string` | 连接时间 |
 | `partial` | `boolean` | 连接扫描不完整（部分查询失败） |
 | `clusterName` | `string` | 所属集群名称（显示在第一列） |
 

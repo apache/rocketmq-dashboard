@@ -30,7 +30,6 @@ const connection: ClientConnection = {
   address: '127.0.0.1:8081',
   language: 'Java',
   version: '5.1.0',
-  connectedAt: '2026-07-17T00:00:00',
   clusterName: 'production-cluster',
 };
 

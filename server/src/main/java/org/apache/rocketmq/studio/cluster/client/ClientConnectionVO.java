@@ -24,8 +24,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -39,8 +37,6 @@ public class ClientConnectionVO {
     private String address;
     private ClientLanguage language;
     private String version;
-    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
-    private LocalDateTime connectedAt;
     private boolean partial;
     private String clusterName;
 }
