@@ -2328,6 +2328,115 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'consumer.createFailed': { zh: '消费组创建失败', en: 'Failed to create consumer group' },
   'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
+  // ─── Consumer group health diagnostics (utils return keys; the page translates) ───
+  'consumerHealth.statusHealthy': { zh: '消费组健康', en: 'Healthy' },
+  'consumerHealth.statusWarning': { zh: '需要关注', en: 'Needs attention' },
+  'consumerHealth.statusCritical': { zh: '消费风险', en: 'At risk' },
+  'consumerHealth.connectionUnknown.title': {
+    zh: '客户端连接状态不可用',
+    en: 'Client connection status unavailable',
+  },
+  'consumerHealth.connectionUnknown.desc': {
+    zh: '无法确认当前在线客户端数量，请先检查 Broker/Proxy 连接信息查询。',
+    en: 'The online client count cannot be confirmed; check the Broker/Proxy connection query first.',
+  },
+  'consumerHealth.noActiveClients.title': {
+    zh: '有堆积但无在线客户端',
+    en: 'Backlog with no online clients',
+  },
+  'consumerHealth.noActiveClients.desc': {
+    zh: '消费组存在未消费消息，但当前没有在线客户端处理这些消息。',
+    en: 'The group has unconsumed messages but no online clients to process them.',
+  },
+  'consumerHealth.noSubscriptionData.title': { zh: '暂无订阅明细', en: 'No subscription details' },
+  'consumerHealth.noSubscriptionData.desc': {
+    zh: '无法从当前结果判断客户端订阅表达式是否一致。',
+    en: 'Client subscription expression consistency cannot be determined from the current results.',
+  },
+  'consumerHealth.subscriptionInconsistent.title': {
+    zh: '订阅表达式不一致',
+    en: 'Subscription expressions inconsistent',
+  },
+  'consumerHealth.subscriptionInconsistent.desc': {
+    zh: '{topic} 的订阅表达式在客户端之间不一致，可能导致消息遗漏或重复消费。',
+    en: 'The subscription expression for {topic} differs between clients, which can cause missed or duplicate consumption.',
+  },
+  'consumerHealth.subscriptionUnknown.title': {
+    zh: '订阅一致性未知',
+    en: 'Subscription consistency unknown',
+  },
+  'consumerHealth.subscriptionUnknown.desc': {
+    zh: '{topic} 的一致性状态未知，建议重新检查客户端订阅。',
+    en: 'The consistency of {topic} is unknown; re-check the client subscriptions.',
+  },
+  'consumerHealth.unknownQueueLag.title': {
+    zh: '部分 Queue 堆积不可用',
+    en: 'Some queue backlogs unavailable',
+  },
+  'consumerHealth.unknownQueueLag.desc': {
+    zh: '{count} 个 Queue 无法计算堆积，当前总堆积只包含可用数据。',
+    en: '{count} queues cannot compute their backlog; the total includes only the available data.',
+  },
+  'consumerHealth.queueLagSkewCritical.title': {
+    zh: 'Queue 堆积分布严重倾斜',
+    en: 'Severely skewed queue backlog',
+  },
+  'consumerHealth.queueLagSkewCritical.desc': {
+    zh: '最大/最小 Queue 堆积约为 {ratio}:1，可能存在单队列热点或消费者分配不均。',
+    en: 'The max/min queue backlog ratio is about {ratio}:1 — a single-queue hotspot or uneven consumer assignment is likely.',
+  },
+  'consumerHealth.queueLagSkewWarning.title': {
+    zh: 'Queue 堆积分布不均',
+    en: 'Uneven queue backlog',
+  },
+  'consumerHealth.queueLagSkewWarning.desc': {
+    zh: '最大/最小 Queue 堆积约为 {ratio}:1，建议观察是否持续扩大。',
+    en: 'The max/min queue backlog ratio is about {ratio}:1; watch whether it keeps growing.',
+  },
+  'consumerHealth.highGroupLagCritical.title': {
+    zh: 'Group 总堆积过高',
+    en: 'Group backlog critical',
+  },
+  'consumerHealth.highGroupLagWarning.title': { zh: 'Group 总堆积偏高', en: 'Group backlog high' },
+  'consumerHealth.highGroupLag.desc': {
+    zh: 'Group 当前已知堆积达到 {count} 条。',
+    en: "The group's currently known backlog reached {count} messages.",
+  },
+  'consumerHealth.highDelayCritical.title': { zh: '消费延迟过高', en: 'Consume delay critical' },
+  'consumerHealth.highDelayCritical.desc': {
+    zh: 'Group 当前消费延迟约 {seconds} 秒，业务可能已经感知延迟。',
+    en: "The group's consume delay is about {seconds} seconds; the business may already notice it.",
+  },
+  'consumerHealth.highDelayWarning.title': { zh: '消费延迟偏高', en: 'Consume delay high' },
+  'consumerHealth.highDelayWarning.desc': {
+    zh: 'Group 当前消费延迟约 {seconds} 秒，建议继续观察趋势。',
+    en: "The group's consume delay is about {seconds} seconds; keep watching the trend.",
+  },
+  'consumerHealth.staleHeartbeat.title': { zh: '客户端心跳过期', en: 'Stale client heartbeat' },
+  'consumerHealth.staleHeartbeat.desc': {
+    zh: '{client} 的最后心跳已超过 {seconds} 秒。',
+    en: 'The last heartbeat of {client} is older than {seconds} seconds.',
+  },
+  'consumerHealth.recommendation.connectivity': {
+    zh: '先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。',
+    en: 'Confirm the consumer processes, Proxy/Broker connectivity, and client heartbeats have recovered first.',
+  },
+  'consumerHealth.recommendation.subscription': {
+    zh: '统一同一 Group 内所有客户端的订阅表达式，避免灰度期间同时运行不同过滤条件。',
+    en: 'Unify the subscription expression across all clients in the group; avoid running different filters during a rollout.',
+  },
+  'consumerHealth.recommendation.skew': {
+    zh: '检查热点 Queue 的分配、消费者线程池和单分区顺序消费阻塞情况。',
+    en: 'Check hotspot queue assignment, consumer thread pools, and single-partition ordered-consumption blocking.',
+  },
+  'consumerHealth.recommendation.capacity': {
+    zh: '结合消费 TPS、业务耗时和重试堆积判断是否需要扩容消费者或限流生产端。',
+    en: 'Decide whether to scale up consumers or throttle producers based on consume TPS, business latency, and retry backlog.',
+  },
+  'consumerHealth.recommendation.lagSource': {
+    zh: '当堆积不可用时，优先确认 Proxy 指标采集和 Broker offset 查询权限。',
+    en: 'When the backlog is unavailable, verify Proxy metric collection and broker offset query permissions first.',
+  },
 
   // ─── Home Page (additional) ───
   'home.placeholder': {

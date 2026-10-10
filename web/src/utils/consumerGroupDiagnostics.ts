@@ -36,8 +36,9 @@ export interface ConsumerGroupHealthIssue {
   id: string;
   code: ConsumerGroupHealthIssueCode;
   severity: Exclude<ConsumerGroupHealthStatus, 'healthy'>;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
+  params?: Record<string, string | number>;
   subject?: string;
 }
 
@@ -57,11 +58,11 @@ export interface ConsumerGroupHealthSummary {
 
 export interface ConsumerGroupHealthDiagnostics {
   status: ConsumerGroupHealthStatus;
-  statusText: string;
+  statusKey: string;
   statusColor: 'success' | 'warning' | 'error';
   summary: ConsumerGroupHealthSummary;
   issues: ConsumerGroupHealthIssue[];
-  recommendations: string[];
+  recommendationKeys: string[];
 }
 
 export interface ConsumerGroupHealthOptions {
@@ -81,10 +82,12 @@ const STATUS_ORDER: Record<ConsumerGroupHealthStatus, number> = {
   critical: 2,
 };
 
-const STATUS_TEXT: Record<ConsumerGroupHealthStatus, string> = {
-  healthy: '消费组健康',
-  warning: '需要关注',
-  critical: '消费风险',
+// The analyzer returns translation keys, not display text: the page resolves them
+// through t(key, params), the same contract as messageTraceDiagnostics.
+const STATUS_KEY: Record<ConsumerGroupHealthStatus, string> = {
+  healthy: 'consumerHealth.statusHealthy',
+  warning: 'consumerHealth.statusWarning',
+  critical: 'consumerHealth.statusCritical',
 };
 
 const STATUS_COLOR: Record<ConsumerGroupHealthStatus, 'success' | 'warning' | 'error'> = {
@@ -104,15 +107,17 @@ const DEFAULT_SKEW_CRITICAL_RATIO = 5;
 const issue = (
   code: ConsumerGroupHealthIssueCode,
   severity: Exclude<ConsumerGroupHealthStatus, 'healthy'>,
-  title: string,
-  description: string,
+  titleKey: string,
+  descriptionKey: string,
+  params?: Record<string, string | number>,
   subject?: string,
 ): ConsumerGroupHealthIssue => ({
   id: [code, subject].filter(Boolean).join(':'),
   code,
   severity,
-  title,
-  description,
+  titleKey,
+  descriptionKey,
+  params,
   subject,
 });
 
@@ -186,8 +191,8 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
       issue(
         'NO_SUBSCRIPTION_DATA',
         'warning',
-        '暂无订阅明细',
-        '无法从当前结果判断客户端订阅表达式是否一致。',
+        'consumerHealth.noSubscriptionData.title',
+        'consumerHealth.noSubscriptionData.desc',
       ),
     ];
   }
@@ -199,8 +204,9 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
         issue(
           'SUBSCRIPTION_INCONSISTENT',
           'critical',
-          '订阅表达式不一致',
-          `${subscription.topic} 的订阅表达式在客户端之间不一致，可能导致消息遗漏或重复消费。`,
+          'consumerHealth.subscriptionInconsistent.title',
+          'consumerHealth.subscriptionInconsistent.desc',
+          { topic: subscription.topic },
           subscription.topic,
         ),
       );
@@ -209,8 +215,9 @@ const subscriptionIssues = (subscriptions: SubscriptionEntry[]): ConsumerGroupHe
         issue(
           'SUBSCRIPTION_UNKNOWN',
           'warning',
-          '订阅一致性未知',
-          `${subscription.topic} 的一致性状态未知，建议重新检查客户端订阅。`,
+          'consumerHealth.subscriptionUnknown.title',
+          'consumerHealth.subscriptionUnknown.desc',
+          { topic: subscription.topic },
           subscription.topic,
         ),
       );
@@ -241,8 +248,9 @@ const progressIssues = (
       issue(
         'UNKNOWN_QUEUE_LAG',
         'warning',
-        '部分 Queue 堆积不可用',
-        `${unknownQueueCount} 个 Queue 无法计算堆积，当前总堆积只包含可用数据。`,
+        'consumerHealth.unknownQueueLag.title',
+        'consumerHealth.unknownQueueLag.desc',
+        { count: unknownQueueCount },
       ),
     );
   }
@@ -251,8 +259,9 @@ const progressIssues = (
       issue(
         'QUEUE_LAG_SKEW',
         'critical',
-        'Queue 堆积分布严重倾斜',
-        `最大/最小 Queue 堆积约为 ${skew}:1，可能存在单队列热点或消费者分配不均。`,
+        'consumerHealth.queueLagSkewCritical.title',
+        'consumerHealth.queueLagSkewCritical.desc',
+        { ratio: skew },
       ),
     );
   } else if (skew >= options.skewWarningRatio) {
@@ -260,8 +269,9 @@ const progressIssues = (
       issue(
         'QUEUE_LAG_SKEW',
         'warning',
-        'Queue 堆积分布不均',
-        `最大/最小 Queue 堆积约为 ${skew}:1，建议观察是否持续扩大。`,
+        'consumerHealth.queueLagSkewWarning.title',
+        'consumerHealth.queueLagSkewWarning.desc',
+        { ratio: skew },
       ),
     );
   }
@@ -270,8 +280,9 @@ const progressIssues = (
       issue(
         'HIGH_GROUP_LAG',
         'critical',
-        'Group 总堆积过高',
-        `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
+        'consumerHealth.highGroupLagCritical.title',
+        'consumerHealth.highGroupLag.desc',
+        { count: totalLag.toLocaleString() },
       ),
     );
   } else if (totalLag >= options.highLagThreshold) {
@@ -279,8 +290,9 @@ const progressIssues = (
       issue(
         'HIGH_GROUP_LAG',
         'warning',
-        'Group 总堆积偏高',
-        `Group 当前已知堆积达到 ${totalLag.toLocaleString()} 条。`,
+        'consumerHealth.highGroupLagWarning.title',
+        'consumerHealth.highGroupLag.desc',
+        { count: totalLag.toLocaleString() },
       ),
     );
   }
@@ -304,8 +316,8 @@ const runtimeIssues = (
       issue(
         'CONNECTION_STATUS_UNKNOWN',
         'warning',
-        '客户端连接状态不可用',
-        '无法确认当前在线客户端数量，请先检查 Broker/Proxy 连接信息查询。',
+        'consumerHealth.connectionUnknown.title',
+        'consumerHealth.connectionUnknown.desc',
       ),
     );
   } else if ((group.onlineInstances ?? 0) === 0 && (lag ?? 0) > 0) {
@@ -313,8 +325,8 @@ const runtimeIssues = (
       issue(
         'NO_ACTIVE_CLIENTS_WITH_LAG',
         'critical',
-        '有堆积但无在线客户端',
-        '消费组存在未消费消息，但当前没有在线客户端处理这些消息。',
+        'consumerHealth.noActiveClients.title',
+        'consumerHealth.noActiveClients.desc',
       ),
     );
   }
@@ -326,8 +338,9 @@ const runtimeIssues = (
         issue(
           'STALE_HEARTBEAT',
           'warning',
-          '客户端心跳过期',
-          `${client.clientId} 的最后心跳已超过 ${options.staleHeartbeatSeconds} 秒。`,
+          'consumerHealth.staleHeartbeat.title',
+          'consumerHealth.staleHeartbeat.desc',
+          { client: client.clientId, seconds: options.staleHeartbeatSeconds },
           client.clientId,
         ),
       );
@@ -340,8 +353,9 @@ const runtimeIssues = (
       issue(
         'HIGH_CONSUME_DELAY',
         'critical',
-        '消费延迟过高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，业务可能已经感知延迟。`,
+        'consumerHealth.highDelayCritical.title',
+        'consumerHealth.highDelayCritical.desc',
+        { seconds: delaySeconds.toLocaleString() },
       ),
     );
   } else if (delaySeconds >= options.highDelaySeconds) {
@@ -349,8 +363,9 @@ const runtimeIssues = (
       issue(
         'HIGH_CONSUME_DELAY',
         'warning',
-        '消费延迟偏高',
-        `Group 当前消费延迟约 ${delaySeconds.toLocaleString()} 秒，建议继续观察趋势。`,
+        'consumerHealth.highDelayWarning.title',
+        'consumerHealth.highDelayWarning.desc',
+        { seconds: delaySeconds.toLocaleString() },
       ),
     );
   }
@@ -365,19 +380,19 @@ const recommendations = (issues: ConsumerGroupHealthIssue[]): string[] => {
     codes.has('NO_ACTIVE_CLIENTS_WITH_LAG') ||
     codes.has('STALE_HEARTBEAT')
   ) {
-    result.push('先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。');
+    result.push('consumerHealth.recommendation.connectivity');
   }
   if (codes.has('SUBSCRIPTION_INCONSISTENT') || codes.has('SUBSCRIPTION_UNKNOWN')) {
-    result.push('统一同一 Group 内所有客户端的订阅表达式，避免灰度期间同时运行不同过滤条件。');
+    result.push('consumerHealth.recommendation.subscription');
   }
   if (codes.has('QUEUE_LAG_SKEW')) {
-    result.push('检查热点 Queue 的分配、消费者线程池和单分区顺序消费阻塞情况。');
+    result.push('consumerHealth.recommendation.skew');
   }
   if (codes.has('HIGH_GROUP_LAG') || codes.has('HIGH_CONSUME_DELAY')) {
-    result.push('结合消费 TPS、业务耗时和重试堆积判断是否需要扩容消费者或限流生产端。');
+    result.push('consumerHealth.recommendation.capacity');
   }
   if (codes.has('UNKNOWN_QUEUE_LAG')) {
-    result.push('当堆积不可用时，优先确认 Proxy 指标采集和 Broker offset 查询权限。');
+    result.push('consumerHealth.recommendation.lagSource');
   }
   return result;
 };
@@ -416,7 +431,7 @@ export const analyzeConsumerGroupHealth = (
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
+    statusKey: STATUS_KEY[status],
     statusColor: STATUS_COLOR[status],
     summary: {
       healthScore: healthScore(issues),
@@ -432,6 +447,6 @@ export const analyzeConsumerGroupHealth = (
       staleClientCount: issues.filter((item) => item.code === 'STALE_HEARTBEAT').length,
     },
     issues,
-    recommendations: recommendations(issues),
+    recommendationKeys: recommendations(issues),
   };
 };
