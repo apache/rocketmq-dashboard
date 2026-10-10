@@ -147,14 +147,14 @@ class GroupMutationPlanTest {
     }
 
     @ParameterizedTest
-    @CsvSource(value = {"null, 16", "0, 0", "8, 8"}, nullValues = "null")
-    void upsertCreateShouldPreviewAndApplyTheSameRetryLimitTest(Integer retryMaxTimes, int expected) {
+    @CsvSource({"omitted, 16", "null, 16", "0, 0", "8, 8"})
+    void upsertCreateShouldPreviewAndApplyTheSameRetryLimitTest(String retryValue, int expected) {
         MetadataService metadataService = mock(MetadataService.class);
         when(metadataService.findConsumerGroup("cluster-a", "new-group")).thenReturn(Optional.empty());
         when(metadataService.createConsumerGroup(any())).thenAnswer(invocation -> invocation.getArgument(0));
         Map<String, Object> arguments = new HashMap<>(Map.of("instanceId", "cluster-a", "groupName", "new-group"));
-        if (retryMaxTimes != null) {
-            arguments.put("retryMaxTimes", retryMaxTimes);
+        if (!"omitted".equals(retryValue)) {
+            arguments.put("retryMaxTimes", "null".equals(retryValue) ? null : Integer.valueOf(retryValue));
         }
         ToolExecutionContext ctx = context("rmq.group.update", arguments);
         var input = ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class);

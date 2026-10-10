@@ -2162,7 +2162,7 @@ const ConsumerPageContent = ({
                         name="retryMaxTimes"
                         rules={[{ required: true, message: '请输入最大重试次数' }]}
                       >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                        <InputNumber min={0} max={128} style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
                         <Switch />

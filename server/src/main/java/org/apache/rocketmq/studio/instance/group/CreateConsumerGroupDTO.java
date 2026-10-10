@@ -48,7 +48,7 @@ public class CreateConsumerGroupDTO {
         group.setConsumeType(consumeType);
         group.setSubscriptionDataType(subscriptionDataType);
         group.setDeliveryOrderType(deliveryOrderType);
-        group.setRetryMaxTimes(retryMaxTimes == null ? 16 : retryMaxTimes);
+        group.setRetryMaxTimes(retryMaxTimes == null ? ConsumerGroupVO.DEFAULT_MAX_RETRY_TIMES : retryMaxTimes);
         if (delaySeconds != null) {
             group.setDelaySeconds(delaySeconds);
         }

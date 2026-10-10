@@ -93,7 +93,6 @@ public class AliyunInstanceProvider implements InstanceProvider {
     private static final String ORDERLY_DELIVERY_ORDER_TYPE = "Orderly";
     private static final String DEFAULT_RETRY_POLICY = "DefaultRetryPolicy";
     private static final String FIXED_RETRY_POLICY = "FixedRetryPolicy";
-    private static final int DEFAULT_MAX_RETRY_TIMES = 16;
     private static final int DEFAULT_FIXED_RETRY_INTERVAL_SECONDS = 10;
     private static final int COUNT_PAGE_SIZE = 10;
     private static final String RESET_TYPE_SPECIFIED_TIME = "SPECIFIED_TIME";
@@ -355,7 +354,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
             throw new BusinessException(400, "Consumer group name is required");
         }
         String deliveryOrderType = normalizeDeliveryOrderType(group.getDeliveryOrderType());
-        int maxRetryTimes = group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
+        int maxRetryTimes = group.getRetryMaxTimes() > 0
+                ? group.getRetryMaxTimes() : ConsumerGroupVO.DEFAULT_MAX_RETRY_TIMES;
         CreateConsumerGroupRequest.ConsumeRetryPolicy.Builder retryPolicy =
                 CreateConsumerGroupRequest.ConsumeRetryPolicy.builder()
                         .maxRetryTimes(maxRetryTimes);

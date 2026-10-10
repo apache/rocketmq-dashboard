@@ -28,6 +28,8 @@ import java.util.List;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ConsumerGroupVO extends BaseEntity {
+    public static final int DEFAULT_MAX_RETRY_TIMES = 16;
+
     private String name;
     private String namespace;
     private String clusterId;

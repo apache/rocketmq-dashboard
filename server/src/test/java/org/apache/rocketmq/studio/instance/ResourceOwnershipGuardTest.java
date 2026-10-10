@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -54,6 +55,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
@@ -437,8 +439,10 @@ class ResourceOwnershipGuardTest {
         verify(broker).createAndUpdateTopicConfig(anyString(), any());
     }
 
-    @Test
-    void importExistingGroupPreservesPhysicalSettingsAndRejectsDifferencesTest() throws Exception {
+    @ParameterizedTest
+    @CsvSource(value = {"null, 16", "0, 0", "8, 8"}, nullValues = "null")
+    void importExistingGroupPreservesPhysicalSettingsAndRejectsDifferencesTest(Integer retryMaxTimes,
+                                                                            int expected) throws Exception {
         var runtime = mock(RuntimeAdminClientResolver.class);
         var broker = mock(DefaultMQAdminExt.class);
         var admin = apacheAdmin(runtime, broker);
@@ -449,12 +453,14 @@ class ResourceOwnershipGuardTest {
         when(broker.examineBrokerClusterInfo()).thenReturn(topology);
         SubscriptionGroupConfig physical = new SubscriptionGroupConfig();
         physical.setGroupName("buyers");
-        physical.setRetryMaxTimes(16);
+        physical.setRetryMaxTimes(expected);
         physical.setConsumeEnable(false);
         physical.setRetryQueueNums(7);
         when(broker.examineSubscriptionGroupConfig("10.0.1.1:10911", "buyers")).thenReturn(physical);
-        ConsumerGroupVO group = new ConsumerGroupVO();
-        group.setName("buyers");
+        CreateConsumerGroupDTO input = new CreateConsumerGroupDTO();
+        input.setName("buyers");
+        input.setRetryMaxTimes(retryMaxTimes);
+        ConsumerGroupVO group = input.toConsumerGroupVO();
         group.setInstanceId("first");
         admin.importConsumerGroup(group);
         group.setRetryMaxTimes(20);
