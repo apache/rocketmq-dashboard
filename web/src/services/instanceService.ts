@@ -37,7 +37,10 @@ export function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   if (inflight) {
     return inflight.then((items) => items.map(copyInstance));
   }
-  const request = fetchInstances(query, mockMode).finally(() => inflightListRequests.delete(key));
+  const request = fetchInstances(query, mockMode).finally(() => {
+    // A mutation may have replaced this request; only remove the entry we installed.
+    if (inflightListRequests.get(key) === request) inflightListRequests.delete(key);
+  });
   inflightListRequests.set(key, request);
   return request.then((items) => items.map(copyInstance));
 }
