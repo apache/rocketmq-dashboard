@@ -43,6 +43,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
 import org.springframework.util.StringUtils;
@@ -79,6 +80,14 @@ import java.util.function.Supplier;
 public class MetadataService {
 
     private static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * Widths of the registration columns the topic and group write paths store their text in:
+     * {@code rmq_instance_topic.name}, {@code rmq_instance_topic.remark} and
+     * {@code rmq_instance_group.name} are all {@code VARCHAR(255)}.
+     */
+    static final int MAX_REGISTRATION_NAME_CODE_POINTS = 255;
+    static final int MAX_TOPIC_REMARK_CODE_POINTS = 255;
 
     private final MetadataProvider metadataProvider;
     private final AdminClient adminClient;
@@ -579,6 +588,7 @@ public class MetadataService {
             throw new BusinessException(400, "Group request is required");
         }
         group.setName(requireName(group.getName(), "groupName"));
+        requireRegistrationText(group.getName(), MAX_REGISTRATION_NAME_CODE_POINTS, "groupName");
         String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, group.getName()),
                 Operation.UPDATE_GROUP.equals(operation));
         group.setInstanceId(target);
@@ -710,6 +720,8 @@ public class MetadataService {
             throw new BusinessException(400, "Topic request is required");
         }
         topic.setName(requireName(topic.getName(), "topicName"));
+        requireRegistrationText(topic.getName(), MAX_REGISTRATION_NAME_CODE_POINTS, "topicName");
+        requireRegistrationText(topic.getRemark(), MAX_TOPIC_REMARK_CODE_POINTS, "remark");
     }
 
     private String requireWriteInstance(String instanceId, Resource resource, boolean required) {
@@ -911,6 +923,18 @@ public class MetadataService {
             throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();
+    }
+
+    /**
+     * Bounds a value to the width of the registration column that stores it. Letting a longer value
+     * through does not store it: MySQL rejects the write, so the caller would receive a 500 from the
+     * persistence layer instead of the validation error the surrounding paths already return.
+     * Counted in code points, the unit MySQL counts a {@code varchar} in.
+     */
+    private static void requireRegistrationText(String value, int maxCodePoints, String fieldName) {
+        if (TextBounds.codePointCount(value) > maxCodePoints) {
+            throw new BusinessException(400, fieldName + " must not exceed " + maxCodePoints + " characters");
+        }
     }
 
     private String topicDetail(TopicVO topic) {
