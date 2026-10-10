@@ -31,6 +31,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -1730,6 +1731,93 @@ class RocketMQAdminClientImplTest {
                 eq(null), eq("Message send did not succeed: null"), eq("FAILED"));
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void sendMessageRejectsPropertyNameSeparatorsTest(int separator) {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a").topic("TopicA").body("hello")
+                .properties(Map.of("customer" + (char) separator + "name", "alice"))
+                .build();
+
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessageContaining("property name");
+                });
+        verifyNoInteractions(runtimeAdminClientResolver, clientPool, sendProducer);
+        verify(auditService).record(eq("SEND_MESSAGE"), eq("MESSAGE"), eq("TopicA"),
+                isNull(), eq("Message property name contains a RocketMQ property separator"), eq("FAILED"));
+    }
+
+    @Test
+    void sendMessageRejectsPropertyValueInjectionTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a").topic("TopicA").body("hello")
+                .properties(Map.of("customer", "alice" + MessageDecoder.PROPERTY_SEPARATOR
+                        + "extra" + MessageDecoder.NAME_VALUE_SEPARATOR + "unexpected"))
+                .build();
+
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessageContaining("property value");
+                });
+        verifyNoInteractions(runtimeAdminClientResolver, clientPool, sendProducer);
+    }
+
+    @Test
+    void sendMessageRejectsTagPropertySeparatorTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a").topic("TopicA").body("hello")
+                .tag("tagA" + MessageDecoder.PROPERTY_SEPARATOR + "extra")
+                .build();
+
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessageContaining("tag");
+                });
+        verifyNoInteractions(runtimeAdminClientResolver, clientPool, sendProducer);
+    }
+
+    @Test
+    void sendMessageRejectsKeyPropertySeparatorTest() {
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a").topic("TopicA").body("hello")
+                .key("keyA" + MessageDecoder.PROPERTY_SEPARATOR + "extra")
+                .build();
+
+        assertThatThrownBy(() -> adminClient.sendMessage(request))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception).hasMessageContaining("key");
+                });
+        verifyNoInteractions(runtimeAdminClientResolver, clientPool, sendProducer);
+    }
+
+    @Test
+    void sendMessagePreservesEncodablePropertyValuesTest() throws Exception {
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(sendProducer.send(any(Message.class))).thenReturn(sendResult);
+        Map<String, String> userProperties = Map.of("customer", "\u754c,alice\nsecond=line\tend"
+                + MessageDecoder.NAME_VALUE_SEPARATOR + "suffix");
+        SendMessageDTO request = SendMessageDTO.builder()
+                .instanceId("instance-a").topic("TopicA").body("hello")
+                .tag("tagA").key("keyA").properties(userProperties)
+                .build();
+
+        adminClient.sendMessage(request);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        Map<String, String> decoded = MessageDecoder.string2messageProperties(
+                MessageDecoder.messageProperties2String(captor.getValue().getProperties()));
+        assertThat(decoded).containsAllEntriesOf(userProperties)
+                .containsEntry(MessageConst.PROPERTY_TAGS, "tagA")
+                .containsEntry(MessageConst.PROPERTY_KEYS, "keyA");
+    }
+
     @Test
     void sendMessageFiltersSystemReservedPropertiesTest() throws Exception {
         SendResult sendResult = new SendResult();
@@ -1740,7 +1828,7 @@ class RocketMQAdminClientImplTest {
         // Source properties copied verbatim from a stored message used to fail the send with
         // "The Property<KEYS> is used by system"; reserved keys must be dropped instead.
         Map<String, String> properties = new HashMap<>();
-        properties.put(MessageConst.PROPERTY_KEYS, "injected-keys");
+        properties.put(MessageConst.PROPERTY_KEYS, "injected" + MessageDecoder.PROPERTY_SEPARATOR + "keys");
         properties.put(MessageConst.PROPERTY_TAGS, "injected-tags");
         properties.put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "injected-uniq");
         properties.put(MessageConst.PROPERTY_WAIT_STORE_MSG_OK, "false");
