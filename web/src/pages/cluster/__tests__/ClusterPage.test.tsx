@@ -369,6 +369,25 @@ describe('Cluster page', () => {
     );
   }, 10000);
 
+  it('reports registry data that could not be loaded instead of showing empty tabs', async () => {
+    clusterServiceMocks.listRegistryClusters.mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ClusterPage />);
+
+    // The registry list feeds the Broker, Proxy and NameServer registry tabs, so clearing it
+    // would read as "this deployment has registered nothing".
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // The instance list stood up, so this banner can only come from the registry loads.
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(clusterServiceMocks.listRegistryClusters).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument();
+    });
+  });
+
   it('opens proxy detail dialog from the proxy table', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);
