@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -857,6 +857,116 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
+  });
+
+  const authenticationView = (instanceId: string) => (
+    <App>
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <LangProvider>
+          <MetricsExplorer instanceId={instanceId} />
+        </LangProvider>
+      </ConfigProvider>
+    </App>
+  );
+
+  it.each(['picker', 'history'] as const)(
+    'cancelsPendingAuthenticationWhenItsSourceLeavesScopeTest (%s)',
+    async (origin) => {
+      const user = userEvent.setup();
+      vi.mocked(listDataSources).mockResolvedValue([
+        {
+          key: 'ds-basic',
+          name: 'Protected Prometheus',
+          type: 'Prometheus',
+          url: '',
+          auth: 'Basic Auth',
+          status: 'healthy',
+          instanceIds: ['instance-1'],
+        },
+      ]);
+      localStorage.setItem(
+        METRICS_QUERY_HISTORY_STORAGE_KEY,
+        JSON.stringify([
+          createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
+        ]),
+      );
+      const view = render(authenticationView('instance-1'));
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      if (origin === 'picker') {
+        await user.click(screen.getByRole('combobox', { name: '数据源' }));
+        await user.click(
+          await screen.findByText('Protected Prometheus', {
+            selector: '.ant-select-item-option-content',
+          }),
+        );
+      } else {
+        await user.click(screen.getByRole('button', { name: '查询历史' }));
+        const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+        const row = within(dialog).getByText('Consumer Lag Messages').closest('.ant-list-item')!;
+        await user.click(within(row as HTMLElement).getByRole('button', { name: '恢复' }));
+      }
+      await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+      view.rerender(authenticationView('instance-2'));
+      await waitFor(() =>
+        expect(screen.queryByRole('textbox', { name: '用户名' })).not.toBeInTheDocument(),
+      );
+      const profile = screen.getByRole('combobox', { name: '指标模板' }).closest('.ant-select')!;
+      expect(within(profile as HTMLElement).getByText('RocketMQ 5.x Native')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+      ).toHaveTextContent('1h');
+      await waitFor(() =>
+        expect(queryMetrics).toHaveBeenLastCalledWith(
+          expect.objectContaining({ metric: profiles[0].metrics[0].promql }),
+        ),
+      );
+      const calls = vi.mocked(queryMetrics).mock.calls;
+      const query = calls[calls.length - 1][0];
+      expect(query.end! - query.start!).toBe(3600);
+      expect(queryByDataSource).not.toHaveBeenCalled();
+    },
+  );
+
+  it('canAuthenticateAGlobalSourceAfterTheInstanceChangesTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'global-basic',
+        name: 'Global Protected',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+    await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Global Protected', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await screen.findByLabelText('用户名');
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+    await user.type(screen.getByLabelText('用户名'), 'reader');
+    await user.type(screen.getByLabelText('密码'), 'test-password');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'global-basic',
+          username: 'reader',
+          password: 'test-password',
+          instanceId: 'instance-2',
+        }),
+      ),
+    );
   });
 
   it('prompts for basic credentials and supplies them only to the selected data source query', async () => {
