@@ -30,11 +30,16 @@ Recommended background reading:
 
 ### Run the full stack
 
+Prepare `deploy/.env` as described in [deployment setup](deploy/README.md) first: configure
+an explicit bootstrap username and unique password, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and set
+`STUDIO_AUTH_SESSION_COOKIE_SECURE=false` only for local HTTP development. Preserve existing
+configuration and database users.
+
 ```bash
 # Run from the repository root; rocketmq_net is external to both compose files and must exist first
 (docker network create rocketmq_net 2>/dev/null || true) && \
   docker compose -f deploy/rocketmq/docker-compose.yml up -d && \
-  docker compose -f deploy/docker-compose.yml up -d --build
+  docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
 Studio is then available at <http://127.0.0.1:6789> (frontend, which also proxies `/api` to the
@@ -43,6 +48,12 @@ so that URL answers only when you run the backend directly (see below). See
 [`deploy/README.md`](deploy/README.md) for the configuration options.
 
 ### Run the backend only
+
+The standalone server retains the `admin` / `admin` bootstrap fallback when
+`STUDIO_AUTH_ADMIN_USERNAME` and `STUDIO_AUTH_ADMIN_PASSWORD` are unset. Override these values
+in the server process environment (or external Spring configuration) before exposing the server.
+It does not load `deploy/.env` automatically. Existing database users remain authoritative;
+changing bootstrap values does not reset their passwords.
 
 ```bash
 cd server
