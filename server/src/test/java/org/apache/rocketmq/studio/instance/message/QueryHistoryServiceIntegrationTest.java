@@ -96,7 +96,7 @@ class QueryHistoryServiceIntegrationTest {
             assertThatThrownBy(() -> queryHistoryService.getMessageQueryResults(corrupt.getId()))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(exception -> assertThat(((BusinessException) exception).getCode())
-                            .isEqualTo(502));
+                            .isEqualTo(500));
         } finally {
             AuthenticatedUserContext.clear();
             messageQueryMapper.delete(new QueryWrapper<RmqMessageQuery>()
