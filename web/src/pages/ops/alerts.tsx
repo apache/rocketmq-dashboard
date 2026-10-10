@@ -813,7 +813,13 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         );
         message.success(t('alerts.ruleUpdated'));
       } else {
-        await (domain === 'CLUSTER' ? createAlertRule(payload) : createAlertRule(payload, domain));
+        // The dialog has no enable control, and the server models `enabled` as a primitive boolean,
+        // so leaving it out quietly created a rule that never evaluates (the column default is 1
+        // and the import path keeps whatever the file says). A rule created here starts enabled.
+        const createPayload = { ...payload, enabled: true } as Partial<AlertRule>;
+        await (domain === 'CLUSTER'
+          ? createAlertRule(createPayload)
+          : createAlertRule(createPayload, domain));
         setPage(1);
         refreshRules();
         message.success(t('alerts.ruleCreated'));

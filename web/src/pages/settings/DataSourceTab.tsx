@@ -167,6 +167,8 @@ export const DataSourceTab = () => {
         setTotal(result.total);
       } catch {
         if (requestId === requestSeqRef.current) {
+          setDataSources([]);
+          setTotal(0);
           message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {

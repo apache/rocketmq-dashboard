@@ -6,7 +6,7 @@ groups:
   - name: rocketmq-broker.rules
     rules:
       - alert: RocketMQJVMCpuHigh
-        expr: rate(jvm_gc_pause_seconds_count[5m]) * avg(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3
+        expr: sum by (cluster, broker) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.3
         for: 5m
         labels:
           severity: warning

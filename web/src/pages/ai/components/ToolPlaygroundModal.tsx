@@ -19,11 +19,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flex, Input, Modal, Select, Space, Tag, Typography, message, theme } from 'antd';
 import { useLang } from '../../../i18n/LangContext';
 import { executeTool, listTools, type McpTool } from '../../../api/ai';
-import { listClusters } from '../../../api/cluster';
 import InfoBanner from '../../../components/InfoBanner';
+import { listInstances } from '../../../services/instanceService';
 
 /**
- * The manual tool playground: pick a cluster scope, pick a tool, edit the JSON arguments, run it.
+ * The manual tool playground: pick an instance scope, pick a tool, edit the JSON arguments, run it.
  *
  * Kept even though the agent now calls these same tools itself, for two reasons. It is the
  * human-driven escape hatch — an operator who does not trust an answer can run the exact call the
@@ -31,19 +31,19 @@ import InfoBanner from '../../../components/InfoBanner';
  * loop, which is how a broken catalog entry gets told apart from a confused agent.
  *
  * ─── Self-contained on purpose ─────────────────────────────────
- * Cluster list, catalog, selection, arguments and result all live here; the page it was extracted
+ * Instance list, catalog, selection, arguments and result all live here; the page it was extracted
  * from carried eleven pieces of state for it. The one thing that crosses the boundary is
  * {@link ToolPlaygroundModalProps.onToolsLoaded}, because the transcript's tool blocks resolve their
  * risk level from the same catalog: it is already loaded, and fetching it again per block would be
  * both wasteful and a second source of truth.
  *
  * ─── Stale catalog guard ───────────────────────────────────────
- * Switching cluster scope fires a new `listTools` while the previous one may still be in flight. The
+ * Switching instance scope fires a new `listTools` while the previous one may still be in flight. The
  * monotonic `toolLoadRequestRef` is re-read after every await, so a slow response for the OLD scope
- * can neither replace the catalog nor re-select a tool that belongs to another cluster.
+ * can neither replace the catalog nor re-select a tool that belongs to another instance.
  */
 
-/** Sentinel scope for the tools that are not bound to a cluster. */
+/** Sentinel scope for the tools that are not bound to an instance. */
 const GLOBAL_TOOL_SCOPE = '__global__';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -71,10 +71,10 @@ const defaultSchemaValue = (schema: unknown): unknown => {
 
 /**
  * Seed the argument editor with every REQUIRED argument, so the operator edits a value instead of
- * recalling a parameter name. `instanceId` is pre-filled from the selected cluster because that is
+ * recalling a parameter name. `instanceId` is pre-filled from the selected instance because that is
  * the one argument the scope selector already knows.
  */
-const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
+const buildToolInputTemplate = (tool: McpTool, instanceId?: string): string => {
   const required = Array.isArray(tool.parameters.required)
     ? tool.parameters.required.filter((field): field is string => typeof field === 'string')
     : [];
@@ -82,7 +82,7 @@ const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
   const input = Object.fromEntries(
     required.map((field) => [
       field,
-      field === 'instanceId' && cluster ? cluster : defaultSchemaValue(properties[field]),
+      field === 'instanceId' && instanceId ? instanceId : defaultSchemaValue(properties[field]),
     ]),
   );
   return JSON.stringify(input, null, 2);
@@ -113,9 +113,9 @@ const ToolPlaygroundModal = ({
   const { token } = theme.useToken();
   const [tools, setTools] = useState<McpTool[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
-  const [clusterOptions, setClusterOptions] = useState<{ value: string; label: string }[]>([]);
-  const [clustersLoading, setClustersLoading] = useState(false);
-  const [selectedClusterId, setSelectedClusterId] = useState('');
+  const [instanceOptions, setInstanceOptions] = useState<{ value: string; label: string }[]>([]);
+  const [instancesLoading, setInstancesLoading] = useState(false);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [selectedToolName, setSelectedToolName] = useState('');
   const [toolInput, setToolInput] = useState('{}');
   const [toolResult, setToolResult] = useState<unknown>(undefined);
@@ -125,29 +125,29 @@ const ToolPlaygroundModal = ({
   const bootstrappedRef = useRef(false);
 
   const selectTool = useCallback(
-    (name: string, availableTools: McpTool[] = tools, clusterId: string = selectedClusterId) => {
+    (name: string, availableTools: McpTool[] = tools, instanceId: string = selectedInstanceId) => {
       const tool = availableTools.find((item) => item.name === name);
       setSelectedToolName(name);
-      setToolInput(tool ? buildToolInputTemplate(tool, clusterId) : '{}');
+      setToolInput(tool ? buildToolInputTemplate(tool, instanceId) : '{}');
       setToolResult(undefined);
     },
-    [selectedClusterId, tools],
+    [selectedInstanceId, tools],
   );
 
   const loadTools = useCallback(
-    async (clusterId: string) => {
+    async (instanceId: string) => {
       const requestId = ++toolLoadRequestRef.current;
       setSelectedToolName('');
       setToolResult(undefined);
       setToolsLoading(true);
       try {
-        const availableTools = await listTools(clusterId || undefined);
+        const availableTools = await listTools(instanceId || undefined);
         if (requestId !== toolLoadRequestRef.current) return;
         setTools(availableTools);
         onToolsLoaded?.(availableTools);
         // Skip deprecated entries: they are listed so an operator can recognise one, not to be run.
         const firstTool = availableTools.find((tool) => !tool.deprecated);
-        if (firstTool) selectTool(firstTool.name, availableTools, clusterId);
+        if (firstTool) selectTool(firstTool.name, availableTools, instanceId);
       } catch {
         if (requestId === toolLoadRequestRef.current) {
           setTools([]);
@@ -161,21 +161,24 @@ const ToolPlaygroundModal = ({
   );
 
   const bootstrap = useCallback(async () => {
-    let clusterId = '';
-    setClustersLoading(true);
+    let instanceId = '';
+    setInstancesLoading(true);
     try {
-      const clusters = await listClusters();
-      const options = clusters.map((cluster) => ({ value: cluster.id, label: cluster.name }));
-      setClusterOptions(options);
-      clusterId = options[0]?.value ?? '';
-      setSelectedClusterId(clusterId);
+      const instances = await listInstances();
+      const options = instances.map((instance) => ({
+        value: instance.name,
+        label: instance.name,
+      }));
+      setInstanceOptions(options);
+      instanceId = options[0]?.value ?? '';
+      setSelectedInstanceId(instanceId);
     } catch {
-      message.warning(t('ai.clusterListLoadFailed'));
+      message.warning(t('ai.instanceListLoadFailed'));
     } finally {
-      setClustersLoading(false);
+      setInstancesLoading(false);
     }
 
-    await loadTools(clusterId);
+    await loadTools(instanceId);
   }, [loadTools, t]);
 
   // Opening the modal is what loads the catalog, and only the first time: the page may deep-link
@@ -188,11 +191,11 @@ const ToolPlaygroundModal = ({
     void bootstrap();
   }, [bootstrap, disabled, open]);
 
-  const handleClusterChange = useCallback(
+  const handleInstanceChange = useCallback(
     async (scope: string) => {
-      const clusterId = scope === GLOBAL_TOOL_SCOPE ? '' : scope;
-      setSelectedClusterId(clusterId);
-      await loadTools(clusterId);
+      const instanceId = scope === GLOBAL_TOOL_SCOPE ? '' : scope;
+      setSelectedInstanceId(instanceId);
+      await loadTools(instanceId);
     },
     [loadTools],
   );
@@ -215,14 +218,14 @@ const ToolPlaygroundModal = ({
     setToolExecuting(true);
     setToolResult(undefined);
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput, selectedClusterId));
+      setToolResult(await executeTool(selectedToolName, parsedInput, selectedInstanceId));
       message.success(t('ai.tools.executeSuccess'));
     } catch (error) {
       message.error(error instanceof Error ? error.message : t('ai.tools.executeFailed'));
     } finally {
       setToolExecuting(false);
     }
-  }, [selectedClusterId, selectedToolName, t, toolExecuting, toolInput]);
+  }, [selectedInstanceId, selectedToolName, t, toolExecuting, toolInput]);
 
   const handleClose = useCallback(() => {
     // Invalidate an in-flight catalog load: its response would otherwise land on a closed modal and
@@ -253,14 +256,14 @@ const ToolPlaygroundModal = ({
         {disabled && <InfoBanner description={t('ai.mockToolsUnavailable')} />}
 
         <Select
-          aria-label={t('ai.tools.selectCluster')}
-          loading={clustersLoading}
+          aria-label={t('ai.tools.selectInstance')}
+          loading={instancesLoading}
           disabled={disabled}
-          value={selectedClusterId || GLOBAL_TOOL_SCOPE}
-          onChange={(scope) => void handleClusterChange(scope)}
+          value={selectedInstanceId || GLOBAL_TOOL_SCOPE}
+          onChange={(scope) => void handleInstanceChange(scope)}
           options={[
             { value: GLOBAL_TOOL_SCOPE, label: t('ai.tools.globalScope') },
-            ...clusterOptions,
+            ...instanceOptions,
           ]}
         />
 

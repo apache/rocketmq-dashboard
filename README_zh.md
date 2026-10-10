@@ -15,7 +15,7 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 从当前仓库在本地拉起并运行 RocketMQ Studio：
 1. 确认已安装 Docker 与 Docker Compose；若未安装，告诉我安装方式并停止。
 2. 若共享网络不存在则创建：`docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`。
-3. 若 deploy/.env 不存在，从 deploy/.env.example 复制。首次使用空数据库前，请我配置 STUDIO_AUTH_ADMIN_USERNAME 和唯一的 STUDIO_AUTH_ADMIN_PASSWORD，不要打印密码。保持登录保护开启；仅针对本地 HTTP 设置 STUDIO_AUTH_SESSION_COOKIE_SECURE=false。保留已有配置和用户。
+3. 若 deploy/.env 不存在，从 deploy/.env.example 复制。首次使用空数据库前，请我配置 STUDIO_AUTH_ADMIN_USERNAME 和唯一的 STUDIO_AUTH_ADMIN_PASSWORD，不要打印密码。显式设置 STUDIO_AUTH_LOGIN_REQUIRED=true；仅针对本地 HTTP 设置 STUDIO_AUTH_SESSION_COOKIE_SECURE=false。保留已有配置和用户。
 4. 构建并启动 Studio：`docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`。
 5. 等待后端健康检查通过后，打开 http://127.0.0.1:6789 确认页面正常加载，再由我验证首次登录。
 最后报告运行中的容器与任何错误。不要修改源码，也不要提交任何改动。
@@ -27,8 +27,8 @@ RocketMQ Studio 是一个面向多集群、多架构环境的 RocketMQ 管控平
 ## 快速开始
 
 首次启动前，若 `deploy/.env` 不存在，从 `deploy/.env.example` 复制，并填写
-`STUDIO_AUTH_ADMIN_USERNAME` 和唯一的 `STUDIO_AUTH_ADMIN_PASSWORD`。保持
-`STUDIO_AUTH_LOGIN_REQUIRED=true`；系统没有内置账号。仅针对下面的本地 HTTP 地址，将
+`STUDIO_AUTH_ADMIN_USERNAME` 和唯一的 `STUDIO_AUTH_ADMIN_PASSWORD`。显式设置
+`STUDIO_AUTH_LOGIN_REQUIRED=true`；复制的示例目前显式关闭了登录保护。仅针对下面的本地 HTTP 地址，将
 `STUDIO_AUTH_SESSION_COOKIE_SECURE` 设为 `false`。浏览器通过 HTTPS 访问时（包括反向代理
 终止 TLS），保持其为 `true`。不要覆盖已有 `.env`。
 
@@ -48,15 +48,23 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 RocketMQ 集群。要管理真实资源，请注册一个指向你自己 RocketMQ 的实例，或启动下方的
 「内置 RocketMQ 集群（可选）」。
 
-**Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
+默认 schema 只创建 Studio 所需的表，不写入实例、Topic、消费组或 ACL 示例数据。开发用的演示数据需从
+`deploy/mysql/` 显式导入，不属于默认部署的一部分：先导入 `upgrade-demo-instance.sql`，再导入
+`upgrade-demo-acl.sql`。两个脚本都按当前数字主键 schema 编写、可重复执行，只是示例数据装载器而非
+升级迁移脚本，切勿导入生产数据库。
 
-登录保护默认开启。首次使用空数据库前，需要配置 `STUDIO_AUTH_ADMIN_USERNAME` /
-`STUDIO_AUTH_ADMIN_PASSWORD`，单独运行后端时也一样。这里配置的账号只是引导种子：
+**Studio 服务端口：** 前端 6789（Nginx，同时代理 `/api`）、后端 8888（Spring Boot，仅容器内可达；后端在 compose 之外直接运行时才对外暴露）
+
+应用和 Compose 的回退默认值开启登录保护，但 `deploy/.env.example` 目前显式设置
+`STUDIO_AUTH_LOGIN_REQUIRED=false`，需要保护的部署应将其改为 `true`。Compose 在未配置时
+会传入空引导凭据，因此首次使用空数据库前需要配置 `STUDIO_AUTH_ADMIN_USERNAME` /
+`STUDIO_AUTH_ADMIN_PASSWORD`。单独运行后端且未设置这两个环境变量时，仍保留 `admin` / `admin`
+回退值；对外开放前应覆盖该默认值。这里配置的账号只是引导种子：
 针对空数据库的首次登录会把配置的用户写入 `rmq_studio_user` 表，此后数据库
 才是账号与账号状态的唯一来源。管理员可以在用户管理页维护账号（创建用户、
 启用/停用、重置密码）；浏览器使用 `HttpOnly` 会话 Cookie 认证，API 客户端
 可显式换取 bearer token。首次登录在保持登录保护的情况下初始化账号，无需临时关闭保护。
-未提供完整引导凭据时，空数据库会拒绝登录；已有数据库用户不受影响，更改引导变量不会重置
+引导凭据为空时，空数据库会拒绝登录；已有数据库用户不受影响，更改引导变量不会重置
 其密码。关闭登录保护是仅供本地开发的显式选项，应用本身不会验证网络隔离。详见
 [部署说明](deploy/README.md)。
 
@@ -95,7 +103,7 @@ docker compose -f deploy/rocketmq/docker-compose.yml up -d
 |------|------|
 | **监控面板** | 集群/ Broker / Topic / 消费组全局统计，TPS 趋势图 |
 | **实例管理** | 多实例接入（Proxy / Direct 模式），实例 CRUD |
-| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新 |
+| **集群管理** | 集群详情、Broker / NameServer / Proxy 节点运维、集群配置热更新、NameServer 配置漂移检测 |
 | **K8s 证书** | Studio 本地 TLS / mTLS / ServiceAccount 证书配置 |
 | **Topic 管理** | Topic CRUD、路由查看、消费者列表、多类型支持（Normal / FIFO / Delay / Transaction / Lite） |
 | **消费组管理** | 消费组 CRUD、消费进度、订阅详情、位点重置、配置导入导出 |

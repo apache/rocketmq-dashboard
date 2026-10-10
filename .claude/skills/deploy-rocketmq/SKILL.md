@@ -47,8 +47,8 @@ description: 部署 RocketMQ Studio 与开源 RocketMQ。当用户说 部署 stu
 
 - **后端编译在目标机器上做**：复用目标机宿主机 `~/.m2/repository` 缓存，增量构建快。
 - **国内目标机必须先检查 Maven 镜像源**（见步骤 2），否则依赖下载极慢或失败。
-- 远程部署保持 `STUDIO_AUTH_LOGIN_REQUIRED=true`。首次使用空数据库前，由操作者配置
-  管理员用户名和唯一密码；首次登录即可初始化账号，不需要临时关闭登录保护。
+- 默认 `STUDIO_AUTH_LOGIN_REQUIRED=false` 免登录，方便直接查看效果；如需开启登录，
+  改为 `true` 并配好 admin 账号密码后重建 server。
 
 ### 1. 初始化部署目录与 .env（仅首次）
 
@@ -60,10 +60,9 @@ docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create roc
 cat > /opt/rocketmq-studio/.env <<'ENV'
 TZ=Asia/Shanghai
 MYSQL_ROOT_PASSWORD=rocketmq
-STUDIO_AUTH_LOGIN_REQUIRED=true
-STUDIO_AUTH_ADMIN_USERNAME=
-STUDIO_AUTH_ADMIN_PASSWORD=
-STUDIO_AUTH_SESSION_COOKIE_SECURE=true
+STUDIO_AUTH_LOGIN_REQUIRED=false
+STUDIO_AUTH_ADMIN_USERNAME=admin
+STUDIO_AUTH_ADMIN_PASSWORD=rocketmq
 RMQ_LLM_TOKEN=
 RMQ_ANTHROPIC_BASE_URL=
 ENV
@@ -71,10 +70,6 @@ chmod 600 /opt/rocketmq-studio/.env
 EOF
 ```
 
-- 启动前，在目标机 `.env` 中填写管理员用户名和唯一密码；示例中的空值会让空数据库拒绝登录，
-  不会自动创建默认账号。已有用户表不受这些引导变量影响，不要覆盖已有 `.env` 或数据库。
-- 共享环境通过 HTTPS（可由反向代理终止 TLS）访问，并保持 `STUDIO_AUTH_SESSION_COOKIE_SECURE=true`。
-  仅本地 HTTP 开发可显式设为 `false`。下面的 HTTP 探针只验证进程和页面可达，不代表浏览器会话可用。
 - `MYSQL_ROOT_PASSWORD` 同时被 compose 用于 mysql 和 server 的 `SPRING_DATASOURCE_PASSWORD`，务必一致。
 - compose 中 `rocketmq` 网络声明为 external（名 `rocketmq_net`），不存在时 `up` 会失败，必须先创建。
 
@@ -107,15 +102,23 @@ XML'
 
 ```bash
 cd <项目根目录>   # rocketmq-studio 仓库根
-tar czf /tmp/src.tar.gz --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' server web deploy
+# rmqctl, LICENSE and NOTICE have to travel with the package: the server image is built with the
+# repository root as its context, and the rmqctl stage of server/Dockerfile copies all three.
+# deploy/.env is per-environment and rmqctl/bin is a local build artifact, so both stay out.
+tar czf /tmp/src.tar.gz \
+  --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
+  --exclude='deploy/.env' --exclude='rmqctl/bin' \
+  LICENSE NOTICE server web deploy rmqctl
 scp /tmp/src.tar.gz <user>@<host>:/opt/rocketmq-studio/
-$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy && tar xzf src.tar.gz && rm src.tar.gz'
+$SSH 'cd /opt/rocketmq-studio && rm -rf server web deploy rmqctl LICENSE NOTICE && tar xzf src.tar.gz && rm src.tar.gz'
 ```
 
 ### 4. 在目标机上编译后端 + 构建镜像
 
 复用宿主机 `~/.m2` 缓存编译 JAR，再用 Dockerfile 的 `runtime-prebuilt` target 打镜像
-（不要走默认多阶段 build target，那会在 Docker 内从零下载依赖、用不上宿主机缓存）：
+（不要走默认多阶段 build target，那会在 Docker 内从零下载依赖、用不上宿主机缓存）。
+**构建上下文是仓库根目录而不是 `server/`**：Dockerfile 的 rmqctl 阶段要 `COPY rmqctl/` 与根目录的
+`LICENSE NOTICE`，镜像才会自带 `/usr/local/bin/rmqctl`（AI 后端以 `rmqctl mcp stdio` 拉起 MCP server）：
 
 ```bash
 $SSH 'cd /opt/rocketmq-studio && \
@@ -123,7 +126,7 @@ $SSH 'cd /opt/rocketmq-studio && \
     -v $PWD/server:/app -v $HOME/.m2:/maven-cache -w /app \
     maven:3.9.16-eclipse-temurin-21 \
     mvn -B -ntp -s /maven-cache/settings.xml -Dmaven.repo.local=/maven-cache/repository package -DskipTests && \
-  docker build --target runtime-prebuilt -t rocketmq-server:latest server/'
+  docker build --target runtime-prebuilt -f server/Dockerfile -t rocketmq-server:latest .'
 ```
 
 - 若目标机 `~/.m2/settings.xml` 不存在（海外机器通常不需要镜像源），去掉 `-s /maven-cache/settings.xml`。

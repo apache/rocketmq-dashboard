@@ -231,7 +231,13 @@ const ConversationListPanel = ({
       } else {
         message.error(t('ai.list.deleteFailed'));
       }
-      if (activeConversationId != null && ids.includes(activeConversationId)) {
+      // Only a delete that SUCCEEDED ends the open conversation: deletion may have failed, and then
+      // the conversation is still on screen, so the caller must stay put and the list still refresh.
+      const activeDeleted =
+        activeConversationId != null &&
+        ids.includes(activeConversationId) &&
+        !failed.includes(activeConversationId);
+      if (activeDeleted) {
         onActiveDeleted?.();
         return;
       }

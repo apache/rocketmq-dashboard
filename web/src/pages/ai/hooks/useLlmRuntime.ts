@@ -87,8 +87,8 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     );
   }, []);
 
-  // Monotonic id per load: a response from a superseded load (an enabled flip or an overlapping
-  // reload) must not repopulate the state, or a disabled runtime could come back "ready".
+  // Monotonic id per load: a response superseded by an enabled flip, overlapping reload or
+  // unmount must not publish state or callbacks belonging to an obsolete runtime.
   const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -131,6 +131,9 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     // Loading is asynchronous; state updates happen after the runtime APIs resolve.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    return () => {
+      loadSeqRef.current += 1;
+    };
   }, [load]);
 
   const llmReady = Boolean((config?.ready ?? config?.enabled) && selectedModel);

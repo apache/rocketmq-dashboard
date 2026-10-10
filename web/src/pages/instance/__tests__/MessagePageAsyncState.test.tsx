@@ -22,6 +22,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageRecord, TraceRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
+import useAuthStore from '../../../stores/authStore';
 import MessagePage from '../message';
 
 const serviceMocks = vi.hoisted(() => ({
@@ -149,6 +150,7 @@ describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    useAuthStore.setState({ user: null, userId: null, admin: null });
     serviceMocks.getMessageTrace.mockResolvedValue(null);
     serviceMocks.getMessageTraceByKey.mockResolvedValue(null);
     historyMocks.getQueryHistorySummary.mockResolvedValue({ messageQueries: 0, traceQueries: 0 });
@@ -626,7 +628,9 @@ describe('MessagePage async request ownership', () => {
     await user.type(firstTraceTopicInput, '  CUSTOM_TRACE  ');
 
     await waitFor(() => {
-      expect(localStorage.getItem('rocketmq-studio-message-trace-topic:1')).toBe('CUSTOM_TRACE');
+      expect(localStorage.getItem('rocketmq-studio-message-trace-topic:anonymous:1')).toBe(
+        'CUSTOM_TRACE',
+      );
     });
 
     firstRender.unmount();
@@ -643,8 +647,8 @@ describe('MessagePage async request ownership', () => {
   });
 
   it('does not leak a stored custom trace topic between instances', async () => {
-    localStorage.setItem('rocketmq-studio-message-trace-topic:1', 'TRACE_A');
-    localStorage.setItem('rocketmq-studio-message-trace-topic:2', 'TRACE_B');
+    localStorage.setItem('rocketmq-studio-message-trace-topic:anonymous:1', 'TRACE_A');
+    localStorage.setItem('rocketmq-studio-message-trace-topic:anonymous:2', 'TRACE_B');
     serviceMocks.queryMessages.mockResolvedValue([createMessage('instance-message')]);
     let currentInstanceId = 1;
     instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
@@ -673,6 +677,34 @@ describe('MessagePage async request ownership', () => {
     const secondRow = await screen.findByRole('row', { name: /instance-message/ });
     await user.click(within(secondRow).getByRole('button', { name: /轨迹/ }));
     const secondDialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_B',
+    );
+  });
+
+  it('loads the new account trace topic when the browser account changes', async () => {
+    localStorage.setItem('rocketmq-studio-message-trace-topic:user-id%3A12:1', 'TRACE_A');
+    localStorage.setItem('rocketmq-studio-message-trace-topic:user-id%3A13:1', 'TRACE_B');
+    useAuthStore.setState({ user: 'operator-a', userId: 12, admin: false });
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('account-message')]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    const openTrace = async () => {
+      await selectTopic(user);
+      await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+      const row = await screen.findByRole('row', { name: /account-message/ });
+      await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+      return screen.findByRole('dialog', { name: '消息详情' });
+    };
+
+    const firstDialog = await openTrace();
+    expect(within(firstDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
+      'TRACE_A',
+    );
+
+    act(() => useAuthStore.setState({ user: 'operator-b', userId: 13, admin: false }));
+    const secondDialog = await openTrace();
     expect(within(secondDialog).getByPlaceholderText('轨迹 Topic（留空使用默认）')).toHaveValue(
       'TRACE_B',
     );

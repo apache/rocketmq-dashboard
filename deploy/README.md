@@ -30,13 +30,16 @@ MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
 
 ## 本地 Docker Compose
 
-首次启动前，若 `deploy/.env` 不存在，从示例复制；已有文件不要覆盖。填写
-`STUDIO_AUTH_ADMIN_USERNAME` 和唯一的 `STUDIO_AUTH_ADMIN_PASSWORD`，保持
-`STUDIO_AUTH_LOGIN_REQUIRED=true`。仅在本地 HTTP 开发时将
+`docker-compose.yml` 中的 `mysql` 与 `rocketmq-server` 加入共享网络 `rocketmq_net`（声明为
+`external`），因此首次启动前需要先创建该网络，否则 Compose 会以
+`network rocketmq_net declared as external, but could not be found` 终止：
+
+若 `deploy/.env` 不存在，先从示例复制；不要覆盖已有配置。启动前配置管理员用户名和唯一密码，
+并显式设置 `STUDIO_AUTH_LOGIN_REQUIRED=true`。仅本地 HTTP 开发使用
 `STUDIO_AUTH_SESSION_COOKIE_SECURE=false`；HTTPS（包括反向代理终止 TLS）保持 `true`。
-配置完成后启动：
 
 ```bash
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
@@ -65,19 +68,20 @@ docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq \
 不要在生产环境导入。
 ## 开启登录保护
 
-`studio.auth.login-required` 和通用示例均默认为 `true`。首次使用空数据库前，必须在实际运行
-环境中配置完整的管理员引导凭据；下面故意留空，需要由操作者填写：
+`studio.auth.login-required` 和 Compose 回退值默认为 `true`，但 `deploy/.env.example`
+目前显式设置为 `false`，两者不可混为一谈。需要保护的部署应在实际运行环境中显式开启保护，
+并在首次使用空数据库前配置完整引导凭据。下面的占位值必须替换：
 
 ```env
 STUDIO_AUTH_LOGIN_REQUIRED=true
-STUDIO_AUTH_ADMIN_USERNAME=
-STUDIO_AUTH_ADMIN_PASSWORD=
+STUDIO_AUTH_ADMIN_USERNAME=admin
+STUDIO_AUTH_ADMIN_PASSWORD=change-me
 ```
 
 本地 Compose 使用 `deploy/.env`；`deploy.sh` 启动远程容器时使用目标机
-`$REMOTE_PATH/.env`，不会把本地引导凭据自动复制到远程。单独运行后端时需在进程环境中设置
-这两个变量，或通过外部 Spring 配置提供 `studio.auth.users`；单独运行后端不会自动读取
-`deploy/.env`。不要把真实凭据提交到仓库。
+`$REMOTE_PATH/.env`，不会自动复制本地引导凭据。单独运行后端不会自动读取 `deploy/.env`，
+且在这两个环境变量未设置时保留 `admin` / `admin` 回退值；对外开放前应覆盖默认值。
+Compose 会把缺失的引导变量作为空字符串传入，因此不能依赖此回退值。不要提交真实凭据。
 
 开启后，`/api/auth/login` 使用 JSON request body 接收用户名和密码，密码不会出现在 URL 查询
 参数中。浏览器登录成功后会话写入 `HttpOnly` 会话 Cookie，后续 `/api/**` 请求随 Cookie 自动
@@ -87,13 +91,12 @@ STUDIO_AUTH_ADMIN_PASSWORD=
 `STUDIO_AUTH_ADMIN_USERNAME` / `STUDIO_AUTH_ADMIN_PASSWORD` 只是首次启动的引导账号：当数据库
 用户表为空时，首次登录会把已配置用户写入 `rmq_studio_user` 表，此后以数据库为账号数据的唯一
 来源，管理员可在「用户管理」页面创建用户、启用/禁用账号和重置密码。如未配置有效用户名和密码
-且用户表为空，后端会拒绝登录以避免误签发会话。此时补全运行环境中的引导凭据并重启后端，
-再登录即可；无需关闭登录保护，也不要删除已有数据库。已有数据库用户仍可登录，更改引导变量
-不会重置其密码；已有账号应通过用户管理页维护。
+且用户表为空，后端会拒绝登录以避免误签发会话。补全引导凭据并重启后端即可恢复首次登录，
+无需删除数据库。已有数据库用户仍可登录，更改引导变量不会重置其密码。
 
-首次登录本身可以在保护开启时完成引导，不需要先开放匿名管理接口。`studio.auth.login-required=false`
-仍保留为仅供本地开发的显式选项，操作者必须自行确保网络隔离；当前 Compose 端口映射不保证
-仅回环可达。共享环境应保持保护开启，并通过 HTTPS 访问。静态配置为 `true` 时，数据库中的
+首次登录可以在登录保护开启时完成引导。`deploy/.env.example` 中现有部署警告与分阶段初始化
+顺序保持不变；修改这些部署策略需要另行讨论。`studio.auth.login-required=false` 仅用于
+本地开发场景跳过 `/api/**` 拦截，应用不会验证网络隔离。静态配置为 `true` 时，数据库中的
 `requireLogin=false` 不会关闭保护；读取运行时策略失败也会保持保护。
 
 ## 前置条件
