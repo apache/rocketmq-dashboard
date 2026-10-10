@@ -71,23 +71,31 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         if (viaProxy.runningInfo() != null) {
             return toStackTrace(groupName, clientId, viaProxy.runningInfo());
         }
-        try {
-            if (StringUtils.hasText(instanceId)) {
-                return runtimeAdminClientResolver.execute(instanceId,
-                        admin -> getConsumerStack(admin, groupName, clientId));
+        // A proxy that could not be queried cannot prove the client is offline, so the broker's
+        // "client missing" answer no longer settles anything and the read stays a gateway failure.
+        // That re-grading belongs to the stack lookup alone: it happens inside the callback, once an
+        // admin client has already been handed out. Resolving the instance, its credentials and the
+        // admin client itself run outside the callback, so their own status codes and messages -
+        // "Instance not found" among them - are reported unchanged.
+        final boolean clientAvailabilityUnknown = !viaProxy.available();
+        MqAdminExtFactory.AdminAction<ConsumerStackTraceVO> lookupStack = admin -> {
+            try {
+                return getConsumerStack(admin, groupName, clientId);
+            } catch (BusinessException e) {
+                if (clientAvailabilityUnknown && e.getCode() == 404) {
+                    throw new BusinessException(502,
+                            "Unable to determine consumer stack availability: proxy query failed for " + clientId);
+                }
+                throw e;
             }
-            if (!StringUtils.hasText(properties.getNamesrvAddr())) {
-                throw new BusinessException(503, "RocketMQ admin not connected");
-            }
-            return adminFactory.execute(properties.getNamesrvAddr(), null,
-                    admin -> getConsumerStack(admin, groupName, clientId));
-        } catch (BusinessException e) {
-            if (e.getCode() == 404 && !viaProxy.available()) {
-                throw new BusinessException(502,
-                        "Unable to determine consumer stack availability: proxy query failed for " + clientId);
-            }
-            throw e;
+        };
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, lookupStack);
         }
+        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+            throw new BusinessException(503, "RocketMQ admin not connected");
+        }
+        return adminFactory.execute(properties.getNamesrvAddr(), null, lookupStack);
     }
 
     private ConsumerStackTraceVO getConsumerStack(MQAdminExt admin, String groupName, String clientId) {

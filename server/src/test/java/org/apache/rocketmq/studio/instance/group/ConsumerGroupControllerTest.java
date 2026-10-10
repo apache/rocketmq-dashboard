@@ -327,6 +327,17 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void consumerStackShouldReportUnknownInstanceAsNotFoundTest() throws Exception {
+        when(consumerDiagnosticsService.getConsumerStack("gone", "cg-orders", "client-1"))
+                .thenThrow(new BusinessException(404, "Instance not found: gone"));
+        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack")
+                        .param("instanceId", "gone"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("Instance not found: gone"));
+    }
+
+    @Test
     void groupRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
         when(metadataService.getGroupProgress("instance-a", "cg-orders")).thenReturn(List.of());
         when(metadataService.getGroupSubscriptions("instance-a", "cg-orders")).thenReturn(List.of());
