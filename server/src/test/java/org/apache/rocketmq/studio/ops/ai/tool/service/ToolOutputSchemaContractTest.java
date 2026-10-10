@@ -335,7 +335,8 @@ class ToolOutputSchemaContractTest {
                                 true, "2026-08-22T09:30:00"))),
                 MessageQueryDlqOutput.ofMessages(INSTANCE, "cg-orders", 1, 20, 1L, List.of(
                         new MessageQueryDlqOutput.DlqMessageItem(
-                                "MSG-9", "%DLQ%cg-orders", 0, 12L, TIMESTAMP, "keyA", "hello")))));
+                                "MSG-9", "%DLQ%cg-orders", 0, 12L, TIMESTAMP, "keyA", "hello")),
+                        true, 2)));
         samples.put("rmq.message.trace", List.of(new MessageTraceOutput(
                 "MSG-1",
                 List.of(new MessageTraceOutput.Node(

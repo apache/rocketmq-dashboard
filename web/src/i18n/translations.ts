@@ -868,6 +868,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '失败明细较多，仅显示前 100 条。',
     en: 'Only the first 100 failure details are shown.',
   },
+  'dlq.detailTruncated': {
+    zh: '明细已按服务端扫描上限截断：共列出 {total} 条，组内死信可能更多。如需完整内容请缩小「导出时间范围」。',
+    en: 'The detail list is capped at the server scan limit: {total} rows listed, the group may hold more. Narrow the export time range for the full content.',
+  },
+  'dlq.detailTruncatedWithFailedQueues': {
+    zh: '明细已按服务端扫描上限截断：共列出 {total} 条，另有 {failed} 个队列无法扫描。如需完整内容请缩小「导出时间范围」。',
+    en: 'The detail list is capped at the server scan limit: {total} rows listed and {failed} queues could not be scanned. Narrow the export time range for the full content.',
+  },
 
   // ─── Client Connections ───
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },

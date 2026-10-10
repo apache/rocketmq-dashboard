@@ -123,6 +123,8 @@ const DLQPage = () => {
   const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailTruncated, setDetailTruncated] = useState(false);
+  const [detailFailedQueueCount, setDetailFailedQueueCount] = useState(0);
   const detailRequestIdRef = useRef(0);
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
@@ -162,6 +164,8 @@ const DLQPage = () => {
     setDetailLoading(false);
     setDetailResending(false);
     setDetailError(null);
+    setDetailTruncated(false);
+    setDetailFailedQueueCount(0);
     setRetryModalOpen(false);
     setRetryGroup(null);
     setRetryTargetTopic('');
@@ -380,11 +384,14 @@ const DLQPage = () => {
     setDetailOpen(true);
     setDetailPage(1);
     // The drawer now belongs to another group: its rows, and the total the export and the
-    // pagination are driven by, must not survive from the group that was open before.
+    // pagination are driven by, must not survive from the group that was open before. The scan
+    // boundary goes with them, so a stale truncation banner cannot caption the new group.
     setDetailMessages([]);
     setDetailTotal(0);
     setDetailSelectedMsgIds([]);
     setDetailError(null);
+    setDetailTruncated(false);
+    setDetailFailedQueueCount(0);
     void loadDetailMessages(group, 1, detailPageSize);
   };
 
@@ -406,10 +413,16 @@ const DLQPage = () => {
       if (detailRequestIdRef.current !== requestId) return;
       setDetailMessages(result.items);
       setDetailTotal(result.total);
+      setDetailTruncated(result.truncated ?? false);
+      setDetailFailedQueueCount(result.failedQueueCount ?? 0);
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
         setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
+        // No rows were loaded, so the scan boundary of the previous load no longer captions
+        // anything: leaving it up would pair a truncation warning with the failure alert.
+        setDetailTruncated(false);
+        setDetailFailedQueueCount(0);
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -945,6 +958,17 @@ const DLQPage = () => {
 
             {detailError && (
               <Alert showIcon type="warning" message={detailError} style={{ marginBottom: 16 }} />
+            )}
+
+            {detailTruncated && (
+              <InfoBanner
+                description={t(
+                  detailFailedQueueCount > 0
+                    ? 'dlq.detailTruncatedWithFailedQueues'
+                    : 'dlq.detailTruncated',
+                  { total: detailTotal, failed: detailFailedQueueCount },
+                )}
+              />
             )}
 
             <Table<DLQMessage>
