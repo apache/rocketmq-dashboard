@@ -588,6 +588,13 @@ public class InstanceService {
     }
 
     /** Free-text fields of rmq_instance, capped at the width of their column. */
+    /**
+     * Upper bound of one batch delete. Every other batch input in the repository is bounded the
+     * same way (import topics / consumer groups, selected DLQ resends) because each entry costs a
+     * lookup and a transaction of its own.
+     */
+    static final int MAX_BATCH_DELETE_INSTANCES = 100;
+
     static final int MAX_INSTANCE_ENDPOINT_LENGTH = 512;
     static final int MAX_INSTANCE_REMARK_LENGTH = 255;
     static final int MAX_INSTANCE_CREDENTIAL_REF_LENGTH = 128;
@@ -747,6 +754,10 @@ public class InstanceService {
                 .toList();
         if (normalizedIds.isEmpty()) {
             throw new BusinessException(400, "Instance IDs are required");
+        }
+        if (normalizedIds.size() > MAX_BATCH_DELETE_INSTANCES) {
+            throw new BusinessException(400,
+                    "At most " + MAX_BATCH_DELETE_INSTANCES + " instances are allowed per batch");
         }
         int deleted = 0;
         List<String> failed = new ArrayList<>();

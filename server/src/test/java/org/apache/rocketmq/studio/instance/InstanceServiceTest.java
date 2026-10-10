@@ -1039,6 +1039,29 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstancesShouldRejectABatchAboveTheBatchLimitTest() {
+        List<String> ids = java.util.stream.IntStream.rangeClosed(1, 101)
+                .mapToObj(index -> "inst-" + index).toList();
+
+        assertThatThrownBy(() -> instanceService.deleteInstances(ids))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("At most 100 instances are allowed per batch");
+    }
+
+    @Test
+    void deleteInstancesShouldAcceptABatchAtTheBatchLimitTest() {
+        when(instanceRepository.findByIdentifier(anyString())).thenReturn(Optional.empty());
+        ReflectionTestUtils.setField(instanceService, "self", instanceService);
+        List<String> ids = java.util.stream.IntStream.rangeClosed(1, 100)
+                .mapToObj(index -> "inst-" + index).toList();
+
+        BatchDeleteResultVO result = instanceService.deleteInstances(ids);
+
+        assertThat(result.getDeleted()).isZero();
+        assertThat(result.getFailed()).hasSize(100);
+    }
+
+    @Test
     void deleteInstancesShouldContinueAfterProviderRuntimeFailureTest() {
         InstanceVO failedInstance = InstanceVO.builder().name("inst-a").build();
         failedInstance.setId(1L);

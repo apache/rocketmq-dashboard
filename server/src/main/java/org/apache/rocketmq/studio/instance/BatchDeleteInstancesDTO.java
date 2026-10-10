@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance;
 
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -26,5 +27,6 @@ import java.util.List;
 public class BatchDeleteInstancesDTO {
 
     @NotEmpty
+    @Size(max = 100, message = "At most 100 instances are allowed per batch")
     private List<String> ids;
 }
