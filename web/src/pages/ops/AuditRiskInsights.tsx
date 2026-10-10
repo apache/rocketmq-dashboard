@@ -153,7 +153,10 @@ const AuditRiskInsights = ({ summary, records, loading }: Props) => {
       key: 'operationTypes',
       render: (operationTypes: string[]) => (
         <Space size={[4, 4]} wrap>
-          {operationTypes.slice(0, 3).map((operationType) => (
+          {/* Every failing operation, not the first three: the row's level is derived from all of
+              them (a high-risk one is often the reason it is flagged), so hiding part of the list
+              leaves the flag unexplained. */}
+          {operationTypes.map((operationType) => (
             <Tag key={operationType} style={{ marginInlineEnd: 0 }}>
               {formatOperationLabel(operationType, t)}
             </Tag>
