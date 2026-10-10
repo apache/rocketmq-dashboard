@@ -117,38 +117,39 @@
 | 73 | POST | `/api/settings/datasources/update` | 更新数据源 |
 | 74 | POST | `/api/settings/datasources/delete` | 删除数据源 |
 | 75 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 76 | POST | `/api/ai/conversations` | 创建 AI 会话 |
-| 77 | GET | `/api/ai/conversations` | AI 会话列表（分页） |
-| 78 | GET | `/api/ai/conversations/:id` | AI 会话详情 |
-| 79 | PATCH | `/api/ai/conversations/:id` | 重命名 / 归档 AI 会话 |
-| 80 | DELETE | `/api/ai/conversations/:id` | 删除 AI 会话 |
-| 81 | GET | `/api/ai/conversations/:id/events` | AI 会话时间线（游标分页） |
-| 82 | POST | `/api/ai/conversations/:id/messages` | 发送消息并流式返回（SSE） |
-| 83 | GET | `/api/ai/runs/:runId/stream` | 重连进行中的 AI 任务（SSE） |
-| 84 | POST | `/api/ai/runs/:runId/stop` | 停止 AI 任务 |
-| 85 | GET | `/api/ai/agent-capabilities` | Agent 运行时能力探测 |
-| 86 | GET | `/api/ai/conversations/:id/rmqctl-config` | 外部 Agent 的 rmqctl MCP 配置片段 |
-| 87 | GET | `/api/ai/tools` | 可用工具列表 |
-| 88 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 89 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 90 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 91 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 92 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 93 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 94 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 95 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 96 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
-| 97 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
-| 98 | GET | `/api/topics/page` | Topic 分页列表 |
-| 99 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
-| 100 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
-| 101 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
-| 102 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
-| 103 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
-| 104 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
-| 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
-| 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
-| 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 76 | POST | `/api/settings/general/test-notification` | 测试通知渠道 |
+| 77 | POST | `/api/ai/conversations` | 创建 AI 会话 |
+| 78 | GET | `/api/ai/conversations` | AI 会话列表（分页） |
+| 79 | GET | `/api/ai/conversations/:id` | AI 会话详情 |
+| 80 | PATCH | `/api/ai/conversations/:id` | 重命名 / 归档 AI 会话 |
+| 81 | DELETE | `/api/ai/conversations/:id` | 删除 AI 会话 |
+| 82 | GET | `/api/ai/conversations/:id/events` | AI 会话时间线（游标分页） |
+| 83 | POST | `/api/ai/conversations/:id/messages` | 发送消息并流式返回（SSE） |
+| 84 | GET | `/api/ai/runs/:runId/stream` | 重连进行中的 AI 任务（SSE） |
+| 85 | POST | `/api/ai/runs/:runId/stop` | 停止 AI 任务 |
+| 86 | GET | `/api/ai/agent-capabilities` | Agent 运行时能力探测 |
+| 87 | GET | `/api/ai/conversations/:id/rmqctl-config` | 外部 Agent 的 rmqctl MCP 配置片段 |
+| 88 | GET | `/api/ai/tools` | 可用工具列表 |
+| 89 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 90 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 91 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 92 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 93 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 94 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 95 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 96 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 97 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 98 | GET | `/api/instances/:instanceId/capabilities` | 实例能力契约 |
+| 99 | GET | `/api/topics/page` | Topic 分页列表 |
+| 100 | GET | `/api/dlq/:groupName/messages` | 死信消息明细分页 |
+| 101 | POST | `/api/dlq/resend-selected` | 重发选中的死信消息 |
+| 102 | GET | `/api/dlq/export` | 导出死信消息（JSON） |
+| 103 | GET | `/api/dlq/export-excel` | 导出死信消息（Excel） |
+| 104 | GET | `/api/proxies` | Proxy 列表（集群登记视图） |
+| 105 | GET | `/api/proxies/topology` | Proxy 拓扑与实时探活 |
+| 106 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
+| 107 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
+| 108 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
 
 ## 通用响应格式
 
@@ -2244,9 +2245,21 @@ GET /api/settings/general
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是否需要登录 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `anthropic` / `deepseek` / `tongyi` / `ollama` / `bedrock` |
+| `llmEngine` | `string` | LLM 执行引擎 |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
 | `baseUrl` | `string` | Base URL |
+| `deploymentName` | `string` | Azure 部署名 |
+| `apiVersion` | `string` | Azure API 版本 |
+| `awsRegion` | `string` | AWS 区域（Bedrock） |
+| `maxTokens` | `number` | 最大输出 token 数 |
+| `temperature` | `number` | 采样温度 |
+| `dingtalkWebhook` | `string` | 钉钉机器人 Webhook |
+| `dingtalkWebhookConfigured` | `boolean` | 是否已配置钉钉 Webhook |
+| `dingtalkSigningSecretConfigured` | `boolean` | 是否已配置钉钉加签密钥；响应不会返回密钥内容 |
+| `emailRecipients` | `string` | 邮件通知收件人 |
+| `smsWebhook` | `string` | 短信通知 Webhook |
+| `smsWebhookConfigured` | `boolean` | 是否已配置短信 Webhook |
 
 ### 14.2 保存通用设置
 
@@ -2265,10 +2278,19 @@ POST /api/settings/general/save
 | `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是 | 是否需要登录 |
 | `llmProvider` | `string` | 是 | LLM 提供商 |
+| `llmEngine` | `string` | 否 | LLM 执行引擎 |
 | `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
 | `model` | `string` | 是 | 模型名称 |
 | `baseUrl` | `string` | 是 | Base URL |
+| `deploymentName` | `string` | 否 | Azure 部署名 |
+| `apiVersion` | `string` | 否 | Azure API 版本 |
+| `awsRegion` | `string` | 否 | AWS 区域（Bedrock） |
+| `dingtalkWebhook` | `string` | 否 | 钉钉机器人 Webhook |
+| `dingtalkSigningSecret` | `string` | 否 | 新钉钉加签密钥；省略时保留现有密钥 |
+| `clearDingtalkSigningSecret` | `boolean` | 否 | 传 `true` 时显式清除现有加签密钥 |
+| `emailRecipients` | `string` | 否 | 邮件通知收件人 |
+| `smsWebhook` | `string` | 否 | 短信通知 Webhook |
 
 **Response `data`:** `null`
 
@@ -2332,6 +2354,7 @@ POST /api/settings/datasources/create
 | `type` | `string` | 是 | 类型 |
 | `url` | `string` | 是 | URL |
 | `auth` | `string` | 否 | 认证方式，默认 `None` |
+| `instanceIds` | `string[]` | 否 | 关联的实例 ID 列表 |
 
 **Response `data`:** `DataSource`
 
@@ -2350,6 +2373,7 @@ POST /api/settings/datasources/update
 | `type` | `string` | 是 | 类型 |
 | `url` | `string` | 是 | URL |
 | `auth` | `string` | 否 | 认证方式，默认 `None` |
+| `instanceIds` | `string[]` | 否 | 关联的实例 ID 列表 |
 
 **Response `data`:** `DataSource`
 
@@ -2380,6 +2404,9 @@ POST /api/settings/datasources/test
 | `url` | `string` | 是 | 连接 URL |
 | `type` | `string` | 是 | 类型 |
 | `auth` | `string` | 否 | 认证方式 |
+| `username` | `string` | 否 | Basic Auth 用户名 |
+| `password` | `string` | 否 | Basic Auth 密码 |
+| `bearerToken` | `string` | 否 | Bearer Token |
 
 **Response `data`:**
 
@@ -2387,6 +2414,22 @@ POST /api/settings/datasources/test
 |------|------|------|
 | `success` | `boolean` | 是否连接成功 |
 | `message` | `string?` | 错误信息 |
+
+### 14.9 测试通知渠道
+
+```
+POST /api/settings/general/test-notification?channel={channel}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `channel` | `string` | 是 | 通知渠道: `dingtalk` / `email` / `sms` |
+
+使用当前保存的通知设置向该渠道发送一条测试消息。
+
+**Response `data`:** 空（失败直接返回错误响应）
 
 ---
 
