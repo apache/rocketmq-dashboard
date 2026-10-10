@@ -37,6 +37,11 @@ via HTTPS; no independent publisher-signing-key verification is claimed here.
 
 ## Updating a download
 
+Before changing any pinned digest or download command, you must manually run
+`python3 server/scripts/docker_downloads_test.py` from the repository root.
+Run it again after the change to check the updated commands. CI does not currently
+execute this suite; CI wiring is maintained by the project committers.
+
 1. Choose the intended exact version and check its runtime compatibility.
 2. Obtain the artifact and its published checksum from the upstream project,
    independently of any deployment mirror. Compute the artifact's digest locally

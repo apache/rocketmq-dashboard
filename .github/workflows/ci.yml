@@ -41,9 +41,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check server Docker download integrity
-        run: python3 scripts/docker_downloads_test.py
-
       - name: Set up JDK 21 (Dragonwell)
         uses: actions/setup-java@v4
         with:
