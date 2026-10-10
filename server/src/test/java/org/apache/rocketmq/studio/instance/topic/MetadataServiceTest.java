@@ -53,6 +53,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.ArgumentCaptor;
@@ -1137,6 +1138,24 @@ class MetadataServiceTest {
         verify(apacheProvider, never()).createConsumerGroup(anyString(), any());
         assertThat(captor.getAllValues()).extracting(ConsumerGroupVO::getInstanceId)
                 .containsExactly("instance-a", "instance-a");
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"null, 16", "0, 0", "8, 8"}, nullValues = "null")
+    void importConsumerGroupsShouldPreserveRetryLimitOrUseDefaultTest(Integer retryMaxTimes, int expected) {
+        CreateConsumerGroupDTO request = importRequest("cg-retry", null);
+        request.setRetryMaxTimes(retryMaxTimes);
+        when(apacheProvider.importConsumerGroup(eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+
+        ImportConsumerGroupsResultVO result = metadataService.importConsumerGroups("instance-a", List.of(request));
+
+        assertThat(result.getImported()).isEqualTo(1);
+        assertThat(result.getFailed()).isZero();
+        assertThat(result.getGroups()).extracting(ConsumerGroupVO::getRetryMaxTimes).containsExactly(expected);
+        ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
+        verify(apacheProvider).importConsumerGroup(eq("instance-a"), captor.capture());
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(expected);
     }
 
     @Test

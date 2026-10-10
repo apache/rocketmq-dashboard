@@ -65,6 +65,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -1125,6 +1126,30 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).selectOne(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false, 0", "false, 8", "false, 16", "true, 0", "true, 8", "true, 16"})
+    void createAndImportConsumerGroupShouldPreserveRetryLimitTest(boolean importing, int retryMaxTimes) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-retry");
+        group.setInstanceId("instance-a");
+        group.setRetryMaxTimes(retryMaxTimes);
+
+        ConsumerGroupVO result = importing
+                ? adminClient.importConsumerGroup(group)
+                : adminClient.createConsumerGroup(group);
+
+        ArgumentCaptor<SubscriptionGroupConfig> configs = ArgumentCaptor.forClass(SubscriptionGroupConfig.class);
+        verify(adminExt, times(2)).createAndUpdateSubscriptionGroupConfig(anyString(), configs.capture());
+        assertThat(configs.getAllValues()).extracting(SubscriptionGroupConfig::getRetryMaxTimes)
+                .containsExactly(retryMaxTimes, retryMaxTimes);
+        ArgumentCaptor<RmqGroup> entity = ArgumentCaptor.forClass(RmqGroup.class);
+        verify(groupMapper).insert(entity.capture());
+        assertThat(entity.getValue().getMaxRetry()).isEqualTo(retryMaxTimes);
+        assertThat(result.getRetryMaxTimes()).isEqualTo(retryMaxTimes);
     }
 
     @ParameterizedTest

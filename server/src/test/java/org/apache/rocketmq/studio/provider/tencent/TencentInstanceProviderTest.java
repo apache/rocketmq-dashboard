@@ -74,6 +74,8 @@ import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -710,6 +712,24 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
         assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_PK);
         assertThat(created.getRetryMaxTimes()).isEqualTo(20);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"CONCURRENTLY", "Orderly"})
+    void createConsumerGroupShouldPreserveZeroRetryTimesTest(String deliveryOrderType) throws Exception {
+        when(client.CreateConsumerGroup(any())).thenReturn(null);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_no_retry");
+        group.setRetryMaxTimes(0);
+        group.setDeliveryOrderType(deliveryOrderType);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor = ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(client).CreateConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getMaxRetryTimes()).isZero();
+        assertThat(captor.getValue().getConsumeMessageOrderly()).isEqualTo("Orderly".equals(deliveryOrderType));
+        assertThat(created.getRetryMaxTimes()).isZero();
     }
 
     @Test

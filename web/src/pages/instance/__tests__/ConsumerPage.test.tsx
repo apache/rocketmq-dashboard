@@ -1831,52 +1831,61 @@ describe('Consumer page', () => {
     expect(await within(row).findByText('42')).toBeInTheDocument();
   });
 
-  it('edits retry settings from the detail modal settings tab', async () => {
-    vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
-      groupName: 'remote-cg',
-      retryQueueNums: 1,
-      retryMaxTimes: 16,
-    });
-    vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
-      groupName: 'remote-cg',
-      retryQueueNums: 2,
-      retryMaxTimes: 8,
-    });
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    renderWithProviders(<ConsumerPage />);
-
-    const row = await screen.findByRole('row', { name: /remote-cg/ });
-    expect(within(row).queryByRole('button', { name: /配\s*置/ })).not.toBeInTheDocument();
-    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
-
-    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
-    await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
-
-    await waitFor(() => {
-      expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
-        'remote-cg',
-        'instance-1',
-      );
-    });
-    const retryQueueInput = await within(dialog).findByLabelText('重试队列数');
-    expect(retryQueueInput).toHaveValue('1');
-
-    await user.clear(retryQueueInput);
-    await user.type(retryQueueInput, '2');
-    await user.clear(within(dialog).getByLabelText('最大重试次数'));
-    await user.type(within(dialog).getByLabelText('最大重试次数'), '8');
-    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
-
-    await waitFor(() => {
-      expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledWith({
-        instanceId: 'instance-1',
-        name: 'remote-cg',
-        retryQueueNums: 2,
-        retryMaxTimes: 8,
+  it.each([0, 8])(
+    'saves a retry limit of %i from the detail modal settings tab',
+    async (retryMaxTimes) => {
+      vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
+        groupName: 'remote-cg',
+        retryQueueNums: 1,
+        retryMaxTimes: 0,
       });
-    });
-    expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
-  });
+      vi.mocked(consumerService.updateConsumerGroupSettings).mockResolvedValue({
+        groupName: 'remote-cg',
+        retryQueueNums: 2,
+        retryMaxTimes,
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ConsumerPage />);
+
+      const row = await screen.findByRole('row', { name: /remote-cg/ });
+      expect(within(row).queryByRole('button', { name: /配\s*置/ })).not.toBeInTheDocument();
+      await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+
+      const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+      await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
+
+      await waitFor(() => {
+        expect(consumerService.getConsumerGroupSettings).toHaveBeenCalledWith(
+          'remote-cg',
+          'instance-1',
+        );
+      });
+      const retryQueueInput = await within(dialog).findByLabelText('重试队列数');
+      expect(retryQueueInput).toHaveValue('1');
+      expect(within(dialog).getByLabelText('最大重试次数')).toHaveValue('0');
+      await user.click(within(dialog).getByLabelText('最大重试次数'));
+      await user.tab();
+      expect(within(dialog).getByLabelText('最大重试次数')).toHaveValue('0');
+
+      await user.clear(retryQueueInput);
+      await user.type(retryQueueInput, '2');
+      if (retryMaxTimes !== 0) {
+        await user.clear(within(dialog).getByLabelText('最大重试次数'));
+        await user.type(within(dialog).getByLabelText('最大重试次数'), String(retryMaxTimes));
+      }
+      await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+      await waitFor(() => {
+        expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledWith({
+          instanceId: 'instance-1',
+          name: 'remote-cg',
+          retryQueueNums: 2,
+          retryMaxTimes,
+        });
+      });
+      expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
+    },
+  );
 
   it('edits consumption switches from the detail modal settings tab', async () => {
     vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
