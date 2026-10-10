@@ -140,15 +140,77 @@ class ProxyConsumerResolverTest {
                 .thenReturn(RemotingCommand.createResponseCommand(ResponseCode.CONSUMER_NOT_ONLINE, "offline"));
         ProxyConsumerResolver underTest = spy(resolver);
         doReturn(failedClient, recoveredClient).when(underTest).newRemotingClient();
+        doReturn(0L).when(underTest).nanoTime();
 
         assertThatThrownBy(() -> underTest.queryProxy("10.0.4.66:8080", "cg-orders"))
                 .isInstanceOf(IllegalStateException.class).hasMessage("startup failed");
+        doReturn(TimeUnit.SECONDS.toNanos(1)).when(underTest).nanoTime();
         assertThat(underTest.queryProxy("10.0.4.66:8080", "cg-orders")).isNull();
 
         verify(failedClient).start();
         verify(failedClient).shutdown();
         verify(recoveredClient).start();
         verify(recoveredClient).invokeSync(anyString(), any(RemotingCommand.class), anyLong());
+    }
+
+    @Test
+    void persistentStartupFailureShouldBackOffAcrossQueriesTest() throws Exception {
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        doThrow(new IllegalStateException("startup failed")).when(client).start();
+        ProxyConsumerResolver underTest = spy(resolver);
+        doReturn(client).when(underTest).newRemotingClient();
+
+        doReturn(0L).when(underTest).nanoTime();
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> underTest.queryProxy("10.0.4.66:8080", "cg-orders"))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        verify(underTest).newRemotingClient();
+        verify(client).start();
+        verify(client).shutdown();
+    }
+
+    @Test
+    void shutdownDuringStartupShouldReturnWithoutPublishingClientTest() throws Exception {
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        CountDownLatch startupEntered = new CountDownLatch(1);
+        CountDownLatch allowStartup = new CountDownLatch(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            startupEntered.countDown();
+            assertThat(allowStartup.await(5, TimeUnit.SECONDS)).isTrue();
+            return null;
+        }).when(client).start();
+        ProxyConsumerResolver underTest = spy(resolver);
+        doReturn(client).when(underTest).newRemotingClient();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<ConsumerConnection> query = pool.submit(() -> underTest.queryProxy("proxy:8080", "cg"));
+            assertThat(startupEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            pool.submit(underTest::shutdownRemotingClient).get(1, TimeUnit.SECONDS);
+            allowStartup.countDown();
+            assertThatThrownBy(() -> query.get(5, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class);
+            verify(client).shutdown();
+            verify(client, org.mockito.Mockito.never()).invokeSync(anyString(), any(), anyLong());
+            assertThatThrownBy(() -> underTest.queryProxy("proxy:8080", "cg"))
+                    .isInstanceOf(IllegalStateException.class);
+            verify(underTest).newRemotingClient();
+        } finally {
+            allowStartup.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void shutdownShouldBeIdempotentAndRejectLaterQueriesTest() throws Exception {
+        NettyRemotingClient client = mock(NettyRemotingClient.class);
+        resolver.setRemotingClientForTest(client);
+        resolver.shutdownRemotingClient();
+        resolver.shutdownRemotingClient();
+        assertThatThrownBy(() -> resolver.queryProxy("proxy:8080", "cg"))
+                .isInstanceOf(IllegalStateException.class);
+        verify(client).shutdown();
+        verify(client, org.mockito.Mockito.never()).invokeSync(anyString(), any(), anyLong());
     }
 
     @Test

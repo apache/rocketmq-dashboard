@@ -41,7 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Resolves consumer connection info from the cluster proxies.
@@ -72,7 +72,12 @@ public class ProxyConsumerResolver {
     private final RocketMQProperties properties;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
-    private final AtomicBoolean clientStarted = new AtomicBoolean(false);
+    // Only publication and destruction use this monitor; never hold it across start().
+    private final Object lifecycleMonitor = new Object();
+    private volatile boolean destroyed;
+    private RuntimeException startupFailure;
+    private long startupFailureNanos;
+    private static final long STARTUP_RETRY_DELAY_NANOS = TimeUnit.SECONDS.toNanos(1);
     private volatile NettyRemotingClient remotingClient;
 
     /**
@@ -221,27 +226,52 @@ public class ProxyConsumerResolver {
     }
 
     private NettyRemotingClient remotingClient() {
-        if (clientStarted.get()) {
-            return remotingClient;
+        if (destroyed) {
+            throw new IllegalStateException("Proxy consumer resolver is shut down");
+        }
+        NettyRemotingClient current = remotingClient;
+        if (current != null) {
+            return current;
         }
         synchronized (this) {
-            if (!clientStarted.get()) {
-                NettyRemotingClient starting = newRemotingClient();
-                try {
-                    starting.start();
-                } catch (RuntimeException failure) {
+            if (destroyed) {
+                throw new IllegalStateException("Proxy consumer resolver is shut down");
+            }
+            if (remotingClient != null) {
+                return remotingClient;
+            }
+            if (startupFailure != null && nanoTime() - startupFailureNanos < STARTUP_RETRY_DELAY_NANOS) {
+                throw new IllegalStateException("Proxy remoting client startup is backing off", startupFailure);
+            }
+            NettyRemotingClient starting = null;
+            try {
+                starting = newRemotingClient();
+                starting.start();
+                synchronized (lifecycleMonitor) {
+                    if (destroyed) {
+                        throw new IllegalStateException("Proxy consumer resolver is shut down");
+                    }
+                    remotingClient = starting;
+                }
+                startupFailure = null;
+                return starting;
+            } catch (RuntimeException failure) {
+                startupFailure = failure;
+                startupFailureNanos = nanoTime();
+                if (starting != null) {
                     try {
                         starting.shutdown();
                     } catch (RuntimeException shutdownFailure) {
                         failure.addSuppressed(shutdownFailure);
                     }
-                    throw failure;
                 }
-                remotingClient = starting;
-                clientStarted.set(true);
+                throw failure;
             }
-            return remotingClient;
         }
+    }
+
+    long nanoTime() {
+        return System.nanoTime();
     }
 
     NettyRemotingClient newRemotingClient() {
@@ -250,14 +280,20 @@ public class ProxyConsumerResolver {
 
     @PreDestroy
     public void shutdownRemotingClient() {
-        if (clientStarted.get() && remotingClient != null) {
-            remotingClient.shutdown();
+        NettyRemotingClient client;
+        synchronized (lifecycleMonitor) {
+            destroyed = true;
+            client = remotingClient;
+            remotingClient = null;
         }
+        if (client != null) {
+            client.shutdown();
+        }
+        // A startup in flight owns its candidate and disposes it when start() returns.
     }
 
     void setRemotingClientForTest(NettyRemotingClient client) {
         this.remotingClient = client;
-        clientStarted.set(true);
     }
 
     public record ConsumerConnectionResolution(ConsumerConnection connection, boolean available) {
