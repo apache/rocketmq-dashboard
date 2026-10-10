@@ -384,6 +384,40 @@ describe('LiteTopic Page', () => {
     expect(csv).not.toContain('expired-*');
   });
 
+  it('renders an unknown backlog as unknown instead of zero', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'measured-*',
+        topicCount: 3,
+        consumerCount: 2,
+        totalBacklog: 12,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-1'],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'unreadable-*',
+        topicCount: 3,
+        consumerCount: 2,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-2'],
+      },
+    ]);
+    renderPage();
+
+    const measuredRow = (await screen.findByText('measured-*')).closest('tr')!;
+    expect(within(measuredRow).getByText('12')).toBeInTheDocument();
+
+    const unreadableRow = screen.getByText('unreadable-*').closest('tr')!;
+    expect(within(unreadableRow).getByText('-')).toBeInTheDocument();
+    expect(within(unreadableRow).queryByText('0')).not.toBeInTheDocument();
+  });
+
   it('keeps an early filtered display while a delayed bootstrap supplies namespace options', async () => {
     const capability = createDeferred<{ supported: boolean }>();
     const bootstrapList = createDeferred<LiteTopicItem[]>();

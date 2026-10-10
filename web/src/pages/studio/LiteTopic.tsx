@@ -437,10 +437,13 @@ const LiteTopicPage: React.FC = () => {
       title: t('liteTopic.backlog'),
       dataIndex: 'totalBacklog',
       key: 'totalBacklog',
-      render: (val: number) => {
-        const num = val ?? 0;
-        const color = num > 10000 ? '#ff4d4f' : num > 0 ? '#fa8c16' : '#52c41a';
-        return <span style={{ color, fontWeight: 500 }}>{num.toLocaleString()}</span>;
+      render: (val?: number) => {
+        // Unknown backlog (e.g. a failed broker read) must not be shown as a healthy 0.
+        if (val == null) {
+          return <span style={{ fontWeight: 500 }}>-</span>;
+        }
+        const color = val > 10000 ? '#ff4d4f' : val > 0 ? '#fa8c16' : '#52c41a';
+        return <span style={{ color, fontWeight: 500 }}>{val.toLocaleString()}</span>;
       },
       sorter: (a, b) => (a.totalBacklog || 0) - (b.totalBacklog || 0),
     },
