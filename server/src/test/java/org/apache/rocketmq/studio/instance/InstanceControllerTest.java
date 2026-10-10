@@ -263,6 +263,21 @@ class InstanceControllerTest extends WebMvcAuthTestSupport {
     }
 
     @Test
+    void deleteInstancesShouldRejectABatchAboveTheLimitTest() throws Exception {
+        List<String> ids = java.util.stream.IntStream.rangeClosed(1, 101)
+                .mapToObj(index -> "inst-" + index).toList();
+
+        mockMvc.perform(post("/api/instances/delete-batch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("ids", ids))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("At most 100 instances are allowed per batch"));
+
+        verifyNoInteractions(instanceService);
+    }
+
+    @Test
     void deleteInstanceShouldRejectMissingId() throws Exception {
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
