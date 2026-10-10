@@ -375,6 +375,28 @@ class MybatisPlusAlertRepositoryTest {
                 argThat(MybatisPlusAlertRepositoryTest::hasStableAlertOrdering));
     }
 
+    @Test
+    void findAlertsPageShouldIncludeLegacyBusinessAlertsTest() {
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(new Page<RmqSystemAlert>(1, 20));
+
+        repository.findAlertsPage(new SystemAlertQuery("warn", AlertDomain.BUSINESS, "local", null,
+                null, null, null, null, 1, 20));
+
+        verify(alertMapper).selectPage(any(Page.class),
+                argThat(MybatisPlusAlertRepositoryTest::hasLegacyBusinessAlertFilters));
+    }
+
+    @Test
+    void findAlertsPageShouldMatchClusterDomainExactlyTest() {
+        when(alertMapper.selectPage(any(Page.class), any())).thenReturn(new Page<RmqSystemAlert>(1, 20));
+
+        repository.findAlertsPage(new SystemAlertQuery(null, AlertDomain.CLUSTER, null, null,
+                null, null, null, null, 1, 20));
+
+        verify(alertMapper).selectPage(any(Page.class),
+                argThat(MybatisPlusAlertRepositoryTest::hasExactClusterDomainFilter));
+    }
+
     private static boolean hasScopeLabelAndTimeFilters(Wrapper<RmqSystemAlert> query) {
         if (!(query instanceof QueryWrapper<?> queryWrapper)) {
             return false;
@@ -400,6 +422,27 @@ class MybatisPlusAlertRepositoryTest {
             return false;
         }
         return queryWrapper.getCustomSqlSegment().contains("ORDER BY time DESC,id DESC");
+    }
+
+    private static boolean hasLegacyBusinessAlertFilters(Wrapper<RmqSystemAlert> query) {
+        if (!(query instanceof QueryWrapper<?> queryWrapper)) {
+            return false;
+        }
+        String sql = queryWrapper.getCustomSqlSegment();
+        return sql.contains("domain IS NULL")
+                && sql.contains("domain =")
+                && queryWrapper.getParamNameValuePairs().containsValue(AlertDomain.BUSINESS.name())
+                && queryWrapper.getParamNameValuePairs().containsValue("local");
+    }
+
+    private static boolean hasExactClusterDomainFilter(Wrapper<RmqSystemAlert> query) {
+        if (!(query instanceof QueryWrapper<?> queryWrapper)) {
+            return false;
+        }
+        String sql = queryWrapper.getCustomSqlSegment();
+        return sql.contains("domain =")
+                && !sql.contains("domain IS NULL")
+                && queryWrapper.getParamNameValuePairs().containsValue(AlertDomain.CLUSTER.name());
     }
 
     private static boolean hasBusinessRulePageFilters(Wrapper<RmqAlertRule> query) {
