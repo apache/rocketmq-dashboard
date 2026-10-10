@@ -1946,6 +1946,46 @@ describe('Consumer page', () => {
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
 
+  it('reports a group whose consume stats could not be read as an unknown backlog', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          name: 'unreadable-stats-cg',
+          consumeStatsAvailable: false,
+          totalLag: 0,
+          delaySeconds: 0,
+          onlineInstances: 0,
+          instances: [],
+        },
+        { ...group, name: 'readable-stats-cg', totalLag: 15000, consumeStatsAvailable: true },
+      ]),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    const unreadableRow = await screen.findByRole('row', { name: /unreadable-stats-cg/ });
+    // The provider's placeholder zero must not be presented as a measured, green backlog.
+    expect(within(unreadableRow).getByText('不可用')).toBeInTheDocument();
+    await user.click(within(unreadableRow).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /unreadable-stats-cg/ });
+    // The card shows the backlog as unknown, and the health panel says why.
+    expect(within(dialog).getByText('不可用')).toBeInTheDocument();
+    await user.click(within(dialog).getByText('健康诊断'));
+    expect(await within(dialog).findByText('消费统计不可用')).toBeInTheDocument();
+
+    // ... and a descending sort must not promote it either.
+    const [lagHeader] = screen.getAllByText('总堆积量');
+    await user.click(lagHeader);
+    await user.click(lagHeader);
+    const rows = Array.from(document.querySelectorAll('tbody tr')).map(
+      (row) => row.textContent ?? '',
+    );
+    const unknownIndex = rows.findIndex((text) => text.includes('unreadable-stats-cg'));
+    const knownIndex = rows.findIndex((text) => /\breadable-stats-cg\b/.test(text));
+    expect(unknownIndex).toBeGreaterThan(knownIndex);
+  });
+
   it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
