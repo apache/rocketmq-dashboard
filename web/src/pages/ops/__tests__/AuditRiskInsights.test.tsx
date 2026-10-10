@@ -131,6 +131,33 @@ describe('AuditRiskInsights', () => {
     expect(within(riskyRecordCard as HTMLElement).getAllByText('失败')).not.toHaveLength(0);
   });
 
+  it('lists every failing operation of a repeated target, not only the first three', () => {
+    const operations = [
+      'DELETE_TOPIC',
+      'UPDATE_TOPIC',
+      'RESET_OFFSET',
+      'CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS',
+    ];
+    renderPanel({
+      records: operations.map((operationType, index) => ({
+        ...records[0],
+        id: 200 + index,
+        operationType,
+        result: 'FAILED',
+      })),
+    });
+
+    const repeatedTargetCard = screen.getByText('重复异常对象').closest('.ant-card');
+    expect(repeatedTargetCard).not.toBeNull();
+    const table = within(repeatedTargetCard as HTMLElement);
+    // The row's level is computed from all of its operations - the fourth is the high-risk
+    // CLEAR_ operation, which is what makes the target a warning - so the cell has to show them
+    // all instead of the first three.
+    for (const label of ['删除 Topic', '更新 Topic', '重置消费位点', '清除已确认告警']) {
+      expect(table.getByText(label)).toBeInTheDocument();
+    }
+  });
+
   it('shows an empty state when the filtered result has no records', () => {
     renderPanel({
       summary: {
