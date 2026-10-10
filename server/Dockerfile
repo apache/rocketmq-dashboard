@@ -67,8 +67,13 @@ COPY server/LICENSE server/NOTICE /usr/share/licenses/rocketmq-studio/
 # Node.js + AI agent CLIs (claude-code, qodercli).
 # These packages are obtained from npm at build time by the user; they are NOT
 # distributed as part of the ASF release artifact (only this Dockerfile is).
-RUN curl -fsSL https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
-      | tar xz -C /opt \
+# Verify downloaded bytes against reviewed, committed upstream checksums before
+# extraction/use. See docker-downloads.md for provenance and update instructions.
+RUN curl -fsSL -o /tmp/node.tar.gz \
+      https://npmmirror.com/mirrors/node/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
+    && echo "eec2c7b9c6ac72e42885a42edfc0503c0e4ee455f855c4a17a6cbcf026656dd5  /tmp/node.tar.gz" | sha256sum -c - \
+    && tar xzf /tmp/node.tar.gz -C /opt \
+    && rm /tmp/node.tar.gz \
     && ln -s /opt/node-v20.19.2-linux-x64/bin/node  /usr/local/bin/node \
     && ln -s /opt/node-v20.19.2-linux-x64/bin/npm   /usr/local/bin/npm \
     && ln -s /opt/node-v20.19.2-linux-x64/bin/npx   /usr/local/bin/npx \
@@ -87,9 +92,11 @@ RUN chmod 0755 /usr/local/bin/rmqctl
 # Not bundled in the fat JAR (pom.xml scope=provided); downloaded here at image
 # build time so the container has a working MySQL driver out of the box.
 # ASF distributes only this Dockerfile text, not the connector binary.
-RUN mkdir -p /app/lib \
-    && curl -fsSL -o /app/lib/mysql-connector-j-9.7.0.jar \
-       https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar
+RUN curl -fsSL -o /tmp/mysql-connector-j.jar \
+      https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar \
+    && echo "0353648eaa1c91e0f4020c959abf756bc866ffd583df22ae6b6f6e0cbd43eb44  /tmp/mysql-connector-j.jar" | sha256sum -c - \
+    && mkdir -p /app/lib \
+    && mv /tmp/mysql-connector-j.jar /app/lib/mysql-connector-j-9.7.0.jar
 ENV LOADER_PATH=/app/lib
 
 EXPOSE 8888
@@ -113,8 +120,11 @@ RUN python3 /opt/studio-legal/scripts/legal.py check-jar /app/app.jar \
 FROM alibabadragonwell/dragonwell:21 AS build
 WORKDIR /app
 
-RUN curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz \
-      | tar xz -C /opt \
+RUN curl -fsSL -o /tmp/maven.tar.gz \
+      https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz \
+    && echo "a555254d6b53d267965a3404ecb14e53c3827c09c3b94b5678835887ab404556bfaf78dcfe03ba76fa2508649dca8531c74bca4d5846513522404d48e8c4ac8b  /tmp/maven.tar.gz" | sha512sum -c - \
+    && tar xzf /tmp/maven.tar.gz -C /opt \
+    && rm /tmp/maven.tar.gz \
     && ln -s /opt/apache-maven-3.9.9/bin/mvn /usr/local/bin/mvn
 
 RUN if ! command -v python3 >/dev/null 2>&1; then \
