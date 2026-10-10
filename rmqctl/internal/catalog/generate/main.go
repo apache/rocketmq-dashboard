@@ -312,10 +312,13 @@ func run(arguments []string) error {
 			return fmt.Errorf("parse merged catalog: %w", err)
 		}
 	} else {
-		source, err := os.ReadFile(inputPath)
+		// Assign to the outer source instead of declaring a new variable:
+		// the digest and the SDK contract are derived from it below.
+		fileSource, err := os.ReadFile(inputPath)
 		if err != nil {
 			return fmt.Errorf("read catalog: %w", err)
 		}
+		source = fileSource
 		if err := yaml.Unmarshal(source, &document); err != nil {
 			return fmt.Errorf("parse catalog: %w", err)
 		}

@@ -17,6 +17,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,5 +282,39 @@ func TestRunRejectsReservedInstanceIDFlag(t *testing.T) {
 	err = run([]string{"-input", input, "-output", output})
 	if err == nil || !strings.Contains(err.Error(), "reserved CLI flag --instance-id") {
 		t.Fatalf("err = %v, want nested instanceId rejection", err)
+	}
+}
+
+// TestRunSingleFileModeDigestMatchesSource pins the single-file (-input) mode
+// contract: the catalog digest must be the SHA-256 of the input document, and
+// the SDK contract must be rendered from the same source. Both previously fell
+// back to the zero value of a shadowed source variable.
+func TestRunSingleFileModeDigestMatchesSource(t *testing.T) {
+	input, output := writeCatalogSource(t, platformToolSource)
+	sdk := filepath.Join(t.TempDir(), "rmq-tools.json")
+
+	if err := run([]string{"-input", input, "-output", output, "-sdk", sdk}); err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+	source, err := os.ReadFile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(source)
+	generated, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := fmt.Sprintf("%q", hex.EncodeToString(digest[:]))
+	if !strings.Contains(string(generated), "Digest:") ||
+		!strings.Contains(string(generated), expected) {
+		t.Fatalf("generated digest does not match SHA-256 of the source %s\n", expected)
+	}
+	contract, err := os.ReadFile(sdk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(contract)) == "null" || !strings.Contains(string(contract), `"rmq.cluster.list"`) {
+		t.Fatalf("SDK contract was not rendered from the source: %s", contract)
 	}
 }
