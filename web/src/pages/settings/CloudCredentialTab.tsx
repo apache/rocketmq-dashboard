@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Input,
   Descriptions,
@@ -71,6 +72,8 @@ export const CloudCredentialTab = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCredential, setEditingCredential] = useState<CloudCredential | null>(null);
   const [form] = Form.useForm<CredentialFormValues>();
@@ -78,6 +81,7 @@ export const CloudCredentialTab = () => {
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const submitInFlightRef = useRef(false);
+  const queryKey = JSON.stringify([vendorFilter, debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -89,6 +93,7 @@ export const CloudCredentialTab = () => {
     Promise.resolve().then(() => {
       if (requestId === requestSeqRef.current) {
         setLoading(true);
+        setLoadFailed(false);
       }
     });
     return (async () => {
@@ -104,9 +109,13 @@ export const CloudCredentialTab = () => {
         }
         setCredentials(result.items);
         setTotal(result.total);
+        setLoadedQueryKey(queryKey);
       } catch {
         if (requestId === requestSeqRef.current) {
-          message.error(t('settings.credentialLoadFailed'));
+          setCredentials([]);
+          setTotal(0);
+          setLoadedQueryKey(null);
+          setLoadFailed(true);
         }
       } finally {
         if (requestId === requestSeqRef.current) {
@@ -114,7 +123,7 @@ export const CloudCredentialTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, t, vendorFilter]);
+  }, [debouncedSearch, page, pageSize, queryKey, vendorFilter]);
 
   useEffect(() => {
     void loadCredentials();
@@ -169,6 +178,8 @@ export const CloudCredentialTab = () => {
   };
 
   const openEditModal = (credential: CloudCredential) => {
+    if (loading || loadFailed || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey)
+      return;
     setEditingCredential(credential);
     form.setFieldsValue({
       name: credential.name,
@@ -218,6 +229,8 @@ export const CloudCredentialTab = () => {
   };
 
   const handleDelete = async (credential: CloudCredential) => {
+    if (loading || loadFailed || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey)
+      return;
     try {
       await deleteCloudCredential(credential.id);
       const remainingOnPage = credentials.length - 1;
@@ -232,6 +245,9 @@ export const CloudCredentialTab = () => {
     }
   };
 
+  const filtersPending = search.trim() !== debouncedSearch;
+  const queryMismatch = loadedQueryKey !== queryKey;
+  const staleActionsDisabled = loading || loadFailed || filtersPending || queryMismatch;
   const columns: ColumnsType<CloudCredential> = [
     { title: t('common.name'), dataIndex: 'name', key: 'name' },
     {
@@ -260,6 +276,7 @@ export const CloudCredentialTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={staleActionsDisabled}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -270,7 +287,13 @@ export const CloudCredentialTab = () => {
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={staleActionsDisabled}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
@@ -315,18 +338,28 @@ export const CloudCredentialTab = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={openCreateModal}
-            disabled={loading}
+            disabled={loading || filtersPending || (queryMismatch && !loadFailed)}
           >
             {t('settings.addCredential')}
           </Button>
         </Flex>
       </Flex>
 
+      {loadFailed && (
+        <Alert
+          type="error"
+          showIcon
+          message={t('settings.credentialLoadFailed')}
+          action={<Button onClick={() => void loadCredentials()}>{t('common.retry')}</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <Table<CloudCredential>
         columns={columns}
         dataSource={credentials}
         rowKey="id"
-        loading={loading}
+        loading={loading || filtersPending || (queryMismatch && !loadFailed)}
         pagination={{
           current: page,
           pageSize,
