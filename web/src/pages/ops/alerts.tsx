@@ -152,7 +152,7 @@ interface AlertsPageProps {
   domain?: AlertRuleDomain;
 }
 
-const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
+const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
@@ -173,23 +173,6 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
   const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | 'delete' | null>(null);
   const [form] = Form.useForm();
-  // The same component instance serves /ops/alerts and /ops/business-alerts, so the
-  // list state from the previous domain must be dropped when the route switches
-  // (React's documented "adjust state when a prop changes" pattern). Clear the loaded
-  // rows/total/runtime and re-enter the loading state as well, otherwise the previous
-  // domain's rules stay visible with loading=false until the new page resolves.
-  const [renderedDomain, setRenderedDomain] = useState(domain);
-  if (renderedDomain !== domain) {
-    setRenderedDomain(domain);
-    setPage(1);
-    setSearch('');
-    setEnabledFilter(undefined);
-    setSelectedRuleIds([]);
-    setRules([]);
-    setTotalRules(0);
-    setRuntime([]);
-    setLoading(true);
-  }
   const selectedMetric = Form.useWatch('metric', form);
   const selectedOperator = Form.useWatch('operator', form);
   const selectedThresholdUnit = Form.useWatch('thresholdUnit', form);
@@ -1532,5 +1515,12 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     </div>
   );
 };
+
+// Route changes reuse this page component. A domain owns its editor, metric requests,
+// test results and mutation state as well as its list; none may leak into the other domain.
+// The stable key preserves edits during navigation that stays within the same domain.
+const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => (
+  <AlertsPageContent key={domain} domain={domain} />
+);
 
 export default AlertsPage;
