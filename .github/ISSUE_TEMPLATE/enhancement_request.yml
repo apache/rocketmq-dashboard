@@ -82,7 +82,7 @@ body:
     attributes:
       label: Are You Willing to Submit a Pull Request?
       description: >
-        Not required. Pull requests target the `master` branch; see CONTRIBUTING.md.
+        Not required. Pull requests target the `rocketmq-studio` branch; see CONTRIBUTING.md.
       options:
         - label: Yes, I am willing to submit a pull request.
 

@@ -17,9 +17,9 @@
 package org.apache.rocketmq.studio.ops.ai.tool.handler.nameserver;
 
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffService;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigInput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigItem;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.nameserver.NameserverConfigOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
@@ -36,7 +36,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class NameServerConfigToolHandler
-        implements ToolHandler<NameserverConfigInput, ListOutput<NameserverConfigItem>> {
+        implements ToolHandler<NameserverConfigInput, NameserverConfigOutput> {
 
     private final PlatformClusterResolver clusterResolver;
     private final NameServerConfigDiffService configDiffService;
@@ -52,11 +52,13 @@ public class NameServerConfigToolHandler
     }
 
     @Override
-    public ListOutput<NameserverConfigItem> execute(
+    public NameserverConfigOutput execute(
             NameserverConfigInput input, ToolExecutionContext context) {
         String instanceId = clusterResolver.resolveInstanceId(input.clusterName());
-        return new ListOutput<>(configDiffService.read(input.clusterName(), instanceId).stream()
+        NameServerConfigDiffService.NameServerConfigRead read =
+                configDiffService.read(input.clusterName(), instanceId);
+        return NameserverConfigOutput.of(read.nodes().stream()
                 .map(node -> new NameserverConfigItem(node.addr(), node.config()))
-                .toList());
+                .toList(), read.unreachableEndpoints());
     }
 }

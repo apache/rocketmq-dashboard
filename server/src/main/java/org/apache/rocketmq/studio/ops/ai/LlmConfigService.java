@@ -132,6 +132,10 @@ public class LlmConfigService {
                 .llmProvider(normalized.getProvider())
                 .llmEngine(normalized.getEngine())
                 .apiKey(persistedApiKey)
+                // Carry the clear intent into the persisted settings: without it a blank key plus
+                // clearApiKey=false means "keep the stored key" to SettingsService's merge, so the
+                // secret the operator just removed would be written straight back.
+                .clearApiKey(normalized.isClearApiKey())
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
                 .deploymentName(normalized.getDeploymentName())

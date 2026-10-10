@@ -712,6 +712,8 @@ const ClusterPage = () => {
       readQueueNums: cfg.readQueueNums ?? 8,
       brokerPermission: cfg.brokerPermission ?? 6,
     });
+    // setFieldsValue marks fields touched; only a user edit should replace the original bytes.
+    configForm.setFields([{ name: 'maxMessageSizeMB', touched: false }]);
     setConfigModalOpen(true);
   };
 
@@ -725,7 +727,9 @@ const ClusterPage = () => {
       instanceId: selectedInstanceIdRef.current,
       ...(selectedCluster.config ?? {}),
       ...configValues,
-      maxMessageSize: maxMessageSizeMB * 1048576,
+      maxMessageSize: configForm.isFieldTouched('maxMessageSizeMB')
+        ? maxMessageSizeMB * 1048576
+        : (selectedCluster.config?.maxMessageSize ?? 4194304),
     };
   };
 

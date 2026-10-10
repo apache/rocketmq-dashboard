@@ -136,6 +136,19 @@ describe('ProxyPage', () => {
     expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
   });
 
+  it('does not persist a Proxy address after an unfinished load unmounts', async () => {
+    const pending = createDeferred<typeof proxyHome>();
+    vi.mocked(queryProxyHomePage).mockReturnValueOnce(pending.promise);
+    const page = renderPage();
+    await waitFor(() => expect(queryProxyHomePage).toHaveBeenCalledTimes(1));
+
+    page.unmount();
+    await act(async () => pending.resolve(proxyHome));
+
+    expect(getProxyTopology).not.toHaveBeenCalled();
+    expect(localStorage.getItem('proxyAddr')).toBeNull();
+  });
+
   it('shows success after the proxy list refreshes', async () => {
     const user = userEvent.setup();
     renderPage();

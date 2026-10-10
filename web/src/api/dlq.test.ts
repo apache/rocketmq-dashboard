@@ -29,7 +29,7 @@ const group: DLQGroup = {
   messageCount: 3,
   lastEnqueueTime: '2026-07-17T00:00:00Z',
   retryCount: 16,
-  status: 'active',
+  status: 'ACTIVE',
 };
 
 describe('DLQ API', () => {

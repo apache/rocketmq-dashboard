@@ -167,8 +167,13 @@ public class CloudCredentialService {
         if (id == null) {
             throw new BusinessException(400, "Cloud credential id is required");
         }
-        return credentialRepository.findById(id)
+        CloudCredentialVO credential = credentialRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + id));
+        // Reading the secret is the one operation on this resource that leaves no other trace, so it
+        // is audited like the mutations: the detail names the credential but never the secret.
+        recordAudit("REVEAL_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", String.valueOf(credential.getId()), null,
+                credentialAuditDetail(credential));
+        return credential;
     }
 
     private CloudCredentialVO maskAccessKey(CloudCredentialVO credential) {
