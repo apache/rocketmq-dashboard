@@ -494,7 +494,12 @@ const ConversationListPanel = ({
           pageSize: list.pageSize,
           total: list.total,
           showSizeChanger: false,
-          onChange: list.setPage,
+          // Selection is per page, like the topic and consumer group tables: keys from a
+          // page the user can no longer see must not survive into the batch delete count.
+          onChange: (nextPage) => {
+            setSelectedRowKeys([]);
+            list.setPage(nextPage);
+          },
         }}
       />
     </Flex>
