@@ -96,6 +96,11 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load the dashboard' },
+  'dashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Unable to fetch the cluster overview. Check your network connection and try again.',
+  },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
   'dashboard.clusters': { zh: '集群数', en: 'Clusters' },
   'dashboard.topics': { zh: 'Topic 数', en: 'Topics' },
@@ -1228,6 +1233,17 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '重试当前页失败记录',
     en: 'Retry failed records on this page',
   },
+
+  // ─── About ───
+  'about.buildCommit': { zh: '构建提交', en: 'Build Commit' },
+  'about.buildTime': { zh: '构建时间', en: 'Build Time' },
+  'about.supportedVersions': {
+    zh: 'RocketMQ 支持版本',
+    en: 'Supported RocketMQ Versions',
+  },
+  'about.frontend': { zh: '前端框架', en: 'Frontend' },
+  'about.backend': { zh: '后端框架', en: 'Backend' },
+  'about.relatedLinks': { zh: '相关链接', en: 'Related Links' },
 
   // ─── General Settings ───
   'settings.generalLoadFailed': {
