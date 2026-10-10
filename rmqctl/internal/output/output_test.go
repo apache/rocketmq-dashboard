@@ -18,9 +18,41 @@ package output
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
+	payload := map[string]any{
+		"items": []any{
+			map[string]any{
+				"msgId": "m1",
+				"size":  json.Number("3"),
+				"ratio": json.Number("0.25"),
+				// 2^53+1: exact as an integer, not representable as a float64 - the case that
+				// motivated decoding studio payloads with UseNumber() in the first place.
+				"offset": json.Number("9007199254740993"),
+			},
+		},
+		"skippedCount": json.Number("5"),
+	}
+	buf := &bytes.Buffer{}
+	if err := YAML(buf, payload); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"size: 3", "ratio: 0.25", "skippedCount: 5", "offset: 9007199254740993"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("YAML output missing %q:\n%s", want, out)
+		}
+	}
+	for _, quoted := range []string{`size: "3"`, `ratio: "0.25"`, `skippedCount: "5"`, `offset: "9007199254740993"`} {
+		if strings.Contains(out, quoted) {
+			t.Fatalf("YAML quoted a number (%s):\n%s", quoted, out)
+		}
+	}
+}
 
 func TestToolCallSummary(t *testing.T) {
 	buf := &bytes.Buffer{}
