@@ -2331,8 +2331,8 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Home Page (additional) ───
   'home.placeholder': {
-    zh: '向 RocketMQ Bot 提问，全程加密、安全、可信',
-    en: 'Ask RocketMQ Bot, fully encrypted, secure, trusted',
+    zh: '向 RocketMQ Bot 提问',
+    en: 'Ask RocketMQ Bot',
   },
   'home.tools': { zh: '工具', en: 'Tools' },
   'home.promptEnhance': { zh: 'Prompt 增强', en: 'Prompt Enhance' },
@@ -3675,8 +3675,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'llm.apiKey': { zh: 'API Key', en: 'API Key' },
   'llm.apiKeyRequired': { zh: '请输入API Key', en: 'Please enter API Key' },
   'llm.apiKeyEncrypted': {
-    zh: 'API Key 将加密存储在服务端',
-    en: 'API Key will be encrypted and stored on the server',
+    zh: 'API Key 存储在服务端；API 中为只写字段，没有应用层静态加密',
+    en: 'API Key is stored server-side as a write-only API field, with no application-level encryption at rest',
   },
   'llm.apiKeyPlaceholder': { zh: 'sk-xxxxxxxxxxxxxxxx', en: 'sk-xxxxxxxxxxxxxxxx' },
   'llm.apiKeyNoRequired': {
@@ -3720,8 +3720,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'llm.testConnection': { zh: '连接测试', en: 'Test Connection' },
   'llm.testing': { zh: '测试中...', en: 'Testing...' },
   'llm.securityNote': {
-    zh: 'API Key 将加密存储，连接测试仅验证Key有效性',
-    en: 'API Key is encrypted. Connection test only verifies key validity',
+    zh: 'API Key 存储在服务端；API 中为只写字段，没有应用层静态加密。连接测试仅验证 Key 有效性',
+    en: 'API Key is stored server-side as a write-only API field, with no application-level encryption at rest. Connection test only verifies key validity',
   },
   'llm.testSuccess': { zh: '连接测试成功', en: 'Connection test successful' },
   'llm.testSuccessMsg': {
