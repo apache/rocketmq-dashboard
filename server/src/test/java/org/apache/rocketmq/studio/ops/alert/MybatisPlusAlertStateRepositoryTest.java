@@ -182,6 +182,35 @@ class MybatisPlusAlertStateRepositoryTest {
         verify(alertMapper, never()).selectOne(any());
     }
 
+    @Test
+    void runtimeReminderIsProjectedOnlyForRemindingStatesTest() {
+        RmqAlertStateMapper mapper = mock(RmqAlertStateMapper.class);
+        LocalDateTime notifiedAt = LocalDateTime.of(2026, 10, 1, 12, 0);
+        RmqAlertState acked = activeState(1L, "f1", AlertStateStatus.ACKED);
+        acked.setLastNotifiedAt(notifiedAt);
+        RmqAlertState resolved = activeState(1L, "f2", AlertStateStatus.RESOLVED);
+        resolved.setLastNotifiedAt(notifiedAt);
+        RmqAlertState firingWithoutReminder = activeState(2L, "f3", AlertStateStatus.FIRING);
+        firingWithoutReminder.setLastNotifiedAt(notifiedAt);
+        RmqAlertState firing = activeState(1L, "f4", AlertStateStatus.FIRING);
+        firing.setLastNotifiedAt(notifiedAt);
+        when(mapper.selectList(any()))
+                .thenReturn(List.of(acked, resolved, firingWithoutReminder, firing));
+        MybatisPlusAlertStateRepository repository = new MybatisPlusAlertStateRepository(mapper,
+                mock(RmqSystemAlertMapper.class));
+
+        List<AlertRuleRuntimeVO> runtimes = repository.findRuntimeByRuleIds(List.of(
+                AlertRuleVO.builder().id(1L).reminderInterval("30m").build(),
+                AlertRuleVO.builder().id(2L).reminderInterval("0s").build()));
+
+        assertThat(runtimes).extracting(AlertRuleRuntimeVO::getFingerprint, AlertRuleRuntimeVO::getNextReminderAt)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("f1", null),
+                        org.assertj.core.groups.Tuple.tuple("f2", null),
+                        org.assertj.core.groups.Tuple.tuple("f3", null),
+                        org.assertj.core.groups.Tuple.tuple("f4", notifiedAt.plusMinutes(30)));
+    }
+
     private static RmqAlertState activeState(Long ruleId, String fingerprint, AlertStateStatus status) {
         RmqAlertState state = new RmqAlertState();
         state.setRuleId(ruleId);
