@@ -361,8 +361,8 @@ const MainLayout = () => {
   const topBarBg = darkMode ? 'rgba(42,42,46,0.85)' : 'rgba(255,255,255,0.7)';
   const logoColor = darkMode ? '#e5e5e5' : '#1b1b1a';
   const kbdStyle: CSSProperties = {
-    fontSize: 12,
-    lineHeight: '18px',
+    fontSize: 14,
+    lineHeight: '20px',
     padding: '0 6px',
     borderRadius: 6,
     background: darkMode ? '#333' : '#f5f5f5',
@@ -606,7 +606,7 @@ const MainLayout = () => {
                     size={28}
                     style={{
                       background: 'linear-gradient(135deg, #7c3aed, #d946ef)',
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: 600,
                       color: '#ffffff',
                     }}
@@ -712,7 +712,7 @@ const MainLayout = () => {
               <div key={section.title} style={{ marginBottom: 12 }}>
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: 600,
                     color: '#9CA3AF',
                     padding: '0 4px',
@@ -754,7 +754,7 @@ const MainLayout = () => {
                           padding: '8px 10px',
                           borderRadius: 10,
                           cursor: 'pointer',
-                          fontSize: 13,
+                          fontSize: 14,
                           border: `1px solid ${active ? 'rgba(124, 58, 237, 0.35)' : 'transparent'}`,
                           background: active
                             ? darkMode
@@ -810,7 +810,7 @@ const MainLayout = () => {
             gap: 16,
             padding: '10px 20px',
             borderTop: `1px solid ${borderColor}`,
-            fontSize: 12,
+            fontSize: 14,
             color: '#9CA3AF',
             background: darkMode ? '#26262a' : '#fafafa',
           }}
