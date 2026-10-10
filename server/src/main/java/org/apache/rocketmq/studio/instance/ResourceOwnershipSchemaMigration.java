@@ -38,11 +38,28 @@ import java.util.Map;
 @DependsOnDatabaseInitialization
 @RequiredArgsConstructor
 public class ResourceOwnershipSchemaMigration implements InitializingBean {
+    /**
+     * Serializes the validation reads and the DDL within one process, the way Flyway serializes
+     * its migrations in-process. Across processes the engine already serializes them: MySQL
+     * blocks a query plan or a DDL statement on the other node's metadata locks. The in-memory
+     * H2 engine has no such metadata locking, so two overlapping executions inside one process
+     * (the concurrent-startup regression test, or two Spring contexts sharing a test database)
+     * can interleave a query plan with the other execution's index DDL and fail with an
+     * internal ConcurrentModificationException instead of waiting.
+     */
+    private static final Object MIGRATION_MUTEX = new Object();
+
     private final DataSource dataSource;
     private final RocketMQDefaultClusterResolver defaultClusters;
 
     @Override
     public void afterPropertiesSet() throws Exception {
+        synchronized (MIGRATION_MUTEX) {
+            migrate();
+        }
+    }
+
+    private void migrate() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             // Both tables are pre-checked; no DDL runs on any conflict and no record is discarded.
             for (String kind : List.of("topic", "group")) {
