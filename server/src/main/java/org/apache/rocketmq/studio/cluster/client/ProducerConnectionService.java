@@ -50,13 +50,13 @@ public class ProducerConnectionService {
                 connections, scan.complete(), scan.failedBrokers(), scan.failedProducerGroups());
     }
 
-    public List<String> listProducerGroups(String instanceId, String topic, String query, Integer limit) {
+    public ProducerGroupScanVO listProducerGroups(String instanceId, String topic, String query, Integer limit) {
         String normalizedInstanceId = requireFilter(instanceId, "instanceId");
-        return clientProvider.findProducerGroups(
+        return ProducerGroupScanVO.from(clientProvider.scanProducerGroups(
                 normalizedInstanceId,
                 normalizeOptionalFilter(topic),
                 normalizeOptionalFilter(query),
-                normalizeSelectorLimit(limit));
+                normalizeSelectorLimit(limit)));
     }
 
     private ProducerConnectionVO toProducerConnection(ClientConnectionVO connection) {

@@ -81,6 +81,8 @@ const ProducerPage = () => {
     null,
   );
   const [failedBrokers, setFailedBrokers] = useState<string[]>([]);
+  const [groupSelectorIncomplete, setGroupSelectorIncomplete] = useState(false);
+  const [groupSelectorFailedBrokers, setGroupSelectorFailedBrokers] = useState<string[]>([]);
   const [failedProducerGroups, setFailedProducerGroups] = useState<string[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
@@ -189,21 +191,29 @@ const ProducerPage = () => {
   const loadProducerGroups = async (query = '') => {
     if (!selectedInstanceId || !selectedTopic) {
       setProducerGroups([]);
+      setGroupSelectorIncomplete(false);
+      setGroupSelectorFailedBrokers([]);
       return;
     }
     const requestId = ++producerGroupRequestIdRef.current;
     try {
-      const groups = await fetchProducerGroups(selectedInstanceId, {
+      const scan = await fetchProducerGroups(selectedInstanceId, {
         topic: selectedTopic,
         query,
         limit: PRODUCER_GROUP_SELECTOR_LIMIT,
       });
       if (requestId === producerGroupRequestIdRef.current) {
-        setProducerGroups(groups);
+        setProducerGroups(scan.groups);
+        // An incomplete scan drops the groups of the brokers it could not read, so the suggestions
+        // have to say so instead of looking like the whole list.
+        setGroupSelectorIncomplete(!scan.complete);
+        setGroupSelectorFailedBrokers(scan.failedBrokers);
       }
     } catch {
       if (requestId === producerGroupRequestIdRef.current) {
         setProducerGroups([]);
+        setGroupSelectorIncomplete(false);
+        setGroupSelectorFailedBrokers([]);
       }
     }
   };
@@ -379,6 +389,23 @@ const ProducerPage = () => {
                 option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
               }
             />
+            {groupSelectorIncomplete && (
+              <Alert
+                showIcon
+                type="warning"
+                style={{ marginTop: 12 }}
+                message={
+                  <Flex align="center" gap={8} wrap>
+                    <span>{t('producer.warningIncompleteScan')}</span>
+                    {groupSelectorFailedBrokers.map((broker) => (
+                      <Tag key={`selector-broker:${broker}`} color="error">
+                        {t('producer.failedBroker', { name: broker })}
+                      </Tag>
+                    ))}
+                  </Flex>
+                }
+              />
+            )}
           </Form.Item>
           <Form.Item>
             <Button

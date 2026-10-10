@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
 import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
+import org.apache.rocketmq.studio.cluster.client.ProducerGroupScanResult;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -109,13 +110,9 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     @Override
-    public List<String> findProducerGroups(String instanceId, String topic, String query, int limit) {
+    public ProducerGroupScanResult scanProducerGroups(String instanceId, String topic, String query, int limit) {
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> findProducerGroups(adminExt, topic, query, limit));
-    }
-
-    private List<String> findProducerGroups(MQAdminExt adminExt, String topic, String query, int limit) {
-        return scanProducerGroups(adminExt, query, limit).groups();
+                adminExt -> scanProducerGroups(adminExt, query, limit));
     }
 
     private ProducerGroupScanResult scanProducerGroups(MQAdminExt adminExt, String query, int limit) {
@@ -542,10 +539,4 @@ public class RocketMQClientProvider implements ClientProvider {
         }
     }
 
-    private record ProducerGroupScanResult(List<String> groups, List<String> failedBrokers) {
-        private ProducerGroupScanResult {
-            groups = List.copyOf(groups);
-            failedBrokers = List.copyOf(failedBrokers);
-        }
-    }
 }

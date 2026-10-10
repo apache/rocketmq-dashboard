@@ -109,7 +109,11 @@ describe('ProducerPage', () => {
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
-    vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
+    vi.mocked(fetchProducerGroups).mockResolvedValue({
+      groups: ['pg-order', 'pg-payment'],
+      complete: true,
+      failedBrokers: [],
+    });
     vi.mocked(queryProducerConnection).mockResolvedValue(producerResult([]));
   });
 
@@ -194,6 +198,29 @@ describe('ProducerPage', () => {
       });
     });
     expect(await screen.findByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
+  });
+
+  it('warns that the producer group suggestions came from an incomplete scan', async () => {
+    // #4468 marked the producer connection scan and left this selector for a follow-up: without the
+    // marker the suggestions of an unreachable broker simply disappear and the list looks complete.
+    const user = userEvent.setup();
+    vi.mocked(fetchProducerGroups).mockResolvedValue({
+      groups: ['pg-payment'],
+      complete: false,
+      failedBrokers: ['broker-b:10911'],
+    });
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(groupInput);
+
+    expect(await screen.findByText('扫描结果不完整')).toBeInTheDocument();
+    expect(screen.getByText('Broker 失败：broker-b:10911')).toBeInTheDocument();
   });
 
   it('queries producer connections with the required topic and group', async () => {
