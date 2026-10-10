@@ -524,6 +524,38 @@ describe('MessagePage async request ownership', () => {
     expect(await within(dialog).findByText('key-trace description')).toBeInTheDocument();
   });
 
+  it('trims a padded custom trace topic before the manual trace query', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTraceByKey.mockResolvedValue(createTrace('key-trace'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await user.click(within(dialog).getByText('按 Message Key'));
+    const keyInput = within(dialog).getByPlaceholderText('输入 Message Key');
+    await user.clear(keyInput);
+    await user.type(keyInput, 'ORDER-001');
+    // The row-opened path, the persistence layer and history replay all trim this field;
+    // the manual query must not be the one path that queries the padded topic.
+    const traceTopicInput = within(dialog).getByPlaceholderText('轨迹 Topic（留空使用默认）');
+    await user.type(traceTopicInput, '  CUSTOM_TRACE  ');
+    await user.click(within(dialog).getByRole('button', { name: /查询轨迹/ }));
+
+    await waitFor(() => {
+      expect(serviceMocks.getMessageTraceByKey).toHaveBeenCalledWith(
+        'ORDER-001',
+        1,
+        'topic-message-a',
+        'CUSTOM_TRACE',
+      );
+    });
+  });
+
   it('keeps the trace tab responsive when an empty trace query supersedes an in-flight load', async () => {
     const pendingTrace = createDeferred<TraceRecord>();
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
