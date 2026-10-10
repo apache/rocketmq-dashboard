@@ -487,13 +487,35 @@ public class AiConversationService implements ApplicationRunner {
             if (ids.isEmpty()) {
                 break;
             }
-            int deleted = deleteCascade(ids);
+            List<Long> purgable = skipConversationsWithARunInFlight(ids);
+            if (purgable.isEmpty()) {
+                break;
+            }
+            int deleted = deleteCascade(purgable);
             totalDeleted += deleted;
             if (deleted < batchSize) {
                 break;
             }
         }
         return totalDeleted;
+    }
+
+    /**
+     * Drops the ids that still have a run in flight. The on-request {@link #delete(Long, String)}
+     * stops that run before it removes anything, because the user asked for the conversation to go;
+     * retention has no such mandate, so a busy conversation is left for a later pass rather than
+     * having its rows and its workspace removed while a worker is still streaming into them.
+     */
+    private List<Long> skipConversationsWithARunInFlight(List<Long> ids) {
+        List<Long> purgable = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            if (runRepository.findActiveByConversationId(id).isPresent()) {
+                log.info("skipping the retention purge of conversation {}: it has a run in flight", id);
+                continue;
+            }
+            purgable.add(id);
+        }
+        return purgable;
     }
 
     /**
