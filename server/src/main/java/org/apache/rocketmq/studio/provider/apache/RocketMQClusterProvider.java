@@ -144,6 +144,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return null;
         }
 
+        String configuredCluster = StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
+        if (configuredCluster != null && !configuredCluster.equals(clusterId)) {
+            return null;
+        }
+
         try {
             return executeAdmin(instanceId, namesrvAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
@@ -183,14 +189,27 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public List<BrokerVO> discoverBrokers(String instanceId, String brokerName) {
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
         return runtimeAdminClientResolver.execute(instanceId, admin -> {
             ClusterInfo info = admin.examineBrokerClusterInfo();
             if (info == null || info.getBrokerAddrTable() == null)
                 throw new BusinessException(503, "Broker topology is unavailable");
             Map<String, BrokerData> table = info.getBrokerAddrTable();
-            if (brokerName != null && !table.containsKey(brokerName))
-                throw new BusinessException(404, "Broker not found in Instance: " + brokerName);
-            Set<String> names = brokerName == null ? new java.util.TreeSet<>(table.keySet()) : Set.of(brokerName);
+            Set<String> names = new TreeSet<>(table.keySet());
+            if (configuredCluster != null) {
+                Map<String, Set<String>> clusters = info.getClusterAddrTable();
+                if (clusters == null || clusters.containsKey(configuredCluster)
+                        && clusters.get(configuredCluster) == null) {
+                    throw new BusinessException(503, "Broker cluster membership is unavailable");
+                }
+                names.retainAll(clusters.getOrDefault(configuredCluster, Set.of()));
+            }
+            if (brokerName != null) {
+                if (!names.contains(brokerName)) {
+                    throw new BusinessException(404, "Broker not found in Instance: " + brokerName);
+                }
+                names = Set.of(brokerName);
+            }
             return buildBrokerList(admin, names, table);
         });
     }

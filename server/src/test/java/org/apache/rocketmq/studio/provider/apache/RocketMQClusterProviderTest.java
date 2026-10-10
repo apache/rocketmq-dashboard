@@ -36,10 +36,13 @@ import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -381,6 +384,118 @@ class RocketMQClusterProviderTest {
         verify(adminFactory).execute(eq("10.0.0.2:9876"), isA(AclClientRPCHook.class),
                 eq("cluster-admin"), any());
         verify(adminFactory, never()).execute(eq("10.0.0.2:9876"), isNull(), any());
+    }
+
+    @Test
+    void scopedDetailDoesNotReadAnotherClusterTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.refreshClusterDetail("OtherCluster", "selected")).isNull();
+        verify(admin, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+        assertThat(provider.refreshClusterDetail("DefaultCluster", "selected")).isNotNull();
+    }
+
+    @Test
+    void scopedBrokerListIncludesOnlySelectedClusterTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.discoverBrokers("selected", null))
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getName)
+                .containsExactly("broker-a");
+        verify(admin, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+    }
+
+    @Test
+    void scopedBrokerLookupAcceptsMemberBrokerTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.discoverBrokers("selected", "broker-a"))
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getName)
+                .containsExactly("broker-a");
+        verify(admin, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+    }
+
+    @Test
+    void globalDetailStillExposesOtherClusterTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(admin);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.refreshClusterDetail("OtherCluster")).isNotNull();
+    }
+
+    @Test
+    void scopedBrokerLookupRejectsOtherClusterTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThatThrownBy(() -> provider.discoverBrokers("selected", "broker-b"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(404));
+        verify(admin, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+    }
+
+    @Test
+    void unscopedInstanceStillExposesBothClustersTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, null);
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.refreshClusterDetail("OtherCluster", "selected")).isNotNull();
+        assertThat(provider.discoverBrokers("selected", null))
+                .extracting(org.apache.rocketmq.studio.cluster.broker.BrokerVO::getName)
+                .containsExactly("broker-a", "broker-b");
+    }
+
+    @Test
+    void scopedBrokerListDoesNotFallBackWhenClusterIsAbsentTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "MissingCluster");
+        when(admin.examineBrokerClusterInfo()).thenReturn(sharedTopology());
+
+        assertThat(provider.discoverBrokers("selected", null)).isEmpty();
+        verify(admin, never()).fetchBrokerRuntimeStats(anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void scopedBrokerListRejectsMissingMembershipTest(boolean missingTable) throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = scopedProvider(admin, "DefaultCluster");
+        ClusterInfo topology = sharedTopology();
+        if (missingTable) {
+            topology.setClusterAddrTable(null);
+        } else {
+            topology.getClusterAddrTable().put("DefaultCluster", null);
+        }
+        when(admin.examineBrokerClusterInfo()).thenReturn(topology);
+
+        assertThatThrownBy(() -> provider.discoverBrokers("selected", null))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(503));
+        verify(admin, never()).fetchBrokerRuntimeStats(anyString());
+    }
+
+    private RocketMQClusterProvider scopedProvider(DefaultMQAdminExt admin, String cluster) {
+        RuntimeAdminClientResolver runtime = mock(RuntimeAdminClientResolver.class);
+        org.mockito.Mockito.lenient().when(runtime.resolveEndpoint("selected")).thenReturn("10.0.0.1:9876");
+        org.mockito.Mockito.lenient().when(runtime.configuredClusterName("selected")).thenReturn(cluster);
+        when(runtime.execute(eq("selected"), any())).thenAnswer(call ->
+                call.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        return new RocketMQClusterProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(), runtime);
+    }
+
+    private ClusterInfo sharedTopology() {
+        ClusterInfo info = clusterInfo();
+        info.getClusterAddrTable().put("OtherCluster", Set.of("broker-b"));
+        info.getBrokerAddrTable().put("broker-b", new BrokerData("OtherCluster", "broker-b",
+                new HashMap<>(Map.of(0L, "10.0.0.12:10911"))));
+        return info;
     }
 
     private RocketMQClusterProvider newAuthenticatedInstanceProvider(MqAdminExtFactory adminFactory,
