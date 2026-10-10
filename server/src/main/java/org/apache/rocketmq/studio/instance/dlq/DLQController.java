@@ -53,6 +53,8 @@ public class DLQController {
     private static final String HEADER_EXPORT_TRUNCATED = DlqExportHeaders.TRUNCATED;
     private static final String HEADER_EXPORT_FAILED_QUEUES = DlqExportHeaders.FAILED_QUEUES;
     private static final String HEADER_EXPORT_LIMIT = DlqExportHeaders.LIMIT;
+    private static final String HEADER_EXPORT_ROWS = DlqExportHeaders.EXPORTED_ROWS;
+    private static final String HEADER_EXPORT_SELECTED_ROWS = DlqExportHeaders.SELECTED_ROWS;
     private static final String EXCEL_MEDIA_TYPE =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private static final int MAX_SELECTED_MESSAGES = 100;
@@ -119,6 +121,8 @@ public class DLQController {
                 .header(HEADER_EXPORT_TRUNCATED, String.valueOf(result.isTruncated()))
                 .header(HEADER_EXPORT_FAILED_QUEUES, String.valueOf(result.getFailedQueueCount()))
                 .header(HEADER_EXPORT_LIMIT, String.valueOf(result.getLimit()))
+                .header(HEADER_EXPORT_ROWS, String.valueOf(result.getExportedRows()))
+                .header(HEADER_EXPORT_SELECTED_ROWS, String.valueOf(result.getSelectedRows()))
                 .contentType(MediaType.parseMediaType(EXCEL_MEDIA_TYPE))
                 .body(result.getData());
     }

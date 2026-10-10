@@ -247,6 +247,12 @@ export interface DLQExportMeta {
   truncated: boolean;
   failedQueueCount: number;
   limit: number;
+  /**
+   * Rows the server wrote to the sheet, and how many msgIds were selected (0 = whole window).
+   * Only the Excel endpoint reports them.
+   */
+  exportedRows?: number;
+  selectedRows?: number;
 }
 
 export async function exportDLQMessages(params: {
@@ -341,6 +347,8 @@ export async function exportDLQExcel(params: {
       truncated: header('x-dlq-export-truncated') === 'true',
       failedQueueCount: Number.parseInt(header('x-dlq-export-failedqueues'), 10) || 0,
       limit: Number.parseInt(header('x-dlq-export-limit'), 10) || 0,
+      exportedRows: Number.parseInt(header('x-dlq-export-rows'), 10) || 0,
+      selectedRows: Number.parseInt(header('x-dlq-export-selectedrows'), 10) || 0,
     },
   };
 }

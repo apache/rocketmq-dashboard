@@ -379,6 +379,11 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .truncated(scanResult.truncated())
                 .failedQueueCount(scanResult.failedQueueCount())
                 .limit(RESEND_HARD_CAP)
+                // The selection is applied as a filter over the scanned window, so the sheet can be
+                // shorter than the selection (a message outside the window, or already resent by
+                // someone else); report both counts instead of letting the caller assume.
+                .exportedRows(messages.size())
+                .selectedRows(selected.size())
                 .build();
     }
 
