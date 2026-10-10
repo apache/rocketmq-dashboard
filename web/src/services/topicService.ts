@@ -76,8 +76,14 @@ export async function listTopicsPage(
 ): Promise<TopicPage> {
   if (isMockMode()) {
     const filtered = filterMockTopics(params);
-    const page = Math.max(params?.page ?? 1, 1);
-    const pageSize = Math.min(Math.max(params?.pageSize ?? 20, 1), 100);
+    // Match the backend contract (MetadataService.listTopicsPage): page < 1 or
+    // pageSize outside 1..100 is a 400, not something to clamp — the mock must
+    // not answer requests the real API refuses.
+    if ((params?.page ?? 1) < 1 || (params?.pageSize ?? 20) < 1 || (params?.pageSize ?? 20) > 100) {
+      throw new Error('page must be greater than zero and pageSize must be between 1 and 100');
+    }
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
     const from = Math.min((page - 1) * pageSize, filtered.length);
     return {
       items: filtered.slice(from, from + pageSize),
