@@ -335,6 +335,30 @@ describe('UserManagementPage', () => {
     expect(within(drawer).getByText('暂无活跃会话')).toBeInTheDocument();
   });
 
+  it('does not present a failed session read as an account without sessions', async () => {
+    vi.mocked(listStudioUserSessions).mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+
+    // The rows never arrived, so the drawer must not report zero active sessions or claim the
+    // account has none - a transient toast is the only other hint and it fades.
+    await waitFor(() =>
+      expect(within(drawer).queryByText('暂无活跃会话')).not.toBeInTheDocument(),
+    );
+    expect(
+      within(drawer).getByText('活跃会话').closest('th,td')?.nextElementSibling?.textContent,
+    ).toBe('-');
+
+    await user.click(within(drawer).getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(listStudioUserSessions).toHaveBeenCalledTimes(2));
+    expect(await within(drawer).findByText('5分钟')).toBeInTheDocument();
+  });
+
   it('refreshes the open session detail drawer', async () => {
     vi.mocked(listStudioUserSessions)
       .mockResolvedValueOnce(sessionDetails)

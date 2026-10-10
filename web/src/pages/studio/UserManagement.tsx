@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -134,6 +135,7 @@ const UserManagementPage = () => {
   const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
+  const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
@@ -215,12 +217,16 @@ const UserManagementPage = () => {
         const details = await listStudioUserSessions(record.id);
         if (requestId !== sessionDetailsRequestSeqRef.current) return;
         setSessionDetails(details);
+        setSessionDetailsFailed(false);
         setSessionDrawerUser((current) =>
           current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
         );
       } catch {
         if (requestId === sessionDetailsRequestSeqRef.current) {
+          // An empty list would read as "this account has no sessions" in the drawer, which is a
+          // claim the failed request cannot support (and a security-relevant one).
           setSessionDetails([]);
+          setSessionDetailsFailed(true);
           message.error(t('userMgmt.loadSessionsFailed'));
         }
       } finally {
@@ -235,6 +241,7 @@ const UserManagementPage = () => {
   const openSessionDrawer = (record: StudioUser) => {
     setSessionDrawerUser(record);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     void loadSessionDetails(record);
   };
 
@@ -242,6 +249,7 @@ const UserManagementPage = () => {
     sessionDetailsRequestSeqRef.current += 1;
     setSessionDrawerUser(null);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     setSessionDetailsLoading(false);
   };
 
@@ -710,7 +718,8 @@ const UserManagementPage = () => {
                 {
                   key: 'activeSessionCount',
                   label: t('userMgmt.activeSessions'),
-                  children: sessionDetailsLoading ? '-' : sessionDetails.length,
+                  children:
+                    sessionDetailsLoading || sessionDetailsFailed ? '-' : sessionDetails.length,
                 },
                 {
                   key: 'status',
@@ -734,16 +743,32 @@ const UserManagementPage = () => {
                 },
               ]}
             />
-            <Table
-              rowKey="id"
-              loading={sessionDetailsLoading}
-              columns={sessionDetailColumns}
-              dataSource={sessionDetails}
-              tableLayout="fixed"
-              pagination={false}
-              scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
-              locale={{ emptyText: t('userMgmt.noActiveSessions') }}
-            />
+            {sessionDetailsFailed ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('userMgmt.loadSessionsFailed')}
+                action={
+                  <Button
+                    size="small"
+                    onClick={() => sessionDrawerUser && void loadSessionDetails(sessionDrawerUser)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            ) : (
+              <Table
+                rowKey="id"
+                loading={sessionDetailsLoading}
+                columns={sessionDetailColumns}
+                dataSource={sessionDetails}
+                tableLayout="fixed"
+                pagination={false}
+                scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
+                locale={{ emptyText: t('userMgmt.noActiveSessions') }}
+              />
+            )}
           </Space>
         )}
       </Drawer>
