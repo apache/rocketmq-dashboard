@@ -340,6 +340,22 @@ class TencentAclServiceTest {
                 .containsExactly("active-role", "revoked-role");
     }
 
+    @Test
+    void listRulesShouldMatchAPartialPrincipalTest() throws Exception {
+        DescribeRoleListResponse response = new DescribeRoleListResponse();
+        response.setData(new RoleItem[]{role("svc-a"), role("svc-b"), role("other")});
+        when(client.DescribeRoleList(any())).thenReturn(response);
+
+        // The principal field is a search box in the console; an exact comparison returned an
+        // empty page for every partial term.
+        assertThat(service.listRules(INSTANCE_ID, "svc"))
+                .extracting(AclRuleVO::getPrincipal)
+                .containsExactly("svc-a", "svc-b");
+        assertThat(service.listRules(INSTANCE_ID, "SVC-A"))
+                .extracting(AclRuleVO::getPrincipal)
+                .containsExactly("svc-a");
+    }
+
     private static DescribeRoleListResponse incompleteRolePage() {
         RoleItem role = new RoleItem();
         role.setRoleName("role-a");
