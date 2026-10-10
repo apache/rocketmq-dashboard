@@ -302,7 +302,7 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             if (processSink != null) {
                 processSink.attachProcess(process);
             }
-            CompletableFuture<Void> stdoutFuture = drainStdout(process.getInputStream(), stdoutLine);
+            CompletableFuture<Void> stdoutFuture = drainStdout(process, stdoutLine);
             CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
@@ -410,11 +410,12 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return StringUtils.hasText(stderr) ? stderr.trim() : "unknown error";
     }
 
-    private CompletableFuture<Void> drainStdout(InputStream stdout, Consumer<String> stdoutLine) {
+    private CompletableFuture<Void> drainStdout(Process process, Consumer<String> stdoutLine) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stdout, StandardCharsets.UTF_8))) {
+                    new InputStreamReader(new BoundedStdout(process.getInputStream(), outputLimitBytes()),
+                            StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     stdoutLine.accept(line);
@@ -422,9 +423,57 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                 result.complete(null);
             } catch (Exception exception) {
                 result.completeExceptionally(exception);
+                // Unblock waitFor immediately instead of waiting for a producer blocked on stdout.
+                process.destroyForcibly();
             }
         });
         return result;
+    }
+
+    /**
+     * Apply the same aggregate byte budget as buffered CLI completion before decoding or readLine.
+     * Bulk reads and skip inherit InputStream implementations that call the budgeted read methods.
+     */
+    static final class BoundedStdout extends InputStream {
+        private final InputStream in;
+        private final int limit;
+        private int remaining;
+
+        BoundedStdout(InputStream input, int limit) {
+            this.in = input;
+            this.limit = limit;
+            remaining = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = in.read();
+            if (value != -1) {
+                consume(1);
+            }
+            return value;
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            int count = in.read(bytes, offset, Math.min(length, remaining + 1));
+            if (count > 0) {
+                consume(count);
+            }
+            return count;
+        }
+
+        private void consume(int count) throws IOException {
+            if (count > remaining) {
+                throw new OutputLimitException(limit);
+            }
+            remaining -= count;
+        }
+
+        @Override
+        public void close() throws IOException {
+            in.close();
+        }
     }
 
     private CompletableFuture<String> readAsync(InputStream stream) {
@@ -447,6 +496,9 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         try {
             return future.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof OutputLimitException outputLimitException) {
+                throw outputLimitExceeded(outputLimitException, exception);
+            }
             throw new IOException("Failed to drain Claude CLI output", exception.getCause());
         } catch (TimeoutException exception) {
             throw new IOException("Timed out while draining Claude CLI output", exception);

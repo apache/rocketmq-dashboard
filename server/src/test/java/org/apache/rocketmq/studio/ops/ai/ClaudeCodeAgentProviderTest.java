@@ -47,6 +47,43 @@ import static org.mockito.Mockito.when;
 class ClaudeCodeAgentProviderTest {
 
     @Test
+    void boundedStdoutShouldChargeSkipAndBulkReadEntryPointsTest() throws Exception {
+        for (String operation : List.of("skip", "readAllBytes", "readNBytes", "readNBytesBuffer", "transferTo")) {
+            try (java.io.InputStream stream = boundedStdout(new byte[9], 8)) {
+                assertThatThrownBy(() -> {
+                    switch (operation) {
+                        case "skip" -> stream.skip(9);
+                        case "readAllBytes" -> stream.readAllBytes();
+                        case "readNBytes" -> stream.readNBytes(9);
+                        case "readNBytesBuffer" -> stream.readNBytes(new byte[9], 0, 9);
+                        case "transferTo" -> stream.transferTo(new java.io.ByteArrayOutputStream());
+                        default -> throw new AssertionError(operation);
+                    }
+                }).as(operation).isInstanceOf(CliAgentProvider.OutputLimitException.class);
+            }
+        }
+    }
+
+    @Test
+    void boundedStdoutShouldSupportExactBudgetAndMixedReadsTest() throws Exception {
+        try (java.io.InputStream stream = boundedStdout(new byte[8], 8)) {
+            assertThat(stream.skip(2)).isEqualTo(2);
+            assertThat(stream.read()).isZero();
+            assertThat(stream.readNBytes(2)).hasSize(2);
+            assertThat(stream.readAllBytes()).hasSize(3);
+            assertThat(stream.read()).isEqualTo(-1);
+        }
+        try (java.io.InputStream stream = boundedStdout(new byte[9], 8)) {
+            assertThat(stream.skip(8)).isEqualTo(8);
+            assertThatThrownBy(stream::read).isInstanceOf(CliAgentProvider.OutputLimitException.class);
+        }
+    }
+
+    private static java.io.InputStream boundedStdout(byte[] bytes, int limit) throws Exception {
+        return new ClaudeCodeAgentProvider.BoundedStdout(new ByteArrayInputStream(bytes), limit);
+    }
+
+    @Test
     void streamShouldDrainLargeStderrOutputTest() {
         TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
                 "sh", "-c", "yes error | head -c 131072 >&2; "
@@ -68,6 +105,114 @@ class ClaudeCodeAgentProviderTest {
                 .isInstanceOf(LlmGatewayException.class)
                 .hasMessageContaining("[stderr truncated]")
                 .satisfies(exception -> assertThat(exception.getMessage().length()).isLessThan(70_000));
+    }
+
+    @Test
+    void streamShouldRejectOversizedStdoutFrameTest() throws Exception {
+        Process process = completedProcess("x".repeat(4097));
+        TestClaudeCodeAgentProvider provider = limitedProvider(process, 4096);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getCode())
+                        .isEqualTo("llm.provider.output_too_large"));
+    }
+
+    @Test
+    void streamShouldApplyOneBudgetAcrossStdoutFramesTest() throws Exception {
+        String frame = "{\"type\":\"stream_event\",\"event\":{\"type\":\"ping\"}}\n";
+        Process process = completedProcess(frame.repeat(100));
+        TestClaudeCodeAgentProvider provider = limitedProvider(process, 4096);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getCode())
+                        .isEqualTo("llm.provider.output_too_large"));
+    }
+
+    @Test
+    void streamShouldAcceptExactUtf8ByteBudgetWithoutFinalNewlineTest() throws Exception {
+        String frame = "{\"type\":\"result\",\"result\":\"\u4f60\u597d\uD83C\uDF0D\"}";
+        Process process = completedProcess(frame);
+        TestClaudeCodeAgentProvider provider = limitedProvider(process,
+                frame.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        List<String> tokens = new ArrayList<>();
+
+        provider.stream(LlmConfigVO.builder().build(), "prompt", null, tokens::add);
+
+        assertThat(tokens).containsExactly("\u4f60\u597d\uD83C\uDF0D");
+    }
+
+    @Test
+    void streamShouldRejectOneByteOverUtf8BudgetTest() throws Exception {
+        String frame = "{\"type\":\"result\",\"result\":\"\u4f60\u597d\uD83C\uDF0D\"}";
+        Process process = completedProcess(frame);
+        TestClaudeCodeAgentProvider provider = limitedProvider(process,
+                frame.getBytes(java.nio.charset.StandardCharsets.UTF_8).length - 1);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getCode())
+                        .isEqualTo("llm.provider.output_too_large"));
+    }
+
+    @Test
+    void streamShouldTerminateOversizedProducerBeforeWaitingForExitTest() throws Exception {
+        Process process = completedProcess("x".repeat(4097));
+        CountDownLatch destroyed = new CountDownLatch(1);
+        when(process.destroyForcibly()).thenAnswer(invocation -> {
+            destroyed.countDown();
+            return process;
+        });
+        when(process.waitFor(anyLong(), eq(TimeUnit.SECONDS))).thenAnswer(invocation ->
+                destroyed.await(2, TimeUnit.SECONDS));
+        TestClaudeCodeAgentProvider provider = limitedProvider(process, 4096);
+
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getCode())
+                        .isEqualTo("llm.provider.output_too_large"));
+        assertThat(destroyed.getCount()).isZero();
+    }
+
+    @Test
+    void hostedStreamShouldRejectAggregateStdoutAcrossToolArgumentFramesTest() throws Exception {
+        String start = "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\","
+                + "\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-1\",\"name\":\"tool\"}}}\n";
+        String delta = "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\","
+                + "\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\""
+                + "x".repeat(64) + "\"}}}\n";
+        Process process = completedProcess(start + delta.repeat(100));
+        TestClaudeCodeAgentProvider provider = limitedProvider(process, 4096);
+
+        assertThatThrownBy(() -> provider.streamEvents(LlmConfigVO.builder().model("test").build(),
+                AgentStreamOptions.builder().prompt("prompt").model("test").build(), ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(error -> assertThat(((LlmGatewayException) error).getCode())
+                        .isEqualTo("llm.provider.output_too_large"));
+    }
+
+    private static Process completedProcess(String stdout) throws Exception {
+        Process process = mock(Process.class);
+        when(process.getInputStream()).thenReturn(new ByteArrayInputStream(
+                stdout.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(process.getErrorStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
+        when(process.getOutputStream()).thenReturn(new java.io.ByteArrayOutputStream());
+        when(process.waitFor(anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+        return process;
+    }
+
+    private static TestClaudeCodeAgentProvider limitedProvider(Process process, int limit) {
+        return new TestClaudeCodeAgentProvider(List.of("claude"), 5, process) {
+            @Override
+            int outputLimitBytes() {
+                return limit;
+            }
+        };
     }
 
     @Test

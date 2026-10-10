@@ -136,6 +136,11 @@ pointed at the output of `rmqctl mcp config`. See
 - **Degrades to plain chat** when `rmqctl` is missing or `STUDIO_AI_RMQCTL_ENABLED=false`, and says so
   in the transcript instead of failing silently.
 
+Claude streaming stdout is capped at **5 MiB per run**, measured before UTF-8 decoding and JSON
+parsing. The aggregate budget includes tool-argument frames. Exceeding the budget terminates
+the CLI run with `llm.provider.output_too_large`; use a smaller query or response. Stderr retains
+its separate 64 KiB diagnostic limit.
+
 Generation is decoupled from the HTTP connection: closing the tab does not kill a run, and reopening
 the conversation re-attaches to it. All AI-related environment variables are documented in
 [`deploy/.env.example`](deploy/.env.example).
