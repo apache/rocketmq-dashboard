@@ -289,6 +289,13 @@ const ConsumerPageContent = ({
   const [stackError, setStackError] = useState<string | null>(null);
   const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
@@ -785,19 +792,25 @@ const ConsumerPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -2471,7 +2484,10 @@ const ConsumerPageContent = ({
         title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportConsumerGroups()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
