@@ -28,8 +28,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
@@ -107,12 +105,7 @@ public class AuditService {
      * switching it to UTC is a repo-wide change that needs schema defaults and a backfill.
      */
     private String csvHeader() {
-        return "timestamp(" + serverZoneLabel() + ")," + CSV_COLUMNS + "\r\n";
-    }
-
-    private String serverZoneLabel() {
-        ZoneOffset offset = OffsetDateTime.now().getOffset();
-        return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+        return CsvUtil.timestampColumn("timestamp") + "," + CSV_COLUMNS + "\r\n";
     }
 
 
