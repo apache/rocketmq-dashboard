@@ -582,6 +582,47 @@ class MetadataServiceTest {
         verifyNoInteractions(operationAuditService);
     }
 
+    @Test
+    void createTopicShouldRejectARemarkTheRegistrationColumnCannotStoreTest() {
+        TopicVO input = new TopicVO();
+        input.setName("orders");
+        input.setWriteQueues(8);
+        input.setReadQueues(8);
+        input.setRemark("r".repeat(256));
+
+        assertThatThrownBy(() -> metadataService.createTopic("instance-a", input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not exceed 255 characters");
+
+        verifyNoInteractions(apacheProvider);
+    }
+
+    @Test
+    void createTopicShouldAcceptARemarkAtTheRegistrationColumnWidthTest() {
+        TopicVO input = new TopicVO();
+        input.setName("orders");
+        input.setWriteQueues(8);
+        input.setReadQueues(8);
+        input.setRemark("r".repeat(255));
+        when(apacheProvider.createTopic(eq("instance-a"), any(TopicVO.class))).thenReturn(input);
+
+        assertThat(metadataService.createTopic("instance-a", input).getRemark()).hasSize(255);
+        verify(apacheProvider).createTopic("instance-a", input);
+    }
+
+    @Test
+    void createConsumerGroupShouldRejectANameTheRegistrationColumnCannotStoreTest() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("g".repeat(256));
+        group.setInstanceId("instance-a");
+
+        assertThatThrownBy(() -> metadataService.createConsumerGroup(group))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not exceed 255 characters");
+
+        verifyNoInteractions(apacheProvider);
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void createTopicShouldRejectSystemTopicNamesTest(boolean explicitInstance) {
