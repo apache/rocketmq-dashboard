@@ -2340,6 +2340,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
 
+  'home.welcomeSuffix': { zh: '，欢迎', en: ', welcome' },
+  'home.voiceInputTitle': { zh: '语音输入（暂未支持）', en: 'Voice input (not supported yet)' },
+  'home.buildVersion': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Version {time} build({commit})',
+  },
+
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
 
