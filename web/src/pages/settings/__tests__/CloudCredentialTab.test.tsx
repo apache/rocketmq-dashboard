@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { downloadBlob } from '../../../utils/download';
@@ -62,10 +62,12 @@ const credentials: CloudCredentialPage = {
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 const renderTab = () =>
@@ -169,6 +171,83 @@ describe('CloudCredentialTab', () => {
     initial.resolve(credentials);
     await waitFor(() => expect(screen.getByText('latest-credential')).toBeInTheDocument());
     expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+  });
+
+  it('hides stale credentials after a filtered reload fails and retries the current filter', async () => {
+    const filteredLoad = deferred<CloudCredentialPage>();
+    const tencentPage: CloudCredentialPage = {
+      items: [
+        {
+          id: 9,
+          name: 'tencent-prod',
+          vendor: 'TENCENT',
+          accessKey: 'AKID****9999',
+          gmtCreate: '2026-08-18T12:00:00',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    };
+    vi.mocked(listCloudCredentials)
+      .mockResolvedValueOnce(credentials)
+      .mockReturnValueOnce(filteredLoad.promise)
+      .mockResolvedValueOnce(tencentPage);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+
+    await screen.findByText('aliyun-test');
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('腾讯云', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(listCloudCredentials).toHaveBeenLastCalledWith('TENCENT', '', 1, 20),
+    );
+    expect(screen.getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /删除/ })).toBeDisabled();
+
+    await act(async () => filteredLoad.reject(new Error('credential service unavailable')));
+    const error = await screen.findByText('云凭据加载失败，请稍后重试');
+    expect(error.closest('.ant-alert')).not.toBeNull();
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /删除/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    expect(await screen.findByText('tencent-prod')).toBeInTheDocument();
+    expect(listCloudCredentials).toHaveBeenLastCalledWith('TENCENT', '', 1, 20);
+    expect(screen.queryByText('云凭据加载失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
+  it('keeps loaded credentials usable when search whitespace does not change the query', async () => {
+    renderTab();
+    await screen.findByText('aliyun-test');
+    await waitFor(() => expect(screen.getByRole('button', { name: /编辑/ })).toBeEnabled());
+
+    fireEvent.change(screen.getByPlaceholderText('搜索凭据名称'), { target: { value: ' ' } });
+
+    expect(screen.getByRole('button', { name: /编辑/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /删除/ })).toBeEnabled();
+  });
+
+  it('reports an initial credential load failure instead of an empty inventory', async () => {
+    vi.mocked(listCloudCredentials)
+      .mockRejectedValueOnce(new Error('credential service unavailable'))
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, size: 20 });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderTab();
+
+    const error = await screen.findByText('云凭据加载失败，请稍后重试');
+    expect(error.closest('.ant-alert')).not.toBeNull();
+    expect(screen.queryByText('aliyun-test')).not.toBeInTheDocument();
+    expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^重\s*试$/ }));
+    await waitFor(() => expect(listCloudCredentials).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText('云凭据加载失败，请稍后重试')).not.toBeInTheDocument(),
+    );
   });
 
   it('creates a credential from the modal form', async () => {

@@ -50,6 +50,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -421,7 +422,9 @@ public class NotificationOutboxService {
             throw new IllegalStateException("No configured " + channel + " webhook");
         }
         UrlHostGuard.check(webhook, false);
-        ResponseEntity<String> response = restTemplate.postForEntity(dingTalkWebhook(webhook, settings, channel),
+        // The URL already contains escaped query values, including the DingTalk signature.
+        // The String overload would treat it as a URI template and encode those escapes again.
+        ResponseEntity<String> response = restTemplate.postForEntity(URI.create(dingTalkWebhook(webhook, settings, channel)),
                 payload(alert, channel, content), String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException("Webhook returned " + response.getStatusCode());
