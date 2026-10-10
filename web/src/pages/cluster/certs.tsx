@@ -216,9 +216,9 @@ const K8sCertsPage = () => {
       sorter: (a, b) => (a.status ?? '').localeCompare(b.status ?? ''),
       render: (status: string | null) => {
         const map: Record<string, { color: string; label: string }> = {
-          valid: { color: 'green', label: '有效' },
-          expiring: { color: 'orange', label: '即将过期' },
-          expired: { color: 'red', label: '已过期' },
+          valid: { color: 'green', label: t('cert.statusValid') },
+          expiring: { color: 'orange', label: t('cert.statusExpiring') },
+          expired: { color: 'red', label: t('cert.statusExpired') },
           not_yet_valid: { color: 'blue', label: t('cert.statusNotYetValid') },
         };
         const cfg = status ? (map[status] ?? { color: 'default', label: status }) : null;

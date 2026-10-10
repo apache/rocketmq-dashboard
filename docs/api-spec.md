@@ -3163,7 +3163,7 @@ GET /api/metrics/grafana/dashboards/export
 | **告警级别** | `error`, `warning`, `info` |
 | **审计结果** | `SUCCESS`, `FAILED`, `PARTIAL` |
 | **投递状态** | `success`, `failed`, `pending` |
-| **证书状态** | `valid`, `expiring`, `expired` |
+| **证书状态** | `valid`, `expiring`, `expired`, `not_yet_valid` |
 | **证书类型** | `TLS`, `mTLS`, `ServiceAccount` |
 | **刷盘方式** | `ASYNC_FLUSH`, `SYNC_FLUSH` |
 | **集群类型** | `V4_DIRECT`, `V5_PROXY_LOCAL`, `V5_PROXY_CLUSTER` |
