@@ -424,6 +424,45 @@ describe('AiPage', () => {
     expect(document.querySelector('.ant-alert-warning')).toBeNull();
   });
 
+  it.each(['manual', 'handoff'] as const)(
+    'doesNotRefillOrNavigateAfterAbandonedCreationTest (%s)',
+    async (origin) => {
+      let finish!: (value: AiConversationVO) => void;
+      vi.mocked(createConversation).mockImplementationOnce(
+        () =>
+          new Promise<AiConversationVO>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      renderPage(origin === 'handoff' ? { prompt: 'abandoned draft' } : undefined);
+      if (origin === 'manual') {
+        const input = await typeAndWaitForReady('abandoned draft');
+        fireEvent.keyDown(input, { key: 'Enter' });
+      }
+      await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole('button', { name: 'probe-conversation' }));
+      await waitFor(() => expect(readProbeLocation().pathname).toBe('/ai/c/7'));
+      const input = await screen.findByPlaceholderText(PLACEHOLDER);
+      fireEvent.change(input, { target: { value: 'new conversation draft' } });
+      await act(async () => {
+        finish({ ...CONVERSATION_7, id: 99 });
+      });
+      expect(readProbeLocation().pathname).toBe('/ai/c/7');
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveValue('new conversation draft');
+      expect(openRunStream).not.toHaveBeenCalled();
+    },
+  );
+
+  it('restoresTheDraftAfterAnOwnedCreationFailureTest', async () => {
+    vi.mocked(createConversation).mockRejectedValueOnce(new Error('creation unavailable'));
+    renderPage();
+    const input = await typeAndWaitForReady('retry this draft');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(input).toHaveValue('retry this draft'));
+    expect(readProbeLocation().pathname).toBe('/ai');
+  });
+
   it('handsOffTheHomePageDraftIntoANewConversationAndAutoSendsItExactlyOnceTest', async () => {
     vi.mocked(openRunStream).mockResolvedValue(undefined);
 

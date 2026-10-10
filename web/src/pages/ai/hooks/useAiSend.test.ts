@@ -19,7 +19,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConversation } from '../../../api/aiConversations';
 import { listInstances } from '../../../services/instanceService';
-import { useAiSend } from './useAiSend';
+import { useAiSend, type StartRunResult } from './useAiSend';
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
@@ -29,7 +29,10 @@ vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }))
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
   return { promise, resolve, reject };
 }
 
@@ -40,10 +43,13 @@ function render() {
   const send = vi.fn().mockResolvedValue(undefined);
   const onError = vi.fn();
   return {
-    ...renderHook(({ id }: { id: number | null }) =>
-      useAiSend({ conversationId: id, ready: true, send, onError }),
-    { initialProps: { id: null as number | null } }),
-    send, onError,
+    ...renderHook(
+      ({ id }: { id: number | null }) =>
+        useAiSend({ conversationId: id, ready: true, send, onError }),
+      { initialProps: { id: null as number | null } },
+    ),
+    send,
+    onError,
   };
 }
 
@@ -54,23 +60,33 @@ describe('useAiSend creation lifecycle', () => {
     const pending = deferred<typeof created>();
     vi.mocked(createConversation).mockReturnValue(pending.promise);
     const { result, unmount, send } = render();
-    let operation!: Promise<number | null>;
-    await act(async () => { operation = result.current(start); });
+    let operation!: Promise<StartRunResult>;
+    await act(async () => {
+      operation = result.current(start);
+    });
     unmount();
-    await act(async () => { pending.resolve(created); await operation; });
+    await act(async () => {
+      pending.resolve(created);
+      await operation;
+    });
     expect(navigate).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
-    expect(await operation).toBeNull();
+    expect(await operation).toBe('abandoned');
   });
 
   it('does not replace a conversation selected while creation was pending', async () => {
     const pending = deferred<typeof created>();
     vi.mocked(createConversation).mockReturnValue(pending.promise);
     const { result, rerender, send } = render();
-    let operation!: Promise<number | null>;
-    await act(async () => { operation = result.current(start); });
+    let operation!: Promise<StartRunResult>;
+    await act(async () => {
+      operation = result.current(start);
+    });
     rerender({ id: 7 });
-    await act(async () => { pending.resolve(created); await operation; });
+    await act(async () => {
+      pending.resolve(created);
+      await operation;
+    });
     expect(navigate).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
@@ -79,10 +95,15 @@ describe('useAiSend creation lifecycle', () => {
     const pending = deferred<Awaited<ReturnType<typeof listInstances>>>();
     vi.mocked(listInstances).mockReturnValue(pending.promise);
     const { result, unmount } = render();
-    let operation!: Promise<number | null>;
-    await act(async () => { operation = result.current({ ...start, createBody: {} }); });
+    let operation!: Promise<StartRunResult>;
+    await act(async () => {
+      operation = result.current({ ...start, createBody: {} });
+    });
     unmount();
-    await act(async () => { pending.resolve([]); await operation; });
+    await act(async () => {
+      pending.resolve([]);
+      await operation;
+    });
     expect(createConversation).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -91,17 +112,24 @@ describe('useAiSend creation lifecycle', () => {
     const pending = deferred<typeof created>();
     vi.mocked(createConversation).mockReturnValue(pending.promise);
     const { result, rerender, onError } = render();
-    let operation!: Promise<number | null>;
-    await act(async () => { operation = result.current(start); });
+    let operation!: Promise<StartRunResult>;
+    await act(async () => {
+      operation = result.current(start);
+    });
     rerender({ id: 7 });
-    await act(async () => { pending.reject(new Error('offline')); await operation; });
+    await act(async () => {
+      pending.reject(new Error('offline'));
+      await operation;
+    });
     expect(onError).not.toHaveBeenCalled();
   });
 
   it('navigates and sends once when the created route arrives', async () => {
     vi.mocked(createConversation).mockResolvedValue(created);
     const { result, rerender, send } = render();
-    await act(async () => { expect(await result.current(start)).toBe(42); });
+    await act(async () => {
+      expect(await result.current(start)).toBe(42);
+    });
     expect(navigate).toHaveBeenCalledWith('/ai/c/42', { replace: true, state: null });
     expect(send).not.toHaveBeenCalled();
     rerender({ id: 42 });
@@ -114,7 +142,9 @@ describe('useAiSend creation lifecycle', () => {
     const error = new Error('offline');
     vi.mocked(createConversation).mockRejectedValue(error);
     const { result, onError } = render();
-    await act(async () => { expect(await result.current(start)).toBeNull(); });
+    await act(async () => {
+      expect(await result.current(start)).toBeNull();
+    });
     expect(onError).toHaveBeenCalledWith(error);
   });
 });

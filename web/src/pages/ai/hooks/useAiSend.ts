@@ -52,6 +52,9 @@ export interface StartRunOptions {
   carryState?: unknown;
 }
 
+/** A failed creation is retryable; an abandoned route must not restore or navigate its draft. */
+export type StartRunResult = number | null | 'abandoned';
+
 export interface UseAiSendOptions {
   /** The `/ai/c/:conversationId` route param, or null on the bare `/ai` route. */
   conversationId: number | null;
@@ -65,12 +68,12 @@ export interface UseAiSendOptions {
 
 /**
  * @returns `startRun`, resolving to the conversation id the request was (or will be) sent on, or
- *   null when creating the conversation failed or its initiating route was left. Only failures
- *   on the current route are reported through `onError`.
+ *   null for a creation failure (reported through `onError`), or 'abandoned' after leaving the route.
+ *   A create request already submitted can still leave a conversation on the server.
  */
 export function useAiSend(
   options: UseAiSendOptions,
-): (start: StartRunOptions) => Promise<number | null> {
+): (start: StartRunOptions) => Promise<StartRunResult> {
   const { conversationId, ready, send } = options;
   const navigate = useNavigate();
   const pendingSendRef = useRef<{ conversationId: number; request: AiMessageRequest } | null>(null);
@@ -108,7 +111,7 @@ export function useAiSend(
   }, [conversationId, ready, send]);
 
   return useCallback(
-    async ({ createBody, request, carryState }: StartRunOptions): Promise<number | null> => {
+    async ({ createBody, request, carryState }: StartRunOptions): Promise<StartRunResult> => {
       const current = conversationIdRef.current;
       if (current !== null) {
         void optionsRef.current.send(current, request);
@@ -118,12 +121,13 @@ export function useAiSend(
       const contextVersion = contextVersionRef.current;
       try {
         const body = await withDefaultInstance(createBody);
-        if (contextVersion !== contextVersionRef.current) return null;
+        if (contextVersion !== contextVersionRef.current) return 'abandoned';
         const created = await createConversation(body);
-        if (contextVersion !== contextVersionRef.current) return null;
+        if (contextVersion !== contextVersionRef.current) return 'abandoned';
         createdId = created.id;
       } catch (error) {
-        if (contextVersion === contextVersionRef.current) optionsRef.current.onError(error);
+        if (contextVersion !== contextVersionRef.current) return 'abandoned';
+        optionsRef.current.onError(error);
         return null;
       }
       pendingSendRef.current = { conversationId: createdId, request };
