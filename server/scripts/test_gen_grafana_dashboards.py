@@ -17,16 +17,29 @@
 ################################################################################
 """Regression tests for the Grafana dashboard asset generator."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_grafana_dashboards import gauge_panel, layout_panels
+from gen_grafana_dashboards import gauge_panel, layout_panels, specs
+
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "src" / "main" / "resources" / "grafana"
 
 
 def panel(width, height):
     return {"gridPos": {"w": width, "h": height, "x": 99, "y": 99}}
+
+
+def shipped_panel_expr(uid, title):
+    """Expression a shipped dashboard asset renders in the panel named ``title``."""
+    with open(DASHBOARD_DIR / f"{uid}.json", encoding="utf-8") as handle:
+        dashboard = json.load(handle)
+    for item in dashboard["panels"]:
+        if item["title"] == title:
+            return item["targets"][0]["expr"]
+    raise AssertionError(f"panel {title!r} missing from {uid}")
 
 
 class LayoutPanelsTest(unittest.TestCase):
@@ -56,6 +69,56 @@ class LayoutPanelsTest(unittest.TestCase):
             layout_panels([panel(25, 8)])
         with self.assertRaises(ValueError):
             layout_panels([panel(12, 0)])
+
+
+class OverviewPanelsTest(unittest.TestCase):
+
+    def specs_by_uid(self):
+        return {spec[0]: spec for spec in specs}
+
+    def test_broker_count_counts_brokers_not_series(self):
+        overview = self.specs_by_uid()["rocketmq-overview"]
+        panels = {item["title"]: item for item in overview[3]}
+        expr = panels["Broker Count"]["targets"][0]["expr"]
+
+        # rocketmq_messages_in_total carries both broker and topic labels - the same dashboard
+        # derives its $broker and $topic template variables from them - so a bare count() returns
+        # one series per broker/topic pair and reads hundreds on a two-broker cluster. The
+        # neighbouring "Total Topics" panel already counts with count(count by (topic) (...)).
+        self.assertEqual(
+            'count(count by (broker) (rocketmq_messages_in_total{cluster="$cluster"}))',
+            expr,
+        )
+
+    def test_shipped_overview_dashboard_matches_the_generator(self):
+        overview = self.specs_by_uid()["rocketmq-overview"]
+        panels = {item["title"]: item for item in overview[3]}
+
+        self.assertEqual(
+            panels["Broker Count"]["targets"][0]["expr"],
+            shipped_panel_expr("rocketmq-overview", "Broker Count"),
+        )
+
+
+class ShippedDashboardPanelsTest(unittest.TestCase):
+
+    def test_dlq_resend_count_panel_counts_over_the_window(self):
+        # The panel title and its "short" unit promise a count over the 1m window, but rate()
+        # renders resends per second - 60x below the number a reader takes from the title. The
+        # sibling "Reject Count (1m)" panel in the same bundle already uses increase(...[1m]).
+        self.assertEqual(
+            'increase(rocketmq_dlq_resend_count{cluster="$cluster"}[1m])',
+            shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
+        )
+
+    def test_shipped_dlq_dashboard_matches_the_generator(self):
+        dlq = {spec[0]: spec for spec in specs}["rocketmq-dlq"]
+        panels = {item["title"]: item for item in dlq[3]}
+
+        self.assertEqual(
+            panels["DLQ Resend Count (1m)"]["targets"][0]["expr"],
+            shipped_panel_expr("rocketmq-dlq", "DLQ Resend Count (1m)"),
+        )
 
 
 class GaugePanelTest(unittest.TestCase):

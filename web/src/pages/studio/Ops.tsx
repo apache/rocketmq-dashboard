@@ -68,12 +68,16 @@ const OpsPage: React.FC = () => {
    */
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [reloadKey, setReloadKey] = useState(0);
-  const writeOperationEnabled = configurationAvailable && (!userId || admin === true);
+  const writeOperationEnabled =
+    loadState === 'ready' && configurationAvailable && (!userId || admin === true);
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
 
   useEffect(() => {
     let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoadState('loading');
+    });
 
     const loadOpsData = async () => {
       try {

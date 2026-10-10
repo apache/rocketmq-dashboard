@@ -64,6 +64,7 @@ test('missingOrUnknownLicenseFailsTest', (t) => {
 
 test('vitePackagingAndTamperGateTest', async (t) => {
   const directory = temporary(t);
+  const licensePlugin = distributionLicenses();
   // Build only fixtures for React, CSS, SVG and small dependencies; do not build the app or run app tests.
   const result = await build({
     root,
@@ -77,7 +78,7 @@ test('vitePackagingAndTamperGateTest', async (t) => {
           if (id === '\0license-fixture') return `import React from '${root}node_modules/react/index.js'; import logo from '${root}src/assets/model-logos/openai.svg'; import '${root}src/index.css'; import toggle from '${root}node_modules/toggle-selection/index.js'; console.log(React, logo, toggle);`;
         },
       },
-      distributionLicenses(),
+      licensePlugin,
     ],
     build: { write: false, minify: false, rollupOptions: { input: 'license-fixture' } },
   });
@@ -93,6 +94,44 @@ test('vitePackagingAndTamperGateTest', async (t) => {
   assert.throws(() => checkDistribution(directory), /modified or missing/);
   write(directory, 'NOTICE', result.output.find((item) => item.fileName === 'NOTICE').source);
   const output = Object.keys(manifest.outputFiles)[0];
+  write(directory, output, Buffer.concat([readFileSync(path.join(directory, output)), Buffer.from('\n// late build rewrite')]));
+  assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
+  licensePlugin.writeBundle({ dir: directory });
+  checkDistribution(directory);
   write(directory, output, 'tampered');
   assert.throws(() => checkDistribution(directory), /build artifact verification failed/);
+});
+
+test('viteWriteLifecycleHashesTheFinalChunkTest', async (t) => {
+  const directory = temporary(t);
+  const source = mkdtempSync(path.join(root, 'src/.license-test-'));
+  t.after(() => rmSync(source, { recursive: true, force: true }));
+  write(source, 'index.html', '<script type="module" src="./main.js"></script>');
+  write(source, 'main.js', "import React from 'react'; console.log(React.version);");
+  const output = path.join(directory, 'dist');
+
+  await build({
+    root,
+    configFile: false,
+    logLevel: 'error',
+    plugins: [
+      distributionLicenses(),
+      {
+        name: 'late-chunk-rewrite',
+        enforce: 'post',
+        generateBundle(_options, bundle) {
+          const entry = Object.values(bundle).find((item) => item.type === 'chunk' && item.isEntry);
+          assert(entry, 'fixture must emit an entry chunk');
+          entry.code += '\n// rewritten after the license manifest was generated\n';
+        },
+      },
+    ],
+    build: { outDir: output, emptyOutDir: false, rollupOptions: { input: path.join(source, 'index.html') } },
+  });
+
+  checkDistribution(output);
+  const manifest = JSON.parse(readFileSync(path.join(output, 'legal/manifest.json')));
+  const entry = Object.keys(manifest.outputFiles).find((name) => name.endsWith('.js'));
+  assert(entry, 'manifest must include the emitted JavaScript');
+  assert.match(readFileSync(path.join(output, entry), 'utf8'), /rewritten after the license manifest/);
 });

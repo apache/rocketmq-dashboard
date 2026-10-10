@@ -201,6 +201,20 @@ describe('GeneralSettingsTab', () => {
     );
   });
 
+  it('aborts the save when the fresh settings read fails', async () => {
+    renderTab();
+
+    const saveButtons = await screen.findAllByRole('button', { name: '保存设置' });
+    await waitFor(() => expect(saveButtons[0]).toBeEnabled());
+    // The fresh read that every save is built from now fails: writing the patch on top of the
+    // mount-time snapshot would clobber fields another tab saved in the meantime.
+    vi.mocked(getGeneralSettings).mockRejectedValueOnce(new Error('boom'));
+    fireEvent.submit(saveButtons[0].closest('form')!);
+
+    await waitFor(() => expect(screen.getByText('设置保存失败，请稍后重试')).toBeInTheDocument());
+    expect(saveGeneralSettings).not.toHaveBeenCalled();
+  });
+
   it('can explicitly clear a configured DingTalk signing secret', async () => {
     vi.mocked(getGeneralSettings).mockResolvedValue({
       theme: 'system',

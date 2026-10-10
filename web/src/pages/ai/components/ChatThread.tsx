@@ -167,7 +167,7 @@ const ChatThread = ({
     const previous = prevBubbleCountRef.current;
     prevBubbleCountRef.current = bubbleCount;
     if (atBottomRef.current || bubbleCount <= previous) return;
-    setUnread((count) => count + 1);
+    setUnread((count) => count + bubbleCount - previous);
   }, [bubbleCount]);
 
   return (
