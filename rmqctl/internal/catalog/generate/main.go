@@ -821,6 +821,12 @@ func formatNumber(value *float64) string {
 	return strconv.FormatFloat(*value, 'g', -1, 64)
 }
 
+// verify is deliberately byte-exact: any difference, including line-ending
+// drift, fails the check, so a catalog that was committed with CRLF cannot
+// pass as current. Working-tree EOL consistency for the generated artifacts
+// is pinned by .gitattributes (*.go text eol=lf) instead of being normalized
+// here, which keeps core.autocrlf=true checkouts byte-identical to what
+// go/format emits.
 func verify(outputPath string, expected []byte) error {
 	actual, err := os.ReadFile(outputPath)
 	if err != nil {
