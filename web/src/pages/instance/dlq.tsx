@@ -55,8 +55,8 @@ import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
-const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
-const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
+const DEFAULT_LOAD_ERROR = 'dlq.loadFailed';
+const DEFAULT_RETRY_ERROR = 'dlq.retrySubmitFailed';
 
 /* ─── Helpers ─── */
 
@@ -201,7 +201,7 @@ const DLQPage = () => {
       })
       .catch((error) => {
         if (groupRequestIdRef.current === requestId) {
-          setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
+          setLoadError(describeThrownMessage(error) || t(DEFAULT_LOAD_ERROR));
           setLoading(false);
         }
       });
@@ -292,7 +292,7 @@ const DLQPage = () => {
 
   const handleRetry = async () => {
     if (!retryTargetTopic) {
-      message.warning('请输入目标 Topic');
+      message.warning(t('dlq.retryTargetRequired'));
       return;
     }
     if (!retryGroup || !selectedInstanceId) return;
@@ -319,22 +319,30 @@ const DLQPage = () => {
         showResendFailures(result);
         if (result.scanIncomplete) {
           message.warning(
-            `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+            t('dlq.retryScanIncomplete', {
+            failedQueues: result.failedQueueCount ?? 0,
+            resent: result.resent,
+          }),
           );
         }
       } else if (result.scanIncomplete) {
         message.warning(
-          `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+          t('dlq.retryScanIncomplete', {
+            failedQueues: result.failedQueueCount ?? 0,
+            resent: result.resent,
+          }),
         );
       } else {
-        message.success(`重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`);
+        message.success(
+          t('dlq.retryCompleted', { group: groupName, topic: targetTopic, resent: result.resent }),
+        );
       }
       setRetryModalOpen(false);
       setRetryGroup(null);
       setRetryError(null);
     } catch (error) {
       if (retryRequestIdRef.current === requestId) {
-        setRetryError(describeThrownMessage(error) || DEFAULT_RETRY_ERROR);
+        setRetryError(describeThrownMessage(error) || t(DEFAULT_RETRY_ERROR));
       }
     } finally {
       if (retryRequestIdRef.current === requestId) {
@@ -355,13 +363,13 @@ const DLQPage = () => {
       downloadBlob(blob, `${group.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
-          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+          t('dlq.exportIncompleteWarning', { failedQueues: meta.failedQueueCount, limit: meta.limit }),
         );
       } else {
-        message.success(`已导出 ${group.groupName} 的死信消息（${blob.size} 字节）`);
+        message.success(t('dlq.exportedGroup', { group: group.groupName, bytes: blob.size }));
       }
     } catch (error) {
-      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
+      message.error(describeThrownMessage(error) || t('dlq.exportFailed'));
     }
   };
 
@@ -409,7 +417,7 @@ const DLQPage = () => {
       setDetailPage(page);
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
-        setDetailError(describeThrownMessage(error) || '死信消息明细加载失败，请稍后重试');
+        setDetailError(describeThrownMessage(error) || t('dlq.detailLoadFailed'));
       }
     } finally {
       if (detailRequestIdRef.current === requestId) {
@@ -440,13 +448,13 @@ const DLQPage = () => {
       if (result.failed > 0) {
         showResendFailures(result);
       } else {
-        message.success(`重发完成：成功 ${result.resent} 条`);
+        message.success(t('dlq.resendCompleted', { resent: result.resent }));
       }
       setDetailSelectedMsgIds([]);
       await loadDetailMessages(group, pageToReload, pageSizeToReload);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
-        setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');
+        setDetailError(describeThrownMessage(error) || t('dlq.resendFailed'));
       }
     } finally {
       if (detailResendRequestIdRef.current === requestId) {
@@ -469,22 +477,24 @@ const DLQPage = () => {
       downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
-          `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
+          t('dlq.exportIncompleteWarning', { failedQueues: meta.failedQueueCount, limit: meta.limit }),
         );
       } else {
         message.success(
-          `已导出 ${detailSelectedMsgIds.length > 0 ? `选中的 ${detailSelectedMsgIds.length} 条` : '全部'}死信消息（${blob.size} 字节）`,
+          detailSelectedMsgIds.length > 0
+            ? t('dlq.exportedSelected', { count: detailSelectedMsgIds.length, bytes: blob.size })
+            : t('dlq.exportedAll', { bytes: blob.size }),
         );
       }
     } catch (error) {
-      message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
+      message.error(describeThrownMessage(error) || t('dlq.exportFailed'));
     }
   };
 
   /* ─── Table Columns ─── */
   const columns: ColumnsType<DLQGroup> = [
     {
-      title: 'Group 名称',
+      title: t('dlq.groupName'),
       dataIndex: 'groupName',
       key: 'groupName',
       minWidth: 200,
@@ -512,7 +522,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '死信数量',
+      title: t('dlq.deadLetterCount'),
       dataIndex: 'messageCount',
       key: 'messageCount',
       width: 100,
@@ -533,12 +543,12 @@ const DLQPage = () => {
                     : undefined,
           }}
         >
-          {record.statsAvailable === false ? '不可用' : count.toLocaleString()}
+          {record.statsAvailable === false ? t('common.unavailable') : count.toLocaleString()}
         </Text>
       ),
     },
     {
-      title: '最近入队时间',
+      title: t('dlq.lastEnqueueTime'),
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
       width: 180,
@@ -550,7 +560,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 280,
       render: (_: unknown, record: DLQGroup) => (
@@ -561,7 +571,7 @@ const DLQPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => openDetailDrawer(record)}
           >
-            消息明细
+            {t('dlq.viewMessages')}
           </Button>
           <Button
             size="small"
@@ -570,7 +580,7 @@ const DLQPage = () => {
             onClick={() => openRetryModal(record)}
             disabled={record.statsAvailable === false || record.messageCount === 0}
           >
-            重投消息
+            {t('dlq.retryMessages')}
           </Button>
           <Button
             size="small"
@@ -579,7 +589,7 @@ const DLQPage = () => {
             onClick={() => handleExport(record)}
             disabled={record.statsAvailable === false || record.messageCount === 0}
           >
-            导出
+            {t('common.export')}
           </Button>
         </Flex>
       ),
@@ -615,7 +625,7 @@ const DLQPage = () => {
       render: (offset: number) => <Text style={{ fontFamily: 'monospace' }}>{offset}</Text>,
     },
     {
-      title: '重投次数',
+      title: t('dlq.retryCount'),
       dataIndex: 'reconsumeTimes',
       key: 'reconsumeTimes',
       width: 90,
@@ -624,7 +634,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '入队时间',
+      title: t('dlq.enqueueTime'),
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 160,
@@ -653,7 +663,7 @@ const DLQPage = () => {
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: DLQMessage) => (
@@ -663,7 +673,7 @@ const DLQPage = () => {
           loading={detailResending}
           onClick={() => void resendSelectedMessages([record.msgId])}
         >
-          重发
+          {t('dlq.resend')}
         </Button>
       ),
     },
@@ -674,7 +684,7 @@ const DLQPage = () => {
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('dlq.title')} subtitle="管理消费失败进入死信队列的消息" />
+      <PageHeader title={t('dlq.title')} subtitle={t('dlq.subtitle')} />
 
       {/* ── Filter Bar ── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
@@ -688,7 +698,7 @@ const DLQPage = () => {
             onRetry={reloadInstances}
           />
           <Input.Search
-            placeholder="搜索 Group 名称或 DLQ Topic"
+            placeholder={t('dlq.searchPlaceholder')}
             allowClear
             value={search}
             onChange={(e) => {
@@ -704,7 +714,7 @@ const DLQPage = () => {
           />
           <Space size={8}>
             <Text type="secondary" style={{ fontSize: 14 }}>
-              导出时间范围
+              {t('dlq.exportTimeRange')}
             </Text>
             <RangePicker
               showTime
@@ -754,7 +764,7 @@ const DLQPage = () => {
             total,
             showSizeChanger: true,
             pageSizeOptions: [20, 50, 100],
-            showTotal: (totalCount) => `共 ${totalCount} 个 Group`,
+            showTotal: (totalCount) => t('dlq.totalGroups', { total: totalCount }),
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPage);
               setPageSize(nextPageSize);
@@ -774,7 +784,7 @@ const DLQPage = () => {
         title={
           <Space>
             <ArrowsCounterClockwise size={18} color="#fa8c16" />
-            <span>重投死信消息</span>
+            <span>{t('dlq.retryModalTitle')}</span>
           </Space>
         }
         open={retryModalOpen}
@@ -790,8 +800,8 @@ const DLQPage = () => {
         closable={!retrySubmitting}
         keyboard={!retrySubmitting}
         maskClosable={!retrySubmitting}
-        okText="确认重投"
-        cancelText="取消"
+        okText={t('dlq.confirmRetry')}
+        cancelText={t('common.cancel')}
         width={520}
         destroyOnHidden
       >
@@ -811,13 +821,13 @@ const DLQPage = () => {
               }}
             >
               <Text type="warning" style={{ fontSize: 14 }}>
-                ⚠️ 重投操作将把死信消息重新发送到指定 Topic，请确认目标 Topic 正确。
+                {t('dlq.retryWarning')}
               </Text>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                源 Group
+                {t('dlq.sourceGroup')}
               </Text>
               <Text strong style={{ fontSize: 14 }}>
                 {retryGroup.groupName}
@@ -826,16 +836,16 @@ const DLQPage = () => {
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                死信数量
+                {t('dlq.deadLetterCount')}
               </Text>
               <Text strong style={{ fontSize: 14, color: '#fa8c16' }}>
-                {retryGroup.messageCount.toLocaleString()} 条
+                {t('dlq.messageCountWithUnit', { count: retryGroup.messageCount.toLocaleString() })}
               </Text>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                重投时间范围
+                {t('dlq.retryTimeRange')}
               </Text>
               <RangePicker
                 showTime
@@ -852,10 +862,10 @@ const DLQPage = () => {
 
             <div>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                目标 Topic
+                {t('dlq.targetTopic')}
               </Text>
               <Input
-                placeholder="输入目标 Topic 名称"
+                placeholder={t('dlq.retryTargetPlaceholder')}
                 value={retryTargetTopic}
                 onChange={(e) => setRetryTargetTopic(e.target.value)}
               />
@@ -868,7 +878,11 @@ const DLQPage = () => {
          Message Detail Drawer
          ═══════════════════════════════════════════ */}
       <Drawer
-        title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
+        title={
+          detailGroup
+            ? t('dlq.detailTitleWithGroup', { group: detailGroup.groupName })
+            : t('dlq.detailTitle')
+        }
         width={1180}
         open={detailOpen}
         onClose={() => {
@@ -910,14 +924,14 @@ const DLQPage = () => {
                     type="secondary"
                     style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
                   >
-                    死信数量
+                    {t('dlq.deadLetterCount')}
                   </Text>
                   <Text
                     strong
                     style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
                   >
                     {detailGroup.statsAvailable === false
-                      ? '不可用'
+                      ? t('common.unavailable')
                       : detailGroup.messageCount.toLocaleString()}
                   </Text>
                 </div>
@@ -926,7 +940,7 @@ const DLQPage = () => {
                     type="secondary"
                     style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
                   >
-                    最近入队时间
+                    {t('dlq.lastEnqueueTime')}
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
                     {formatUtcDateTime(detailGroup.lastEnqueueTime)}
@@ -939,13 +953,16 @@ const DLQPage = () => {
                 onClick={() => void exportDetailExcel()}
               >
                 {detailSelectedMsgIds.length > 0
-                  ? `导出选中 (${detailSelectedMsgIds.length})`
-                  : '导出全部'}
+                  ? t('dlq.exportSelected', { count: detailSelectedMsgIds.length })
+                  : t('dlq.exportAll')}
               </Button>
             </Flex>
 
             <InfoBanner
-              description={`明细按「导出时间范围」查询（${exportRange[0].format('YYYY-MM-DD HH:mm:ss')} ~ ${exportRange[1].format('YYYY-MM-DD HH:mm:ss')}）。勾选后可单条或批量重发、导出 Excel。`}
+              description={t('dlq.detailRangeDescription', {
+                from: exportRange[0].format('YYYY-MM-DD HH:mm:ss'),
+                to: exportRange[1].format('YYYY-MM-DD HH:mm:ss'),
+              })}
             />
 
             {detailError && (
@@ -966,7 +983,7 @@ const DLQPage = () => {
                           type="warning"
                           style={{ fontSize: 14, display: 'block', marginBottom: 4 }}
                         >
-                          属性过多或单值过长，服务端已截断展示
+                          {t('dlq.propertiesTruncated')}
                         </Text>
                       )}
                       <Table
@@ -979,15 +996,15 @@ const DLQPage = () => {
                         }))}
                         columns={[
                           {
-                            title: '属性',
+                            title: t('dlq.properties'),
                             dataIndex: 'key',
                             key: 'key',
                             width: 200,
                             ellipsis: true,
                           },
-                          { title: '值', dataIndex: 'value', key: 'value', ellipsis: true },
+                          { title: t('dlq.value'), dataIndex: 'value', key: 'value', ellipsis: true },
                         ]}
-                        locale={{ emptyText: '无属性' }}
+                        locale={{ emptyText: t('dlq.noProperties') }}
                       />
                     </div>
                   ) : (
@@ -995,7 +1012,7 @@ const DLQPage = () => {
                       type="secondary"
                       style={{ padding: '4px 0', display: 'block', fontSize: 14 }}
                     >
-                      该消息无用户属性
+                      {t('dlq.noUserProperties')}
                     </Text>
                   ),
               }}
@@ -1009,7 +1026,7 @@ const DLQPage = () => {
                 total: detailTotal,
                 showSizeChanger: true,
                 pageSizeOptions: [10, 20, 50],
-                showTotal: (totalCount) => `共 ${totalCount} 条消息`,
+                showTotal: (totalCount) => t('dlq.totalMessages', { total: totalCount }),
                 onChange: (nextPage, nextPageSize) => {
                   setDetailPage(nextPage);
                   setDetailPageSize(nextPageSize);
@@ -1032,7 +1049,7 @@ const DLQPage = () => {
                   loading={detailResending}
                   onClick={() => void resendSelectedMessages(detailSelectedMsgIds)}
                 >
-                  批量重发选中 ({detailSelectedMsgIds.length})
+                  {t('dlq.batchResendSelected', { count: detailSelectedMsgIds.length })}
                 </Button>
               </Flex>
             )}
