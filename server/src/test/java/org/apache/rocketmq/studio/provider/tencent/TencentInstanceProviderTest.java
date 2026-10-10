@@ -616,6 +616,18 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void getTopicConsumersShouldRejectIncompletePageWhenSubscriptionCountRequiresMoreTest() throws Exception {
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionCount(2L);
+        response.setSubscriptionData(new SubscriptionData[]{subscription("GID_partial")});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void listConsumerGroupsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() throws Exception {
         ConsumeGroupItem item = new ConsumeGroupItem();
         item.setConsumerGroup("GID_partial");

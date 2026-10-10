@@ -407,25 +407,30 @@ public class TencentInstanceProvider implements InstanceProvider {
         List<TopicConsumerVO> consumers = new ArrayList<>();
         long fetchedSubscriptions = 0L;
         for (int page = 0; page < MAX_PAGES; page++) {
+            long offset = (long) page * CONSUMER_PAGE_SIZE;
             DescribeTopicRequest request = new DescribeTopicRequest();
             request.setInstanceId(context.cloudInstanceId());
             request.setTopic(topicName);
-            request.setOffset((long) page * CONSUMER_PAGE_SIZE);
+            request.setOffset(offset);
             request.setLimit((long) CONSUMER_PAGE_SIZE);
             DescribeTopicResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeTopic(request));
             SubscriptionData[] data = response == null ? null : response.getSubscriptionData();
-            if (data == null || data.length == 0) {
+            Long subscriptionCount = response == null ? null : response.getSubscriptionCount();
+            int returned = data == null ? 0 : data.length;
+            // DescribeTopic pages with CONSUMER_PAGE_SIZE, which matches the PAGE_SIZE the shared
+            // completeness guard compares against.
+            requireCompletePage("topic consumer", offset, returned, subscriptionCount);
+            if (returned == 0) {
                 break;
             }
-            fetchedSubscriptions += data.length;
+            fetchedSubscriptions += returned;
             for (SubscriptionData subscription : data) {
                 if (subscription != null) {
                     consumers.add(toTopicConsumer(subscription));
                 }
             }
-            Long subscriptionCount = response.getSubscriptionCount();
-            if (data.length < CONSUMER_PAGE_SIZE
+            if (returned < CONSUMER_PAGE_SIZE
                     || subscriptionCount != null && fetchedSubscriptions >= subscriptionCount) {
                 break;
             }
