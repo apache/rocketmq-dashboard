@@ -149,6 +149,14 @@
 | 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
 | 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
 | 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 121 | GET | `/api/clusters/registry` | 主机注册表集群列表 |
+| 122 | POST | `/api/clusters/test-connection` | 测试集群连接 |
+| 123 | POST | `/api/clusters/config/preview` | 预览集群配置变更 |
+| 124 | GET | `/api/clusters/:id/broker-config-diff` | 检查 Broker 配置漂移 |
+| 125 | GET | `/api/nameservers` | NameServer 注册表列表 |
+| 126 | POST | `/api/nameservers/registry/create` | 创建 NameServer 注册项 |
+| 127 | POST | `/api/nameservers/registry/update` | 更新 NameServer 注册项 |
+| 128 | POST | `/api/nameservers/registry/delete` | 删除 NameServer 注册项 |
 
 ## 通用响应格式
 
@@ -887,6 +895,167 @@ POST /api/k8s-certs/delete
 **Response `data`:** `null`
 
 ---
+
+### 4.21 获取主机注册表集群列表
+
+```
+GET /api/clusters/registry
+```
+
+返回集群注册表中登记的集群（不经由实例解析，供集群管理页使用）。
+
+**Response `data`:** `Cluster[]`（字段同 4.1）
+
+### 4.22 测试集群连接
+
+```
+POST /api/clusters/test-connection
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `namesrvAddr` | `string` | 是 | NameServer 地址列表 |
+
+**Response `data`:** `ClusterProbe`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `connected` | `boolean` | 是否连接成功 |
+| `namesrvAddr` | `string` | 探测使用的 NameServer 地址 |
+| `clusterName` | `string` | NameServer 报告的集群名 |
+| `brokerCount` | `number` | Broker 数量 |
+| `brokerNames` | `string[]` | Broker 名称 |
+| `elapsedMillis` | `number` | 探测耗时（毫秒） |
+| `message` | `string` | 失败原因；成功时为空 |
+
+### 4.23 预览集群配置变更
+
+```
+POST /api/clusters/config/preview
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 集群名（运行时集群标识，非数据库主键） |
+| `instanceId` | `string` | 否 | 所属实例 ID |
+| `flushDiskType` | `string` | 否 | 刷盘方式 |
+| `autoCreateTopicEnable` | `boolean` | 否 | 自动创建 Topic |
+| `autoCreateSubscriptionGroup` | `boolean` | 否 | 自动创建订阅组 |
+| `maxMessageSize` | `number` | 否 | 最大消息大小，1048576–134217728 |
+| `fileReservedTime` | `number` | 否 | 文件保留小时数，1–720 |
+| `writeQueueNums` | `number` | 否 | 写队列数，1–256 |
+| `readQueueNums` | `number` | 否 | 读队列数，1–256 |
+| `brokerPermission` | `number` | 否 | Broker 权限位，0–7 |
+
+**Response `data`:** `ClusterConfigPreview`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `targetBrokers` | `object[]` | 目标 Broker：`name` / `address` |
+| `changes` | `object[]` | 变更项：`field` / `currentValue` / `proposedValue` / `brokerProperty` |
+
+### 4.24 检查 Broker 配置漂移
+
+```
+GET /api/clusters/:id/broker-config-diff?instanceId={instanceId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 集群名（路径参数） |
+| `instanceId` | `string` | 否 | 所属实例 ID |
+
+**Response `data`:** `BrokerConfigDiff`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群名 |
+| `complete` | `boolean` | 是否读到了全部 Broker 的配置 |
+| `driftDetected` | `boolean` | 是否检测到配置不一致 |
+| `brokerCount` | `number` | Broker 总数 |
+| `reachableBrokerCount` | `number` | 成功读取配置的 Broker 数 |
+| `comparedFields` | `string[]` | 参与比对的字段 |
+| `brokers` | `object[]` | Broker 状态：`name` / `address` / `reachable` / `message` |
+| `differences` | `object[]` | 差异项：`field` / `brokerProperty` / `values[]`（`brokerName` / `address` / `configured` / `value`） |
+
+### 4.25 获取 NameServer 注册表列表
+
+```
+GET /api/nameservers
+```
+
+返回注册表中登记的 NameServer（Studio 侧清单，非集群实时列表；实时列表见 4.1 的集群详情）。
+
+**Response `data`:** `NameserverRegistryEntry[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `number` | 主键 |
+| `name` | `string` | 注册名 |
+| `namesrvAddr` | `string` | NameServer 地址 |
+| `k8sNamespace` | `string` | K8s 命名空间 |
+| `k8sId` | `string` | K8s 集群标识 |
+| `status` | `string` | 注册项状态 |
+| `description` | `string` | 描述 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 修改时间 |
+
+### 4.26 创建 NameServer 注册项
+
+```
+POST /api/nameservers/registry/create
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 注册名，最长 128 |
+| `namesrvAddr` | `string` | 是 | NameServer 地址，最长 512 |
+| `k8sNamespace` | `string` | 否 | K8s 命名空间，最长 128 |
+| `k8sId` | `string` | 否 | K8s 集群标识，最长 128 |
+| `description` | `string` | 否 | 描述 |
+
+**Response `data`:** `NameserverRegistryEntry`（同 4.25 单条）
+
+### 4.27 更新 NameServer 注册项
+
+```
+POST /api/nameservers/registry/update
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 注册项主键 |
+| `name` | `string` | 是 | 注册名，最长 128 |
+| `namesrvAddr` | `string` | 是 | NameServer 地址，最长 512 |
+| `k8sNamespace` | `string` | 否 | K8s 命名空间，最长 128 |
+| `k8sId` | `string` | 否 | K8s 集群标识，最长 128 |
+| `description` | `string` | 否 | 描述 |
+
+**Response `data`:** `NameserverRegistryEntry`（同 4.25 单条）
+
+### 4.28 删除 NameServer 注册项
+
+```
+POST /api/nameservers/registry/delete
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `number` | 是 | 注册项主键 |
+
+**Response `data`:** `null`
 
 ## 5. Topic 管理
 
