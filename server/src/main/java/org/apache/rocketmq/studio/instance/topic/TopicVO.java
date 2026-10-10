@@ -33,8 +33,5 @@ public class TopicVO extends BaseEntity {
     private int writeQueues;
     private int readQueues;
     private TopicPerm perm;
-    private long messageCount;
-    private double tps;
-    private int consumerGroupCount;
     private String remark;
 }

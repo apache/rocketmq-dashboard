@@ -15,9 +15,6 @@ export interface Topic {
   writeQueues: number;
   readQueues: number;
   perm: string;
-  messageCount: number;
-  tps: number;
-  consumerGroupCount: number;
   remark: string;
   gmtCreate: string;
   gmtModified: string;
