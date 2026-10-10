@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -498,6 +499,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         }
         ResourceOwnershipGuard.requireText(request.getInstanceId(), "instanceId");
         validateMessageSize(request);
+        validateMessageProperties(request);
         InstanceVO instance = ownershipGuard.requireInstance(request.getInstanceId());
         request.setInstanceId(instance.getName());
         request.setTopic(ResourceOwnershipGuard.requireText(request.getTopic(), "topicName"));
@@ -585,6 +587,30 @@ public class RocketMQAdminClientImpl implements AdminClient {
         if (size > MAX_MESSAGE_SIZE) {
             String message = "Message body size " + size
                     + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes";
+            recordAudit("SEND_MESSAGE", request.getTopic(), message, "FAILED");
+            throw new BusinessException(400, message);
+        }
+    }
+
+    private void validateMessageProperties(SendMessageDTO request) {
+        validatePropertyText(request, request.getTag(), "tag", false);
+        validatePropertyText(request, request.getKey(), "key", false);
+        if (request.getProperties() != null) {
+            request.getProperties().forEach((name, value) -> {
+                if (!isSystemReservedProperty(name)) {
+                    validatePropertyText(request, name, "property name", true);
+                    validatePropertyText(request, value, "property value", false);
+                }
+            });
+        }
+    }
+
+    private void validatePropertyText(SendMessageDTO request, String text, String field, boolean name) {
+        // RocketMQ does not escape its wire separators. The name/value separator is safe
+        // inside a value, but either separator inside a name changes the decoded property.
+        if (text != null && (text.indexOf(MessageDecoder.PROPERTY_SEPARATOR) >= 0
+                || name && text.indexOf(MessageDecoder.NAME_VALUE_SEPARATOR) >= 0)) {
+            String message = "Message " + field + " contains a RocketMQ property separator";
             recordAudit("SEND_MESSAGE", request.getTopic(), message, "FAILED");
             throw new BusinessException(400, message);
         }
