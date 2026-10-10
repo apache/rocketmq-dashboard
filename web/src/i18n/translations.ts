@@ -120,6 +120,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.consumerGroups': { zh: '{n} 消费组', en: '{n} Groups' },
   'dashboard.healthy': { zh: '健康', en: 'Healthy' },
   'dashboard.last12h': { zh: '近 12 小时', en: 'Last 12 hours' },
+  'homeDashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load the dashboard' },
+  'homeDashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not load the cluster overview. Check your network connection and try again.',
+  },
   // ─── Shared mini charts ───
   'charts.noTrendData': { zh: '暂无趋势数据', en: 'No trend data yet' },
   'charts.trendData': { zh: '趋势数据：{values}', en: 'Trend: {values}' },
@@ -2339,6 +2344,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'home.docs': { zh: '文档中心', en: 'Documentation' },
   'home.community': { zh: 'RocketMQ 社区', en: 'RocketMQ Community' },
   'home.brand': { zh: 'RocketMQ Studio 出品', en: 'Powered by RocketMQ Studio' },
+  'home.currentVersion': {
+    zh: '当前版本 {time} build({commit})',
+    en: 'Version {time} build({commit})',
+  },
 
   // ─── AI Page (additional) ───
   'ai.recommended': { zh: '推荐', en: 'Rec.' },
