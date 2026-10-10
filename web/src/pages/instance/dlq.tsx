@@ -123,12 +123,16 @@ const DLQPage = () => {
   const [detailSelectedMsgIds, setDetailSelectedMsgIds] = useState<string[]>([]);
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Excel exports scan broker queues; one at a time, with the acting button loading.
+  const [exportingGroupName, setExportingGroupName] = useState<string | null>(null);
+  const [detailExporting, setDetailExporting] = useState(false);
   const detailRequestIdRef = useRef(0);
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
   const retryInFlightRef = useRef(false);
   const detailResendInFlightRef = useRef(false);
+  const exportInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -345,6 +349,10 @@ const DLQPage = () => {
   };
 
   const handleExport = async (group: DLQGroup) => {
+    if (!selectedInstanceId) return;
+    if (exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setExportingGroupName(group.groupName);
     try {
       const { blob, meta } = await exportDLQExcel({
         instanceId: selectedInstanceId,
@@ -362,6 +370,9 @@ const DLQPage = () => {
       }
     } catch (error) {
       message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
+    } finally {
+      exportInFlightRef.current = false;
+      setExportingGroupName(null);
     }
   };
 
@@ -458,6 +469,9 @@ const DLQPage = () => {
 
   const exportDetailExcel = async () => {
     if (!selectedInstanceId || !detailGroup) return;
+    if (exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
+    setDetailExporting(true);
     try {
       const { blob, meta } = await exportDLQExcel({
         instanceId: selectedInstanceId,
@@ -478,6 +492,9 @@ const DLQPage = () => {
       }
     } catch (error) {
       message.error(describeThrownMessage(error) || '导出死信消息失败，请稍后重试');
+    } finally {
+      exportInFlightRef.current = false;
+      setDetailExporting(false);
     }
   };
 
@@ -576,8 +593,13 @@ const DLQPage = () => {
             size="small"
             icon={<Download size={14} />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={() => handleExport(record)}
-            disabled={record.statsAvailable === false || record.messageCount === 0}
+            onClick={() => void handleExport(record)}
+            disabled={
+              record.statsAvailable === false ||
+              record.messageCount === 0 ||
+              (exportingGroupName !== null && exportingGroupName !== record.groupName)
+            }
+            loading={exportingGroupName === record.groupName}
           >
             导出
           </Button>
@@ -936,6 +958,7 @@ const DLQPage = () => {
               <Button
                 icon={<Download size={15} />}
                 disabled={detailTotal === 0}
+                loading={detailExporting}
                 onClick={() => void exportDetailExcel()}
               >
                 {detailSelectedMsgIds.length > 0
