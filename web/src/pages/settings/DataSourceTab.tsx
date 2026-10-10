@@ -125,6 +125,8 @@ export const DataSourceTab = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -194,15 +196,19 @@ export const DataSourceTab = () => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances);
+        if (cancelled) return;
+        setInstances(nextInstances);
+        setInstancesLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) setInstances([]);
+        // Clearing the options here made a failed request look like a deployment without
+        // instances: the picker silently emptied, and nothing offered a retry.
+        if (!cancelled) setInstancesLoadFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instancesReloadNonce]);
 
   const handleTestConnection = async (
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
@@ -508,11 +514,31 @@ export const DataSourceTab = () => {
           <Form.Item
             label={t('settings.instances')}
             name="instanceIds"
-            extra={t('settings.instancesHelp')}
+            extra={
+              <Flex vertical gap={4}>
+                <span>{t('settings.instancesHelp')}</span>
+                {instancesLoadFailed && (
+                  <Space size={4}>
+                    <Text type="danger" style={{ fontSize: 14 }}>
+                      {t('instance.listLoadFailed')}
+                    </Text>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0, height: 'auto' }}
+                      onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+                    >
+                      {t('common.retry')}
+                    </Button>
+                  </Space>
+                )}
+              </Flex>
+            }
           >
             <Select
               mode="multiple"
               allowClear
+              status={instancesLoadFailed ? 'error' : undefined}
               placeholder={t('settings.selectDataSourceInstances')}
               options={instances.map((instance) => ({
                 value: instance.name,

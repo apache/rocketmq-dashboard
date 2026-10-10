@@ -72,6 +72,8 @@ const DashboardPage = () => {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [dashboardInstanceId, setDashboardInstanceId] = useState<string>();
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -105,15 +107,19 @@ const DashboardPage = () => {
     let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances.filter(supportsApacheRuntime));
+        if (cancelled) return;
+        setInstances(nextInstances.filter(supportsApacheRuntime));
+        setInstancesLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) setInstances([]);
+        // Clearing the options here made a failed request look like a deployment without
+        // instances: the filter silently emptied, and nothing offered a retry.
+        if (!cancelled) setInstancesLoadFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instancesReloadNonce]);
 
   useEffect(() => {
     void Promise.resolve().then(loadDashboard);
@@ -139,8 +145,24 @@ const DashboardPage = () => {
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
             options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+            status={instancesLoadFailed ? 'error' : undefined}
             style={{ width: 220 }}
           />
+          {instancesLoadFailed && (
+            <Space size={4}>
+              <Text type="danger" style={{ fontSize: 14 }}>
+                {t('instance.listLoadFailed')}
+              </Text>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, height: 'auto' }}
+                onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+              >
+                {t('common.retry')}
+              </Button>
+            </Space>
+          )}
           <Button onClick={() => void loadDashboard()} loading={loading}>
             {t('common.refresh')}
           </Button>
