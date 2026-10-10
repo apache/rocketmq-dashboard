@@ -1181,7 +1181,16 @@ const ConsumerPageContent = ({
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
-      render: (protocol: string) => {
+      render: (protocol?: string) => {
+        // The Apache provider cannot tell the protocol from a broker connection set,
+        // so the field is legitimately absent — render a placeholder, not an empty tag.
+        if (!protocol) {
+          return (
+            <Text type="secondary" style={{ fontSize: 14 }}>
+              -
+            </Text>
+          );
+        }
         const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
