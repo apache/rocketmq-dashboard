@@ -130,6 +130,13 @@ public class AiRunExecutor {
             Set.of("llm.provider.output_too_large", "llm.provider.response_too_large");
     private static final String ERROR_MAX_TURNS_SUBTYPE = "error_max_turns";
 
+    /**
+     * What the projector calls a result frame whose subtype is missing or blank: not a success, and
+     * not the absence of a frame either. {@code decide()} has to read it the same way, or the run row
+     * ends up COMPLETED on top of a timeline whose last event is an error.
+     */
+    private static final String UNKNOWN_SUBTYPE = "unknown";
+
     private final AgentProviderRegistry agentProviders;
     private final OpenAiCompatibleLlmClient llmClient;
     private final PromptEnhancer promptEnhancer;
@@ -460,7 +467,9 @@ public class AiRunExecutor {
             if (meta.durationMs() != null) {
                 outcome.providerDurationMs = meta.durationMs();
             }
-            outcome.subtype = meta.subtype();
+            // A blank subtype is an error to the projector ("unknown"); recording it verbatim would
+            // make decide() read the blank as "no result frame" and complete a failed run.
+            outcome.subtype = StringUtils.hasText(meta.subtype()) ? meta.subtype() : UNKNOWN_SUBTYPE;
             if (AgentEventProjector.SUCCESS_SUBTYPE.equals(meta.subtype())) {
                 outcome.stopRacedSuccess = context.getHandle() != null && context.getHandle().isStopRequested();
                 outcome.successTerminalProjected = !outcome.stopRacedSuccess;
