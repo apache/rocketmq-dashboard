@@ -214,7 +214,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 ConsumeMessageThread_1                   TID: 7 STATE: RUNNABLE
                 ConsumeMessageThread_1                   com.example.Listener.consume(Listener.java:20)
                 """);
-        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(runningInfo);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1")).thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.available(runningInfo));
         org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
 
         ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
@@ -227,7 +227,7 @@ class RocketMQConsumerDiagnosticsProviderTest {
     @Test
     void getConsumerStackShouldFallBackToBrokerWhenNoProxyAnswersTest() throws Exception {
         ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
-        when(resolver.resolveConsumerRunningInfo("instance-a", "cg-orders", "client-1")).thenReturn(null);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1")).thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.available(null));
         org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
         ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
         runningInfo.setJstack("PullMessageService                       TID: 9 STATE: WAITING\n");
@@ -260,5 +260,59 @@ class RocketMQConsumerDiagnosticsProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to get consumer stack for client-1")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    private void proxyUnavailable() {
+        ProxyConsumerResolver resolver = org.mockito.Mockito.mock(ProxyConsumerResolver.class);
+        when(resolver.resolveConsumerRunningInfoStatus("instance-a", "cg-orders", "client-1"))
+                .thenReturn(ProxyConsumerResolver.ConsumerRunningInfoResolution.unavailable());
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "proxyConsumerResolver", resolver);
+    }
+
+    @Test
+    void proxyFailureAndBrokerOfflineShouldRemainUnavailableTest() throws Exception {
+        proxyUnavailable();
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE, "not online"));
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("proxy query failed")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void proxyFailureAndEmptyBrokerResultShouldRemainUnavailableTest() throws Exception {
+        proxyUnavailable();
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(null);
+
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void proxyFailureShouldStillAllowDirectConsumerDiagnosticsTest() throws Exception {
+        proxyUnavailable();
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack("PullMessageService TID: 9 STATE: WAITING\n");
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        assertThat(provider.getConsumerStack("instance-a", "cg-orders", "client-1").getThreadCount())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void interruptedBrokerQueryShouldPreserveInterruptionTest() throws Exception {
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true))
+                .thenThrow(new InterruptedException("cancelled"));
+        try {
+            assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
     }
 }

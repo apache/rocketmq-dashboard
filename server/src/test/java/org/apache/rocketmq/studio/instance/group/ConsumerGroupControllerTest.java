@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.group;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.WebMvcAuthTestSupport;
 
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
@@ -312,6 +313,17 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.threads[0].stackTrace[0]")
                         .value("org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.run"));
         verify(consumerDiagnosticsService).getConsumerStack("instance-a", "cg-orders", "client-1");
+    }
+
+    @Test
+    void consumerStackShouldSurfaceUnavailableDiagnosticsTest() throws Exception {
+        when(consumerDiagnosticsService.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenThrow(new BusinessException(502, "proxy query failed"));
+        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack")
+                        .param("instanceId", "instance-a"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(502))
+                .andExpect(jsonPath("$.message").value("proxy query failed"));
     }
 
     @Test

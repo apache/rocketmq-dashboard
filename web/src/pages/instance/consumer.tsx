@@ -2263,6 +2263,13 @@ const ConsumerPageContent = ({
               pagination={false}
               size="small"
             />
+          ) : stackError !== null ? (
+            <Alert
+              type="error"
+              showIcon
+              message={t('consumer.stackCaptureFailed')}
+              description={stackError || t('consumer.stackCaptureRetry')}
+            />
           ) : selectedStack && selectedStack.threads.length > 0 ? (
             selectedStack.threads.map((thread) => (
               <Card
@@ -2297,19 +2304,8 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message="暂不支持采集该客户端的线程栈"
-              description={
-                <>
-                  <div>
-                    经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker
-                    看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连
-                    Broker 的客户端可正常查看。
-                  </div>
-                  {stackError && (
-                    <div style={{ marginTop: 8, color: 'rgba(0,0,0,0.45)' }}>{stackError}</div>
-                  )}
-                </>
-              }
+              message={t('consumer.stackEmpty')}
+              description={t('consumer.stackEmptyHint')}
             />
           )}
         </Space>

@@ -65,21 +65,29 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
         // Clients that connect through a proxy keep their channel on the proxy and never register
         // on a broker, so ask the proxy first; the broker only knows directly connected clients
         // and answers "not online" for everyone else.
-        ConsumerRunningInfo viaProxy = proxyConsumerResolver == null
-                ? null
-                : proxyConsumerResolver.resolveConsumerRunningInfo(instanceId, groupName, clientId);
-        if (viaProxy != null) {
-            return toStackTrace(groupName, clientId, viaProxy);
+        ProxyConsumerResolver.ConsumerRunningInfoResolution viaProxy = proxyConsumerResolver == null
+                ? ProxyConsumerResolver.ConsumerRunningInfoResolution.available(null)
+                : proxyConsumerResolver.resolveConsumerRunningInfoStatus(instanceId, groupName, clientId);
+        if (viaProxy.runningInfo() != null) {
+            return toStackTrace(groupName, clientId, viaProxy.runningInfo());
         }
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId,
+        try {
+            if (StringUtils.hasText(instanceId)) {
+                return runtimeAdminClientResolver.execute(instanceId,
+                        admin -> getConsumerStack(admin, groupName, clientId));
+            }
+            if (!StringUtils.hasText(properties.getNamesrvAddr())) {
+                throw new BusinessException(503, "RocketMQ admin not connected");
+            }
+            return adminFactory.execute(properties.getNamesrvAddr(), null,
                     admin -> getConsumerStack(admin, groupName, clientId));
+        } catch (BusinessException e) {
+            if (e.getCode() == 404 && !viaProxy.available()) {
+                throw new BusinessException(502,
+                        "Unable to determine consumer stack availability: proxy query failed for " + clientId);
+            }
+            throw e;
         }
-        if (!StringUtils.hasText(properties.getNamesrvAddr())) {
-            throw new BusinessException(503, "RocketMQ admin not connected");
-        }
-        return adminFactory.execute(properties.getNamesrvAddr(), null,
-                admin -> getConsumerStack(admin, groupName, clientId));
     }
 
     private ConsumerStackTraceVO getConsumerStack(MQAdminExt admin, String groupName, String clientId) {
@@ -96,6 +104,9 @@ public class RocketMQConsumerDiagnosticsProvider implements ConsumerDiagnosticsP
                 throw new BusinessException(404, notReachable(clientId));
             }
             throw diagnosticsFailure(groupName, clientId, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(503, "Consumer stack query interrupted");
         } catch (Exception e) {
             throw diagnosticsFailure(groupName, clientId, e);
         }

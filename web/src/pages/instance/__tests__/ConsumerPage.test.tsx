@@ -1290,6 +1290,43 @@ describe('Consumer page', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ['zh', '线程栈采集失败'],
+    ['en', 'Stack capture failed'],
+  ])(
+    'shows a stack query failure in %s without claiming capture is unsupported',
+    async (lang, label) => {
+      window.localStorage.setItem('rocketmq-studio-language', lang);
+      vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+        groupPage([
+          {
+            ...group,
+            instances: [
+              {
+                clientId: 'client-1',
+                protocol: 'Remoting',
+                address: '10.0.0.1:39210',
+                subscribedTopics: [],
+                lastHeartbeat: '',
+                topicLag: {},
+              },
+            ],
+          },
+        ]),
+      );
+      vi.mocked(consumerService.getConsumerStack).mockRejectedValue(
+        new Error('proxy query failed'),
+      );
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ConsumerPage />);
+      await user.click(await screen.findByRole('button', { name: /详情|Detail/i }));
+      await user.click(await screen.findByRole('button', { name: /线程栈/ }));
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      expect(screen.getByText('proxy query failed')).toBeInTheDocument();
+      expect(screen.queryByText('暂不支持采集该客户端的线程栈')).not.toBeInTheDocument();
+    },
+  );
+
   it('renders the stack capture time in the viewer timezone from the offset-less UTC wire format', async () => {
     // The backend serializes LocalDateTime without an offset, so capturedAt arrives as a UTC wall
     // clock; parsing it as browser-local would shift the shown capture time by the viewer's zone.
