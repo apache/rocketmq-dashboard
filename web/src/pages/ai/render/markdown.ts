@@ -28,8 +28,17 @@
  * every assistant text block, live or replayed.
  */
 export function normalizeAiMarkdown(content: string): string {
-  return content
-    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
-    .replace(/^([-+*])(?=\S)/gm, '$1 ')
-    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
+  return (
+    content
+      // The marker run must be maximal: with a plain (?=\S) lookahead the engine backtracks
+      // `#{1,6}` and a WELL-FORMED `## heading` matches as a single `#` followed by `#`,
+      // rewriting it to `# # heading`. Requiring the next character to be neither whitespace
+      // nor `#` keeps the repair to genuinely malformed markers like `##结论`.
+      .replace(/^(#{1,6})(?=[^\s#])/gm, '$1 ')
+      // A bullet repair must not fire on a run of the same marker: `---`/`+++`/`***` are thematic
+      // breaks (and `---` under a title line is a setext heading), and inserting the space would
+      // rewrite them into a bullet with stray markers.
+      .replace(/^([-+*])(?!\1\1)(?=\S)/gm, '$1 ')
+      .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n')
+  );
 }
