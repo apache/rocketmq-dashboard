@@ -166,12 +166,15 @@ public class AliyunInstanceProvider implements InstanceProvider {
         for (int page = 1; ; page++) {
             ListTopicsResponseBody.Data data = fetchTopicPage(ctx, type, search, page, AliyunConverters.PAGE_SIZE);
             List<ListTopicsResponseBody.List> list = data == null ? null : data.getList();
-            if (list == null || list.isEmpty()) {
+            Long totalCount = data == null ? null : data.getTotalCount();
+            int returned = list == null ? 0 : list.size();
+            requireCompletePage("topic", page, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             topics.addAll(toTopics(list, instanceId));
-            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
-                    || list.size() < AliyunConverters.PAGE_SIZE) {
+            if (hasFetchedAll(page, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
@@ -227,8 +230,22 @@ public class AliyunInstanceProvider implements InstanceProvider {
         return topics;
     }
 
-    private static boolean hasFetchedAll(int page, int pageSize, Long totalCount) {
-        return totalCount != null && totalCount >= 0L && (long) page * pageSize >= totalCount;
+    private static boolean hasFetchedAll(int page, int returned, Long totalCount) {
+        long offset = (long) (page - 1) * AliyunConverters.PAGE_SIZE;
+        return totalCount != null && totalCount >= 0L && offset + returned >= totalCount;
+    }
+
+    private static void requireCompletePage(String resource, int page, int returned, Long totalCount) {
+        long offset = (long) (page - 1) * AliyunConverters.PAGE_SIZE;
+        if (totalCount != null && totalCount >= 0L
+                && returned < AliyunConverters.PAGE_SIZE && offset + returned < totalCount) {
+            throw new BusinessException(502,
+                    "Aliyun returned an incomplete " + resource + " page");
+        }
+    }
+
+    private static boolean isUnknownTotalCount(Long totalCount) {
+        return totalCount == null || totalCount < 0L;
     }
 
     private static PageResult<TopicVO> paginate(List<TopicVO> topics, int page, int pageSize) {
@@ -329,12 +346,15 @@ public class AliyunInstanceProvider implements InstanceProvider {
             ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
             ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
             List<ListConsumerGroupsResponseBody.List> list = data == null ? null : data.getList();
-            if (list == null || list.isEmpty()) {
+            Long totalCount = data == null ? null : data.getTotalCount();
+            int returned = list == null ? 0 : list.size();
+            requireCompletePage("consumer group", page, returned, totalCount);
+            if (returned == 0) {
                 break;
             }
             all.addAll(list);
-            if (hasFetchedAll(page, AliyunConverters.PAGE_SIZE, data.getTotalCount())
-                    || list.size() < AliyunConverters.PAGE_SIZE) {
+            if (hasFetchedAll(page, returned, totalCount)
+                    || isUnknownTotalCount(totalCount) && returned < AliyunConverters.PAGE_SIZE) {
                 break;
             }
         }
