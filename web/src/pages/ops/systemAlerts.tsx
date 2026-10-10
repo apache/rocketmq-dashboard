@@ -161,6 +161,7 @@ const SystemAlertsPage = () => {
   const pageSize = 20;
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<number>>(() => new Set());
   const [clearing, setClearing] = useState(false);
+  const acknowledgingIdsRef = useRef(new Set<number>());
   const [exporting, setExporting] = useState(false);
   const [deliveries, setDeliveries] = useState<Record<number, NotificationDelivery[]>>({});
   const [loadingDeliveries, setLoadingDeliveries] = useState<Set<number>>(() => new Set());
@@ -243,6 +244,8 @@ const SystemAlertsPage = () => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
   const handleAck = async (id: number) => {
+    if (acknowledgingIdsRef.current.has(id)) return;
+    acknowledgingIdsRef.current.add(id);
     setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
@@ -251,6 +254,7 @@ const SystemAlertsPage = () => {
     } catch {
       message.error(t('sysAlerts.acknowledgeFailed'));
     } finally {
+      acknowledgingIdsRef.current.delete(id);
       setAcknowledgingIds((current) => {
         const next = new Set(current);
         next.delete(id);
