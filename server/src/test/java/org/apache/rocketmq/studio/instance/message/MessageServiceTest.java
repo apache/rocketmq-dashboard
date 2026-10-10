@@ -24,10 +24,16 @@ import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
+import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
+import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -461,6 +467,27 @@ class MessageServiceTest {
                 "order-1", 1000L, 2000L, 1, 50);
 
         assertThat(page.isResultMayBeTruncated()).isTrue();
+    }
+
+    @Test
+    void skipsTheHistoryRowWhoseResultSnapshotCannotBeWrittenTest() throws Exception {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        RmqMessageQueryMapper historyMapper = mock(RmqMessageQueryMapper.class);
+        ObjectMapper failing = mock(ObjectMapper.class);
+        when(failing.writeValueAsString(any())).thenThrow(new JsonProcessingException("cannot write") { });
+        QueryHistoryService history = new QueryHistoryService(historyMapper, mock(RmqTraceQueryMapper.class),
+                new QueryHistoryProperties(), Clock.systemUTC(), failing);
+        MessageService service = new MessageService(provider, registry, history, mock(OperationAuditService.class), ownershipGuard());
+        List<MessageRecordVO> messages = List.of(MessageRecordVO.builder().msgId("msg-1").build());
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(provider.queryMessagesDetailed("instance-a", "TopicA", null, null, "ORDER-1", null, null))
+                .thenReturn(MessageQueryResult.complete(messages));
+
+        assertThat(service.queryMessages("instance-a", "TopicA", null, null, "ORDER-1", null, null))
+                .isEqualTo(messages);
+        // A row with resultCount=1 and no snapshot would list one result and serve none.
+        verify(historyMapper, never()).insert(any(RmqMessageQuery.class));
     }
 
     @Test
