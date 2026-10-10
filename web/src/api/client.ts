@@ -19,6 +19,8 @@ import axios from 'axios';
 import { message } from 'antd';
 import { clearAuthSession } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
+import translations, { type Lang } from '../i18n/translations';
+import { getInitialLanguage } from '../i18n/languagePreference';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/status']);
@@ -32,6 +34,13 @@ function isBusinessResponse(data: unknown): data is BusinessResponse {
   return typeof data === 'object' && data !== null;
 }
 
+// The interceptor lives outside React, so it resolves the display language from the
+// persisted preference at error time — exactly when the toast renders.
+const translate = (key: string): string => {
+  const lang: Lang = getInitialLanguage();
+  return translations[key]?.[lang] ?? key;
+};
+
 function getBusinessError(data: unknown): string | null {
   if (!isBusinessResponse(data) || data.code === undefined) {
     return null;
@@ -42,11 +51,12 @@ function getBusinessError(data: unknown): string | null {
   if (typeof data.code !== 'number' && !('message' in data) && !('data' in data)) {
     return null;
   }
-  return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+  return typeof data.message === 'string' && data.message.trim()
+    ? data.message
+    : translate('common.requestFailed');
 }
 
-const CORS_REJECTION_HINT =
-  '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置';
+const corsRejectionHint = () => translate('common.corsRejectionHint');
 
 /**
  * Spring CORS rejects non-whitelisted origins with 403 and a plain-text body (often
@@ -105,9 +115,10 @@ client.interceptors.response.use(
       return Promise.reject(error);
     }
     if (isCorsRejection(error)) {
-      message.error(CORS_REJECTION_HINT);
+      const hint = corsRejectionHint();
+      message.error(hint);
       if (error instanceof Error) {
-        error.message = CORS_REJECTION_HINT;
+        error.message = hint;
       }
       return Promise.reject(error);
     }

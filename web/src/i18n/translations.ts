@@ -3600,6 +3600,11 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
+  'common.requestFailed': { zh: '请求失败', en: 'Request failed' },
+  'common.corsRejectionHint': {
+    zh: '请求被服务端 CORS 策略拒绝（Invalid CORS request）：当前访问地址不在后端白名单，请检查部署的 STUDIO_CORS_ALLOWED_ORIGINS 配置',
+    en: 'Rejected by the server CORS policy (Invalid CORS request): the current origin is not whitelisted. Check the deployed STUDIO_CORS_ALLOWED_ORIGINS configuration.',
+  },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.logout': { zh: '退出', en: 'Logout' },
   'common.submit': { zh: '提交', en: 'Submit' },
