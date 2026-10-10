@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Card, Flex, Tag, Tooltip, Typography, theme } from 'antd';
 import { Check, Copy } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
@@ -103,6 +103,8 @@ const AssistantBubble = ({
       ? null
       : `${tokensPerSecond.toFixed(1)} token/s`;
   const [copied, setCopied] = useState(false);
+  const copyResetTimerRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(copyResetTimerRef.current), []);
   const answerText = copyableText(blocks);
 
   // The standard per-message action: copy the answer as markdown. Clipboard API first, the
@@ -110,7 +112,9 @@ const AssistantBubble = ({
   const handleCopy = async () => {
     const done = () => {
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      // Re-copying resets the previous countdown instead of stacking a second timer.
+      window.clearTimeout(copyResetTimerRef.current);
+      copyResetTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
     };
     try {
       if (navigator.clipboard?.writeText) {

@@ -533,6 +533,7 @@ const ClusterPage = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer = 0;
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
@@ -560,7 +561,7 @@ const ClusterPage = () => {
         setLoading(false);
         if (instanceLoadRetryRef.current < 3) {
           instanceLoadRetryRef.current += 1;
-          window.setTimeout(() => setInstanceLoadKey((key) => key + 1), 3000);
+          retryTimer = window.setTimeout(() => setInstanceLoadKey((key) => key + 1), 3000);
         } else {
           setInstanceLoadError(tRef.current('common.fetchDataFailed'));
           setAutoRefresh(false);
@@ -569,6 +570,8 @@ const ClusterPage = () => {
       });
     return () => {
       cancelled = true;
+      // The failure-path retry must not fire after the component moved on.
+      if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [instanceLoadKey, requestedInstanceId]);
 
