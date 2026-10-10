@@ -358,6 +358,50 @@ describe('ConversationListModal', () => {
     expect(await screen.findByText('检查集群状态')).toBeInTheDocument();
   });
 
+  it.each([
+    { target: 7, nextActive: 8, lifecycle: 'navigate', notified: false },
+    { target: 8, nextActive: 8, lifecycle: 'navigate', notified: true },
+    { target: 7, nextActive: 7, lifecycle: 'close', notified: true },
+    { target: 7, nextActive: 7, lifecycle: 'unmount', notified: false },
+  ])(
+    'usesTheCurrentConversationWhenDeletionFinishesTest ($target/$lifecycle)',
+    async ({ target, nextActive, lifecycle, notified }) => {
+      const user = userEvent.setup();
+      listMock.mockResolvedValue(page([conversation(7, 'first'), conversation(8, 'second')], 2, 1));
+      let finish!: () => void;
+      deleteMock.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const view = renderModal({ activeConversationId: 7 });
+      await screen.findByTestId('ai-conversation-row-delete-' + target);
+      await user.click(screen.getByTestId('ai-conversation-row-delete-' + target));
+      await confirmDelete(user);
+      await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(target));
+      if (lifecycle === 'unmount') view.unmount();
+      else
+        view.rerender(
+          <App>
+            <LangProvider>
+              <ConversationListModal
+                open={lifecycle !== 'close'}
+                onClose={vi.fn()}
+                onSelect={view.onSelect}
+                activeConversationId={nextActive}
+                onActiveDeleted={view.onActiveDeleted}
+              />
+            </LangProvider>
+          </App>,
+        );
+      await act(async () => {
+        finish();
+      });
+      expect(view.onActiveDeleted).toHaveBeenCalledTimes(notified ? 1 : 0);
+    },
+  );
+
   it('deletesASingleConversationFromItsRowActionTest', async () => {
     const user = userEvent.setup();
     listMock
