@@ -41,6 +41,7 @@ import {
   message,
   App,
   Progress,
+  theme,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
@@ -344,6 +345,7 @@ const TopicPageContent = ({
   instances,
 }: TopicPageContentProps) => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
@@ -1039,11 +1041,14 @@ const TopicPageContent = ({
     <Col xs={12} md={6}>
       <div
         style={{
-          border: '1px solid #f0f0f0',
+          // Theme tokens instead of fixed light values: the tile's text inherits the active
+          // theme's color, so a hardcoded light background and border made it unreadable in
+          // dark mode.
+          border: `1px solid ${token.colorBorderSecondary}`,
           borderRadius: 6,
           padding: '10px 12px',
           minHeight: 78,
-          background: '#fafafa',
+          background: token.colorFillQuaternary,
         }}
       >
         <Text type="secondary" style={{ display: 'block', fontSize: 14 }}>
