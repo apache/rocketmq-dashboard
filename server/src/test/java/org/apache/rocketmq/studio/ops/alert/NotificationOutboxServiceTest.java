@@ -901,4 +901,151 @@ class NotificationOutboxServiceTest {
 
         server.verify();
     }
+
+    @Test
+    void enqueuedRowsStampCreateAndModifyWithUtcTest() {
+        TimeZone previous = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            AlertSilenceService silences = mock(AlertSilenceService.class);
+            AlertRuleVO rule = AlertRuleVO.builder().id(4L).domain(AlertDomain.BUSINESS)
+                    .channels(List.of("dingtalk")).build();
+            SystemAlertVO alert = SystemAlertVO.builder().id(9L).level(AlertLevel.warning).title("Lag")
+                    .description("lag is high").instanceId("local").time(LocalDateTime.now()).build();
+            when(silences.activeUntil(rule, "local", java.util.Map.of(), alert.getTime())).thenReturn(null);
+
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), silences,
+                    mock(AlertRepository.class), mock(OperationAuditService.class)).enqueue(alert, rule);
+
+            org.mockito.ArgumentCaptor<RmqAlertNotificationOutbox> row =
+                    org.mockito.ArgumentCaptor.forClass(RmqAlertNotificationOutbox.class);
+            verify(mapper).insert(row.capture());
+            // Without an explicit stamp the database fills these from DEFAULT CURRENT_TIMESTAMP -
+            // the session clock, Asia/Shanghai in the compose deploy - while the retention cutoff
+            // is computed in UTC, so the two sides of the comparison live in different timezones.
+            assertUtcRecent(row.getValue().getGmtCreate());
+            assertUtcRecent(row.getValue().getGmtModified());
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+    }
+
+    @Test
+    void deliveredTerminalWriteStampsGmtModifiedInUtcTest() {
+        TimeZone previous = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            SettingsRepository settings = mock(SettingsRepository.class);
+            AlertRepository alerts = mock(AlertRepository.class);
+            RestTemplate client = new RestTemplate();
+            MockRestServiceServer server = MockRestServiceServer.bindTo(client).build();
+            RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+            row.setId(8L);
+            row.setAlertId(9L);
+            row.setChannel("dingtalk");
+            row.setStatus("PENDING");
+            row.setAttemptCount(0);
+            when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                    .thenReturn(List.of(row));
+            when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                    any(LocalDateTime.class), anyString())).thenReturn(1);
+            when(mapper.update(any(), any())).thenReturn(1);
+            when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                    .level(AlertLevel.warning).title("Lag").description("high").instanceId("local")
+                    .labels(java.util.Map.of()).build()));
+            when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                    .dingtalkWebhook("https://example.com/hook").build());
+            server.expect(once(), requestTo("https://example.com/hook"))
+                    .andRespond(withSuccess("{\"errcode\":0}", MediaType.APPLICATION_JSON));
+
+            new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts,
+                    mock(OperationAuditService.class), client).dispatch();
+
+            server.verify();
+            assertUtcRecent(stampedAt(capturedUpdate(mapper), "gmt_modified"));
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+    }
+
+    @Test
+    void exhaustedDeliveryStampsGmtModifiedOnTheFailedWriteTest() {
+        TimeZone previous = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            // The fifth attempt ends the delivery as FAILED, the row the retention purge qualifies
+            // by gmt_modified - so this write is the one that decides when the row is deleted.
+            RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+            row.setId(8L);
+            row.setAlertId(9L);
+            row.setChannel("dingtalk");
+            row.setStatus("PENDING");
+            row.setAttemptCount(4);
+            when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                    .thenReturn(List.of(row));
+            when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                    any(LocalDateTime.class), anyString())).thenReturn(1);
+            when(mapper.update(any(), any())).thenReturn(1);
+            AlertRepository alerts = mock(AlertRepository.class);
+            when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L).build()));
+
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
+                    alerts, mock(OperationAuditService.class)).dispatch();
+
+            assertUtcRecent(stampedAt(capturedUpdate(mapper), "gmt_modified"));
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+    }
+
+    @Test
+    void manualRetryStampsGmtModifiedInUtcTest() {
+        TimeZone previous = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+            RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+            row.setId(8L);
+            row.setAlertId(9L);
+            row.setChannel("dingtalk");
+            row.setStatus(NotificationOutboxStatus.FAILED.name());
+            when(mapper.selectById(8L)).thenReturn(row);
+            when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+            new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
+                    mock(AlertRepository.class), mock(OperationAuditService.class)).retryFailedDelivery(8L);
+
+            assertUtcRecent(stampedAt(capturedUpdate(mapper), "gmt_modified"));
+        } finally {
+            TimeZone.setDefault(previous);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static UpdateWrapper<RmqAlertNotificationOutbox> capturedUpdate(RmqAlertNotificationOutboxMapper mapper) {
+        org.mockito.ArgumentCaptor<UpdateWrapper> captor = org.mockito.ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(mapper).update(any(), captor.capture());
+        return captor.getValue();
+    }
+
+    private static LocalDateTime stampedAt(UpdateWrapper<RmqAlertNotificationOutbox> wrapper, String column) {
+        String sqlSet = wrapper.getSqlSet() == null ? "" : wrapper.getSqlSet();
+        assertThat(sqlSet).as("UPDATE set clause for " + column).contains(column + "=");
+        java.util.regex.Matcher placeholder = java.util.regex.Pattern
+                .compile(column + "=#\\{ew\\.paramNameValuePairs\\.([^}]+)\\}").matcher(sqlSet);
+        if (!placeholder.find()) {
+            return null;
+        }
+        Object value = wrapper.getParamNameValuePairs().get(placeholder.group(1));
+        return value instanceof LocalDateTime ? (LocalDateTime) value : null;
+    }
+
+    private static void assertUtcRecent(LocalDateTime stamp) {
+        assertThat(stamp).as("explicit UTC timestamp").isNotNull();
+        assertThat(Duration.between(stamp.toInstant(ZoneOffset.UTC), java.time.Instant.now()).abs())
+                .isLessThan(Duration.ofSeconds(2));
+    }
 }

@@ -140,6 +140,34 @@ class NotificationOutboxMapperIntegrationTest {
     }
 
     @Test
+    void claimAndRenewStampGmtModifiedFromTheCallerClockTest() {
+        List<Long> alertIds = List.of(ALERT_ID_BASE + 201);
+        cleanup(alertIds);
+        try {
+            insert(alertIds.get(0), "dingtalk", NotificationOutboxStatus.PENDING, null, LocalDateTime.now());
+            Long id = mapper.selectList(new QueryWrapper<RmqAlertNotificationOutbox>()
+                    .in("alert_id", alertIds)).get(0).getId();
+            // Whole-second values: the datetime column drops sub-second precision on read-back.
+            LocalDateTime claimedAt = LocalDateTime.of(2026, 9, 30, 8, 0, 0);
+            LocalDateTime renewedAt = LocalDateTime.of(2026, 9, 30, 8, 0, 20);
+
+            // The claims carry the dispatch clock. Without an explicit gmt_modified the column falls
+            // back to ON UPDATE CURRENT_TIMESTAMP - the database session clock, not the caller's.
+            // The due window looks a minute ahead: datetime rounds the insert timestamp up to the
+            // whole second, so a wall-clock "now" can fall a fraction before the stored value.
+            LocalDateTime claimNow = LocalDateTime.now().plusMinutes(1);
+            assertThat(mapper.claimForDispatch(id, claimNow, claimNow.minusMinutes(5),
+                    claimedAt, "token-a")).isEqualTo(1);
+            assertThat(mapper.selectById(id).getGmtModified()).isEqualTo(claimedAt);
+
+            assertThat(mapper.renewClaim(id, "token-a", renewedAt)).isEqualTo(1);
+            assertThat(mapper.selectById(id).getGmtModified()).isEqualTo(renewedAt);
+        } finally {
+            cleanup(alertIds);
+        }
+    }
+
+    @Test
     void deleteTerminalBeforeShouldRespectBatchLimitTest() {
         LocalDateTime expired = LocalDateTime.now().minusDays(31);
         List<Long> alertIds = List.of(ALERT_ID_BASE + 101, ALERT_ID_BASE + 102, ALERT_ID_BASE + 103);
