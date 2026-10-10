@@ -183,6 +183,85 @@ describe('DLQ page', () => {
     expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1', undefined, 1, 20);
   });
 
+  it('clamps back to the last valid page when the dead-letter groups shrink', async () => {
+    vi.mocked(messageService.listDLQGroups)
+      .mockResolvedValueOnce({ items: [dlqGroup], total: 40, page: 1, size: 20 })
+      // The groups on the page were drained (resent) or reaped, so page 2 is past the end.
+      .mockResolvedValueOnce({ items: [], total: 20, page: 2, size: 20 })
+      .mockResolvedValueOnce({ items: [dlqGroup], total: 20, page: 1, size: 20 });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByTitle('2'));
+
+    // Re-query the final page instead of rendering a permanently empty table.
+    await waitFor(() =>
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-1', undefined, 1, 20),
+    );
+    expect(await screen.findByText('cg-order')).toBeInTheDocument();
+  });
+
+  it('clamps the message drawer back to the last valid page when its page is drained', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup]));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'dlq-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 7,
+            storeTime: 1_700_000_000_000,
+            keys: 'key-1',
+            body: 'payload',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 40,
+        page: 1,
+        size: 20,
+      })
+      // Every message on page 2 was resent out of the dead-letter queue.
+      .mockResolvedValueOnce({ items: [], total: 20, page: 2, size: 20 })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'dlq-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 7,
+            storeTime: 1_700_000_000_000,
+            keys: 'key-1',
+            body: 'payload',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 20,
+        page: 1,
+        size: 20,
+      });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+    await screen.findByText('key-1');
+
+    await user.click(await screen.findByTitle('2'));
+
+    await waitFor(() =>
+      expect(messageService.listDLQMessages).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+    expect(await screen.findByText('key-1')).toBeInTheDocument();
+  });
+
   it('resets pagination to the first page when the search term changes', async () => {
     vi.mocked(messageService.listDLQGroups)
       .mockResolvedValueOnce({

@@ -187,6 +187,16 @@ const DLQPage = () => {
     void listDLQGroups(selectedInstanceId, search || undefined, page, pageSize)
       .then((result) => {
         if (groupRequestIdRef.current === requestId) {
+          // Resending (or the server reaping) drains dead-letter groups, which can leave the
+          // current page past the last valid one. Re-query the final page instead of rendering
+          // a permanently empty table, matching the clamp the other paginated lists use.
+          if (result.items.length === 0 && result.total > 0 && page > 1) {
+            const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+            if (lastPage < page) {
+              setPage(lastPage);
+              return;
+            }
+          }
           setGroups(result.items);
           setTotal(result.total);
           setLoadError(null);
@@ -404,6 +414,16 @@ const DLQPage = () => {
         pageSize,
       });
       if (detailRequestIdRef.current !== requestId) return;
+      // Resending every message on the last page empties it, so the drawer would otherwise stay
+      // on a page past the end. Re-load the final page instead of showing a permanently empty
+      // list, matching the group table's clamp above.
+      if (result.items.length === 0 && result.total > 0 && page > 1) {
+        const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+        if (lastPage < page) {
+          await loadDetailMessages(group, lastPage, pageSize);
+          return;
+        }
+      }
       setDetailMessages(result.items);
       setDetailTotal(result.total);
       setDetailPage(page);
