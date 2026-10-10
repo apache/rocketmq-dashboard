@@ -636,6 +636,109 @@ describe('ProducerPage', () => {
     expect(await screen.findByText('payment-producer-1')).toBeInTheDocument();
   });
 
+  it('clears stale connection results when the producer group changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          topic: 'order-events',
+          producerGroup: 'pg-order',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'pg-order');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+    expect(await screen.findByText('生产者连接健康')).toBeInTheDocument();
+
+    // Editing the group after a completed query is a criteria change like a topic edit:
+    // the rows on screen no longer describe what the form would search for.
+    await user.type(groupInput, '-v2');
+
+    await waitFor(() => {
+      expect(screen.queryByText('producer-1')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+    expect(screen.queryByText('就绪')).not.toBeInTheDocument();
+  });
+
+  it('discards a slow connection response after the producer group changes', async () => {
+    const user = userEvent.setup();
+    let resolveGroupAQuery: ((value: ProducerConnectionResult) => void) | undefined;
+    vi.mocked(queryProducerConnection)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveGroupAQuery = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        producerResult([
+          {
+            clientId: 'payment-producer-1',
+            clientAddr: '192.168.1.20',
+            topic: 'order-events',
+            producerGroup: 'pg-payment',
+            language: 'JAVA',
+            versionDesc: '5.1.0',
+          },
+        ]),
+      );
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'pg-order');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(1));
+
+    // While the pg-order query is still pending, edit the group.
+    await user.type(groupInput, '2');
+
+    resolveGroupAQuery?.(
+      producerResult([
+        {
+          clientId: 'stale-producer',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText('stale-producer')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+
+    // The group edit must also release the in-flight slot so a fresh query runs.
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenLastCalledWith(
+        'instance-1',
+        'order-events',
+        'pg-order2',
+      );
+    });
+    expect(await screen.findByText('payment-producer-1')).toBeInTheDocument();
+  });
+
   it('does not discover producer groups before a topic is selected', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
