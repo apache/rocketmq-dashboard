@@ -275,6 +275,13 @@ public class AiRunExecutor {
         RmqAiRun run = context.getRun();
         Outcome outcome = new Outcome();
         try {
+            if (context.isTerminal()) {
+                // submit() already wrote the terminal state for a stop that landed between
+                // registration and submission. Writing RUNNING here would resurrect the run: the
+                // row would say active with nobody left owning it, so every later turn of the
+                // conversation would be refused 409 until the orphan sweep reaped the row.
+                return;
+            }
             markRunning(context);
             streamWithLostResumeRetry(context, outcome);
         } catch (LlmGatewayException exception) {
