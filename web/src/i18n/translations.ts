@@ -1309,6 +1309,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.selectedRules': { zh: '已选择 {count} 条告警规则', en: 'Selected alert rules: {count}' },
   'alerts.searchPlaceholder': { zh: '搜索规则名称或指标', en: 'Search rule name or metric' },
   'alerts.bulkEnable': { zh: '批量启用', en: 'Enable Selected' },
+  'alerts.bulkEnableConfirm': {
+    zh: '确定要启用选中的 {count} 条告警规则吗？',
+    en: 'Enable the {count} selected alert rules?',
+  },
+  'alerts.bulkDisableConfirm': {
+    zh: '确定要禁用选中的 {count} 条告警规则吗？禁用后相关监控将停止触发通知。',
+    en: 'Disable the {count} selected alert rules? Their monitors will stop firing notifications.',
+  },
   'alerts.bulkDisable': { zh: '批量禁用', en: 'Disable Selected' },
   'alerts.bulkDelete': { zh: '批量删除', en: 'Delete Selected' },
   'alerts.bulkDeleteConfirm': {
@@ -2957,6 +2965,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '请输入新的 NameServer 地址',
     en: 'Please input a new NameServer address',
   },
+  'ops.deleteNamesrvConfirm': {
+    zh: '确定要删除 NameServer 地址 {addr} 吗？',
+    en: 'Delete the NameServer address {addr}?',
+  },
   'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
   'ops.unavailableTitle': { zh: '运行时配置不可用', en: 'Runtime configuration unavailable' },
   'ops.unavailableDescription': {
@@ -3285,6 +3297,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.removeAddressConfirm': {
     zh: '确认删除 Proxy 地址 {addr}？',
     en: 'Remove Proxy address {addr}?',
+  },
+  'proxy.reloadConfigConfirm': {
+    zh: '确定要热重载 {addr} 的配置吗？',
+    en: 'Hot-reload the configuration of {addr}?',
   },
   'proxy.removeAddressSuccess': { zh: 'Proxy 地址已删除', en: 'Proxy address removed' },
   'proxy.removeAddressFailed': { zh: '删除 Proxy 地址失败', en: 'Failed to remove Proxy address' },
