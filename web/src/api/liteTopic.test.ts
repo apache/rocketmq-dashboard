@@ -70,7 +70,6 @@ const sampleSession: LiteTopicSession = {
   totalMessages: 5000,
   consumedMessages: 4800,
   pendingMessages: 200,
-  popProgress: 96,
 };
 
 describe('LiteTopic API', () => {
@@ -109,7 +108,7 @@ describe('LiteTopic API', () => {
 
     const result = await queryLiteTopicSession('sess-1');
     expect(result.sessionId).toBe('sess-1');
-    expect(result.popProgress).toBe(96);
+    expect(result.pendingMessages).toBe(200);
   });
 
   it('extends lite topic TTL with the owning instance id', async () => {

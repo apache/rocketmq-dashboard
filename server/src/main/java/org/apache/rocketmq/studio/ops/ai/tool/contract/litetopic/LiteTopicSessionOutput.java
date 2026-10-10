@@ -40,7 +40,6 @@ public record LiteTopicSessionOutput(
         Long totalMessages,
         Long consumedMessages,
         Long pendingMessages,
-        Integer popProgress,
         Integer liteTopicCreationCount,
         List<Entry> liteTopics) {
 
@@ -63,7 +62,6 @@ public record LiteTopicSessionOutput(
                 vo.getTotalMessages(),
                 vo.getConsumedMessages(),
                 vo.getPendingMessages(),
-                vo.getPopProgress(),
                 vo.getLiteTopicCreationCount(),
                 vo.getLiteTopics() == null
                         ? null
