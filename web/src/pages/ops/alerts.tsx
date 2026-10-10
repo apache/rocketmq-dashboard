@@ -210,6 +210,10 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
+  // `submitting` only flips after React re-renders, so a second confirmation click during the
+  // validateFields await would otherwise start a duplicate create/update request. The ref locks
+  // submission synchronously, before any await.
+  const submitInFlightRef = useRef(false);
   const supportsUnavailableCondition = supportsUnavailableOperator(selectedMetric);
   const selectedMetricIsRatio = selectedMetric != null && nativeRatioMetrics.has(selectedMetric);
   const selectedMetricUsesPercentage =
@@ -797,13 +801,15 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   ];
 
   const handleSubmit = async () => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     try {
       const values = await form.validateFields();
       const payload = {
         ...attachThresholdUnit(values),
         ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
       } as Partial<AlertRule>;
-      setSubmitting(true);
       if (editingRule) {
         const updated = await (domain === 'CLUSTER'
           ? updateAlertRule({ ...editingRule, ...payload })
@@ -832,6 +838,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       }
       message.error(t('alerts.ruleSaveFailed'));
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -1069,7 +1076,11 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         style={{ maxWidth: 'calc(100vw - 32px)' }}
         onOk={handleSubmit}
         confirmLoading={submitting}
+        closable={!submitting}
+        keyboard={!submitting}
+        maskClosable={!submitting}
         onCancel={() => {
+          if (submitInFlightRef.current) return;
           metricRequestVersion.current += 1;
           setModalVisible(false);
           setEditingRule(null);
@@ -1088,6 +1099,7 @@ const AlertsPage = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             </Button>
             <Button
               onClick={() => {
+                if (submitInFlightRef.current) return;
                 metricRequestVersion.current += 1;
                 setModalVisible(false);
                 setEditingRule(null);

@@ -34,6 +34,7 @@ import {
   listNativeAlertMetrics,
   importAlertRulesTransfer,
   toggleAlertRule,
+  updateAlertRule,
 } from '../../../services/opsService';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -492,6 +493,49 @@ describe('AlertsPage', () => {
         'BUSINESS',
       ),
     );
+  });
+
+  it('submits an alert rule edit only once and stays open while the request is pending', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...cloneRule(alertRules[0]), instanceId: 'local' }]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'rocketmq_disk_use_ratio',
+        label: 'Broker 磁盘使用率',
+        thresholdUnit: '%',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    let resolveUpdate: ((rule: AlertRule) => void) | undefined;
+    vi.mocked(updateAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /编\s*辑/ });
+    fireEvent.click(confirmButton);
+    // The dialog must lock synchronously with the first click: `submitting` alone flips only
+    // after validateFields resolves and React re-renders, leaving a window where a second
+    // confirmation or a cancel slips through.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(updateAlertRule).toHaveBeenCalledTimes(1));
+    expect(updateAlertRule).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    expect(dialog).toBeInTheDocument();
+
+    resolveUpdate?.(cloneRule(alertRules[0]));
+    expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
   });
 
   it('refreshes metric options from the selected instance capabilities', async () => {
