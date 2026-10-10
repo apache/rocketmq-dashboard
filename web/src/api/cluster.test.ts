@@ -37,6 +37,9 @@ import {
   upgradeNameServer,
 } from './cluster';
 import type { K8sCertInfo } from './cluster';
+import { updateNameServer as updateNameServerService } from '../services/clusterService';
+
+vi.mock('../services/dataMode', () => ({ isMockMode: () => false }));
 
 const mock = new MockAdapter(client);
 
@@ -173,7 +176,7 @@ describe('K8s certificate API', () => {
       ['/nameservers/restart', target],
       ['/nameservers/upgrade', { ...target, version: '5.4.0' }],
       ['/nameservers/create', target],
-      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876' }],
+      ['/nameservers/update', { ...target, version: '5.4.0' }],
       ['/nameservers/delete', target],
     ] as const;
     requests.forEach(([url, body]) => {
@@ -186,10 +189,27 @@ describe('K8s certificate API', () => {
     await expect(restartNameServer(target)).resolves.toBeUndefined();
     await expect(upgradeNameServer({ ...target, version: '5.4.0' })).resolves.toBeUndefined();
     await expect(createNameServer(target)).resolves.toBeUndefined();
-    await expect(
-      updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
-    ).resolves.toBeUndefined();
+    await expect(updateNameServer({ ...target, version: '5.4.0' })).resolves.toBeUndefined();
     await expect(deleteNameServer(target)).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['API', updateNameServer],
+    ['live service', updateNameServerService],
+  ] as const)('sends only the NameServer update DTO fields through the %s', async (_, update) => {
+    const target = { clusterId: 'cluster-1', addr: '127.0.0.1:9876' };
+    mock.onPost('/nameservers/update').reply(200, { code: 200, data: null });
+
+    for (const version of [undefined, '5.4.0']) {
+      const request = { ...target, version, newAddr: '127.0.0.2:9876' };
+      await update(request);
+
+      const lastRequest = mock.history.post[mock.history.post.length - 1];
+      expect(JSON.parse(lastRequest.data)).toEqual({
+        ...target,
+        ...(version === undefined ? {} : { version }),
+      });
+    }
   });
 
   it('loads NameServer configuration drift for the selected cluster', async () => {

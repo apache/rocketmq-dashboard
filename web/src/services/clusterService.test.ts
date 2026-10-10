@@ -23,7 +23,9 @@ vi.mock('../config', () => ({
 }));
 
 import {
+  createNameServer,
   createK8sCert,
+  deleteNameServer,
   deleteK8sCert,
   getCluster,
   getNameServerConfigDiff,
@@ -138,34 +140,37 @@ describe('clusterService mock clusters', () => {
     }
   });
 
-  it('rejects NameServer edits that would duplicate an address in the same cluster', async () => {
+  it('accepts the update DTO without renaming a mock NameServer', async () => {
     const clusterId = 'cluster-prod';
+    const addr = 'nameserver-update.example:9876';
+    const newAddr = 'nameserver-renamed.example:9876';
+    await createNameServer({ clusterId, addr });
     const original = await getCluster(clusterId);
-    const [first, second] = original.nameServers;
 
     try {
-      await expect(
-        updateNameServer({
-          clusterId,
-          addr: first.addr,
-          newAddr: second.addr,
-        }),
-      ).rejects.toThrow(`NameServer already exists: ${second.addr}`);
-
-      const fresh = await getCluster(clusterId);
-      expect(fresh.nameServers.map((item) => item.addr)).toEqual(
-        original.nameServers.map((item) => item.addr),
-      );
+      for (const version of [undefined, '5.4.0']) {
+        const request = { clusterId, addr, version, newAddr };
+        await expect(updateNameServer(request)).resolves.toBeUndefined();
+        expect((await getCluster(clusterId)).nameServers).toEqual(original.nameServers);
+      }
     } finally {
       const current = await getCluster(clusterId);
-      for (let index = 0; index < original.nameServers.length; index += 1) {
-        const currentAddr = current.nameServers[index]?.addr;
-        const originalAddr = original.nameServers[index].addr;
-        if (currentAddr && currentAddr !== originalAddr) {
-          await updateNameServer({ clusterId, addr: currentAddr, newAddr: originalAddr });
+      for (const candidate of [addr, newAddr]) {
+        if (current.nameServers.some((item) => item.addr === candidate)) {
+          await deleteNameServer({ clusterId, addr: candidate });
         }
       }
     }
+  });
+
+  it('rejects a NameServer update when its target is absent from the selected cluster', async () => {
+    const clusterId = 'cluster-prod';
+    const before = await getCluster(clusterId);
+
+    await expect(
+      updateNameServer({ clusterId, addr: 'missing.example:9876', version: '5.4.0' }),
+    ).rejects.toThrow('NameServer not found: missing.example:9876');
+    expect((await getCluster(clusterId)).nameServers).toEqual(before.nameServers);
   });
 
   it('copies certificate SAN arrays before writing them into the mock store', async () => {

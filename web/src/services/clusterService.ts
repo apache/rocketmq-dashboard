@@ -410,19 +410,12 @@ export async function createNameServer(data: { clusterId: string; addr: string }
 export async function updateNameServer(data: {
   clusterId: string;
   addr: string;
-  newAddr?: string;
+  version?: string;
 }): Promise<void> {
   if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     const nameServer = nameServers.find((item) => item.addr === data.addr);
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
-    if (data.newAddr && data.newAddr !== data.addr) {
-      const duplicate = nameServers.some(
-        (item) => item !== nameServer && item.addr === data.newAddr,
-      );
-      if (duplicate) throw new Error(`NameServer already exists: ${data.newAddr}`);
-    }
-    if (data.newAddr) nameServer.addr = data.newAddr;
     return;
   }
   return clusterApi.updateNameServer(data);

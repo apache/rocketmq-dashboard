@@ -324,9 +324,10 @@ export async function createNameServer(data: { clusterId: string; addr: string }
 export async function updateNameServer(data: {
   clusterId: string;
   addr: string;
-  newAddr?: string;
+  version?: string;
 }) {
-  await client.post('/nameservers/update', data);
+  const { clusterId, addr, version } = data;
+  await client.post('/nameservers/update', { clusterId, addr, version });
 }
 
 export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
