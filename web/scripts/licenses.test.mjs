@@ -51,6 +51,45 @@ test('upstreamFallbacksKeepCompleteTextTest', () => {
   assert.match(result.files.get('legal/licenses/@ant-design/icons-svg@4.5.0/LICENSE.txt').toString(), /2018-present Ant UED/);
 });
 
+function toggleFixture(t, ending = '\n') {
+  const directory = temporary(t);
+  const license = readFileSync(path.join(root, 'licenses/toggle-selection-1.0.6/LICENSE'), 'utf8').replace(/\r\n/g, '\n');
+  for (const name of ['LICENSE', 'NOTICE']) {
+    const text = readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
+    write(directory, name, text.replace(/\n/g, ending));
+  }
+  for (const name of ['package.json', 'index.js', 'README.md']) {
+    write(directory, `node_modules/toggle-selection/${name}`, readFileSync(path.join(root, 'node_modules/toggle-selection', name)));
+  }
+  write(directory, 'licenses/toggle-selection-1.0.6/LICENSE', license.replace(/\n/g, ending));
+  return { directory, license };
+}
+
+test('gitLineEndingsPreserveVerifiedLicenseAndBinaryAttributionTest', (t) => {
+  const lf = toggleFixture(t);
+  const crlf = toggleFixture(t, '\r\n');
+  const modules = ['node_modules/toggle-selection/index.js'];
+  const expected = collectLicenses(modules, lf.directory);
+  const actual = collectLicenses(modules, crlf.directory);
+  assert.deepEqual(actual.components, expected.components);
+  assert.deepEqual(actual.files, expected.files);
+  assert.equal(actual.files.get('legal/licenses/toggle-selection@1.0.6/LICENSE.txt').toString(), lf.license);
+  for (const name of ['LICENSE', 'NOTICE']) {
+    assert.doesNotMatch(actual.files.get(name).toString(), /Third-party source materials|src\/assets\/model-logos/);
+  }
+});
+
+test('lineEndingToleranceStillRejectsChangedLicenseAndCodeTest', (t) => {
+  const { directory, license } = toggleFixture(t, '\r\n');
+  const fallback = 'licenses/toggle-selection-1.0.6/LICENSE';
+  write(directory, fallback, license.replace('Copyright', 'Altered copyright').replace(/\n/g, '\r\n'));
+  assert.throws(() => collectLicenses(['node_modules/toggle-selection/index.js'], directory), /does not match the verified source/);
+  write(directory, fallback, license);
+  const code = readFileSync(path.join(directory, 'node_modules/toggle-selection/index.js'));
+  write(directory, 'node_modules/toggle-selection/index.js', Buffer.concat([code, Buffer.from('\n// changed code')]));
+  assert.throws(() => collectLicenses(['node_modules/toggle-selection/index.js'], directory), /does not match the verified source/);
+});
+
 test('missingOrUnknownLicenseFailsTest', (t) => {
   const directory = temporary(t);
   for (const name of ['LICENSE', 'NOTICE']) write(directory, name, readFileSync(path.join(root, name)));
@@ -65,6 +104,7 @@ test('missingOrUnknownLicenseFailsTest', (t) => {
 test('vitePackagingAndTamperGateTest', async (t) => {
   const directory = temporary(t);
   const licensePlugin = distributionLicenses();
+  const fixturePath = (name) => JSON.stringify(path.join(root, name).split(path.sep).join('/'));
   // Build only fixtures for React, CSS, SVG and small dependencies; do not build the app or run app tests.
   const result = await build({
     root,
@@ -75,7 +115,10 @@ test('vitePackagingAndTamperGateTest', async (t) => {
         name: 'license-fixture',
         resolveId(id) { if (id === 'license-fixture') return '\0license-fixture'; },
         load(id) {
-          if (id === '\0license-fixture') return `import React from '${root}node_modules/react/index.js'; import logo from '${root}src/assets/model-logos/openai.svg'; import '${root}src/index.css'; import toggle from '${root}node_modules/toggle-selection/index.js'; console.log(React, logo, toggle);`;
+          if (id === '\0license-fixture') return `import React from ${fixturePath('node_modules/react/index.js')};
+            import logo from ${fixturePath('src/assets/model-logos/openai.svg')};
+            import ${fixturePath('src/index.css')};
+            import toggle from ${fixturePath('node_modules/toggle-selection/index.js')}; console.log(React, logo, toggle);`;
         },
       },
       licensePlugin,
