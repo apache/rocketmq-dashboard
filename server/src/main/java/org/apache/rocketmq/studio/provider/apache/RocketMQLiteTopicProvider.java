@@ -228,12 +228,18 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
 
         long totalBacklog = 0;
+        boolean backlogUnknown = false;
         Long lastActive = null;
         Set<String> sessionIds = new LinkedHashSet<>();
         int consumerCount = 0;
         int sessionBudget = MAX_LITE_SESSION_SCAN;
         for (String group : parent.groups) {
-            totalBacklog += groupLag(admin, parent.brokerAddr, group);
+            Long groupBacklog = groupLag(admin, parent.brokerAddr, group);
+            if (groupBacklog == null) {
+                backlogUnknown = true;
+            } else {
+                totalBacklog += groupBacklog;
+            }
             for (Connection connection : consumerConnections(admin, group)) {
                 if (sessionBudget-- <= 0) {
                     log.warn("LiteTopic session scan for {} truncated at {} sessions",
@@ -252,7 +258,13 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
 
         summary.setTopicCount(topicCount);
         summary.setConsumerCount(consumerCount);
-        summary.setTotalBacklog(totalBacklog);
+        // One unreadable group makes the total unknown: a partial sum would undercount exactly
+        // when an operator needs to notice that messages are piling up.
+        if (backlogUnknown) {
+            summary.setTotalBacklog(null);
+        } else {
+            summary.setTotalBacklog(totalBacklog);
+        }
         summary.setSessionIds(new ArrayList<>(sessionIds));
         summary.setActive(consumerCount > 0);
         if (lastActive != null) {
@@ -605,16 +617,20 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
     }
 
-    private long groupLag(MQAdminExt admin, String brokerAddr, String group) {
+    /**
+     * Returns {@code null} when the backlog cannot be read, so callers can tell "no messages"
+     * apart from "no answer"; a failed read must never be aggregated as 0.
+     */
+    private Long groupLag(MQAdminExt admin, String brokerAddr, String group) {
         try {
             GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, null, 1);
             if (body == null) {
-                return 0;
+                return null;
             }
             return Math.max(body.getTotalLagCount(), 0);
         } catch (Exception failure) {
             log.debug("Failed to read lite backlog for group {} on {}: {}", group, brokerAddr, failure.getMessage());
-            return 0;
+            return null;
         }
     }
 

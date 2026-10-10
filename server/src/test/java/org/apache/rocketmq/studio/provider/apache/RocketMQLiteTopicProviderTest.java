@@ -205,6 +205,41 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsShouldReportUnknownBacklogWhenGroupLagReadFailsTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1))
+                .thenThrow(new IllegalStateException("backlog unavailable"));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(new ConsumerConnection());
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> assertThat(summary.getTotalBacklog())
+                .as("a failed backlog read must surface as unknown, not as a fabricated 0")
+                .isNull());
+    }
+
+    @Test
+    void listLiteTopicsShouldNotReportPartialBacklogWhenOneGroupFailsTest() throws Exception {
+        String otherGroup = "lite-group-2";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP, otherGroup));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(7));
+        when(admin.getLiteGroupInfo(BROKER_A, otherGroup, null, 1))
+                .thenThrow(new IllegalStateException("backlog unavailable"));
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(new ConsumerConnection());
+        when(admin.examineConsumerConnectionInfo(otherGroup)).thenReturn(new ConsumerConnection());
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> assertThat(summary.getTotalBacklog())
+                .as("a partial sum would silently undercount the group whose backlog is unknown")
+                .isNull());
+    }
+
+    @Test
     void listLiteTopicsFiltersByPatternCaseInsensitively() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 1, GROUP));
@@ -510,13 +545,13 @@ class RocketMQLiteTopicProviderTest {
     }
 
     private static GetBrokerLiteInfoResponseBody brokerLiteInfo(String parentTopic, int ttlMinutes,
-                                                                int currentLmq, String group) {
+                                                                int currentLmq, String... groups) {
         GetBrokerLiteInfoResponseBody body = brokerLiteInfo(currentLmq, 40, 0);
         Map<String, Integer> topicMeta = new LinkedHashMap<>();
         topicMeta.put(parentTopic, ttlMinutes);
         body.setTopicMeta(topicMeta);
         Map<String, Set<String>> groupMeta = new LinkedHashMap<>();
-        groupMeta.put(parentTopic, new HashSet<>(Set.of(group)));
+        groupMeta.put(parentTopic, new HashSet<>(Set.of(groups)));
         body.setGroupMeta(groupMeta);
         return body;
     }
