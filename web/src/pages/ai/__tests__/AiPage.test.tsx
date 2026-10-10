@@ -37,7 +37,7 @@ import type {
 } from '../../../api/aiEvents';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import type { Instance } from '../../../api/instance';
-import { getLlmConfig, getLlmModels } from '../../../api/llm';
+import { getLlmConfig, getLlmModels, type LlmConfig } from '../../../api/llm';
 import { listInstances } from '../../../services/instanceService';
 import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
@@ -123,6 +123,9 @@ const NavProbe = () => {
       <button type="button" onClick={() => navigate('/ai/c/7')}>
         probe-conversation
       </button>
+      <button type="button" onClick={() => navigate('/')}>
+        probe-home
+      </button>
     </div>
   );
 };
@@ -148,6 +151,14 @@ const renderRouted = (path: string, state?: unknown) =>
           <NavProbe />
           <LocationProbe />
           <Routes>
+            <Route
+              path="/"
+              element={
+                <button type="button" onClick={() => useEngineStore.getState().setEngine('qoder')}>
+                  choose-qoder
+                </button>
+              }
+            />
             <Route path="/ai" element={<AiPage />} />
             <Route path="/ai/c/:conversationId" element={<AiPage />} />
           </Routes>
@@ -507,6 +518,41 @@ describe('AiPage', () => {
       expect(getConversationTimeline).toHaveBeenCalledWith(9, { after: 0, limit: 200 }),
     );
     expect(openRunStream).not.toHaveBeenCalled();
+  });
+
+  it('preservesTheNewEnginePreferenceWhenAnUnmountedRuntimeLoadCompletesTest', async () => {
+    let resolveConfig!: (value: LlmConfig) => void;
+    vi.mocked(getLlmConfig).mockReturnValueOnce(
+      new Promise<LlmConfig>((resolve) => {
+        resolveConfig = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    expect(getLlmConfig).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'probe-home' }));
+    expect(readProbeLocation().pathname).toBe('/');
+    await user.click(screen.getByRole('button', { name: 'choose-qoder' }));
+
+    await act(async () => {
+      resolveConfig({
+        provider: 'openai',
+        engine: 'http',
+        apiBase: 'https://example.invalid',
+        model: 'gpt-test',
+        maxTokens: 1024,
+        temperature: 0,
+        enabled: true,
+        ready: true,
+      });
+    });
+
+    expect(useEngineStore.getState().engine).toBe('qoder');
+    expect(JSON.parse(localStorage.getItem('rocketmq-studio-agent-engine')!)).toMatchObject({
+      state: { engine: 'qoder' },
+    });
+    expect(getLlmModels).not.toHaveBeenCalled();
   });
 
   it('doesNotLoadTheLlmRuntimeInMockModeAndDisablesTheComposerTest', async () => {
