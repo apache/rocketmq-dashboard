@@ -195,21 +195,27 @@ export const CloudCredentialTab = () => {
     setSubmitting(true);
     try {
       const values = await form.validateFields();
+      // Cloud access keys and secrets come from copy-paste (console IAM pages, password
+      // managers); invisible padding signs every subsequent cloud call with the wrong
+      // credential. The backend does no trimming in this flow, so trim at the boundary.
+      const trimmedSecretKey = values.secretKey?.trim();
+      const trimmedAccessKey = values.accessKey?.trim();
+      const trimmedName = values.name?.trim();
       if (editingCredential) {
         const saved = await updateCloudCredential({
           id: editingCredential.id,
-          name: values.name,
-          secretKey: values.secretKey,
+          name: trimmedName,
+          secretKey: trimmedSecretKey,
           remark: values.remark,
         });
         setCredentials((previous) => previous.map((item) => (item.id === saved.id ? saved : item)));
         message.success(t('settings.credentialUpdated'));
       } else {
         await createCloudCredential({
-          name: values.name,
+          name: trimmedName ?? '',
           vendor: values.vendor,
-          accessKey: values.accessKey ?? '',
-          secretKey: values.secretKey ?? '',
+          accessKey: trimmedAccessKey ?? '',
+          secretKey: trimmedSecretKey ?? '',
           remark: values.remark,
         });
         setPage(1);

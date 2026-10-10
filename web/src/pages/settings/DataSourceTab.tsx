@@ -246,7 +246,13 @@ export const DataSourceTab = () => {
       // Credentials are supplied per metrics query and are only used here by the
       // connection test. Saving metadata must not require re-entering them.
       const values = await dsForm.validateFields(saveFieldNames);
-      const dataSourceValues = withoutSecrets(values);
+      // The URL guard strips only its validation copy; the stored value must be trimmed
+      // here or every metrics query signs against a malformed base URL.
+      const dataSourceValues = {
+        ...withoutSecrets(values),
+        url: (values.url ?? '').trim(),
+        name: (values.name ?? '').trim(),
+      };
       setSubmitting(true);
       const saved = editingDataSource
         ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
