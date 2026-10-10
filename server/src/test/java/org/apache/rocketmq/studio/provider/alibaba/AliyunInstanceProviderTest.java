@@ -319,6 +319,19 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void listTopicsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                topicsResponse(2L, 1L, AliyunConverters.PAGE_SIZE, topicRow("orders", "NORMAL"))));
+
+        assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(502);
+    }
+
+    @Test
     void listTopicsPageShouldUseAliyunNativePaginationAndFiltersTest() {
         stubInstance();
         stubCallThrough();
@@ -502,6 +515,19 @@ class AliyunInstanceProviderTest {
         verify(asyncClient, times(2)).listConsumerGroups(captor.capture());
         assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageNumber)
                 .containsExactly(1, 2);
+    }
+
+    @Test
+    void listConsumerGroupsShouldRejectIncompletePageWhenTotalCountRequiresMoreTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listConsumerGroups(any(ListConsumerGroupsRequest.class))).thenReturn(
+                CompletableFuture.completedFuture(groupsResponse(2L, "GID_partial")));
+
+        assertThatThrownBy(() -> provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("code")
+                .isEqualTo(502);
     }
 
     @Test
