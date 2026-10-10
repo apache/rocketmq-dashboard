@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -33,6 +34,7 @@ import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.util.BrokerRuntimeStats;
+import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -394,9 +396,18 @@ public class RocketMQClusterProvider implements ClusterProvider {
             }
             return proxies;
         } catch (Exception e) {
-            log.debug("No proxy discovered via heartbeat syncer group {}: {}",
+            if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE, ResponseCode.TOPIC_NOT_EXIST)) {
+                // A known absent heartbeat-syncer group means no Proxy is observable right now.
+                // This is the grading ProxyConsumerResolver already applies to the same call.
+                log.debug("No proxy discovered via heartbeat syncer group {}: {}",
+                        HEARTBEAT_SYNCER_CONSUMER_GROUP, e.getMessage());
+                return Collections.emptyList();
+            }
+            // An unreachable broker or NameServer is not an empty Proxy inventory: reporting it as
+            // one tells the caller the cluster runs no Proxy at all.
+            log.warn("Failed to discover proxies via heartbeat syncer group {}: {}",
                     HEARTBEAT_SYNCER_CONSUMER_GROUP, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to discover proxies: " + rootMessage(e));
         }
     }
 

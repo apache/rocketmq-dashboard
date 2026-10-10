@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -313,6 +315,30 @@ class RocketMQClusterProviderTest {
         assertThat(proxies.get(0).getAddr()).isEqualTo("10.0.3.5:8080");
         assertThat(proxies.get(0).getGrpcPort()).isEqualTo(8081);
         assertThat(proxies.get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
+    }
+
+    @Test
+    void discoverProxiesShouldReportAHeartbeatSyncerReadFailureTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR, "broker is unreachable"));
+
+        assertThatThrownBy(() -> provider.discoverProxies("prod"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to discover proxies")
+                .hasMessageContaining("broker is unreachable");
+    }
+
+    @Test
+    void discoverProxiesShouldReportAnAbsentHeartbeatSyncerGroupAsEmptyTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        // The group does not exist on a cluster without a Proxy: that is an empty result, not a failure.
+        when(adminExt.examineConsumerConnectionInfo("CID_DefaultHeartBeatSyncerTopic"))
+                .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE, "group not online"));
+
+        assertThat(provider.discoverProxies("prod")).isEmpty();
     }
 
     @Test
