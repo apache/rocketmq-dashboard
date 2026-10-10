@@ -496,6 +496,23 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aFailingReplayReadMustCloseTheSessionItCreatedTest() {
+        // The emitter is only handed to a response when attach() returns; a failure in the replay
+        // read means it never gets there, so no transport callback can ever close the session. The
+        // service must close it itself, or the heartbeat it started keeps firing into a buffer
+        // nobody drains for the life of the process.
+        RmqAiRun active = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.RUNNING);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(active));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> service.attach(RUN_ID, 0))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @Test
     void attachShouldHonourTheCursorAndSynthesiseATerminalFrameForAReapedRunTest() {
         // A run reaped at startup or by the orphan sweep has no run_status row at all — there was no sink
         // to write one — so the row is the only record of how it ended and the client must not wait
