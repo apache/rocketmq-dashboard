@@ -184,6 +184,39 @@ describe('Composer', () => {
     expect(textarea()).toHaveValue('检查集群状态');
   });
 
+  it.each([
+    { key: 'Enter', isStreaming: false },
+    { key: 'Escape', isStreaming: true },
+  ])('ignoresImeProcessKeysAfterCompositionEndTest ($key)', ({ key, isStreaming }) => {
+    const draft = '检查消费延迟';
+    const { props } = renderComposer({ value: draft, isStreaming });
+    fireEvent.compositionStart(textarea());
+    fireEvent.compositionEnd(textarea(), { data: '迟' });
+    const imeKey = new KeyboardEvent('keydown', {
+      key,
+      keyCode: 229,
+      isComposing: false,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(textarea(), imeKey);
+    expect(imeKey.defaultPrevented).toBe(false);
+    expect(props.onSend).not.toHaveBeenCalled();
+    expect(props.onStop).not.toHaveBeenCalled();
+    expect(props.onChange).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue(draft);
+
+    // The next ordinary keypress must work immediately, without a timer or a swallowed key.
+    fireEvent.keyDown(textarea(), { key, keyCode: key === 'Enter' ? 13 : 27, isComposing: false });
+    if (key === 'Enter') {
+      expect(props.onSend).toHaveBeenCalledExactlyOnceWith(draft);
+      expect(props.onChange).toHaveBeenCalledExactlyOnceWith('');
+    } else {
+      expect(props.onStop).toHaveBeenCalledTimes(1);
+      expect(props.onChange).not.toHaveBeenCalled();
+    }
+  });
+
   it('sendsOnEnterAndClearsTheDraftTest', () => {
     const { props } = renderComposer({ value: '检查集群状态' });
 

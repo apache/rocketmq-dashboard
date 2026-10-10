@@ -267,7 +267,9 @@ const Composer = ({
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       // An IME candidate being confirmed must not send the half-typed prompt.
-      if (event.nativeEvent.isComposing) return;
+      // WebKit can deliver the confirming key after compositionend, with only keyCode 229
+      // identifying it as IME input (https://bugs.webkit.org/show_bug.cgi?id=165004).
+      if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
       if (event.key === 'Escape') {
         if (generating) {
           event.preventDefault();
