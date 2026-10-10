@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.config.LegacyJackson2Config;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
@@ -37,6 +38,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -60,6 +62,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private AuthProperties authProperties;
+
+    @MockitoBean
+    private OperationAuditService operationAuditService;
 
     @MockitoBean
     private SettingsRepository settingsRepository;
@@ -269,5 +274,63 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.message").value("success"));
 
         verify(authService).logout(eq("Bearer token-1"));
+    }
+
+    @Test
+    void loginSuccessIsAuditedWithTheAttemptedUsernameTest() throws Exception {
+        LoginVO mockResponse = LoginVO.builder()
+                .token("mock-jwt-audit")
+                .expiresIn(86400)
+                .user(LoginVO.UserInfo.builder().username("testuser").build())
+                .build();
+        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        // The attempted username is the actor; no request context exists before authentication.
+        verify(operationAuditService).record(eq("testuser"), eq("LOGIN"), eq("USER"), eq("testuser"),
+                isNull(), isNull(), eq("SUCCESS"), isNull());
+    }
+
+    @Test
+    void loginFailureIsAuditedWithTheUniformMessageTest() throws Exception {
+        when(authService.login(any(LoginDTO.class)))
+                .thenThrow(new BusinessException(401, "Invalid username or password"));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("no-such-user");
+        request.setPassword("wrong");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+
+        verify(operationAuditService).record(eq("no-such-user"), eq("LOGIN"), eq("USER"),
+                eq("no-such-user"), isNull(), isNull(), eq("FAILURE"),
+                eq("Invalid username or password"));
+    }
+
+    @Test
+    void logoutIsAuditedTest() throws Exception {
+        doNothing().when(authService).logout("Bearer token-1");
+        when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                .userId(7L)
+                .username("studio-admin")
+                .admin(true)
+                .build()));
+
+        mockMvc.perform(post("/api/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
+                .andExpect(status().isOk());
+
+        verify(operationAuditService).record(eq("LOGOUT"), eq("USER"), isNull(), isNull(),
+                isNull(), eq("SUCCESS"), isNull());
     }
 }

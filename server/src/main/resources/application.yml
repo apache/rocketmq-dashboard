@@ -103,6 +103,11 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+  audit:
+    # 0 keeps audit records forever (they are compliance evidence); set e.g. 90 to have
+    # the hourly sweep delete records older than that many days.
+    retention-days: ${STUDIO_AUDIT_RETENTION_DAYS:0}
+    cleanup-interval: PT1H
   query-history:
     retention-days: 90
     cleanup-interval: PT24H
