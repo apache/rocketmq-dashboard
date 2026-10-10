@@ -63,7 +63,6 @@ class LiteTopicSessionToolHandlerTest {
                 .totalMessages(10L)
                 .consumedMessages(4L)
                 .pendingMessages(6L)
-                .popProgress(40)
                 .liteTopicCreationCount(1)
                 .liteTopics(List.of(entry))
                 .build());
@@ -74,7 +73,7 @@ class LiteTopicSessionToolHandlerTest {
         assertThat(output).isEqualTo(new LiteTopicSessionOutput(
                 "sess-1", "client-1", "10.0.0.1:5678", "chat", "cg-chat",
                 1789092000000L, 1789092600000L, 3600L, 1800L, "ACTIVE",
-                10L, 4L, 6L, 40, 1,
+                10L, 4L, 6L, 1,
                 List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L))));
     }
 

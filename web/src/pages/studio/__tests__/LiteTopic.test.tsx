@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -187,15 +187,24 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
-  it('displays the session POP progress returned by the API as a percentage', async () => {
+  it('does not offer a POP progress panel the API never fills', async () => {
+    // PopConsumeProgress was never written by any provider, so `popProgress` was always absent and
+    // the panel could only ever render from a fixture: the drawer no longer offers it.
     const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      popProgress: 96,
+    });
     renderPage();
 
     await user.click(await screen.findByText('查看会话'));
+    await screen.findByText('session-1');
 
     expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
-    const popProgressLabel = await screen.findByText('Pop 进度');
-    expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
+    expect(screen.queryByText('Pop 进度')).not.toBeInTheDocument();
+    expect(screen.queryByText('96%')).not.toBeInTheDocument();
   });
 
   it('allows viewing every session linked to the same LiteTopic row', async () => {

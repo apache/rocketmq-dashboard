@@ -729,17 +729,6 @@ const LiteTopicPage: React.FC = () => {
           />
         </div>
 
-        {sessionData.popProgress != null && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.popProgress')}</div>
-            <Progress
-              percent={Math.round(sessionData.popProgress)}
-              status="active"
-              strokeColor="#722ed1"
-            />
-          </div>
-        )}
-
         {sessionData.liteTopics && sessionData.liteTopics.length > 0 && (
           <>
             <h4 style={{ marginTop: 20, marginBottom: 12, fontSize: 14, fontWeight: 600 }}>

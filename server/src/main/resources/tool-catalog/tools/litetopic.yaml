@@ -112,8 +112,6 @@ tools:
           type: integer
         pendingMessages:
           type: integer
-        popProgress:
-          type: integer
         liteTopicCreationCount:
           type: integer
         liteTopics:
