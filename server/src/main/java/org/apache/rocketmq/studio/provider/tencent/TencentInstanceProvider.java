@@ -852,7 +852,8 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .bornHost(response.getProducerAddr())
                 .properties(properties)
                 .propertiesTruncated(false)
-                .size(0)
+                // DescribeMessage/MessageItem carry no body size; report the unknown sentinel instead of a fabricated zero.
+                .size(MessageRecordVO.UNKNOWN_SIZE)
                 .build();
     }
 
@@ -872,7 +873,8 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .bornHost(item.getProducerAddr())
                 .properties(Collections.emptyMap())
                 .propertiesTruncated(false)
-                .size(0)
+                // DescribeMessage/MessageItem carry no body size; report the unknown sentinel instead of a fabricated zero.
+                .size(MessageRecordVO.UNKNOWN_SIZE)
                 .build();
     }
 

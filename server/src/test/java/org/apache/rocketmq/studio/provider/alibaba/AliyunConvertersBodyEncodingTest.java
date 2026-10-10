@@ -49,6 +49,8 @@ class AliyunConvertersBodyEncodingTest {
 
         assertThat(record.getBody()).isEqualTo("{\"orderId\":42}");
         assertThat(record.getBodyEncoding()).isEqualTo("UTF-8");
+        // ListMessages without BodySize reports the unknown sentinel, not a fabricated zero.
+        assertThat(record.getSize()).isEqualTo(MessageRecordVO.UNKNOWN_SIZE);
     }
 
     @Test
