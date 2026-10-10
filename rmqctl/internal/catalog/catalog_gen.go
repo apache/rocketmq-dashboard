@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "66dfbf74525c8efb00eb4752a5b569c06b024ea549861b306cd4d8bf8962c34e",
+	Digest:               "f35207a883ae735dc6b5ce8d6d9f9b50fb20e030d8160380c7696950a3945872",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
