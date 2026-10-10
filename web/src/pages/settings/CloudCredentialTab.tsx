@@ -80,6 +80,7 @@ export const CloudCredentialTab = () => {
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
+  const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
   const submitInFlightRef = useRef(false);
   const queryKey = JSON.stringify([vendorFilter, debouncedSearch, page, pageSize]);
 
@@ -100,7 +101,7 @@ export const CloudCredentialTab = () => {
       try {
         const result = await listCloudCredentials(vendorFilter, debouncedSearch, page, pageSize);
         if (requestId !== requestSeqRef.current) return;
-        if (result.items.length === 0 && result.total > 0 && page > 1) {
+        if (result.items.length === 0 && page > 1) {
           const lastPage = Math.max(1, Math.ceil(result.total / result.size));
           if (page > lastPage) {
             setPage(lastPage);
@@ -127,7 +128,7 @@ export const CloudCredentialTab = () => {
 
   useEffect(() => {
     void loadCredentials();
-  }, [loadCredentials]);
+  }, [loadCredentials, deleteRefreshVersion]);
 
   useEffect(
     () => () => {
@@ -233,12 +234,9 @@ export const CloudCredentialTab = () => {
       return;
     try {
       await deleteCloudCredential(credential.id);
-      const remainingOnPage = credentials.length - 1;
-      if (remainingOnPage === 0 && page > 1) {
-        setPage(page - 1);
-      } else {
-        await loadCredentials();
-      }
+      // Refresh through the effect so a completed deletion uses the current filters/page,
+      // not the query captured when the operator confirmed it. The latest total clamps pages.
+      setDeleteRefreshVersion((version) => version + 1);
       message.success(t('settings.credentialDeleted'));
     } catch {
       message.error(t('settings.credentialDeleteFailed'));
