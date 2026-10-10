@@ -323,4 +323,22 @@ describe('DashboardPage', () => {
       screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
     ).not.toBeInTheDocument();
   });
+
+  it('localizes the load-error alert for English users', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    vi.mocked(dashboardService.getDashboard).mockRejectedValue(new Error('boom'));
+    vi.mocked(instanceService.listInstances).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <LangProvider>
+          <DashboardPage />
+        </LangProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Failed to load dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('仪表盘加载失败')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
 });
