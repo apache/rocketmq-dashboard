@@ -305,10 +305,11 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         session.setLiteTopics(new LinkedHashSet<>(liteTopics));
 
         long pending = sessionGroupLag(admin, located.master, group);
-        long consumed = consumedMessages(admin, located.master, group, liteTopics);
+        ConsumedScan consumed = consumedMessages(admin, located.master, group, liteTopics);
         session.setPendingMessages(pending);
-        session.setConsumedMessages(consumed);
-        session.setTotalMessages(consumed + pending);
+        session.setConsumedMessages(consumed.messages());
+        session.setTotalMessages(consumed.messages() + pending);
+        session.setConsumedScanTruncated(consumed.truncated());
         session.setConsumptionRate(session.getConsumptionProgress());
 
         long lastAccess = clientInfo.getLastAccessTime();
@@ -330,14 +331,21 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         session.setStatus(remaining > 0 ? "ACTIVE" : "EXPIRED");
     }
 
-    private long consumedMessages(MQAdminExt admin, String brokerAddr, String group, List<String> liteTopics) {
+    /** Summed consumed offsets plus whether the per-lite-topic cap cut the scan short. */
+    private record ConsumedScan(long messages, boolean truncated) {
+    }
+
+    private ConsumedScan consumedMessages(MQAdminExt admin, String brokerAddr, String group,
+                                          List<String> liteTopics) {
         long consumed = 0;
         int scanned = 0;
         for (String liteTopic : liteTopics) {
             if (scanned++ >= MAX_SESSION_LITE_TOPIC_SCAN) {
+                // The caller has to report the sum as a lower bound: the remaining lite topics carry
+                // consumed offsets that are not read here.
                 log.warn("LiteTopic session consumed-offset scan truncated at {} lite topics",
                         MAX_SESSION_LITE_TOPIC_SCAN);
-                break;
+                return new ConsumedScan(consumed, true);
             }
             try {
                 GetLiteGroupInfoResponseBody body = admin.getLiteGroupInfo(brokerAddr, group, liteTopic, 1);
@@ -352,7 +360,7 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
                                 + ": " + failure.getMessage());
             }
         }
-        return consumed;
+        return new ConsumedScan(consumed, false);
     }
 
     // ─── TTL update ───────────────────────────────────────────────────

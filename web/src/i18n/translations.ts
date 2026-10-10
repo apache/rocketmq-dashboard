@@ -3550,6 +3550,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.ttlRemaining': { zh: 'TTL 剩余', en: 'TTL Remaining' },
   'liteTopic.totalMessages': { zh: '总消息数', en: 'Total Messages' },
   'liteTopic.consumedMessages': { zh: '已消费消息', en: 'Consumed Messages' },
+  'liteTopic.consumedTruncated.title': {
+    zh: '已消费量与总消息数只覆盖部分 lite topic',
+    en: 'Consumed and total counts cover only part of the session',
+  },
+  'liteTopic.consumedTruncated.description': {
+    zh: '该会话的 lite topic 数量超过单次统计上限，已消费量与总消息数只统计了其中一部分（显示为下界），待消费量是完整的；消费进度因此不显示。',
+    en: 'This session has more lite topics than one scan covers, so the consumed and total message counts cover only part of them and are shown as lower bounds; the pending count is complete. The consumption progress is hidden for that reason.',
+  },
   'liteTopic.pendingMessages': { zh: '待消费消息', en: 'Pending Messages' },
   'liteTopic.consumptionRate': { zh: '消费速率', en: 'Consumption Rate' },
   'liteTopic.active': { zh: '活跃', en: 'Active' },

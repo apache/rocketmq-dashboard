@@ -198,6 +198,30 @@ describe('LiteTopic Page', () => {
     expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
   });
 
+  it('reports a consumed count that only covers part of the session', async () => {
+    // The consumed-offset scan reads at most MAX_SESSION_LITE_TOPIC_SCAN lite topics, so a session
+    // with more of them only gets a lower bound. The drawer must not present it as a measured total
+    // and must not derive a consumption percentage from it.
+    const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      totalMessages: 1500,
+      consumedMessages: 1000,
+      pendingMessages: 500,
+      consumedScanTruncated: true,
+    });
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+
+    expect(await screen.findByTestId('lite-topic-consumed-truncated')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1500')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1000')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+  });
+
   it('allows viewing every session linked to the same LiteTopic row', async () => {
     apiMocks.queryLiteTopicList.mockResolvedValue([
       { namespace: 'default', topicPattern: 'order-*', sessionIds: ['session-1', 'session-2'] },

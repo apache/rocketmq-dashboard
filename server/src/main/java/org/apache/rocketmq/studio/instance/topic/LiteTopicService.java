@@ -118,6 +118,7 @@ public class LiteTopicService {
                 .status(session.getStatus())
                 .totalMessages(session.getTotalMessages())
                 .consumedMessages(session.getConsumedMessages())
+                .consumedScanTruncated(session.isConsumedScanTruncated())
                 .pendingMessages(session.getPendingMessages())
                 .liteTopicCreationCount(session.getLiteTopicCreationCount())
                 .liteTopics(toLiteTopicRows(session))
