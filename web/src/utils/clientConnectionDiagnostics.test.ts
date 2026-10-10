@@ -64,9 +64,7 @@ describe('client connection diagnostics', () => {
       singleConsumerGroupCount: 0,
     });
     expect(diagnostics.issues).toEqual([]);
-    expect(diagnostics.recommendations).toEqual([
-      '保持客户端连接清单按集群定期巡检，重点关注协议和 SDK 版本收敛。',
-    ]);
+    expect(diagnostics.recommendationKeys).toEqual(['clientDiag.recommendation.default']);
   });
 
   it('reports an empty client inventory as critical', () => {
