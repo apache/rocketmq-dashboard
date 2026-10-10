@@ -1915,7 +1915,13 @@ GET /api/producer/groups
 | `query` | `string` | 否 | 按 Group 名称搜索 |
 | `limit` | `number` | 否 | 返回上限，默认 `20`；小于 `1` 时按 `1`，大于 `100` 时按 `100` |
 
-**Response `data`:** `string[]`
+**Response `data`:** `ProducerGroupScan`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `groups` | `string[]` | 匹配的 Producer Group（最多 `limit` 个） |
+| `complete` | `boolean` | 是否扫描了全部可发现的 Broker；`false` 时列表可能缺少失败 Broker 上的 Group |
+| `failedBrokers` | `string[]` | 读取 `getAllProducerInfo` 失败的 Broker 地址 |
 
 ### 10.3 获取 Producer 连接详情
 

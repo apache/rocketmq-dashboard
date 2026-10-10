@@ -174,6 +174,13 @@ export async function fetchTopicList(instanceId: string): Promise<string[]> {
   return topics.sort();
 }
 
+/** Producer group suggestions plus the brokers the backend could not scan. */
+export interface ProducerGroupScan {
+  groups: string[];
+  complete: boolean;
+  failedBrokers: string[];
+}
+
 /** Fetch active producer groups for query suggestions */
 export async function fetchProducerGroups(
   instanceId: string,
@@ -182,8 +189,8 @@ export async function fetchProducerGroups(
     query?: string;
     limit?: number;
   } = {},
-): Promise<string[]> {
-  const res = await client.get<{ data?: string[] }>('/producer/groups', {
+): Promise<ProducerGroupScan> {
+  const res = await client.get<{ data?: Partial<ProducerGroupScan> }>('/producer/groups', {
     params: {
       instanceId,
       topic: options.topic,
@@ -191,7 +198,12 @@ export async function fetchProducerGroups(
       limit: options.limit,
     },
   });
-  return res.data.data ?? [];
+  const data = res.data.data ?? {};
+  return {
+    groups: data.groups ?? [],
+    complete: data.complete ?? true,
+    failedBrokers: data.failedBrokers ?? [],
+  };
 }
 
 /** Query producer connections by topic and producer group */
