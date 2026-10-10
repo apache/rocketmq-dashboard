@@ -117,7 +117,7 @@ const { Text } = Typography;
 /* ─── Helpers ─── */
 
 const UNKNOWN_LAG_COLOR = '#8c8c8c';
-const UNAVAILABLE_LAG_LABEL = '不可用';
+const UNAVAILABLE_LAG_LABEL = 'consumer.lagUnavailable';
 
 const lagColor = (lag: number): string => {
   // The backend reports -1 when the lag cannot be determined; do not color it
@@ -167,9 +167,9 @@ const resetPreviewRiskColor = (riskLevel: string) => {
 };
 
 const resetPreviewRiskLabel = (riskLevel: string) => {
-  if (riskLevel === 'ERROR') return '失败';
-  if (riskLevel === 'WARNING') return '需确认';
-  return '正常';
+  if (riskLevel === 'ERROR') return 'consumer.riskFailed';
+  if (riskLevel === 'WARNING') return 'consumer.riskNeedsConfirm';
+  return 'consumer.riskNormal';
 };
 
 const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
@@ -185,33 +185,37 @@ const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) =
 };
 
 const issueSeverityLabel = (severity: ConsumerGroupHealthIssue['severity']) => {
-  if (severity === 'critical') return '风险';
-  if (severity === 'warning') return '关注';
-  return '提示';
+  if (severity === 'critical') return 'consumer.severityCritical';
+  if (severity === 'warning') return 'consumer.severityWarning';
+  return 'consumer.severityInfo';
 };
 
-const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview) => {
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+const resetPreviewQueueMessage = (queue: ResetConsumerOffsetQueuePreview, t: Translate) => {
   const messages: string[] = [];
   if (queue.riskLevel === 'ERROR') {
-    return queue.message || '预览失败';
+    return queue.message || t('consumer.previewFailed');
   }
   if (queue.targetOffset < 0 || queue.consumerOffset < 0) {
-    return queue.message || '目标位点不可用';
+    return queue.message || t('consumer.targetOffsetUnavailable');
   }
   if (queue.offsetDelta < 0) {
-    messages.push(`将回放 ${Math.abs(queue.offsetDelta).toLocaleString()} 条消息`);
+    messages.push(
+      t('consumer.willReplayMessages', { count: Math.abs(queue.offsetDelta).toLocaleString() }),
+    );
   } else if (queue.offsetDelta > 0) {
-    messages.push(`将跳过 ${queue.offsetDelta.toLocaleString()} 条未消费消息`);
+    messages.push(t('consumer.willSkipMessages', { count: queue.offsetDelta.toLocaleString() }));
   } else {
-    messages.push('位点不变');
+    messages.push(t('consumer.offsetUnchanged'));
   }
   if (queue.minOffset >= 0 && queue.targetOffset === queue.minOffset) {
-    messages.push('目标为最小保留位点');
+    messages.push(t('consumer.targetIsMinOffset'));
   }
   if (queue.maxOffset >= 0 && queue.targetOffset === queue.maxOffset) {
-    messages.push('目标为最新位点');
+    messages.push(t('consumer.targetIsMaxOffset'));
   }
-  return messages.join('；');
+  return messages.join(t('consumer.previewMessageSeparator'));
 };
 
 // Shared helper exported alongside the page component; fast-refresh rule waived.
@@ -499,9 +503,9 @@ const ConsumerPageContent = ({
         subscriptionMode: modeFilter !== 'ALL' ? modeFilter : undefined,
       });
       downloadCsv(`rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-      message.success('Group 导出完成');
+      message.success(t('consumer.exportCompleted'));
     } catch {
-      message.error('导出 Group 失败，请稍后重试');
+      message.error(t('consumer.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -536,7 +540,7 @@ const ConsumerPageContent = ({
       }
     } catch {
       if (requestId === settingsRequestIdRef.current) {
-        message.error('加载消费组配置失败，请稍后重试');
+        message.error(t('consumer.settingsLoadFailed'));
       }
     } finally {
       if (requestId === settingsRequestIdRef.current) {
@@ -562,23 +566,25 @@ const ConsumerPageContent = ({
     const original = originalSettingsRef.current;
     const risks: string[] = [];
     if (original && values.consumeEnable === false && original.consumeEnable !== false) {
-      risks.push('关闭「启用消费」会立即停止该消费组的消息消费，可能导致消息堆积');
+      risks.push(t('consumer.riskDisableConsume'));
     }
     if (
       original &&
       values.consumeMessageOrderly !== undefined &&
       values.consumeMessageOrderly !== original.consumeMessageOrderly
     ) {
-      risks.push('切换「顺序消费」会改变该消费组的消费语义，可能影响消息顺序与吞吐');
+      risks.push(t('consumer.riskSwitchOrderly'));
     }
     if (risks.length > 0) {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
-          title: '确认修改高危消费配置？',
-          content: `${risks.join('；')}。`,
-          okText: '确认修改',
+          title: t('consumer.confirmRiskySettingsTitle'),
+          content: t('consumer.riskySettingsContent', {
+            risks: risks.join(t('consumer.previewMessageSeparator')),
+          }),
+          okText: t('consumer.confirmChange'),
           okButtonProps: { danger: true },
-          cancelText: '取消',
+          cancelText: t('common.cancel'),
           onOk: () => resolve(true),
           onCancel: () => resolve(false),
         });
@@ -604,9 +610,9 @@ const ConsumerPageContent = ({
           ? { ...current, retryMaxTimes: saved.retryMaxTimes }
           : current,
       );
-      message.success('消费组配置已保存');
+      message.success(t('consumer.settingsSaved'));
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      message.error(t('consumer.settingsSaveFailed'));
     } finally {
       setSettingsSubmitting(false);
     }
@@ -688,7 +694,7 @@ const ConsumerPageContent = ({
 
   const handlePreviewResetOffset = async () => {
     if (!resetGroup || !resetTopic) {
-      message.warning('请先选择要重置的 Topic');
+      message.warning(t('consumer.selectResetTopicFirst'));
       return;
     }
     const previewKey = currentResetPreviewKey;
@@ -704,12 +710,12 @@ const ConsumerPageContent = ({
       setResetPreview(preview);
       setResetPreviewKey(previewKey);
       if (preview.complete && preview.queueCount > 0) {
-        message.success(`已预览 ${preview.queueCount} 个 Queue`);
+        message.success(t('consumer.previewedQueues', { count: preview.queueCount }));
       } else {
-        message.warning('预览未覆盖可重置队列，请检查 Group/Topic 状态');
+        message.warning(t('consumer.previewIncomplete'));
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : '预览重置影响失败';
+      const reason = error instanceof Error ? error.message : t('consumer.previewRequestFailed');
       setResetPreview(null);
       setResetPreviewKey('');
       setResetPreviewError(reason);
@@ -722,7 +728,7 @@ const ConsumerPageContent = ({
   const handleResetOffset = async () => {
     if (!resetGroup || !resetTopic) return;
     if (!resetPreviewCanApply) {
-      message.warning('请先预览并确认位点影响');
+      message.warning(t('consumer.previewBeforeReset'));
       return;
     }
     setResetSubmitting(true);
@@ -734,7 +740,11 @@ const ConsumerPageContent = ({
         timestamp: resetTimestamp,
       });
       message.success(
-        `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+        t('consumer.resetCompleted', {
+          group: resetGroup.name,
+          topic: resetTopic,
+          time: resetTime.format('YYYY-MM-DD HH:mm:ss'),
+        }),
       );
       setProgressByGroup((prev) => {
         const next = { ...prev };
@@ -782,7 +792,7 @@ const ConsumerPageContent = ({
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     setImportFilename(file.name);
@@ -795,7 +805,7 @@ const ConsumerPageContent = ({
       setImportErrors(validation.errors);
     } catch (error) {
       setImportRows([]);
-      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+      setImportErrors([error instanceof Error ? error.message : t('consumer.csvParseFailed')]);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -803,7 +813,7 @@ const ConsumerPageContent = ({
 
   const handleImportConsumerGroups = async () => {
     if (!selectedInstanceId) {
-      message.error('请先选择实例');
+      message.error(t('consumer.selectInstanceFirst'));
       return;
     }
     const targetIndexes = importRows
@@ -828,16 +838,16 @@ const ConsumerPageContent = ({
           ? {
               ...nextRows[index],
               status: 'failed',
-              message: failure.message || '创建失败',
+              message: failure.message || t('consumer.rowCreateFailed'),
             }
-          : { ...nextRows[index], status: 'success', message: '已创建' };
+          : { ...nextRows[index], status: 'success', message: t('consumer.rowCreated') };
       });
     } catch (error) {
       for (const { index } of targetIndexes) {
         nextRows[index] = {
           ...nextRows[index],
           status: 'failed',
-          message: error instanceof Error ? error.message : '创建失败',
+          message: error instanceof Error ? error.message : t('consumer.rowCreateFailed'),
         };
       }
     } finally {
@@ -869,22 +879,22 @@ const ConsumerPageContent = ({
   };
 
   const consumerGroupImportColumns: ColumnsType<ResourceImportRow<Partial<ConsumerGroup>>> = [
-    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
-    { title: 'Group 名称', dataIndex: 'name', key: 'name' },
+    { title: t('consumer.colLineNumber'), dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: t('consumer.colGroupName'), dataIndex: 'name', key: 'name' },
     {
-      title: '状态',
+      title: t('consumer.colStatus'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: ResourceImportRow<Partial<ConsumerGroup>>['status']) => {
-        if (status === 'success') return <Tag color="success">成功</Tag>;
-        if (status === 'failed') return <Tag color="error">失败</Tag>;
-        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
-        return <Tag>待导入</Tag>;
+        if (status === 'success') return <Tag color="success">{t('consumer.statusSuccess')}</Tag>;
+        if (status === 'failed') return <Tag color="error">{t('consumer.statusFailed')}</Tag>;
+        if (status === 'invalid') return <Tag color="warning">{t('consumer.statusInvalid')}</Tag>;
+        return <Tag>{t('consumer.statusPending')}</Tag>;
       },
     },
     {
-      title: '说明',
+      title: t('consumer.colDescription'),
       dataIndex: 'message',
       key: 'message',
       render: (text?: string) => text || '-',
@@ -896,7 +906,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const columns: ColumnsType<ConsumerGroup> = [
     {
-      title: 'Group 名称',
+      title: t('consumer.colGroupName'),
       dataIndex: 'name',
       key: 'name',
       // `minWidth` rather than `width`: this is the one column allowed to grow, so a window
@@ -907,13 +917,13 @@ const ConsumerPageContent = ({
       ellipsis: true,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Tooltip title={`${name}（点击复制）`}>
+        <Tooltip title={t('consumer.copyTooltip', { name })}>
           <Text
             strong
             style={{ fontSize: 14, cursor: 'pointer' }}
             onClick={() => {
-              const done = () => message.success(`已复制：${name}`);
-              const failed = () => message.error('复制失败，请手动复制');
+              const done = () => message.success(t('consumer.copied', { name }));
+              const failed = () => message.error(t('consumer.copyFailed'));
               if (navigator.clipboard?.writeText) {
                 navigator.clipboard.writeText(name).then(done, failed);
               } else {
@@ -943,7 +953,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅组类型',
+      title: t('consumer.colSubscriptionType'),
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
@@ -954,7 +964,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅模式',
+      title: t('consumer.colSubscriptionMode'),
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
@@ -962,17 +972,17 @@ const ConsumerPageContent = ({
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
     {
-      title: '在线客户端',
+      title: t('consumer.colOnlineClients'),
       dataIndex: 'onlineInstances',
       key: 'onlineInstances',
       width: 100,
       align: 'center',
       sorter: (a, b) =>
         onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
-      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
+      render: (value: number) => formatOnlineInstances(value, t(UNAVAILABLE_LAG_LABEL)),
     },
     {
-      title: '总堆积量',
+      title: t('consumer.colTotalLag'),
       dataIndex: 'totalLag',
       key: 'totalLag',
       width: 96,
@@ -982,11 +992,11 @@ const ConsumerPageContent = ({
         isLagAvailable(lag) ? (
           lag.toLocaleString()
         ) : (
-          <Text type="secondary">{UNAVAILABLE_LAG_LABEL}</Text>
+          <Text type="secondary">{t(UNAVAILABLE_LAG_LABEL)}</Text>
         ),
     },
     {
-      title: '消费延迟',
+      title: t('consumer.colDelaySeconds'),
       dataIndex: 'delaySeconds',
       key: 'delaySeconds',
       width: 100,
@@ -995,7 +1005,7 @@ const ConsumerPageContent = ({
       render: (seconds: number) => formatDelay(seconds ?? 0, lang),
     },
     {
-      title: '创建时间',
+      title: t('consumer.colCreatedAt'),
       dataIndex: 'gmtCreate',
       key: 'gmtCreate',
       // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
@@ -1009,7 +1019,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '修改时间',
+      title: t('consumer.colModifiedAt'),
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 156,
@@ -1021,7 +1031,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'actions',
       width: 248,
       render: (_: unknown, record: ConsumerGroup) => (
@@ -1035,7 +1045,7 @@ const ConsumerPageContent = ({
               openModal(record);
             }}
           >
-            详情
+            {t('consumer.btnDetail')}
           </Button>
           <Button
             size="small"
@@ -1051,7 +1061,7 @@ const ConsumerPageContent = ({
               void loadSubscriptions(record.name);
             }}
           >
-            重置位点
+            {t('consumer.btnResetOffset')}
           </Button>
           <Button
             size="small"
@@ -1060,21 +1070,21 @@ const ConsumerPageContent = ({
             onClick={(e) => {
               e.stopPropagation();
               Modal.confirm({
-                title: `确认删除消费组 "${record.name}"？`,
-                content: '删除后该消费组的所有配置和消费进度将被清除，此操作不可恢复。',
-                okText: '删除',
+                title: t('consumer.deleteConfirmTitle', { name: record.name }),
+                content: t('consumer.deleteConfirmContent'),
+                okText: t('common.delete'),
                 okButtonProps: { danger: true },
-                cancelText: '取消',
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   await reloadConsumerGroupPage();
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  message.success(t('consumer.deleted', { name: record.name }));
                 },
               });
             }}
           >
-            删除
+            {t('common.delete')}
           </Button>
         </Flex>
       ),
@@ -1086,7 +1096,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const subscriptionSubColumns = (groupName: string): ColumnsType<SubscriptionEntry> => [
     {
-      title: 'Topic 主题',
+      title: t('consumer.colTopic'),
       dataIndex: 'topic',
       key: 'topic',
       width: 200,
@@ -1097,7 +1107,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅一致性',
+      title: t('consumer.colConsistency'),
       dataIndex: 'consistency',
       key: 'consistency',
       width: 110,
@@ -1112,7 +1122,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '订阅模式',
+      title: t('consumer.colSubscriptionMode'),
       dataIndex: 'filterMode',
       key: 'filterMode',
       width: 120,
@@ -1130,7 +1140,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '订阅表达式',
+      title: t('consumer.colExpression'),
       dataIndex: 'expression',
       key: 'expression',
       width: 260,
@@ -1148,14 +1158,14 @@ const ConsumerPageContent = ({
         <Button
           size="small"
           icon={<Eye size={14} />}
-          title="查看该 Topic 的队列分布"
+          title={t('consumer.viewQueueDistribution')}
           style={{ borderColor: '#1677ff', color: '#1677ff' }}
           onClick={() => {
             const group = groups.find((g) => g.name === groupName) ?? selectedGroup;
             if (group) openModal(group, 'progress', record.topic);
           }}
         >
-          查看分布
+          {t('consumer.btnViewDistribution')}
         </Button>
       ),
     },
@@ -1177,7 +1187,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '协议',
+      title: t('consumer.colProtocol'),
       dataIndex: 'protocol',
       key: 'protocol',
       width: 80,
@@ -1187,7 +1197,7 @@ const ConsumerPageContent = ({
       },
     },
     {
-      title: '地址',
+      title: t('consumer.colAddress'),
       dataIndex: 'address',
       key: 'address',
       width: 150,
@@ -1198,7 +1208,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '最后心跳',
+      title: t('consumer.colLastHeartbeat'),
       dataIndex: 'lastHeartbeat',
       key: 'lastHeartbeat',
       width: 150,
@@ -1209,7 +1219,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '诊断',
+      title: t('consumer.colDiagnostics'),
       key: 'diagnostics',
       width: 90,
       render: (_: unknown, record: ConsumerInstance) => (
@@ -1218,7 +1228,7 @@ const ConsumerPageContent = ({
           icon={<ListBullets size={14} />}
           onClick={() => void openStackModal(record)}
         >
-          线程栈
+          {t('consumer.btnThreadStack')}
         </Button>
       ),
     },
@@ -1226,16 +1236,16 @@ const ConsumerPageContent = ({
 
   const healthIssueColumns: ColumnsType<ConsumerGroupHealthIssue> = [
     {
-      title: '级别',
+      title: t('consumer.colSeverity'),
       dataIndex: 'severity',
       key: 'severity',
       width: 84,
       render: (severity: ConsumerGroupHealthIssue['severity']) => (
-        <Tag color={issueSeverityTagColor(severity)}>{issueSeverityLabel(severity)}</Tag>
+        <Tag color={issueSeverityTagColor(severity)}>{t(issueSeverityLabel(severity))}</Tag>
       ),
     },
     {
-      title: '诊断项',
+      title: t('consumer.colIssue'),
       dataIndex: 'title',
       key: 'title',
       width: 180,
@@ -1247,7 +1257,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '说明',
+      title: t('consumer.colDescription'),
       dataIndex: 'description',
       key: 'description',
       render: (description: string) => <Text>{description}</Text>,
@@ -1259,7 +1269,7 @@ const ConsumerPageContent = ({
      ═══════════════════════════════════════════ */
   const queueColumns: ColumnsType<QueueProgress> = [
     {
-      title: 'Topic 主题',
+      title: t('consumer.colTopic'),
       dataIndex: 'topic',
       key: 'topic',
       width: 280,
@@ -1313,7 +1323,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '堆积量',
+      title: t('consumer.colLag'),
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       width: 120,
@@ -1322,7 +1332,7 @@ const ConsumerPageContent = ({
         if (!isLagAvailable(diff)) {
           return (
             <Text type="secondary" style={{ fontWeight: 600 }}>
-              {UNAVAILABLE_LAG_LABEL}
+              {t(UNAVAILABLE_LAG_LABEL)}
             </Text>
           );
         }
@@ -1358,7 +1368,7 @@ const ConsumerPageContent = ({
       render: (id: number) => <Tag color="blue">Queue {id}</Tag>,
     },
     {
-      title: '当前位点',
+      title: t('consumer.colCurrentOffset'),
       dataIndex: 'consumerOffset',
       key: 'consumerOffset',
       width: 120,
@@ -1368,7 +1378,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '目标位点',
+      title: t('consumer.colTargetOffset'),
       dataIndex: 'targetOffset',
       key: 'targetOffset',
       width: 120,
@@ -1380,7 +1390,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '变化',
+      title: t('consumer.colChange'),
       dataIndex: 'offsetDelta',
       key: 'offsetDelta',
       width: 100,
@@ -1398,7 +1408,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '当前堆积',
+      title: t('consumer.colCurrentLag'),
       dataIndex: 'currentLag',
       key: 'currentLag',
       width: 110,
@@ -1408,7 +1418,7 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '重置后堆积',
+      title: t('consumer.colProjectedLag'),
       dataIndex: 'projectedLag',
       key: 'projectedLag',
       width: 124,
@@ -1420,22 +1430,22 @@ const ConsumerPageContent = ({
       ),
     },
     {
-      title: '风险',
+      title: t('consumer.colRisk'),
       dataIndex: 'riskLevel',
       key: 'riskLevel',
       width: 86,
       render: (riskLevel: string) => (
-        <Tag color={resetPreviewRiskColor(riskLevel)}>{resetPreviewRiskLabel(riskLevel)}</Tag>
+        <Tag color={resetPreviewRiskColor(riskLevel)}>{t(resetPreviewRiskLabel(riskLevel))}</Tag>
       ),
     },
     {
-      title: '说明',
+      title: t('consumer.colDescription'),
       key: 'message',
       width: 240,
       ellipsis: true,
       render: (_: unknown, record: ResetConsumerOffsetQueuePreview) => (
-        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record)}>
-          {resetPreviewQueueMessage(record)}
+        <Text style={{ fontSize: 14 }} title={resetPreviewQueueMessage(record, t)}>
+          {resetPreviewQueueMessage(record, t)}
         </Text>
       ),
     },
@@ -1464,7 +1474,7 @@ const ConsumerPageContent = ({
             onRetry={reloadInstances}
           />
           <Input.Search
-            placeholder="搜索 Group 名称或 Topic"
+            placeholder={t('consumer.searchPlaceholder')}
             allowClear
             value={search}
             onChange={(e) => {
@@ -1488,7 +1498,7 @@ const ConsumerPageContent = ({
             }}
             style={{ width: 140 }}
             options={[
-              { value: 'ALL', label: '全部模式' },
+              { value: 'ALL', label: t('consumer.allModes') },
               { value: 'Push', label: 'Push' },
               { value: 'Pop', label: 'Pop' },
             ]}
@@ -1501,11 +1511,13 @@ const ConsumerPageContent = ({
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: '确认批量删除',
-                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Group 吗？`,
-                  okText: '删除',
+                  title: t('consumer.batchDeleteConfirmTitle'),
+                  content: t('consumer.batchDeleteConfirmContent', {
+                    count: selectedRowKeys.length,
+                  }),
+                  okText: t('common.delete'),
                   okButtonProps: { danger: true },
-                  cancelText: '取消',
+                  cancelText: t('common.cancel'),
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
                     const { deleted, failed } = await batchDeleteConsumerGroups(
@@ -1515,18 +1527,22 @@ const ConsumerPageContent = ({
                     if (deleted.length > 0) await reloadConsumerGroupPage();
                     if (failed.length > 0) {
                       message.warning(
-                        `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
+                        t('consumer.batchDeletedWithFailed', {
+                          deleted: deleted.length,
+                          failed: failed.length,
+                          names: failed.join(', '),
+                        }),
                       );
                       setSelectedRowKeys(failed);
                     } else {
-                      message.success(`已删除 ${deleted.length} 个 Group`);
+                      message.success(t('consumer.batchDeleted', { count: deleted.length }));
                       setSelectedRowKeys([]);
                     }
                   },
                 });
               }}
             >
-              删除 ({selectedRowKeys.length})
+              {t('consumer.btnDeleteCount', { count: selectedRowKeys.length })}
             </Button>
           )}
           <input
@@ -1545,10 +1561,10 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
-            导入
+            {t('consumer.btnImport')}
           </Button>
           <Button icon={<ExportOutlined />} loading={exporting} onClick={() => void handleExport()}>
-            导出
+            {t('consumer.btnExport')}
           </Button>
           <Button
             type="primary"
@@ -1556,9 +1572,9 @@ const ConsumerPageContent = ({
             disabled={!hasSelectedInstance}
             onClick={() => setCreateModalOpen(true)}
           >
-            创建 Group
+            {t('consumer.btnCreateGroup')}
           </Button>
-          <Tooltip title="开启后每 2 秒自动刷新列表">
+          <Tooltip title={t('consumer.autoRefreshTooltip')}>
             <Button
               icon={<SyncOutlined spin={autoRefresh} />}
               type={autoRefresh ? 'primary' : 'default'}
@@ -1570,7 +1586,7 @@ const ConsumerPageContent = ({
                 if (next) triggerRefresh(true);
               }}
             >
-              自动刷新
+              {t('consumer.btnAutoRefresh')}
             </Button>
           </Tooltip>
         </Space>
@@ -1639,11 +1655,12 @@ const ConsumerPageContent = ({
                 <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
               </Space>
               <Text type="secondary" style={{ fontSize: 14, fontWeight: 400, marginRight: 28 }}>
-                <SyncOutlined style={{ marginRight: 4 }} />每 2s 自动刷新
+                <SyncOutlined style={{ marginRight: 4 }} />
+                {t('consumer.autoRefreshBadge')}
               </Text>
             </Flex>
           ) : (
-            'Group 详情'
+            t('consumer.groupDetailTitle')
           )
         }
         open={modalOpen}
@@ -1671,7 +1688,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Info size={14} />
-                    <span>概览</span>
+                    <span>{t('consumer.tabOverview')}</span>
                   </Space>
                 ),
                 children: (
@@ -1687,10 +1704,10 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="在线实例"
+                            title={t('consumer.statOnlineInstances')}
                             value={selectedGroup.onlineInstances}
                             formatter={(value) =>
-                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                              formatOnlineInstances(Number(value), t(UNAVAILABLE_LAG_LABEL))
                             }
                             prefix={<Users size={18} color="#52c41a" />}
                             valueStyle={{ color: '#52c41a' }}
@@ -1706,9 +1723,11 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="总堆积"
+                            title={t('consumer.statTotalLag')}
                             value={selectedGroup.totalLag}
-                            formatter={(value) => formatLag(Number(value), UNAVAILABLE_LAG_LABEL)}
+                            formatter={(value) =>
+                              formatLag(Number(value), t(UNAVAILABLE_LAG_LABEL))
+                            }
                             prefix={
                               <ArrowsClockwise size={18} color={lagColor(selectedGroup.totalLag)} />
                             }
@@ -1727,7 +1746,7 @@ const ConsumerPageContent = ({
                           }}
                         >
                           <Statistic
-                            title="订阅 Topic 数"
+                            title={t('consumer.statSubscribedTopics')}
                             value={(selectedGroup.subscribedTopics ?? []).length}
                             prefix={<ListBullets size={18} color="#1677ff" />}
                             valueStyle={{ color: '#1677ff' }}
@@ -1743,25 +1762,25 @@ const ConsumerPageContent = ({
                       size="small"
                       styles={{ label: { fontWeight: 500, width: 140 } }}
                     >
-                      <Descriptions.Item label="Group 名称">
+                      <Descriptions.Item label={t('consumer.colGroupName')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="所属集群">
+                      <Descriptions.Item label={t('consumer.cluster')}>
                         {selectedGroup.clusterId}
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅模式">
+                      <Descriptions.Item label={t('consumer.colSubscriptionMode')}>
                         <Tag color={selectedGroup.subscriptionMode === 'Push' ? 'blue' : 'green'}>
                           {selectedGroup.subscriptionMode}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费类型">
+                      <Descriptions.Item label={t('consumer.consumeType')}>
                         <Tag
                           color={selectedGroup.consumeType === 'CLUSTERING' ? 'geekblue' : 'purple'}
                         >
                           {selectedGroup.consumeType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅组类型">
+                      <Descriptions.Item label={t('consumer.colSubscriptionType')}>
                         <Tag
                           color={
                             TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.color || 'default'
@@ -1772,25 +1791,26 @@ const ConsumerPageContent = ({
                             : selectedGroup.subscriptionDataType}
                         </Tag>
                       </Descriptions.Item>
-                      <Descriptions.Item label="消费延迟">
+                      <Descriptions.Item label={t('consumer.colDelaySeconds')}>
                         <Text strong>{formatDelay(selectedGroup.delaySeconds, lang)}</Text>
                       </Descriptions.Item>
-                      <Descriptions.Item label="最大重试次数">
-                        <Text strong>{selectedGroup.retryMaxTimes}</Text> 次
+                      <Descriptions.Item label={t('consumer.retryMaxTimes')}>
+                        <Text strong>{selectedGroup.retryMaxTimes}</Text>
+                        {t('consumer.timesUnit')}
                       </Descriptions.Item>
-                      <Descriptions.Item label="创建时间">
+                      <Descriptions.Item label={t('consumer.colCreatedAt')}>
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtCreate}</Text>
                         </Space>
                       </Descriptions.Item>
-                      <Descriptions.Item label="修改时间">
+                      <Descriptions.Item label={t('consumer.colModifiedAt')}>
                         <Space size={4}>
                           <Clock size={13} color="#9CA3AF" />
                           <Text type="secondary">{selectedGroup.gmtModified}</Text>
                         </Space>
                       </Descriptions.Item>
-                      <Descriptions.Item label="订阅 Topic" span={2}>
+                      <Descriptions.Item label={t('consumer.subscribedTopics')} span={2}>
                         <Space size={4} wrap>
                           {(selectedGroup.subscribedTopics ?? []).map((t) => (
                             <Tag key={t} color="blue">
@@ -1806,7 +1826,9 @@ const ConsumerPageContent = ({
                       <Flex align="center" gap={6} style={{ marginBottom: 12 }}>
                         <Users size={15} color="#52c41a" />
                         <Text strong style={{ fontSize: 14 }}>
-                          在线实例 ({(selectedGroup.instances ?? []).length})
+                          {t('consumer.onlineInstancesCount', {
+                            count: (selectedGroup.instances ?? []).length,
+                          })}
                         </Text>
                       </Flex>
                       <Table
@@ -1826,7 +1848,7 @@ const ConsumerPageContent = ({
                         <Flex align="center" gap={6}>
                           <ListBullets size={15} color="#1677ff" />
                           <Text strong style={{ fontSize: 14 }}>
-                            订阅一致性检查
+                            {t('consumer.consistencyCheck')}
                           </Text>
                         </Flex>
                         <Button
@@ -1838,7 +1860,7 @@ const ConsumerPageContent = ({
                             void loadSubscriptions(selectedGroup.name, true);
                           }}
                         >
-                          重新检查
+                          {t('consumer.recheck')}
                         </Button>
                       </Flex>
                       <Alert
@@ -1855,17 +1877,23 @@ const ConsumerPageContent = ({
                         }
                         message={
                           subscriptionErrorByGroup[selectedDiagnosticKey]
-                            ? '订阅一致性检查失败，当前保留上次检查结果'
+                            ? t('consumer.consistencyCheckFailedKeepLast')
                             : subscriptionLoadingByGroup[selectedDiagnosticKey] &&
                                 selectedSubscriptions.length === 0
-                              ? '正在检查订阅一致性'
+                              ? t('consumer.consistencyChecking')
                               : inconsistentSubscriptions.length > 0
-                                ? `发现 ${inconsistentSubscriptions.length} 个订阅配置不一致`
+                                ? t('consumer.foundInconsistent', {
+                                    count: inconsistentSubscriptions.length,
+                                  })
                                 : unknownSubscriptions.length > 0
-                                  ? `${unknownSubscriptions.length} 个订阅配置状态未知`
+                                  ? t('consumer.foundUnknown', {
+                                      count: unknownSubscriptions.length,
+                                    })
                                   : selectedSubscriptions.length > 0
-                                    ? `全部 ${selectedSubscriptions.length} 个订阅配置一致`
-                                    : '暂无订阅关系可检查'
+                                    ? t('consumer.allConsistent', {
+                                        count: selectedSubscriptions.length,
+                                      })
+                                    : t('consumer.noSubscriptionsToCheck')
                         }
                         action={
                           <Checkbox
@@ -1873,7 +1901,7 @@ const ConsumerPageContent = ({
                             disabled={inconsistentSubscriptions.length === 0}
                             onChange={(event) => setShowOnlyInconsistent(event.target.checked)}
                           >
-                            仅看不一致
+                            {t('consumer.showOnlyInconsistent')}
                           </Checkbox>
                         }
                         style={{ marginBottom: 12 }}
@@ -1898,7 +1926,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <Info size={14} />
-                    <span>健康诊断</span>
+                    <span>{t('consumer.tabHealth')}</span>
                   </Space>
                 ),
                 children: selectedGroupHealth && (
@@ -1909,11 +1937,9 @@ const ConsumerPageContent = ({
                           <Tag color={healthStatusTagColor(selectedGroupHealth.status)}>
                             {selectedGroupHealth.statusText}
                           </Tag>
-                          <Text type="secondary">
-                            汇总订阅、队列进度和在线客户端，定位消费风险。
-                          </Text>
+                          <Text type="secondary">{t('consumer.healthSummaryIntro')}</Text>
                         </Space>
-                        <Text type="secondary">诊断结果随详情弹窗每 2 秒自动刷新。</Text>
+                        <Text type="secondary">{t('consumer.healthRefreshNote')}</Text>
                       </Space>
                       <Button
                         size="small"
@@ -1924,7 +1950,7 @@ const ConsumerPageContent = ({
                           void loadProgress(selectedGroup.name, true);
                         }}
                       >
-                        重新诊断
+                        {t('consumer.rediagnose')}
                       </Button>
                     </Flex>
 
@@ -1932,7 +1958,7 @@ const ConsumerPageContent = ({
                       <Alert
                         type="warning"
                         showIcon
-                        message="订阅一致性检查失败，诊断仍使用当前可用的进度和客户端数据。"
+                        message={t('consumer.consistencyCheckFailedDiagnosis')}
                       />
                     )}
 
@@ -1940,7 +1966,7 @@ const ConsumerPageContent = ({
                       <Alert
                         type="warning"
                         showIcon
-                        message="消费进度加载失败，诊断未包含队列进度。"
+                        message={t('consumer.progressLoadFailedDiagnosis')}
                       />
                     )}
 
@@ -1948,7 +1974,7 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="健康分"
+                            title={t('consumer.statHealthScore')}
                             value={selectedGroupHealth.summary.healthScore}
                             suffix="/ 100"
                             valueStyle={{
@@ -1976,16 +2002,16 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="已知堆积"
+                            title={t('consumer.statKnownLag')}
                             value={selectedGroupHealth.summary.totalKnownLag}
                             valueStyle={{
                               color: lagColor(selectedGroupHealth.summary.totalKnownLag),
                             }}
                           />
                           <Text type="secondary">
-                            报告堆积：
+                            {t('consumer.reportedLagLabel')}
                             {selectedGroupHealth.summary.reportedLag === null
-                              ? UNAVAILABLE_LAG_LABEL
+                              ? t(UNAVAILABLE_LAG_LABEL)
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
                         </Card>
@@ -1993,32 +2019,36 @@ const ConsumerPageContent = ({
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="Queue 覆盖"
+                            title={t('consumer.statQueueCoverage')}
                             value={selectedGroupHealth.summary.queueCount}
                             suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
                           />
                           <Text type="secondary">
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
-                              : 'Queue 堆积均可计算'}
+                              ? t('consumer.queueLagUnavailableCount', {
+                                  count: selectedGroupHealth.summary.unknownQueueCount,
+                                })
+                              : t('consumer.queueLagAllAvailable')}
                           </Text>
                         </Card>
                       </Col>
                       <Col span={6}>
                         <Card size="small" style={{ borderRadius: 8 }}>
                           <Statistic
-                            title="客户端"
+                            title={t('consumer.statClients')}
                             value={selectedGroupHealth.summary.onlineInstances}
                             formatter={(value) =>
-                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
+                              formatOnlineInstances(Number(value), t(UNAVAILABLE_LAG_LABEL))
                             }
                           />
                           <Text type="secondary">
                             {selectedGroupHealth.summary.onlineInstances < 0
-                              ? '客户端连接信息不可用'
+                              ? t('consumer.clientInfoUnavailable')
                               : selectedGroupHealth.summary.staleClientCount > 0
-                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                                : '心跳状态正常'}
+                                ? t('consumer.staleHeartbeatCount', {
+                                    count: selectedGroupHealth.summary.staleClientCount,
+                                  })
+                                : t('consumer.heartbeatNormal')}
                           </Text>
                         </Card>
                       </Col>
@@ -2035,14 +2065,14 @@ const ConsumerPageContent = ({
                         scroll={{ x: tableScrollX(healthIssueColumns) }}
                       />
                     ) : (
-                      <Alert type="success" showIcon message="未发现消费组健康风险" />
+                      <Alert type="success" showIcon message={t('consumer.noHealthRisks')} />
                     )}
 
                     {selectedGroupHealth.recommendations.length > 0 && (
                       <Alert
                         type="info"
                         showIcon
-                        message="处理建议"
+                        message={t('consumer.recommendations')}
                         description={
                           <Space direction="vertical" size={4}>
                             {selectedGroupHealth.recommendations.map((recommendation) => (
@@ -2061,7 +2091,7 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <ArrowsClockwise size={14} />
-                    <span>消费进度</span>
+                    <span>{t('consumer.tabProgress')}</span>
                   </Space>
                 ),
                 children: (
@@ -2071,18 +2101,18 @@ const ConsumerPageContent = ({
                         type="warning"
                         showIcon
                         style={{ marginBottom: 12 }}
-                        message="消费进度加载失败，无法判断消费组是否在线"
-                        description="队列进度与堆积统计暂不可用，请稍后重试。"
+                        message={t('consumer.progressLoadFailedTitle')}
+                        description={t('consumer.progressLoadFailedDescription')}
                       />
                     )}
                     {progressTopicOptions.length > 0 && (
                       <Flex align="center" gap={8} style={{ marginBottom: 12 }}>
-                        <Text type="secondary">Topic 筛选:</Text>
+                        <Text type="secondary">{t('consumer.topicFilterLabel')}</Text>
                         <Select
                           size="small"
                           style={{ minWidth: 240 }}
                           allowClear
-                          placeholder="全部 Topic"
+                          placeholder={t('consumer.allTopics')}
                           value={
                             progressTopic && progressTopicOptions.includes(progressTopic)
                               ? progressTopic
@@ -2107,18 +2137,18 @@ const ConsumerPageContent = ({
                     >
                       <Space size={24}>
                         <Space size={4}>
-                          <Text type="secondary">总 Broker 数:</Text>
+                          <Text type="secondary">{t('consumer.totalBrokersLabel')}</Text>
                           <Text strong>{new Set(visibleProgress.map((q) => q.broker)).size}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总 Queue 数:</Text>
+                          <Text type="secondary">{t('consumer.totalQueuesLabel')}</Text>
                           <Text strong>{visibleProgress.length}</Text>
                         </Space>
                         <Space size={4}>
-                          <Text type="secondary">总堆积:</Text>
+                          <Text type="secondary">{t('consumer.totalLagLabel')}</Text>
                           {hasUnknownProgressLag ? (
                             <Text strong style={{ color: UNKNOWN_LAG_COLOR }}>
-                              {UNAVAILABLE_LAG_LABEL}
+                              {t(UNAVAILABLE_LAG_LABEL)}
                             </Text>
                           ) : (
                             <Text
@@ -2145,8 +2175,8 @@ const ConsumerPageContent = ({
                       locale={{
                         emptyText: selectedProgressFailed
                           ? // A failed read must not assert that the group is offline.
-                            '队列进度暂不可用'
-                          : '消费组不在线，暂无队列进度数据',
+                            t('consumer.queueProgressUnavailable')
+                          : t('consumer.groupOfflineNoProgress'),
                       }}
                     />
                   </div>
@@ -2158,42 +2188,46 @@ const ConsumerPageContent = ({
                 label: (
                   <Space size={4}>
                     <SlidersHorizontal size={14} />
-                    <span>配置</span>
+                    <span>{t('consumer.tabSettings')}</span>
                   </Space>
                 ),
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
                     <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
+                      <Form.Item label={t('consumer.colGroupName')}>
                         <Text strong>{selectedGroup.name}</Text>
                       </Form.Item>
                       <Form.Item
-                        label="重试队列数"
+                        label={t('consumer.retryQueueNums')}
                         name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
+                        rules={[{ required: true, message: t('consumer.retryQueueNumsRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item
-                        label="最大重试次数"
+                        label={t('consumer.retryMaxTimes')}
                         name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
+                        rules={[{ required: true, message: t('consumer.retryMaxTimesRequired') }]}
                       >
                         <InputNumber min={1} max={128} style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                      <Form.Item
+                        label={t('consumer.consumeEnable')}
+                        name="consumeEnable"
+                        valuePropName="checked"
+                      >
                         <Switch />
                       </Form.Item>
                       <Form.Item
-                        label="顺序消费"
+                        label={t('consumer.consumeOrderly')}
                         name="consumeMessageOrderly"
                         valuePropName="checked"
                       >
                         <Switch />
                       </Form.Item>
                       <Form.Item
-                        label="广播消费"
+                        label={t('consumer.consumeBroadcast')}
                         name="consumeBroadcastEnable"
                         valuePropName="checked"
                       >
@@ -2205,7 +2239,7 @@ const ConsumerPageContent = ({
                           loading={settingsSubmitting}
                           onClick={() => void saveSettings()}
                         >
-                          保存
+                          {t('consumer.btnSave')}
                         </Button>
                       </Form.Item>
                     </Form>
@@ -2224,7 +2258,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ListBullets size={18} color="#1677ff" />
-            <span>消费者线程栈</span>
+            <span>{t('consumer.stackModalTitle')}</span>
           </Space>
         }
         open={stackModalOpen}
@@ -2249,16 +2283,20 @@ const ConsumerPageContent = ({
                 {selectedStack?.clientId ?? selectedStackClient?.clientId ?? '-'}
               </Text>
             </Descriptions.Item>
-            <Descriptions.Item label="采集时间">
+            <Descriptions.Item label={t('consumer.capturedAt')}>
               {selectedStack?.capturedAt ? formatUtcDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
+            <Descriptions.Item label={t('consumer.threadCount')}>
+              {selectedStack?.threadCount ?? 0}
+            </Descriptions.Item>
           </Descriptions>
 
           {stackLoading ? (
             <Table
               loading
-              columns={[{ title: '线程', dataIndex: 'threadName', key: 'threadName' }]}
+              columns={[
+                { title: t('consumer.colThread'), dataIndex: 'threadName', key: 'threadName' },
+              ]}
               dataSource={[]}
               pagination={false}
               size="small"
@@ -2297,14 +2335,10 @@ const ConsumerPageContent = ({
             <Alert
               type="info"
               showIcon
-              message="暂不支持采集该客户端的线程栈"
+              message={t('consumer.stackNotSupported')}
               description={
                 <>
-                  <div>
-                    经 Proxy 接入的客户端（gRPC、经 Proxy 的 Remoting）只在 Proxy 侧保持连接，Broker
-                    看不到它们；而 Proxy 目前未开放线程栈采集接口，因此这类客户端暂时无法采集。 直连
-                    Broker 的客户端可正常查看。
-                  </div>
+                  <div>{t('consumer.stackNotSupportedDescription')}</div>
                   {stackError && (
                     <div style={{ marginTop: 8, color: 'rgba(0,0,0,0.45)' }}>{stackError}</div>
                   )}
@@ -2322,7 +2356,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <Plus size={18} weight="bold" color="#1677ff" />
-            <span>创建 Group</span>
+            <span>{t('consumer.createModalTitle')}</span>
           </Space>
         }
         open={createModalOpen}
@@ -2336,14 +2370,14 @@ const ConsumerPageContent = ({
             .validateFields()
             .then((values) => {
               if (!selectedInstanceId) {
-                message.error('请先选择实例');
+                message.error(t('consumer.selectInstanceFirst'));
                 return;
               }
               Modal.confirm({
-                title: '确认创建',
-                content: `将创建消费组 "${values.name}"`,
-                okText: '确认创建',
-                cancelText: '取消',
+                title: t('consumer.confirmCreateTitle'),
+                content: t('consumer.confirmCreateContent', { name: values.name }),
+                okText: t('consumer.confirmCreate'),
+                cancelText: t('common.cancel'),
                 onOk: async () => {
                   setSubmitting(true);
                   try {
@@ -2361,7 +2395,7 @@ const ConsumerPageContent = ({
                     // group lands where the server sorts it and the total stays truthful,
                     // mirroring the topic inventory behavior after create.
                     await reloadConsumerGroupPage();
-                    message.success(`消费组 ${values.name} 创建成功`);
+                    message.success(t('consumer.created', { name: values.name }));
                     setCreateModalOpen(false);
                     form.resetFields();
                     setDataTypeValue(undefined);
@@ -2377,8 +2411,8 @@ const ConsumerPageContent = ({
             .catch(() => {});
         }}
         confirmLoading={submitting}
-        okText="创建"
-        cancelText="取消"
+        okText={t('consumer.btnCreate')}
+        cancelText={t('common.cancel')}
         width={560}
         destroyOnHidden
       >
@@ -2393,25 +2427,25 @@ const ConsumerPageContent = ({
           }}
         >
           <Form.Item
-            label="Group 名称"
+            label={t('consumer.colGroupName')}
             name="name"
             rules={[
-              { required: true, message: '请输入 Group 名称' },
+              { required: true, message: t('consumer.groupNameRequired') },
               {
                 pattern: RESOURCE_NAME_PATTERN,
-                message: '仅支持字母、数字、下划线、短横线、% 和 |',
+                message: t('consumer.groupNamePattern'),
               },
               {
                 max: RESOURCE_NAME_MAX_LENGTH.group,
-                message: `名称不能超过 ${RESOURCE_NAME_MAX_LENGTH.group} 个字符`,
+                message: t('consumer.groupNameMaxLength', { max: RESOURCE_NAME_MAX_LENGTH.group }),
               },
             ]}
           >
-            <Input placeholder="例：cg-order-notify" />
+            <Input placeholder={t('consumer.groupNameExample')} />
           </Form.Item>
 
           {!isCloudInstance && (
-            <Form.Item label="订阅模式" name="subscriptionMode">
+            <Form.Item label={t('consumer.colSubscriptionMode')} name="subscriptionMode">
               <Radio.Group>
                 <Radio.Button value="Push">Push</Radio.Button>
                 <Radio.Button value="Pop">Pop</Radio.Button>
@@ -2420,42 +2454,46 @@ const ConsumerPageContent = ({
           )}
 
           {!isCloudInstance && (
-            <Form.Item label="消费类型" name="consumeType">
+            <Form.Item label={t('consumer.consumeType')} name="consumeType">
               <Radio.Group>
-                <Radio.Button value="CLUSTERING">集群消费</Radio.Button>
-                <Radio.Button value="BROADCASTING">广播消费</Radio.Button>
+                <Radio.Button value="CLUSTERING">{t('consumer.clustering')}</Radio.Button>
+                <Radio.Button value="BROADCASTING">{t('consumer.broadcasting')}</Radio.Button>
               </Radio.Group>
             </Form.Item>
           )}
 
-          <Form.Item label="最大重试次数" name="retryMaxTimes">
+          <Form.Item label={t('consumer.retryMaxTimes')} name="retryMaxTimes">
             <InputNumber min={0} max={128} style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item label="订阅组类型" name="dataType">
+          <Form.Item label={t('consumer.colSubscriptionType')} name="dataType">
             <Select
-              placeholder="选择消息类型"
+              placeholder={t('consumer.selectMessageType')}
               options={[
-                { value: 'NORMAL', label: '普通消息' },
-                { value: 'FIFO', label: '顺序消息' },
-                { value: 'DELAY', label: '延迟消息' },
-                { value: 'TRANSACTION', label: '事务消息' },
+                { value: 'NORMAL', label: t('consumer.typeNormal') },
+                { value: 'FIFO', label: t('consumer.typeFifo') },
+                { value: 'DELAY', label: t('consumer.typeDelay') },
+                { value: 'TRANSACTION', label: t('consumer.typeTransaction') },
               ]}
               onChange={(val) => setDataTypeValue(val)}
             />
           </Form.Item>
 
           {dataTypeValue === 'FIFO' && (
-            <Form.Item label="顺序类型" name="deliveryOrderType" initialValue="PARTITON_ORDER">
+            <Form.Item
+              label={t('consumer.deliveryOrderType')}
+              name="deliveryOrderType"
+              initialValue="PARTITON_ORDER"
+            >
               <Select
                 options={[
                   {
                     value: 'PARTITON_ORDER',
-                    label: '分区顺序',
+                    label: t('consumer.partitionOrder'),
                   },
                   {
                     value: 'MESSAGES_ORDER',
-                    label: '全局顺序',
+                    label: t('consumer.globalOrder'),
                   },
                 ]}
               />
@@ -2468,14 +2506,22 @@ const ConsumerPageContent = ({
          Import Group Modal
          ═══════════════════════════════════════════ */}
       <Modal
-        title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
+        title={
+          importFilename
+            ? t('consumer.importModalTitleWithFile', { filename: importFilename })
+            : t('consumer.importModalTitle')
+        }
         open={importModalOpen}
         onCancel={() => {
           if (!importing) setImportModalOpen(false);
         }}
         onOk={() => void handleImportConsumerGroups()}
-        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
-        cancelText="关闭"
+        okText={
+          importRows.some((row) => row.status === 'failed')
+            ? t('consumer.retryFailedRows')
+            : t('consumer.startImport')
+        }
+        cancelText={t('consumer.btnClose')}
         confirmLoading={importing}
         okButtonProps={{
           disabled:
@@ -2491,24 +2537,24 @@ const ConsumerPageContent = ({
             <Alert
               type="error"
               showIcon
-              message="CSV 无法导入"
-              description={importErrors.join('；')}
+              message={t('consumer.csvNotImportable')}
+              description={importErrors.join(t('consumer.previewMessageSeparator'))}
             />
           ) : importRows.some((row) => row.status === 'invalid') ? (
             <Alert
               type="warning"
               showIcon
-              message={`检测到 ${
-                importRows.filter((row) => row.status === 'invalid').length
-              } 行无效，将跳过这些行`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.detectedInvalidRows', {
+                count: importRows.filter((row) => row.status === 'invalid').length,
+              })}
+              description={t('consumer.importFieldsNote')}
             />
           ) : (
             <Alert
               type="info"
               showIcon
-              message={`检测到 ${importRows.length} 个 Group，将通过后端批量导入`}
-              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+              message={t('consumer.detectedGroups', { count: importRows.length })}
+              description={t('consumer.importFieldsNote')}
             />
           )}
           <Table<ResourceImportRow<Partial<ConsumerGroup>>>
@@ -2528,7 +2574,7 @@ const ConsumerPageContent = ({
         title={
           <Space>
             <ArrowsCounterClockwise size={18} color="#fa8c16" />
-            <span>重置消费位点</span>
+            <span>{t('consumer.resetModalTitle')}</span>
           </Space>
         }
         open={resetModalOpen}
@@ -2546,8 +2592,8 @@ const ConsumerPageContent = ({
             resetPreviewLoading ||
             Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
-        okText="确认重置"
-        cancelText="取消"
+        okText={t('consumer.confirmReset')}
+        cancelText={t('common.cancel')}
         width={1200}
         destroyOnHidden
       >
@@ -2556,12 +2602,12 @@ const ConsumerPageContent = ({
             <Alert
               showIcon
               type="warning"
-              message="此操作将影响消息消费进度"
-              description="请先预览每个 Queue 的目标位点和堆积变化，确认预览结果后再执行重置。预览为时点快照、属页面操作引导（非服务端控制），预览期间消息持续写入，实际效果以执行时 Broker 状态为准。"
+              message={t('consumer.resetWarningTitle')}
+              description={t('consumer.resetWarningDescription')}
             />
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
-                目标 Group
+                {t('consumer.targetGroup')}
               </Text>
               <Text strong style={{ fontSize: 14 }}>
                 {resetGroup.name}
@@ -2569,31 +2615,31 @@ const ConsumerPageContent = ({
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                目标 Topic
+                {t('consumer.targetTopic')}
               </Text>
               <Select
-                aria-label="目标 Topic"
+                aria-label={t('consumer.targetTopic')}
                 showSearch
                 optionFilterProp="label"
                 style={{ width: '100%' }}
                 value={resetTopic}
                 options={resetTopicOptions}
                 loading={subscriptionLoadingByGroup[resetDiagnosticKey]}
-                placeholder="选择要重置消费位点的 Topic"
+                placeholder={t('consumer.selectResetTopic')}
                 onChange={(value) => {
                   setResetTopic(value);
                   clearResetPreview();
                 }}
                 notFoundContent={
                   subscriptionErrorByGroup[resetDiagnosticKey]
-                    ? '订阅 Topic 加载失败'
-                    : '该 Group 暂无订阅 Topic'
+                    ? t('consumer.subscribedTopicsLoadFailed')
+                    : t('consumer.noSubscribedTopics')
                 }
               />
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                重置到以下时间点
+                {t('consumer.resetToTimeLabel')}
               </Text>
               <DatePicker
                 showTime
@@ -2606,12 +2652,12 @@ const ConsumerPageContent = ({
                   }
                 }}
                 format="YYYY-MM-DD HH:mm:ss"
-                placeholder="选择重置时间点"
+                placeholder={t('consumer.selectResetTime')}
               />
             </div>
             <div>
               <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>
-                快捷选择
+                {t('consumer.quickSelect')}
               </Text>
               <Space wrap>
                 <Button
@@ -2621,7 +2667,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  跳过积压（重置到最新）
+                  {t('consumer.skipBacklog')}
                 </Button>
                 <Button
                   size="small"
@@ -2630,7 +2676,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 小时前
+                  {t('consumer.hoursAgo', { count: 1 })}
                 </Button>
                 <Button
                   size="small"
@@ -2639,7 +2685,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 小时前
+                  {t('consumer.hoursAgo', { count: 3 })}
                 </Button>
                 <Button
                   size="small"
@@ -2648,7 +2694,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  6 小时前
+                  {t('consumer.hoursAgo', { count: 6 })}
                 </Button>
                 <Button
                   size="small"
@@ -2657,7 +2703,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  12 小时前
+                  {t('consumer.hoursAgo', { count: 12 })}
                 </Button>
                 <Button
                   size="small"
@@ -2666,7 +2712,7 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  1 天前
+                  {t('consumer.daysAgo', { count: 1 })}
                 </Button>
                 <Button
                   size="small"
@@ -2675,13 +2721,13 @@ const ConsumerPageContent = ({
                     clearResetPreview();
                   }}
                 >
-                  3 天前
+                  {t('consumer.daysAgo', { count: 3 })}
                 </Button>
               </Space>
             </div>
             <Flex justify="space-between" align="center" gap={12}>
               <Text type="secondary" style={{ fontSize: 14 }}>
-                预览不会修改 broker 位点，仅计算目标时间对应的 Queue offset。
+                {t('consumer.previewNote')}
               </Text>
               <Button
                 icon={<Eye size={14} />}
@@ -2693,38 +2739,51 @@ const ConsumerPageContent = ({
                 }
                 onClick={() => void handlePreviewResetOffset()}
               >
-                预览影响
+                {t('consumer.btnPreviewImpact')}
               </Button>
             </Flex>
             {resetPreviewError && (
-              <Alert showIcon type="error" message="位点预览失败" description={resetPreviewError} />
+              <Alert
+                showIcon
+                type="error"
+                message={t('consumer.previewFailedTitle')}
+                description={resetPreviewError}
+              />
             )}
             {hasCurrentResetPreview && resetPreview && (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Descriptions bordered size="small" column={4}>
-                  <Descriptions.Item label="Queue 数">{resetPreview.queueCount}</Descriptions.Item>
-                  <Descriptions.Item label="当前总堆积">
+                  <Descriptions.Item label={t('consumer.queueCount')}>
+                    {resetPreview.queueCount}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t('consumer.currentTotalLag')}>
                     {formatOffsetValue(resetPreview.currentTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="重置后总堆积">
+                  <Descriptions.Item label={t('consumer.projectedTotalLag')}>
                     {formatOffsetValue(resetPreview.projectedTotalLag)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="位点净变化">
+                  <Descriptions.Item label={t('consumer.totalOffsetDelta')}>
                     {formatOffsetDelta(resetPreview.totalOffsetDelta)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="回放 Queue">
+                  <Descriptions.Item label={t('consumer.rewindQueues')}>
                     {resetPreview.rewindQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="跳过 Queue">
+                  <Descriptions.Item label={t('consumer.fastForwardQueues')}>
                     {resetPreview.fastForwardQueueCount}
                   </Descriptions.Item>
-                  <Descriptions.Item label="预览状态" span={2}>
+                  <Descriptions.Item label={t('consumer.previewStatus')} span={2}>
                     <Tag
                       color={
                         resetPreview.complete ? 'green' : resetPreview.allowReset ? 'orange' : 'red'
                       }
                     >
-                      {resetPreview.complete ? '完整' : resetPreview.allowReset ? '有限' : '不完整'}
+                      {t(
+                        resetPreview.complete
+                          ? 'consumer.previewComplete'
+                          : resetPreview.allowReset
+                            ? 'consumer.previewLimited'
+                            : 'consumer.previewIncompleteStatus',
+                      )}
                     </Tag>
                   </Descriptions.Item>
                 </Descriptions>
@@ -2732,8 +2791,8 @@ const ConsumerPageContent = ({
                   <Alert
                     showIcon
                     type={resetPreview.complete ? 'warning' : 'error'}
-                    message="请确认以下影响"
-                    description={resetPreviewWarnings.join('；')}
+                    message={t('consumer.confirmImpactTitle')}
+                    description={resetPreviewWarnings.join(t('consumer.previewMessageSeparator'))}
                   />
                 )}
                 <Table
@@ -2744,7 +2803,7 @@ const ConsumerPageContent = ({
                   size="small"
                   tableLayout="fixed"
                   scroll={{ x: tableScrollX(resetPreviewColumns), y: 260 }}
-                  locale={{ emptyText: '未找到可预览的 Queue 位点' }}
+                  locale={{ emptyText: t('consumer.noPreviewableQueues') }}
                 />
               </Space>
             )}
