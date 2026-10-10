@@ -831,7 +831,7 @@ GET /api/k8s-certs
 | `issuer` | `string` | 签发者 |
 | `notBefore` | `string` | 生效时间 (ISO 8601) |
 | `notAfter` | `string` | 过期时间 (ISO 8601) |
-| `status` | `string` | 状态: `valid` / `expiring` / `expired` |
+| `status` | `string` | 状态: `valid` / `expiring` / `expired` / `not_yet_valid`（尚未生效） |
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
@@ -3163,7 +3163,7 @@ GET /api/metrics/grafana/dashboards/export
 | **告警级别** | `error`, `warning`, `info` |
 | **审计结果** | `SUCCESS`, `FAILED`, `PARTIAL` |
 | **投递状态** | `success`, `failed`, `pending` |
-| **证书状态** | `valid`, `expiring`, `expired` |
+| **证书状态** | `valid`, `expiring`, `expired`, `not_yet_valid` |
 | **证书类型** | `TLS`, `mTLS`, `ServiceAccount` |
 | **刷盘方式** | `ASYNC_FLUSH`, `SYNC_FLUSH` |
 | **集群类型** | `V4_DIRECT`, `V5_PROXY_LOCAL`, `V5_PROXY_CLUSTER` |
