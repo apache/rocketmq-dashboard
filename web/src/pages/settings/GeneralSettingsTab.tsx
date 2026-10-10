@@ -47,6 +47,8 @@ const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
   desktopNotify: settings.desktopNotify,
   notifySound: settings.notifySound,
   sessionTimeout: settings.sessionTimeout,
+  // Backends predating the field omit it; saving the server default keeps the two in sync.
+  sessionIdleTimeout: settings.sessionIdleTimeout ?? 30,
   requireLogin: settings.requireLogin,
   llmProvider: settings.llmProvider,
   model: settings.model,
@@ -86,7 +88,10 @@ export const GeneralSettingsTab = () => {
       .then((loaded) => {
         if (cancelled) return;
         setSettings(loaded);
-        securityForm.setFieldsValue({ sessionTimeout: loaded.sessionTimeout });
+        securityForm.setFieldsValue({
+          sessionTimeout: loaded.sessionTimeout,
+          sessionIdleTimeout: loaded.sessionIdleTimeout ?? 30,
+        });
         notifyForm.setFieldsValue({
           dingtalkWebhook: loaded.dingtalkWebhook,
           dingtalkSigningSecret: '',
@@ -168,12 +173,12 @@ export const GeneralSettingsTab = () => {
     }
   };
 
-  const handleSecurityFinish = async (values: { sessionTimeout: number }) => {
+  const handleSecurityFinish = async (values: { sessionTimeout: number; sessionIdleTimeout: number }) => {
     if (securityInFlightRef.current) return;
     securityInFlightRef.current = true;
     setSavingSecurity(true);
     try {
-      if (await mergeAndSave({ sessionTimeout: values.sessionTimeout })) {
+      if (await mergeAndSave({ sessionTimeout: values.sessionTimeout, sessionIdleTimeout: values.sessionIdleTimeout })) {
         message.success(t('settings.saveSuccess'));
       }
     } finally {
@@ -295,6 +300,28 @@ export const GeneralSettingsTab = () => {
               </Form.Item>
               <Input
                 aria-label={t('settings.sessionTimeoutUnit')}
+                readOnly
+                value={t('settings.minutes')}
+                style={{ width: 64 }}
+              />
+            </Space.Compact>
+          </Form.Item>
+
+          <Form.Item
+            label={t('settings.sessionIdleTimeout')}
+            extra={t('settings.sessionIdleTimeoutHelp')}
+            style={{ marginBottom: 16 }}
+          >
+            <Space.Compact>
+              <Form.Item
+                name="sessionIdleTimeout"
+                noStyle
+                rules={[{ required: true, message: t('settings.sessionIdleTimeoutRequired') }]}
+              >
+                <InputNumber min={0} max={1440} style={{ width: 120 }} />
+              </Form.Item>
+              <Input
+                aria-label={t('settings.sessionIdleTimeoutUnit')}
                 readOnly
                 value={t('settings.minutes')}
                 style={{ width: 64 }}

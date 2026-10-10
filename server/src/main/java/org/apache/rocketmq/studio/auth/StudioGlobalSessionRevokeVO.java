@@ -19,21 +19,14 @@ package org.apache.rocketmq.studio.auth;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
+/**
+ * Result of the global session revocation. The operator's own sessions are always spared
+ * (an incident responder must not log themselves out mid-response), which is why the count
+ * can be lower than the active-session total on the overview.
+ */
 @Data
 @Builder
-public class StudioUserSessionDetailVO {
+public class StudioGlobalSessionRevokeVO {
 
-    private Long id;
-    private Long userId;
-    private LocalDateTime lastSeenAt;
-    private LocalDateTime expiresAt;
-    private LocalDateTime gmtCreate;
-    private long remainingSeconds;
-    private Long idleSeconds;
-    private boolean expiringSoon;
-    private boolean stale;
-    private String clientIp;
-    private String userAgent;
+    private int revokedSessionCount;
 }

@@ -185,6 +185,25 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldPreserveSessionIdleTimeoutWhenOmittedTest() {
+        // Clients written before the field existed keep sending replacements without it;
+        // their saves must not silently reset a configured idle deadline to the default.
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .sessionIdleTimeout(15)
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .sessionTimeout(60)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getSessionIdleTimeout()).isEqualTo(15);
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersistingTest() {
         GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .baseUrl("http://169.254.169.254/latest/meta-data")

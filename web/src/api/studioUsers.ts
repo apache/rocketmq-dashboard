@@ -72,6 +72,9 @@ export interface StudioUserSessionDetail {
   idleSeconds?: number | null;
   expiringSoon: boolean;
   stale: boolean;
+  /** Client address the session was issued to; absent for rows created before attribution. */
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 export async function listStudioUsers(query: StudioUserQuery = {}) {
@@ -133,4 +136,15 @@ export async function revokeStudioUserSessions(userId: number) {
     `/studio-users/${userId}/sessions/revoke`,
   );
   return response.data.data;
+}
+
+export async function revokeAllStudioUserSessions() {
+  const response = await client.post<{ data: { revokedSessionCount: number } }>(
+    '/studio-users/sessions/revoke-all',
+  );
+  return response.data.data.revokedSessionCount;
+}
+
+export async function revokeStudioSession(sessionId: number) {
+  await client.delete(`/studio-users/sessions/${sessionId}`);
 }

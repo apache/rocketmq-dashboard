@@ -160,6 +160,10 @@ public class SettingsService {
             if (settings.getTemperature() == null) {
                 settings.setTemperature(currentSettings.getTemperature());
             }
+            // Older clients do not send the idle timeout; their saves must not reset it.
+            if (settings.getSessionIdleTimeout() == null) {
+                settings.setSessionIdleTimeout(currentSettings.getSessionIdleTimeout());
+            }
         }
         settings.setClearApiKey(false);
         settings.setClearDingtalkSigningSecret(false);
