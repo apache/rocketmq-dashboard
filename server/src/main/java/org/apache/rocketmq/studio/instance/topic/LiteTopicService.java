@@ -119,6 +119,7 @@ public class LiteTopicService {
                 .totalMessages(session.getTotalMessages())
                 .consumedMessages(session.getConsumedMessages())
                 .pendingMessages(session.getPendingMessages())
+                .popProgress(popProgressPercent(session))
                 .liteTopicCreationCount(session.getLiteTopicCreationCount())
                 .liteTopics(toLiteTopicRows(session))
                 .build();
@@ -136,6 +137,19 @@ public class LiteTopicService {
                 .map(name -> new LiteTopicSessionVO.SessionLiteTopic(
                         name, session.getStatus(), session.getTtlRemaining()))
                 .toList();
+    }
+
+    /**
+     * Pop consumption progress in percent, or {@code null} when the session's message counters
+     * are unknown — the page hides the progress section for an absent value instead of
+     * presenting a fabricated 0%.
+     */
+    private static Integer popProgressPercent(LiteTopicSession session) {
+        if (session.getTotalMessages() == null || session.getTotalMessages() <= 0
+                || session.getConsumedMessages() == null) {
+            return null;
+        }
+        return (int) Math.round(session.getConsumptionProgress());
     }
 
     private LiteTopicQuotaVO toQuotaVO(LiteTopicQuota quota) {

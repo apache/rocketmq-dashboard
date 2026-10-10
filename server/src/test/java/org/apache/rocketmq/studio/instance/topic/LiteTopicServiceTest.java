@@ -186,6 +186,34 @@ class LiteTopicServiceTest {
     }
 
     @Test
+    void getSessionShouldCarryPopProgressWhenCountersAreKnown() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        LiteTopicSession session = new LiteTopicSession();
+        session.setSessionId("chat~g~c1");
+        session.setTotalMessages(5_000L);
+        session.setConsumedMessages(4_800L);
+        session.setPendingMessages(200L);
+        when(provider.getSession("chat~g~c1")).thenReturn(session);
+
+        LiteTopicSessionVO vo = new LiteTopicService(provider, guard).getSession("chat~g~c1");
+
+        assertThat(vo.getPopProgress()).isEqualTo(96);
+    }
+
+    @Test
+    void getSessionShouldLeavePopProgressAbsentWhenCountersAreUnknown() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        LiteTopicSession session = new LiteTopicSession();
+        session.setSessionId("chat~g~c1");
+        session.setConsumedMessages(100L);
+        when(provider.getSession("chat~g~c1")).thenReturn(session);
+
+        LiteTopicSessionVO vo = new LiteTopicService(provider, guard).getSession("chat~g~c1");
+
+        assertThat(vo.getPopProgress()).isNull();
+    }
+
+    @Test
     void getQuotaShouldMapProviderModelOntoViewObject() {
         LiteTopicProvider provider = mock(LiteTopicProvider.class);
         LiteTopicQuota quota = new LiteTopicQuota();
