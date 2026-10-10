@@ -30,24 +30,24 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
 
   if (!data.length) {
     return (
-      <span
-        role="img"
-        aria-label={label || t('charts.noTrendData')}
-        style={{ color: '#8c8c8c' }}
-      >
+      <span role="img" aria-label={label || t('charts.noTrendData')} style={{ color: '#8c8c8c' }}>
         —
       </span>
     );
   }
 
-  const max = Math.max(...data, 1);
+  // A monotonic broker counter reset between collection windows yields negative deltas, and a
+  // failed window can yield null/NaN/Infinity; all of those must read as "no traffic" instead of
+  // poisoning the maximum or rendering invalid `NaNpx` heights.
+  const normalizedData = data.map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0));
+  const max = Math.max(...normalizedData, 1);
   const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
 
   return (
     <div
       role="img"
       aria-label={
-        label || t('charts.trendData', { values: data.join(lang === 'zh' ? '、' : ', ') })
+        label || t('charts.trendData', { values: normalizedData.join(lang === 'zh' ? '、' : ', ') })
       }
       style={{
         display: 'inline-flex',
@@ -57,7 +57,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
         width,
       }}
     >
-      {data.map((value, i) => (
+      {normalizedData.map((value, i) => (
         <div
           key={i}
           style={{
