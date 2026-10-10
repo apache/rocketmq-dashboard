@@ -375,6 +375,12 @@ const ProducerPage = () => {
               onSearch={(value) => {
                 void loadProducerGroups(value);
               }}
+              onChange={() => {
+                // Editing the optional group filter is a criteria change like a topic edit:
+                // an in-flight query belongs to the group it was started with, and its rows
+                // must not survive the edit or land underneath the new criteria.
+                resetConnectionQuery();
+              }}
               filterOption={(inputValue, option) =>
                 option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
               }
