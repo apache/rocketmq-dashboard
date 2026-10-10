@@ -198,8 +198,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const getStorage = (): PromptTemplateStorage | undefined => {
-  if (typeof localStorage === 'undefined') return undefined;
-  return localStorage;
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    // Access to the Storage property itself can be denied before getItem is called.
+    return undefined;
+  }
 };
 
 const nowMs = () => Date.now();
