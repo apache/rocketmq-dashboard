@@ -16,10 +16,16 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import type { AlertRule, NativeAlertMetricInfo, PageResult } from '../../../api/ops';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import type {
+  AlertRule,
+  AlertRuleTestResult,
+  NativeAlertMetricInfo,
+  PageResult,
+} from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
@@ -34,6 +40,8 @@ import {
   listNativeAlertMetrics,
   importAlertRulesTransfer,
   toggleAlertRule,
+  updateAlertRule,
+  testAlertRule,
 } from '../../../services/opsService';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -52,6 +60,7 @@ vi.mock('../../../services/opsService', () => ({
   exportAlertRulesTransfer: vi.fn(),
   importAlertRulesTransfer: vi.fn(),
   updateAlertRule: vi.fn(),
+  testAlertRule: vi.fn(),
 }));
 
 const alertRules: AlertRule[] = [
@@ -130,6 +139,46 @@ function renderPage(domain?: 'BUSINESS' | 'CLUSTER') {
         <AlertsPage domain={domain} />
       </LangProvider>
     </App>,
+  );
+}
+
+function renderAlertHistory() {
+  const HistoryControls = () => {
+    const navigate = useNavigate();
+    return (
+      <>
+        <button onClick={() => navigate(-1)}>Browser back</button>
+        <button onClick={() => navigate(1)}>Browser forward</button>
+        <button onClick={() => navigate('/ops/alerts?view=details')}>Same domain query</button>
+      </>
+    );
+  };
+  return render(
+    <App>
+      <LangProvider>
+        <MemoryRouter initialEntries={['/ops/business-alerts', '/ops/alerts']} initialIndex={1}>
+          <HistoryControls />
+          <Routes>
+            <Route path="/ops/alerts" element={<AlertsPage />} />
+            <Route path="/ops/business-alerts" element={<AlertsPage domain="BUSINESS" />} />
+          </Routes>
+        </MemoryRouter>
+      </LangProvider>
+    </App>,
+  );
+}
+
+function mockDomainRules() {
+  vi.mocked(listAlertRulesPage).mockImplementation(async (domain) =>
+    pageResult([
+      {
+        ...cloneRule(alertRules[0]),
+        id: domain === 'BUSINESS' ? 10 : 1,
+        name: domain === 'BUSINESS' ? 'Business rule' : 'Cluster rule',
+        instanceId: 'local',
+        metric: 'broker.disk.usage_ratio',
+      },
+    ]),
   );
 }
 
@@ -370,6 +419,91 @@ describe('AlertsPage', () => {
 
     await screen.findByText('Broker disk usage');
     expect(await screen.findByText('共 21 条规则')).toBeInTheDocument();
+  });
+
+  it('closes the previous domain editor when browser history switches alert routes', async () => {
+    mockDomainRules();
+    vi.mocked(updateAlertRule).mockImplementation(async (data) => ({
+      ...cloneRule(alertRules[0]),
+      ...data,
+    }));
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    expect(await screen.findByRole('dialog', { name: '编辑' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    await screen.findByText('Business rule');
+    expect(screen.queryByRole('dialog', { name: '编辑' })).not.toBeInTheDocument();
+    expect(updateAlertRule).not.toHaveBeenCalled();
+    fireEvent.click(within(getRuleRow('Business rule')).getByRole('button', { name: '编辑' }));
+    const businessEditor = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.click(within(businessEditor).getByRole('button', { name: /编\s*辑/ }));
+    await waitFor(() =>
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 10, name: 'Business rule' }),
+        'BUSINESS',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
+    await screen.findByText('Cluster rule');
+    expect(screen.queryByRole('dialog', { name: '编辑' })).not.toBeInTheDocument();
+  });
+
+  it('keeps unsaved editor inputs across navigation within the same alert domain', async () => {
+    mockDomainRules();
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.change(within(dialog).getByDisplayValue('Cluster rule'), {
+      target: { value: 'Unsaved rule name' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Same domain query' }));
+    expect(within(dialog).getByDisplayValue('Unsaved rule name')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    expect(within(dialog).getByDisplayValue('Unsaved rule name')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const reopened = await screen.findByRole('dialog', { name: '编辑' });
+    expect(within(reopened).getByDisplayValue('Cluster rule')).toBeInTheDocument();
+  });
+
+  it('ignores a previous domain test result after a new editor has opened', async () => {
+    mockDomainRules();
+    let completeTest!: (result: AlertRuleTestResult) => void;
+    vi.mocked(testAlertRule).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeTest = resolve;
+        }),
+    );
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    fireEvent.click(within(getRuleRow('Cluster rule')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '试运行' }));
+    await waitFor(() => expect(testAlertRule).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    await screen.findByText('Business rule');
+    fireEvent.click(within(getRuleRow('Business rule')).getByRole('button', { name: '编辑' }));
+    const nextDialog = await screen.findByRole('dialog', { name: '编辑' });
+    await act(async () =>
+      completeTest({
+        samples: [
+          {
+            labels: { broker: 'previous-cluster' },
+            availability: 'AVAILABLE',
+            currentValue: 90,
+            conditionMet: true,
+          },
+        ],
+      }),
+    );
+    expect(within(nextDialog).queryByText('broker=previous-cluster')).not.toBeInTheDocument();
+    expect(within(nextDialog).getByDisplayValue('Business rule')).toBeInTheDocument();
   });
 
   it('resets page, search and status filters when the domain switches', async () => {
