@@ -142,6 +142,7 @@ const LiteTopicPage: React.FC = () => {
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionLoadFailed, setSessionLoadFailed] = useState(false);
   const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>();
 
@@ -293,14 +294,17 @@ const LiteTopicPage: React.FC = () => {
     setSessionDrawerOpen(true);
     setSessionLoading(true);
     setSessionData(null);
+    setSessionLoadFailed(false);
     try {
       const data = await queryLiteTopicSession(sessionId);
       if (requestId !== sessionRequestId.current) return;
       setSessionData(data);
     } catch {
       if (requestId !== sessionRequestId.current) return;
+      // The drawer renders a missing detail as "no data", which a failed read cannot claim.
       message.error(t('liteTopic.fetchSessionFailed'));
       setSessionData(null);
+      setSessionLoadFailed(true);
     } finally {
       if (requestId === sessionRequestId.current) {
         setSessionLoading(false);
@@ -619,6 +623,25 @@ const LiteTopicPage: React.FC = () => {
   const renderSessionContent = () => {
     if (sessionLoading) {
       return <div style={{ textAlign: 'center', padding: 40 }}>{t('common.loading')}...</div>;
+    }
+    if (sessionLoadFailed) {
+      return (
+        <Alert
+          type="error"
+          showIcon
+          message={t('liteTopic.fetchSessionFailed')}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                if (selectedSessionId) void handleViewSessions(selectedSessionId);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      );
     }
     if (!sessionData) {
       return <div style={{ textAlign: 'center', padding: 40 }}>{t('common.noData')}</div>;

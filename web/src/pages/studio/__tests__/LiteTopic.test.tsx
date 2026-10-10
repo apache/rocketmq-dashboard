@@ -187,6 +187,26 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
+  it('reports a failed session read instead of presenting the session as empty', async () => {
+    apiMocks.queryLiteTopicSession.mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('查看会话'));
+    const drawer = await screen.findByRole('dialog');
+
+    // The detail never arrived, so the drawer body must not fall back to "no data" for a session
+    // that is listed.
+    await waitFor(() => expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledTimes(1));
+    expect(within(drawer).queryByText('暂无数据')).not.toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledTimes(2));
+    expect(await within(drawer).findByText('Pop 进度')).toBeInTheDocument();
+  });
+
   it('displays the session POP progress returned by the API as a percentage', async () => {
     const user = userEvent.setup();
     renderPage();
