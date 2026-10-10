@@ -16,10 +16,10 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
-import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
+import { App, Form } from 'antd';
+import { getGeneralSettings, saveGeneralSettings, testNotification } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
@@ -47,6 +47,7 @@ vi.mock('../../../api/settings', () => ({
   getGeneralSettings: vi.fn(),
   listDataSources: vi.fn(),
   saveGeneralSettings: vi.fn(),
+  testNotification: vi.fn(),
   testDataSource: vi.fn(),
   updateDataSource: vi.fn(),
 }));
@@ -239,5 +240,143 @@ describe('GeneralSettingsTab', () => {
         expect.objectContaining({ clearDingtalkSigningSecret: true }),
       ),
     );
+  });
+
+  it('serializesAppearanceAndSecurityWithTheEntireNotificationTestTest', async () => {
+    let finish!: () => void;
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    vi.mocked(testNotification).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: '测试钉钉' }));
+    await waitFor(() => expect(testNotification).toHaveBeenCalledTimes(1));
+    const saves = screen.getAllByRole('button', { name: '保存设置' });
+    fireEvent.submit(saves[0].closest('form')!);
+    fireEvent.click(screen.getByText('深色'));
+    fireEvent.click(screen.getByRole('switch'));
+    await act(async () => undefined);
+    expect(saveGeneralSettings).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('rocketmq-studio-theme')).not.toBe('dark');
+    expect(screen.getByText('深色').closest('.ant-segmented-item')).toHaveClass(
+      'ant-segmented-item-disabled',
+    );
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(saves[0]).toBeEnabled());
+    fireEvent.submit(saves[0].closest('form')!);
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('switch')).toBeEnabled());
+    fireEvent.click(screen.getByRole('switch'));
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(3));
+    expect(saveGeneralSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ compact: true }),
+    );
+  });
+
+  it('blocksNotificationWritersDuringPreferenceSavingTest', async () => {
+    let finish!: () => void;
+    vi.mocked(saveGeneralSettings).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderTab();
+    fireEvent.click(await screen.findByText('深色'));
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+    const saves = screen.getAllByRole('button', { name: '保存设置' });
+    fireEvent.submit(saves[0].closest('form')!);
+    fireEvent.submit(saves[1].closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: '测试邮件' }));
+    await act(async () => undefined);
+    expect(saveGeneralSettings).toHaveBeenCalledTimes(1);
+    expect(testNotification).not.toHaveBeenCalled();
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(saves[1]).toBeEnabled());
+    vi.mocked(testNotification).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole('button', { name: '测试邮件' }));
+    await waitFor(() => expect(testNotification).toHaveBeenCalledWith('email'));
+  });
+
+  it('releasesTheSharedLockAfterNotificationValidationFailureTest', async () => {
+    const useOriginalForm = Form.useForm;
+    const forms: ReturnType<typeof Form.useForm>[0][] = [];
+    const formSpy = vi.spyOn(Form, 'useForm').mockImplementation((...args) => {
+      const result = useOriginalForm(...args);
+      if (!args[0] && !forms.includes(result[0])) forms.push(result[0]);
+      return result;
+    });
+    try {
+      renderTab();
+      const testButton = await screen.findByRole('button', { name: '测试邮件' });
+      const validateSpy = vi.spyOn(forms[1], 'validateFields').mockRejectedValueOnce({
+        errorFields: [{ name: ['emailRecipients'], errors: ['invalid'] }],
+      });
+      try {
+        fireEvent.click(testButton);
+        await waitFor(() => expect(validateSpy).toHaveBeenCalled());
+        await waitFor(() => expect(testButton).toBeEnabled());
+        expect(saveGeneralSettings).not.toHaveBeenCalled();
+        expect(testNotification).not.toHaveBeenCalled();
+        expect(document.querySelector('.ant-message-error')).toBeNull();
+        vi.mocked(saveGeneralSettings).mockResolvedValue();
+        fireEvent.submit(screen.getAllByRole('button', { name: '保存设置' })[0].closest('form')!);
+        await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+      } finally {
+        validateSpy.mockRestore();
+      }
+    } finally {
+      formSpy.mockRestore();
+    }
+  });
+
+  it('serializes notification tests, saves, and secret clearing', async () => {
+    let resolveSave!: () => void;
+    vi.mocked(getGeneralSettings).mockResolvedValue({
+      theme: 'system',
+      compact: false,
+      desktopNotify: false,
+      notifySound: false,
+      sessionTimeout: 30,
+      requireLogin: true,
+      llmProvider: 'openai',
+      apiKeyConfigured: false,
+      model: 'test-model',
+      baseUrl: 'https://example.test/v1',
+      dingtalkSigningSecretConfigured: true,
+    });
+    vi.mocked(saveGeneralSettings).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveSave = resolve)),
+    );
+    vi.mocked(testNotification).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderTab();
+
+    await screen.findByRole('button', { name: '清除钉钉签名密钥' });
+    await user.click(screen.getByRole('button', { name: '测试钉钉' }));
+    await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
+
+    const emailTest = screen.getByRole('button', { name: '测试邮件' });
+    const clearSecret = screen.getByRole('button', { name: '清除钉钉签名密钥' });
+    const notificationForm = emailTest.closest('form')!;
+    expect(emailTest).toBeDisabled();
+    expect(clearSecret).toBeDisabled();
+    expect(within(notificationForm).getByRole('button', { name: '保存设置' })).toBeDisabled();
+    fireEvent.click(emailTest);
+    fireEvent.click(clearSecret);
+    fireEvent.submit(notificationForm);
+
+    await act(async () => undefined);
+    expect(saveGeneralSettings).toHaveBeenCalledTimes(1);
+    await act(async () => resolveSave());
+    await waitFor(() => expect(testNotification).toHaveBeenCalledTimes(1));
+    expect(testNotification).toHaveBeenCalledWith('dingtalk');
   });
 });

@@ -68,8 +68,10 @@ export const GeneralSettingsTab = () => {
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [savingNotification, setSavingNotification] = useState(false);
   const [testingChannel, setTestingChannel] = useState<string>();
-  const securityInFlightRef = useRef(false);
-  const notifyInFlightRef = useRef(false);
+  // Every action writes the same complete settings record.
+  const settingsInFlightRef = useRef(false);
+  const savingSettings =
+    savingPreference || savingSecurity || savingNotification || testingChannel !== undefined;
   const translationRef = useRef(t);
   const [securityForm] = Form.useForm();
   const [notifyForm] = Form.useForm();
@@ -118,7 +120,10 @@ export const GeneralSettingsTab = () => {
   };
 
   const persistPreference = async (patch: Partial<GeneralSettings>) => {
-    if (!settings) return;
+    if (!settings || settingsInFlightRef.current) return;
+    settingsInFlightRef.current = true;
+    if (patch.theme !== undefined) setThemeMode(toThemeMode(patch.theme));
+    if (patch.compact !== undefined) setCompact(patch.compact);
     const next = { ...settings, ...patch };
     setSettings(next);
     setSavingPreference(true);
@@ -130,6 +135,7 @@ export const GeneralSettingsTab = () => {
     } catch {
       message.error(t('settings.saveFailed'));
     } finally {
+      settingsInFlightRef.current = false;
       setSavingPreference(false);
     }
   };
@@ -151,6 +157,8 @@ export const GeneralSettingsTab = () => {
 
   const clearDingtalkSigningSecret = async () => {
     if (!settings) return;
+    if (settingsInFlightRef.current) return;
+    settingsInFlightRef.current = true;
     setSavingNotification(true);
     try {
       if (
@@ -164,20 +172,21 @@ export const GeneralSettingsTab = () => {
         message.success(t('settings.dingtalkSecretCleared'));
       }
     } finally {
+      settingsInFlightRef.current = false;
       setSavingNotification(false);
     }
   };
 
   const handleSecurityFinish = async (values: { sessionTimeout: number }) => {
-    if (securityInFlightRef.current) return;
-    securityInFlightRef.current = true;
+    if (settingsInFlightRef.current) return;
+    settingsInFlightRef.current = true;
     setSavingSecurity(true);
     try {
       if (await mergeAndSave({ sessionTimeout: values.sessionTimeout })) {
         message.success(t('settings.saveSuccess'));
       }
     } finally {
-      securityInFlightRef.current = false;
+      settingsInFlightRef.current = false;
       setSavingSecurity(false);
     }
   };
@@ -188,20 +197,22 @@ export const GeneralSettingsTab = () => {
     emailRecipients?: string;
     smsWebhook?: string;
   }) => {
-    if (notifyInFlightRef.current) return;
-    notifyInFlightRef.current = true;
+    if (settingsInFlightRef.current) return;
+    settingsInFlightRef.current = true;
     setSavingNotification(true);
     try {
       if (await mergeAndSave(values)) {
         message.success(t('settings.saveSuccess'));
       }
     } finally {
-      notifyInFlightRef.current = false;
+      settingsInFlightRef.current = false;
       setSavingNotification(false);
     }
   };
 
   const sendTest = async (channel: 'dingtalk' | 'email' | 'sms') => {
+    if (settingsInFlightRef.current) return;
+    settingsInFlightRef.current = true;
     setTestingChannel(channel);
     try {
       const values = await notifyForm.validateFields();
@@ -209,10 +220,12 @@ export const GeneralSettingsTab = () => {
       await testNotification(channel);
       message.success(t('settings.testMessageSent'));
     } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       const apiMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
         ?.message;
       message.error(typeof apiMessage === 'string' ? apiMessage : t('settings.testMessageFailed'));
     } finally {
+      settingsInFlightRef.current = false;
       setTestingChannel(undefined);
     }
   };
@@ -243,10 +256,9 @@ export const GeneralSettingsTab = () => {
                 { value: 'dark', label: t('settings.darkTheme') },
                 { value: 'system', label: t('settings.systemTheme') },
               ]}
-              disabled={savingPreference}
+              disabled={loading || savingSettings}
               onChange={(value) => {
                 const mode = value as ThemeMode;
-                setThemeMode(mode);
                 void persistPreference({ theme: mode });
               }}
             />
@@ -260,9 +272,8 @@ export const GeneralSettingsTab = () => {
             </div>
             <Switch
               checked={Boolean(settings?.compact)}
-              disabled={savingPreference}
+              disabled={loading || savingSettings}
               onChange={(checked) => {
-                setCompact(checked);
                 void persistPreference({ compact: checked });
               }}
             />
@@ -303,7 +314,12 @@ export const GeneralSettingsTab = () => {
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>
-            <Button type="primary" htmlType="submit" loading={savingSecurity} disabled={loading}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={savingSecurity}
+              disabled={loading || savingSettings}
+            >
               {t('settings.saveSettings')}
             </Button>
           </Form.Item>
@@ -344,6 +360,7 @@ export const GeneralSettingsTab = () => {
                 danger
                 onClick={() => void clearDingtalkSigningSecret()}
                 loading={savingNotification}
+                disabled={savingSettings}
               >
                 {t('settings.clearDingtalkSigningSecret')}
               </Button>
@@ -372,13 +389,22 @@ export const GeneralSettingsTab = () => {
                 <Button
                   onClick={() => void sendTest('dingtalk')}
                   loading={testingChannel === 'dingtalk'}
+                  disabled={savingSettings}
                 >
                   {t('settings.testDingtalk')}
                 </Button>
-                <Button onClick={() => void sendTest('email')} loading={testingChannel === 'email'}>
+                <Button
+                  onClick={() => void sendTest('email')}
+                  loading={testingChannel === 'email'}
+                  disabled={savingSettings}
+                >
                   {t('settings.testEmail')}
                 </Button>
-                <Button onClick={() => void sendTest('sms')} loading={testingChannel === 'sms'}>
+                <Button
+                  onClick={() => void sendTest('sms')}
+                  loading={testingChannel === 'sms'}
+                  disabled={savingSettings}
+                >
                   {t('settings.testSmsWebhook')}
                 </Button>
               </Space>
@@ -386,7 +412,7 @@ export const GeneralSettingsTab = () => {
                 type="primary"
                 htmlType="submit"
                 loading={savingNotification}
-                disabled={loading}
+                disabled={loading || savingSettings}
               >
                 {t('settings.saveSettings')}
               </Button>
