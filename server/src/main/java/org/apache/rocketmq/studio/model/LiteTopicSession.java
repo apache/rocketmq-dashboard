@@ -55,6 +55,13 @@ public class LiteTopicSession {
 
     private Long consumedMessages;
 
+    /**
+     * True when the consumed-message count only covers the first
+     * {@code MAX_SESSION_LITE_TOPIC_SCAN} lite topics of the session, so the reported
+     * {@code consumedMessages} and {@code totalMessages} are lower bounds rather than totals.
+     */
+    private boolean consumedScanTruncated;
+
     private Long pendingMessages;
 
     private Double consumptionRate;

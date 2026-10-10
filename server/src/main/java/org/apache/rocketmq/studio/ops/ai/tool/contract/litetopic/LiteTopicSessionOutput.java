@@ -39,6 +39,7 @@ public record LiteTopicSessionOutput(
         String status,
         Long totalMessages,
         Long consumedMessages,
+        Boolean consumedScanTruncated,
         Long pendingMessages,
         Integer liteTopicCreationCount,
         List<Entry> liteTopics) {
@@ -61,6 +62,7 @@ public record LiteTopicSessionOutput(
                 vo.getStatus(),
                 vo.getTotalMessages(),
                 vo.getConsumedMessages(),
+                vo.isConsumedScanTruncated(),
                 vo.getPendingMessages(),
                 vo.getLiteTopicCreationCount(),
                 vo.getLiteTopics() == null

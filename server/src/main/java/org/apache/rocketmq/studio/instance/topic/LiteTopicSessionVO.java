@@ -39,6 +39,7 @@ public class LiteTopicSessionVO {
     private String status;
     private Long totalMessages;
     private Long consumedMessages;
+    private boolean consumedScanTruncated;
     private Long pendingMessages;
     private Integer liteTopicCreationCount;
     private List<SessionLiteTopic> liteTopics;
