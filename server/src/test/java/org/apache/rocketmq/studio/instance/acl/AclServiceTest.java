@@ -906,6 +906,64 @@ class AclServiceTest {
                 eq("SUCCESS"), eq(null));
     }
 
+    @Test
+    void createRuleShouldAuditTencentRoleMutationsWithTheRoleName() {
+        when(instanceResolver.findByIdentifier("tencent-1")).thenReturn(Optional.of(tencentInstance("tencent-1")));
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("role-a")
+                .resource("topic-1")
+                .decision("ALLOW")
+                .build();
+        when(tencentAclService.createRule("tencent-1", input)).thenReturn(input);
+
+        AclRuleVO result = aclService.createRule(input, "tencent-1");
+
+        assertThat(result).isSameAs(input);
+        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"), eq("tencent-1"),
+                eq("principal=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createUserShouldAuditTheTencentRoleNameAndTheInstanceState() {
+        when(instanceResolver.findByIdentifier("tencent-1")).thenReturn(Optional.of(tencentInstance("tencent-1")));
+        AclUserVO input = AclUserVO.builder().username("role-b").build();
+        AclUserVO created = AclUserVO.builder().username("role-b").admin(false).build();
+        when(tencentAclService.createUser("tencent-1", input)).thenReturn(created);
+
+        aclService.createUser(input, "tencent-1");
+
+        verify(operationAuditService).record(eq("CREATE_ACL_USER"), eq("ACL_USER"), eq("role-b"), eq("tencent-1"),
+                eq("username=role-b, admin=false"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteUserShouldAuditTencentRoleDeletionWithTheInstanceState() {
+        when(instanceResolver.findByIdentifier("tencent-1")).thenReturn(Optional.of(tencentInstance("tencent-1")));
+
+        aclService.deleteUser("role-a", "tencent-1");
+
+        verify(tencentAclService).deleteUser("tencent-1", "role-a");
+        verify(operationAuditService).record(eq("DELETE_ACL_USER"), eq("ACL_USER"), eq("role-a"), eq("tencent-1"),
+                eq(null), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateRuleShouldAuditTheInstanceContextForApacheInstances() {
+        when(instanceResolver.findByIdentifier("apache-1")).thenReturn(Optional.of(apacheInstance("apache-1")));
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal("user1")
+                .resource("topic-1")
+                .decision("DENY")
+                .build();
+        when(aclRepository.replaceRule(input)).thenReturn(Optional.of(input));
+
+        aclService.updateRule(input, "apache-1");
+
+        verify(operationAuditService).record(eq("UPDATE_ACL_RULE"), eq("ACL_RULE"), eq("1"), eq("apache-1"),
+                eq("principal=user1"), eq("SUCCESS"), eq(null));
+    }
+
     private String mask(String credential) {
         return credential.substring(0, 4) + "****" + credential.substring(credential.length() - 4);
     }
@@ -1013,6 +1071,16 @@ class AclServiceTest {
     }
 
     // ── ACL 2.0 broker version guard (§15) ─────────────────────────────
+
+    private InstanceVO tencentInstance(String identifier) {
+        InstanceVO instance = InstanceVO.builder()
+                .name(identifier)
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId(2L);
+        return instance;
+    }
 
     private InstanceVO apacheInstance(String identifier) {
         InstanceVO instance = InstanceVO.builder()
