@@ -1595,7 +1595,7 @@ GET /api/messages/:msgId/trace
 |------|------|------|
 | `title` | `string` | 节点类型，取值随厂商而异。Apache：`produce` / `consume` / `endTransaction` / `recall`；腾讯云：`produce` / `persist` / `consume`；阿里云：展示文案而非枚举，形如 `Producer` / `Broker <operateType>` / `Consumer <group>` |
 | `timestamp` | `number` | 事件时间（Unix 毫秒时间戳）。字段为原始 `long`，厂商未赋值时为 `0`（如阿里云 Consumer 节点在无消费记录的分支只返回 `title` 与 `status`） |
-| `status` | `string` | 状态。生产节点为 `finish` / `failed`；消费节点另含 `process` / `error`（腾讯云按 `toConsumeTraceStatus` 映射为 `finish` / `process` / `error`）；阿里云 Consumer 节点原样透传云侧 `consumeStatus`，Broker 节点不返回状态故为 `null` |
+| `status` | `string` | 状态采用 `finish` / `process` / `error` / `wait`。Apache 的生产、消费和召回节点成功为 `finish`、失败为 `error`；云厂商状态由各 Provider 归一化。阿里云状态缺失或未知时（包括 Broker 节点）返回 `wait`；为兼容旧版后端，前端仍将旧值 `failed` 映射为 `error`，并将缺失或未知值映射为 `wait` |
 | `costTime` | `number` | 耗时（毫秒） |
 | `description` | `string` | 详细描述 |
 
