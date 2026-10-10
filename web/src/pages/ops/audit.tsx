@@ -163,6 +163,8 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
+          setRecords([]);
+          setTotal(0);
           message.error('审计日志加载失败，请稍后重试');
         }
       })
@@ -222,7 +224,10 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error('审计概览加载失败，请稍后重试');
+        if (!cancelled) {
+          setSummary(null);
+          message.error('审计概览加载失败，请稍后重试');
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);

@@ -338,6 +338,26 @@ describe('Audit page', () => {
     expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
   });
 
+  it('drops records and summary from a previous filter when both refreshed reads fail', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByRole('button', { name: '查看 topic-a 操作时间线' })).toBeInTheDocument();
+    expect(await screen.findByText('80')).toBeInTheDocument();
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('records offline'));
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('summary offline'));
+
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'unavailable');
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(opsService.getAuditSummary).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '查看 topic-a 操作时间线' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('80')).not.toBeInTheDocument();
+    expect(screen.getByText('获取数据失败')).toBeInTheDocument();
+  });
+
   it('ignores stale filter-option responses after cleanup refreshes', async () => {
     const user = userEvent.setup();
     const staleOptions = deferred<Awaited<ReturnType<typeof opsService.getAuditFilterOptions>>>();
