@@ -919,8 +919,8 @@ GET /api/topics?clusterId={clusterId}&type={type}&search={keyword}
 | `tps` | `number` | 当前 TPS |
 | `consumerGroupCount` | `number` | 订阅消费组数 |
 | `remark` | `string` | 备注 |
-| `createdAt` | `string` | 创建时间 (ISO 8601) |
-| `updatedAt` | `string` | 更新时间 (ISO 8601) |
+| `gmtCreate` | `string` | 创建时间 (ISO 8601) |
+| `gmtModified` | `string` | 更新时间 (ISO 8601) |
 
 ### 5.2 分页获取 Topic 列表
 
@@ -1053,8 +1053,10 @@ POST /api/topics/send
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
-| `body` | `string` | 是 | 消息体内容 |
+| `body` | `string` | 否 | 消息体内容 |
 | `properties` | `Record<string, string>` | 否 | 消息自定义属性键值对 |
+| `messageGroup` | `string` | 否 | 分片键（FIFO Topic 必填） |
+| `deliveryTimestamp` | `number` | 否 | 延迟投递时间（Unix 毫秒时间戳，延迟 Topic 使用） |
 
 **Response `data`:**
 
@@ -1069,6 +1071,7 @@ POST /api/topics/send
 ```json
 // Request
 {
+  "instanceId": "open-source-local",
   "topic": "order-create",
   "tag": "order",
   "key": "ORDER-20260708-001",
@@ -1120,8 +1123,8 @@ GET /api/groups?clusterId={clusterId}&search={keyword}
 | `deliveryOrderType` | `string?` | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
 | `retryMaxTimes` | `number` | 最大重试次数 |
 | `delaySeconds` | `number` | 延迟秒数 |
-| `createdAt` | `string` | 创建时间 |
-| `updatedAt` | `string` | 更新时间 |
+| `gmtCreate` | `string` | 创建时间 |
+| `gmtModified` | `string` | 更新时间 |
 
 ### 6.2 获取消费组详情
 
@@ -1191,9 +1194,9 @@ POST /api/groups/create
 | `instanceId` | `string` | 是 | 所属实例 ID，缺失返回 `400 instanceId is required` |
 | `name` | `string` | 是 | 消费组名称 |
 | `namespace` | `string` | 否 | 命名空间 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `subscriptionMode` | `string` | 是 | `Push` / `Pop` |
-| `consumeType` | `string` | 是 | `CLUSTERING` / `BROADCASTING` |
+| `clusterId` | `string` | 否 | 所属集群 |
+| `subscriptionMode` | `string` | 否 | `Push` / `Pop` |
+| `consumeType` | `string` | 否 | `CLUSTERING` / `BROADCASTING` |
 | `subscriptionDataType` | `string` | 否 | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
 | `deliveryOrderType` | `string` | 否 | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
 | `retryMaxTimes` | `number` | 否 | 最大重试次数，须 ≥ 0 |
@@ -1518,6 +1521,7 @@ GET /api/messages
 | `storeTime` | `number` | Broker 存储时间（Unix 毫秒时间戳） |
 | `bornHost` | `string` | 发送方地址 |
 | `storeHost` | `string` | 存储 Broker 地址 |
+| `reconsumeTimes` | `number` | 重试次数 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
 | `propertiesTruncated` | `boolean` | 消息属性是否被截断 |
 | `size` | `number` | 消息大小（字节） |
