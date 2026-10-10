@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Flex, message, theme } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import type { McpTool } from '../../api/ai';
@@ -61,6 +61,14 @@ const AiPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const navigate = useNavigate();
+  const location = useLocation();
+  const sendContextRef = useRef(0);
+  useEffect(
+    () => () => {
+      sendContextRef.current += 1;
+    },
+    [location.key],
+  );
   const conversationId = parseConversationId(useParams().conversationId);
   const useMock = useDataModeStore((state) => state.useMock);
   const userId = useAuthStore((state) => state.userId);
@@ -116,11 +124,12 @@ const AiPage = () => {
         message.warning(t('ai.providerRequired'));
         return;
       }
+      const context = sendContextRef.current;
       void startRun({
         createBody: { mode: selectedMode },
         request: buildMessageRequest(text, llm.selectedModel, engine, selectedMode, enhance),
       }).then((target) => {
-        if (target === null) setInputValue(text);
+        if (target === null && context === sendContextRef.current) setInputValue(text);
       });
     },
     [engine, enhance, llm.llmReady, llm.selectedModel, selectedMode, setInputValue, startRun, t],
