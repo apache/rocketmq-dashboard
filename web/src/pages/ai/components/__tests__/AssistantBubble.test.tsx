@@ -273,6 +273,38 @@ describe('AssistantBubble', () => {
     expect(screen.getByText('mqadmin topicList').closest('pre')).toBeInTheDocument();
   });
 
+  it.each(['COMPLETED', 'STOPPED', 'FAILED'] as const)(
+    'collapsesManuallyExpandedEarlierReasoningOnCompletionTest (%s)',
+    (runStatus) => {
+      const blocks: RenderBlock[] = [
+        { kind: 'thinking', source: 'enhance', text: 'earlier rewrite' },
+        { kind: 'thinking', source: 'model', text: 'latest reasoning' },
+        { kind: 'text', text: 'final answer' },
+      ];
+      const view = renderBubble({ blocks, streaming: true });
+      const earlier = screen.getAllByTestId('ai-thinking-block')[0];
+      fireEvent.click(within(earlier).getByTestId('ai-thinking-summary'));
+      expect(earlier).toHaveAttribute('open');
+      view.rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble(blocks, { runStatus })} streaming={false} />
+        </LangProvider>,
+      );
+      for (const details of screen.getAllByTestId('ai-thinking-block')) {
+        expect(details).not.toHaveAttribute('open');
+      }
+      // A reader can still expand a completed answer's reasoning.
+      fireEvent.click(within(earlier).getByTestId('ai-thinking-summary'));
+      expect(earlier).toHaveAttribute('open');
+      view.rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([...blocks], { runStatus })} streaming={false} />
+        </LangProvider>,
+      );
+      expect(earlier).toHaveAttribute('open');
+    },
+  );
+
   it('collapsesThinkingByDefaultAndCountsItsCharactersTest', () => {
     const text = '先确认实例能力。';
     renderBubble({ blocks: appendThinking([], text, 'model') });
