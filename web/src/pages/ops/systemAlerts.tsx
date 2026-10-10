@@ -702,7 +702,9 @@ const SystemAlertsPage = () => {
                   )}
                   {alert.acknowledgedAt && (
                     <Text type="secondary" style={{ display: 'block' }}>
-                      {t('sysAlerts.acknowledgedBy', { user: alert.acknowledgedBy ?? 'system' })} ·{' '}
+                      {alert.acknowledgedBy != null
+                        ? `${t('sysAlerts.acknowledgedBy', { user: alert.acknowledgedBy })} · `
+                        : `${t('sysAlerts.acknowledgedAt')} · `}
                       {formatUtcDateTime(alert.acknowledgedAt)}
                     </Text>
                   )}

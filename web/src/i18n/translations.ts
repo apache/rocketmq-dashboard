@@ -1430,6 +1430,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.domainCluster': { zh: '集群', en: 'Cluster' },
   'sysAlerts.domainBusiness': { zh: '业务', en: 'Business' },
   'sysAlerts.acknowledgedBy': { zh: '确认：{user}', en: 'Acknowledged by: {user}' },
+  'sysAlerts.acknowledgedAt': { zh: '确认时间', en: 'Acknowledged at' },
   'sysAlerts.suppressedByUpstream': {
     zh: '通知已由上游集群故障抑制',
     en: 'Notifications suppressed by an upstream cluster failure',
