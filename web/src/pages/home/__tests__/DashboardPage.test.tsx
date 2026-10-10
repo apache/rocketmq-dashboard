@@ -280,6 +280,25 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
   });
 
+  it('says the instance filter failed to load instead of showing it as empty', async () => {
+    vi.mocked(instanceService.listInstances).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('all-clusters'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findAllByText('all-clusters');
+    // An empty option list is not the same claim as "this deployment has no instances".
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    await user.click(screen.getByRole('combobox', { name: '实例筛选' }));
+
+    expect(
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('实例列表加载失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
   it('does not offer cloud instances for MQAdmin runtime diagnostics', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {

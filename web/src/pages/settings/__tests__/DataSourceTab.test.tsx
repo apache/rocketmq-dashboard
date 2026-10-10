@@ -29,8 +29,11 @@ import {
 } from '../../../api/settings';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
+import { listInstances } from '../../../services/instanceService';
 import { downloadCsv } from '../../../utils/download';
 import { DataSourceTab } from '../DataSourceTab';
+
+vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }));
 
 vi.mock('../../../api/settings', () => ({
   createDataSource: vi.fn(),
@@ -109,6 +112,7 @@ describe('DataSourceTab', () => {
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
     vi.mocked(listAllDataSources).mockResolvedValue(sources);
+    vi.mocked(listInstances).mockResolvedValue([]);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {
@@ -149,6 +153,48 @@ describe('DataSourceTab', () => {
 
     await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
+  });
+
+  it('tells the data source form that the instance list could not be loaded', async () => {
+    vi.mocked(listInstances)
+      .mockRejectedValueOnce(new Error('request failed'))
+      .mockResolvedValueOnce([
+        {
+          id: 1,
+          name: 'apache-instance',
+          type: 'DIRECT',
+          endpoint: 'apache:9876',
+          remark: '',
+          topicCount: 0,
+          consumerGroupCount: 0,
+          gmtCreate: '',
+          gmtModified: '',
+        },
+      ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    // The instance picker cannot do its job, so an empty option list must not pass
+    // for "this deployment has no instances".
+    expect(await within(dialog).findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: '重试' }));
+
+    await waitFor(() => {
+      expect(within(dialog).queryByText('实例列表加载失败，请稍后重试')).not.toBeInTheDocument();
+    });
+    await user.click(within(dialog).getByLabelText('适用实例'));
+    expect(
+      await screen.findByText('apache-instance', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
   });
 
   it('does not report a data source as offline when the backend has not tested it', async () => {

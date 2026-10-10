@@ -330,7 +330,10 @@ const LiteTopicPage: React.FC = () => {
         );
       })
       .catch(() => {
+        // An empty picker cannot say whether the deployment has no instances or the
+        // request failed; without this the dialog also silently refuses to submit.
         setTtlInstanceOptions([]);
+        message.error(t('instance.listLoadFailed'));
       })
       .finally(() => {
         setTtlInstancesLoading(false);

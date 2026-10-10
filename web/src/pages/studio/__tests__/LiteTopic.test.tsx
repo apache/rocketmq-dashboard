@@ -163,6 +163,18 @@ describe('LiteTopic Page', () => {
     });
   });
 
+  it('says the extend-TTL instance picker could not load instead of leaving it empty', async () => {
+    instanceApiMocks.listInstances.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('延长 TTL'));
+
+    // Otherwise the dialog just opens with an empty picker, and confirming it does nothing.
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+  });
+
   it('returns to the first page when the local TTL filter changes', async () => {
     apiMocks.queryLiteTopicList.mockResolvedValue([
       ...Array.from({ length: 11 }, (_, index) => ({
