@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -65,6 +66,7 @@ const NotificationDeliveriesPage = () => {
   const retryingIdsInFlight = useRef(new Set<number>());
   const retryingVisibleInFlight = useRef(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -146,9 +148,17 @@ const NotificationDeliveriesPage = () => {
         if (cancelled) return;
         setItems(result.items);
         setTotal(result.total);
+        setLoadFailed(false);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('deliveries.loadFailed'));
+        if (cancelled) return;
+        // A failed replacement request cannot claim the new filters match the previous result set:
+        // those rows belong to the query the operator just left, and retrying them from this view
+        // would target that older result set. Drop them and keep the failure actionable instead.
+        setItems([]);
+        setTotal(0);
+        setLoadFailed(true);
+        message.error(t('deliveries.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -339,6 +349,19 @@ const NotificationDeliveriesPage = () => {
               </Tooltip>
             )}
           </Flex>
+          {loadFailed && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t('deliveries.loadFailed')}
+              action={
+                <Button size="small" icon={<ArrowClockwise size={16} />} onClick={refresh}>
+                  {t('common.retry')}
+                </Button>
+              }
+            />
+          )}
           <Table
             rowKey="id"
             columns={columns}
