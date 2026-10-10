@@ -439,6 +439,58 @@ describe('Clients page', () => {
     expect(csv).not.toContain('payment-svc-0@10.0.1.13:49153');
   });
 
+  it('filters rows with an unconfirmed language through the language filter', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:unknown-language-connections';
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      { ...connection, language: null },
+      connections[1],
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findAllByText('payment-svc-0@10.0.1.13:49153');
+    // The distribution names the rows the broker reported no language for, so the table has to be
+    // able to filter down to them.
+    expect(
+      within(screen.getByTestId('language-version-distribution')).getByText(/未知 5\.0\.7: 1/),
+    ).toBeInTheDocument();
+    const filterTriggers = document.querySelectorAll<HTMLElement>('.ant-table-filter-trigger');
+    await user.click(filterTriggers[3]);
+    const filterDropdown = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+    expect(filterDropdown).not.toBeNull();
+    await user.click(within(filterDropdown!).getByText('未知'));
+    await user.click(within(filterDropdown!).getByRole('button', { name: 'OK' }));
+
+    const hasDetailButton = (candidate: HTMLElement) =>
+      within(candidate).queryByRole('button', { name: /详情/ }) !== null;
+    const orderRows = await screen.findAllByRole('row', {
+      name: /order-svc-0@10\.0\.1\.12:49152/,
+    });
+    expect(orderRows.some(hasDetailButton)).toBe(true);
+    const paymentRows = screen.queryAllByRole('row', {
+      name: /payment-svc-0@10\.0\.1\.13:49153/,
+    });
+    expect(paymentRows.some(hasDetailButton)).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).toContain('order-svc-0@10.0.1.12:49152');
+    expect(csv).not.toContain('payment-svc-0@10.0.1.13:49153');
+  });
+
   it('keeps incomplete client metadata searchable by address', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockResolvedValue([

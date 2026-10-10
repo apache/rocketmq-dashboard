@@ -371,7 +371,7 @@ const ClientsPage = () => {
         matches('clusterName', connection.clusterName) &&
         matches('type', connection.type) &&
         matches('protocol', connection.protocol ?? UNKNOWN_PROTOCOL) &&
-        matches('language', connection.language ?? ''),
+        matches('language', connection.language ?? UNKNOWN_LANGUAGE),
     );
   }, [columnFilters, filtered]);
 
@@ -492,12 +492,19 @@ const ClientsPage = () => {
       dataIndex: 'language',
       key: 'language',
       width: 100,
-      filters: Object.entries(languageConfig).map(([value, config]) => ({
-        text: config.label,
-        value,
-      })),
+      filters: [
+        ...Object.entries(languageConfig).map(([value, config]) => ({
+          text: config.label,
+          value,
+        })),
+        // Rows whose broker-reported language has no known counterpart are tagged "unknown" and
+        // grouped into the distribution's unknown bucket; without this option the table cannot be
+        // filtered down to them, the way the protocol column can.
+        { text: t('common.unknown'), value: UNKNOWN_LANGUAGE },
+      ],
       filteredValue: columnFilters.language ?? null,
-      onFilter: (value, record) => record.language === value,
+      onFilter: (value, record) =>
+        value === UNKNOWN_LANGUAGE ? !record.language : record.language === value,
       render: (lang?: string | null) => renderLanguageTag(lang),
     },
     {
