@@ -127,6 +127,23 @@ class MultiBackendMetricsSourceTest {
     }
 
     @Test
+    void storedBasicAuthModeShouldSendTheCredentialsTest() {
+        // SettingsService stores the console's "Basic Auth" as "basic auth" (AUTH_BASIC) and the
+        // connection test accepts it; the query path has to accept the same vocabulary.
+        assertAuthorization("basic auth", "user", "password", "token", "Basic dXNlcjpwYXNzd29yZA==");
+    }
+
+    @Test
+    void storedBearerAuthModeShouldSendTheTokenTest() {
+        assertAuthorization("bearer token", "user", "password", "token", "Bearer token");
+    }
+
+    @Test
+    void consoleAuthModeShouldBeAcceptedBeforeCanonicalizationTest() {
+        assertAuthorization("Basic Auth", "user", "password", "token", "Basic dXNlcjpwYXNzd29yZA==");
+    }
+
+    @Test
     void unsupportedAuthenticationModeShouldBeRejected() {
         assertAuthenticationFailure("digest", "user", "password", "token",
                 "Unsupported Prometheus authentication mode: digest");

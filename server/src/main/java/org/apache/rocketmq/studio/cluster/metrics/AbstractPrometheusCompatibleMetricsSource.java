@@ -199,10 +199,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     }
 
     private void applyAuthentication(HttpHeaders headers) {
-        String authType = StringUtils.hasText(settings.getAuthType())
-                ? settings.getAuthType().strip().toLowerCase(Locale.ROOT)
-                : "none";
-        switch (authType) {
+        switch (normalizedAuthType()) {
             case "none" -> {
                 // Credentials may remain after changing modes; none must never send them.
             }
@@ -223,6 +220,31 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             default -> throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
                     "Unsupported " + backendLabel() + " authentication mode: " + settings.getAuthType());
         }
+    }
+
+    /**
+     * Resolves the configured authentication mode to the switch's canonical token.
+     *
+     * <p>The console stores the mode as {@code Basic Auth} / {@code Bearer Token} and
+     * {@code SettingsService} canonicalizes it to {@code basic auth} / {@code bearer token}
+     * ({@code AUTH_BASIC} / {@code AUTH_BEARER}), while the legacy {@code studio.prometheus}
+     * properties carry {@code basic} / {@code bearer}. Both vocabularies name the same modes; a data
+     * source saved from the console used to answer 503 "Unsupported ... authentication mode: basic
+     * auth" for every query even though its connection test passed. An unrecognized mode is returned
+     * unchanged so the error names what was configured.
+     */
+    private String normalizedAuthType() {
+        String configured = settings.getAuthType();
+        if (!StringUtils.hasText(configured)) {
+            return "none";
+        }
+        String normalized = configured.strip().toLowerCase(Locale.ROOT).replaceAll("[\\s_-]+", "");
+        return switch (normalized) {
+            case "", "none" -> "none";
+            case "basic", "basicauth" -> "basic";
+            case "bearer", "bearertoken" -> "bearer";
+            default -> configured;
+        };
     }
 
     private MetricDataVO parseResponse(JsonNode response) {
