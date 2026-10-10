@@ -15,17 +15,28 @@
  * limitations under the License.
  */
 
-import { App as AntdApp, ConfigProvider, theme } from 'antd';
+import { useEffect } from 'react';
+import { App as AntdApp, ConfigProvider, message, notification, theme } from 'antd';
 import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { useLang } from './i18n/LangContext';
 import { useTheme } from './theme/useTheme';
+import { getMessageLiveRegion, getNotificationLiveRegion } from './utils/toastLiveRegions';
 
 const StudioApp = () => {
   const { lang } = useLang();
   const { darkMode, compact } = useTheme();
+
+  // The static toast singletons default to mounting into document.body without any ARIA
+  // semantics, which leaves every async outcome silent for screen-reader users. Both the
+  // singletons (here) and the App.useApp() instances (below) mount into live-region
+  // containers instead, so each notice is announced as it appears.
+  useEffect(() => {
+    message.config({ getContainer: getMessageLiveRegion });
+    notification.config({ getContainer: getNotificationLiveRegion });
+  }, []);
 
   const algorithms = [darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm];
   if (compact) {
@@ -60,7 +71,10 @@ const StudioApp = () => {
         },
       }}
     >
-      <AntdApp>
+      <AntdApp
+        message={{ getContainer: getMessageLiveRegion }}
+        notification={{ getContainer: getNotificationLiveRegion }}
+      >
         <BrowserRouter>
           <App />
         </BrowserRouter>
