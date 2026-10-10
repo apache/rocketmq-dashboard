@@ -24,9 +24,12 @@ import org.apache.rocketmq.studio.cluster.metrics.collectors.ApacheRocketMqBusin
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -981,6 +984,60 @@ class NativeAlertProcessorTest {
         verify(states).save(eq(oldKey), any(AlertRuleState.class));
         verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
         verify(outbox, never()).enqueue(any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AlertStateStatus.class, names = {"FIRING", "ACKED"})
+    void preservesDelayIncidentUntilARealTimestampConfirmsRecoveryTest(AlertStateStatus status) {
+        AlertRuleVO rule = rule("local", "orders", 1);
+        rule.setMetric("consumer.delay.seconds");
+        AlertService service = mock(AlertService.class);
+        when(service.listRules(AlertDomain.BUSINESS)).thenReturn(List.of(rule));
+        Map<String, String> labels = Map.of("consumerGroup", "orders");
+        AlertStateKey key = new AlertStateKey(rule.getId(), AlertFingerprint.of(rule.getId(), "local", labels));
+        Instant firedAt = Instant.now().minusSeconds(60);
+        AtomicReference<AlertRuleState> saved = new AtomicReference<>(new AlertRuleState(status, 1, 120D,
+                firedAt, firedAt, firedAt, null));
+        AlertStateRepository states = mock(AlertStateRepository.class);
+        when(states.find(eq(key))).thenAnswer(invocation -> Optional.of(saved.get()));
+        when(states.save(eq(key), any(AlertRuleState.class))).thenAnswer(invocation -> {
+            saved.set(invocation.getArgument(1));
+            return true;
+        });
+        when(states.findActive(any(MetricCollectionScope.class), any())).thenAnswer(invocation ->
+                saved.get().status() == AlertStateStatus.RESOLVED ? List.of()
+                        : List.of(new ActiveAlertState(key, saved.get(), "local", labels)));
+        AlertRepository alerts = mock(AlertRepository.class);
+        NativeAlertProcessor processor = processor(service, states, alerts);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("orders");
+        group.setConsumeStatsAvailable(true);
+        group.setTotalLag(100);
+        // A known backlog does not imply that the broker supplied a consumption timestamp.
+        group.setConsumptionTimestampAvailable(false);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(group));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(QueueProgressVO.builder()
+                .topic("orders-topic").diffTotal(100).build()));
+        ApacheRocketMqBusinessMetricsCollector collector = new ApacheRocketMqBusinessMetricsCollector(registry);
+        InstanceVO instance = InstanceVO.builder().name("local").vendor(InstanceVendor.APACHE).build();
+        MetricCollectionScope scope = new MetricCollectionScope(AlertDomain.BUSINESS, "local", collector.metricKeys());
+
+        processor.processSuccessfulCollection(scope, collector.collect(instance));
+
+        assertThat(saved.get().status()).isEqualTo(status);
+        assertThat(saved.get().currentValue()).isEqualTo(120D);
+        verify(alerts, never()).saveAlert(any(SystemAlertVO.class));
+
+        group.setConsumptionTimestampAvailable(true);
+        group.setDelaySeconds(0);
+        processor.processSuccessfulCollection(scope, collector.collect(instance));
+
+        assertThat(saved.get().status()).isEqualTo(AlertStateStatus.RESOLVED);
+        verify(alerts).saveAlert(org.mockito.ArgumentMatchers.argThat(event ->
+                "RESOLVED".equals(event.getTransition())));
     }
 
     private static PlatformTransactionManager mockTxManager() {
