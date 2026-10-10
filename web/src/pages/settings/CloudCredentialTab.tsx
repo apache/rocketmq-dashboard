@@ -46,6 +46,7 @@ import {
 import type { CloudCredential } from '../../api/cloudCredential';
 import type { InstanceVendor } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
+import { formatDateTime } from '../../utils/format';
 
 const vendorTagColor: Record<string, string> = {
   ALIYUN: 'orange',
@@ -266,7 +267,14 @@ export const CloudCredentialTab = () => {
     },
     { title: 'AccessKey', dataIndex: 'accessKey', key: 'accessKey' },
     { title: t('settings.remark'), dataIndex: 'remark', key: 'remark' },
-    { title: t('settings.createdAt'), dataIndex: 'gmtCreate', key: 'gmtCreate' },
+    {
+      title: t('settings.createdAt'),
+      dataIndex: 'gmtCreate',
+      key: 'gmtCreate',
+      // Every other inventory table formats this field; raw it reads "2026-08-18T10:00:00", and
+      // CloudCredentialService stamps it with the server clock like the rest of the metadata rows.
+      render: (value: string) => (value ? formatDateTime(value) : '-'),
+    },
     {
       title: t('common.actions'),
       key: 'action',
