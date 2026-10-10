@@ -5,12 +5,16 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listInstances } from '../../../services/instanceService';
-import { listAlertDeliveriesPage, retryAlertDelivery } from '../../../services/opsService';
+import {
+  listAlertDeliveriesPage,
+  retryAlertDeliveries,
+  retryAlertDelivery,
+} from '../../../services/opsService';
 import NotificationDeliveriesPage from '../notificationDeliveries';
 
 vi.mock('../../../services/instanceService', () => ({
@@ -170,6 +174,49 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('keeps an open detail drawer in step with a bulk retry that queued its delivery', async () => {
+    const failed = {
+      id: 7,
+      alertId: 3,
+      alertTitle: 'Broker disk usage',
+      channel: 'dingtalk',
+      status: 'FAILED' as const,
+      attemptCount: 5,
+      createdAt: '2026-08-23T10:00:00',
+      lastError: 'Webhook rejected the request',
+    };
+    vi.mocked(listAlertDeliveriesPage)
+      .mockResolvedValueOnce({ items: [failed], total: 1, page: 1, size: 20 })
+      .mockResolvedValue({
+        items: [{ ...failed, status: 'PENDING', attemptCount: 0, lastError: undefined }],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+    vi.mocked(retryAlertDeliveries).mockResolvedValue({ succeededIds: [7], failures: {} });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '查看投递详情' }));
+    const drawer = await screen.findByRole('dialog', { name: '投递详情' });
+    expect(within(drawer).getByText('FAILED')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重试当前页失败记录/ }));
+
+    // The queued retry is the page's new truth; the drawer must not keep offering a retry the
+    // backend would reject as "not failed any more".
+    await waitFor(() => expect(within(drawer).getByText('PENDING')).toBeInTheDocument());
+    expect(within(drawer).queryByText('FAILED')).not.toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
   });
 
   it('surfaces a failed instance-list load with a retry instead of an empty filter', async () => {

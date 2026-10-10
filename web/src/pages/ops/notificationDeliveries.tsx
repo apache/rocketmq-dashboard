@@ -176,6 +176,14 @@ const NotificationDeliveriesPage = () => {
     };
   }, [channel, status, instanceId, search, timeRange, page, pageSize, refreshNonce, t]);
 
+  // The drawer shows the freshest row it can see. A bulk retry — or another operator — reloads the
+  // page, and a snapshot taken when the drawer opened would keep rendering FAILED and offer a retry
+  // the backend refuses ("Only failed notification deliveries can be retried"). The snapshot stays
+  // as the fallback for a row the current page no longer carries.
+  const currentDelivery = selectedDelivery
+    ? (items.find((item) => item.id === selectedDelivery.id) ?? selectedDelivery)
+    : undefined;
+
   const resetPage = (change: () => void) => {
     setLoading(true);
     setLoadFailed(false);
@@ -396,53 +404,53 @@ const NotificationDeliveriesPage = () => {
       <Drawer
         title={t('deliveries.details')}
         width={640}
-        open={selectedDelivery !== undefined}
+        open={currentDelivery !== undefined}
         onClose={() => setSelectedDelivery(undefined)}
       >
-        {selectedDelivery && (
+        {currentDelivery && (
           <Flex vertical gap={20}>
             <Descriptions size="small" column={1} bordered>
               <Descriptions.Item label={t('deliveries.event')}>
-                {selectedDelivery.alertTitle} · #{selectedDelivery.alertId} ·{' '}
-                {selectedDelivery.transition ?? '-'}
+                {currentDelivery.alertTitle} · #{currentDelivery.alertId} ·{' '}
+                {currentDelivery.transition ?? '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.instance')}>
-                {selectedDelivery.instanceId ?? '-'}
+                {currentDelivery.instanceId ?? '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.channel')}>
-                {selectedDelivery.channel}
+                {currentDelivery.channel}
               </Descriptions.Item>
               <Descriptions.Item label={t('common.status')}>
-                <Tag color={statusColors[selectedDelivery.status]}>{selectedDelivery.status}</Tag>
+                <Tag color={statusColors[currentDelivery.status]}>{currentDelivery.status}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.attempts')}>
-                {selectedDelivery.attemptCount}
+                {currentDelivery.attemptCount}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.createdAt')}>
-                {formatUtcDateTime(selectedDelivery.createdAt)}
+                {formatUtcDateTime(currentDelivery.createdAt)}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.deliveredAt')}>
-                {formatUtcDateTime(selectedDelivery.deliveredAt)}
+                {formatUtcDateTime(currentDelivery.deliveredAt)}
               </Descriptions.Item>
-              {selectedDelivery.nextAttemptAt && (
+              {currentDelivery.nextAttemptAt && (
                 <Descriptions.Item label={t('deliveries.retryAt')}>
-                  {formatUtcDateTime(selectedDelivery.nextAttemptAt)}
+                  {formatUtcDateTime(currentDelivery.nextAttemptAt)}
                 </Descriptions.Item>
               )}
-              {selectedDelivery.lastError && (
+              {currentDelivery.lastError && (
                 <Descriptions.Item label={t('deliveries.result')}>
                   <Typography.Text type="danger" style={{ overflowWrap: 'anywhere' }}>
-                    {selectedDelivery.lastError}
+                    {currentDelivery.lastError}
                   </Typography.Text>
                 </Descriptions.Item>
               )}
             </Descriptions>
-            {selectedDelivery.status === 'FAILED' && (
+            {currentDelivery.status === 'FAILED' && (
               <Button
                 icon={<ArrowClockwise size={18} />}
-                loading={retryingIds.has(selectedDelivery.id)}
+                loading={retryingIds.has(currentDelivery.id)}
                 disabled={loading || loadFailed}
-                onClick={() => void retryDelivery(selectedDelivery)}
+                onClick={() => void retryDelivery(currentDelivery)}
               >
                 {t('deliveries.retry')}
               </Button>
@@ -450,7 +458,7 @@ const NotificationDeliveriesPage = () => {
             <div>
               <Typography.Text strong>{t('deliveries.messageContent')}</Typography.Text>
               <Typography.Paragraph
-                copyable={{ text: selectedDelivery.messageContent ?? '' }}
+                copyable={{ text: currentDelivery.messageContent ?? '' }}
                 style={{
                   marginTop: 8,
                   marginBottom: 0,
@@ -458,7 +466,7 @@ const NotificationDeliveriesPage = () => {
                   overflowWrap: 'anywhere',
                 }}
               >
-                {selectedDelivery.messageContent || '-'}
+                {currentDelivery.messageContent || '-'}
               </Typography.Paragraph>
             </div>
           </Flex>
