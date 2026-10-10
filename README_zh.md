@@ -120,8 +120,8 @@ Studio 只负责**托管**一个通用 Agent CLI（Claude Code 或 Qoder，另�
 - **`rmqctl` 缺失或 `STUDIO_AI_RMQCTL_ENABLED=false` 时降级为纯聊天**，并在时间线里明确告知，
   不会静默失败。
 
-Claude 流式标准输出每次运行最多 **5 MiB**，在 UTF-8 解码与 JSON 解析之前计数，也限制跨帧累积的
-工具参数。超限会终止 CLI 运行，并返回 `llm.provider.output_too_large`；请缩小查询或响应内容。
+Claude 流式标准输出每次运行最多 **5 MiB**，在 UTF-8 解码与 JSON 解析之前计数，工具参数帧也计入
+该累计预算。超限会终止 CLI 运行，并返回 `llm.provider.output_too_large`；请缩小查询或响应内容。
 标准错误输出仍保留独立的 64 KiB 诊断上限。
 
 生成过程与 HTTP 连接解耦：关掉标签页不会终止正在跑的 run，重新打开会话会自动接回。AI 相关的环境

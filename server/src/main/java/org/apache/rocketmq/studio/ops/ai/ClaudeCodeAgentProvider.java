@@ -26,7 +26,6 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -433,13 +432,16 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
 
     /**
      * Apply the same aggregate byte budget as buffered CLI completion before decoding or readLine.
-     * This bounds individual JSON frames and the parser state assembled across many small frames.
+     * Bulk reads and skip inherit InputStream implementations that call the budgeted read methods.
      */
-    private static final class BoundedStdout extends FilterInputStream {
+    static final class BoundedStdout extends InputStream {
+        private final InputStream in;
+        private final int limit;
         private int remaining;
 
-        private BoundedStdout(InputStream input, int limit) {
-            super(input);
+        BoundedStdout(InputStream input, int limit) {
+            this.in = input;
+            this.limit = limit;
             remaining = limit;
         }
 
@@ -463,13 +465,15 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
 
         private void consume(int count) throws IOException {
             if (count > remaining) {
-                throw new StdoutLimitException();
+                throw new OutputLimitException(limit);
             }
             remaining -= count;
         }
-    }
 
-    private static final class StdoutLimitException extends IOException {
+        @Override
+        public void close() throws IOException {
+            in.close();
+        }
     }
 
     private CompletableFuture<String> readAsync(InputStream stream) {
@@ -492,10 +496,8 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         try {
             return future.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (ExecutionException exception) {
-            if (exception.getCause() instanceof StdoutLimitException) {
-                throw new LlmGatewayException(502, "llm.provider.output_too_large",
-                        binaryName() + " CLI output exceeded the maximum of " + outputLimitBytes() + " bytes",
-                        "Retry with a shorter prompt or reduce the provider response size.", exception);
+            if (exception.getCause() instanceof OutputLimitException outputLimitException) {
+                throw outputLimitExceeded(outputLimitException, exception);
             }
             throw new IOException("Failed to drain Claude CLI output", exception.getCause());
         } catch (TimeoutException exception) {

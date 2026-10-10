@@ -137,7 +137,7 @@ pointed at the output of `rmqctl mcp config`. See
   in the transcript instead of failing silently.
 
 Claude streaming stdout is capped at **5 MiB per run**, measured before UTF-8 decoding and JSON
-parsing. This also bounds tool arguments accumulated across frames. Exceeding the budget terminates
+parsing. The aggregate budget includes tool-argument frames. Exceeding the budget terminates
 the CLI run with `llm.provider.output_too_large`; use a smaller query or response. Stderr retains
 its separate 64 KiB diagnostic limit.
 

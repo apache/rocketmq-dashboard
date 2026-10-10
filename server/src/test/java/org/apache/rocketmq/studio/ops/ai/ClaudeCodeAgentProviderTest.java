@@ -47,6 +47,43 @@ import static org.mockito.Mockito.when;
 class ClaudeCodeAgentProviderTest {
 
     @Test
+    void boundedStdoutShouldChargeSkipAndBulkReadEntryPointsTest() throws Exception {
+        for (String operation : List.of("skip", "readAllBytes", "readNBytes", "readNBytesBuffer", "transferTo")) {
+            try (java.io.InputStream stream = boundedStdout(new byte[9], 8)) {
+                assertThatThrownBy(() -> {
+                    switch (operation) {
+                        case "skip" -> stream.skip(9);
+                        case "readAllBytes" -> stream.readAllBytes();
+                        case "readNBytes" -> stream.readNBytes(9);
+                        case "readNBytesBuffer" -> stream.readNBytes(new byte[9], 0, 9);
+                        case "transferTo" -> stream.transferTo(new java.io.ByteArrayOutputStream());
+                        default -> throw new AssertionError(operation);
+                    }
+                }).as(operation).isInstanceOf(CliAgentProvider.OutputLimitException.class);
+            }
+        }
+    }
+
+    @Test
+    void boundedStdoutShouldSupportExactBudgetAndMixedReadsTest() throws Exception {
+        try (java.io.InputStream stream = boundedStdout(new byte[8], 8)) {
+            assertThat(stream.skip(2)).isEqualTo(2);
+            assertThat(stream.read()).isZero();
+            assertThat(stream.readNBytes(2)).hasSize(2);
+            assertThat(stream.readAllBytes()).hasSize(3);
+            assertThat(stream.read()).isEqualTo(-1);
+        }
+        try (java.io.InputStream stream = boundedStdout(new byte[9], 8)) {
+            assertThat(stream.skip(8)).isEqualTo(8);
+            assertThatThrownBy(stream::read).isInstanceOf(CliAgentProvider.OutputLimitException.class);
+        }
+    }
+
+    private static java.io.InputStream boundedStdout(byte[] bytes, int limit) throws Exception {
+        return new ClaudeCodeAgentProvider.BoundedStdout(new ByteArrayInputStream(bytes), limit);
+    }
+
+    @Test
     void streamShouldDrainLargeStderrOutputTest() {
         TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
                 "sh", "-c", "yes error | head -c 131072 >&2; "
@@ -143,7 +180,7 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
-    void hostedStreamShouldBoundToolArgumentsAccumulatedAcrossFramesTest() throws Exception {
+    void hostedStreamShouldRejectAggregateStdoutAcrossToolArgumentFramesTest() throws Exception {
         String start = "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\","
                 + "\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-1\",\"name\":\"tool\"}}}\n";
         String delta = "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\","
