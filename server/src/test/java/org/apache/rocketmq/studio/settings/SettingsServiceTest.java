@@ -408,6 +408,21 @@ class SettingsServiceTest {
     }
 
     @Test
+    void createDataSourceShouldRejectUrlWithEmbeddedCredentialsTest() {
+        // Credentials in the URL would be persisted and returned by the reader-visible
+        // data source list; the dedicated auth field is where they belong.
+        DataSourceVO input = DataSourceVO.builder().name("Basic-auth DS").type("prometheus")
+                .url("http://prometheus:secret@10.1.2.3:9090/metrics").build();
+
+        assertThatThrownBy(() -> settingsService.createDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must not embed credentials")
+                .extracting("code")
+                .isEqualTo(400);
+        verify(settingsRepository, never()).saveDataSource(any());
+    }
+
+    @Test
     void updateDataSourceShouldRejectMetadataUrlTest() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Metadata DS").type("rocketmq")
                 .url("http://169.254.169.254/latest/meta-data/").build();
