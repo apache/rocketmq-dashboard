@@ -3600,6 +3600,15 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
+  // ─── Time zone conversion errors (thrown as TimeFormatError; the page translates) ───
+  'timeZone.invalidLocalDateTime': {
+    zh: '本地时间格式无效：{value}',
+    en: 'Invalid local date time: {value}',
+  },
+  'timeZone.nonexistentLocalDateTime': {
+    zh: '本地时间 {value} 在时区 {timeZone} 不存在',
+    en: 'Local date time does not exist in {timeZone}: {value}',
+  },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
   'common.logout': { zh: '退出', en: 'Logout' },
   'common.submit': { zh: '提交', en: 'Submit' },

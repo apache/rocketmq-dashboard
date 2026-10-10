@@ -26,9 +26,26 @@ interface LocalDateTimeParts {
 
 const LOCAL_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
 
+/**
+ * Thrown when a local date time cannot be parsed or does not exist in the target zone.
+ * Carries a translation key plus params so the catching page can resolve it through
+ * t(key, params) — the same key-returning contract as the other analysis utils.
+ */
+export class TimeFormatError extends Error {
+  readonly key: string;
+  readonly params: Record<string, string>;
+
+  constructor(key: string, params: Record<string, string>) {
+    super(key);
+    this.name = 'TimeFormatError';
+    this.key = key;
+    this.params = params;
+  }
+}
+
 const parseLocalDateTime = (value: string): LocalDateTimeParts => {
   const match = LOCAL_DATE_TIME.exec(value);
-  if (!match) throw new Error(`Invalid local date time: ${value}`);
+  if (!match) throw new TimeFormatError('timeZone.invalidLocalDateTime', { value });
   const [, year, month, day, hour, minute, second = '0'] = match;
   const parts = {
     year: Number(year),
@@ -49,7 +66,7 @@ const parseLocalDateTime = (value: string): LocalDateTimeParts => {
     normalized.getUTCMinutes() !== parts.minute ||
     normalized.getUTCSeconds() !== parts.second
   ) {
-    throw new Error(`Invalid local date time: ${value}`);
+    throw new TimeFormatError('timeZone.invalidLocalDateTime', { value });
   }
   return parts;
 };
@@ -110,7 +127,7 @@ export const zonedLocalDateTimeToUtc = (value: string, timeZone: string): string
   }
 
   if (!sameParts(formatParts(formatter, candidate), desired)) {
-    throw new Error(`Local date time does not exist in ${timeZone}: ${value}`);
+    throw new TimeFormatError('timeZone.nonexistentLocalDateTime', { timeZone, value });
   }
   return new Date(candidate).toISOString();
 };

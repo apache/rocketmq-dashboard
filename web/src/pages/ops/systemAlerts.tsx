@@ -58,7 +58,7 @@ import type {
 } from '../../api/ops';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
-import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
+import { zonedLocalDateTimeToUtc, TimeFormatError } from '../../utils/timeZone';
 
 const { Text } = Typography;
 
@@ -439,9 +439,11 @@ const SystemAlertsPage = () => {
       // client-side validation throws carry field-specific messages; no request was
       // made, so the axios interceptor never surfaces them
       message.error(
-        error instanceof Error && error.message
-          ? error.message
-          : t('sysAlerts.silenceCreateFailed'),
+        error instanceof TimeFormatError
+          ? t(error.key, error.params)
+          : error instanceof Error && error.message
+            ? error.message
+            : t('sysAlerts.silenceCreateFailed'),
       );
       setSavingSilence(false);
       return;
