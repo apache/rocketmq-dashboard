@@ -1339,7 +1339,8 @@ POST /api/acl/rules/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 规则 ID |
+| `id` | `string` | 是 | 规则 ID；Apache 实例下为数字字符串，腾讯云实例下为规则主体（principal）名称 |
+| `instanceId` | `string` | 否 | 实例 ID（全局唯一字符串）；腾讯云实例下用于路由到对应的 ACL 后端 |
 
 **Response `data`:** `null`
 
@@ -1887,9 +1888,10 @@ GET /api/clients?namesrvAddr={namesrvAddr}&clusterId={clusterId}&type={type}
 | `clientId` | `string` | 客户端 ID |
 | `type` | `string` | 类型: `Producer` / `Consumer` |
 | `groupOrTopic` | `string` | 消费组名或 Topic 名 |
+| `producerGroup` | `string` | Producer Group |
 | `protocol` | `string / null` | 可确认的协议: `gRPC` / `Remoting`；未知为 `null` |
 | `address` | `string` | 客户端地址 |
-| `language` | `string / null` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `C++` / `C#` / `Node.js` / `PHP` |
+| `language` | `string / null` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `Cpp` / `CSharp` / `NodeJS` / `PHP` |
 | `version` | `string / null` | 可确认的 SDK 版本号；未知为 `null` |
 | `connectedAt` | `string` | 连接时间 |
 | `partial` | `boolean` | 连接扫描不完整（部分查询失败） |
@@ -1986,15 +1988,27 @@ GET /api/alert-rules
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 规则 ID |
+| `id` | `number` | 规则 ID |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
 | `name` | `string` | 规则名称 |
-| `metric` | `string` | 监控指标: `磁盘使用率` / `消费堆积量` / `TPS 异常` / `Broker 离线` / `Proxy 连接数` |
-| `operator` | `string` | 比较运算符: `>` / `<` / `>=` / `<=` |
+| `metric` | `string` | 监控指标，Prometheus 指标名或语义键（如 `rocketmq_consumer_lag_messages`），可用指标见 native alert metrics 目录 |
+| `operator` | `string` | 比较运算符: `>` / `>=` / `<` / `<=` / `==` / `!=` / `UNAVAILABLE` |
 | `threshold` | `number` | 阈值 |
-| `thresholdUnit` | `string` | 单位: `%` / `条` / `TPS` / `个` |
-| `duration` | `string` | 持续时间: `1分钟` / `5分钟` / `15分钟` / `30分钟` |
-| `channels` | `string[]` | 通知渠道: `dingtalk` / `email` / `sms` |
+| `thresholdUnit` | `string` | 单位文本 |
+| `duration` | `string` | 持续时间，Prometheus 时长格式（如 `30s` / `5m` / `1h`） |
+| `aggregation` | `string` | 聚合方式: `LAST` / `MAX` / `MIN` / `AVG` / `SUM` |
+| `windowSeconds` | `number` | 聚合窗口（秒） |
+| `channels` | `string[]` | 通知渠道: `dingtalk` / `sms` / `email` |
 | `enabled` | `boolean` | 是否启用 |
+| `severity` | `string` | 严重级别: `critical` / `warning` / `info` |
+| `brokerName` | `string` | 限定 Broker 名称 |
+| `clusterName` | `string` | 限定集群名称 |
+| `instanceId` | `string` | 限定实例 ID |
+| `consumerGroup` | `string` | 限定消费组 |
+| `topic` | `string` | 限定 Topic |
+| `consecutiveSamples` | `number` | 触发所需的连续命中样本数 |
+| `reminderInterval` | `string` | 提醒间隔，Prometheus 时长格式，默认 `30m` |
+| `notificationTemplate` | `string` | 自定义通知模板（≤4000 字符） |
 | `lastTriggered` | `string \| null` | 最后触发时间，null 表示未触发 |
 | `description` | `string` | 规则描述 |
 
@@ -2006,14 +2020,17 @@ POST /api/alert-rules/create
 
 **Request Body:**
 
+除 `name` 外的字段均可选；`operator` / `duration` / `aggregation` / `severity` / `channels` 等取值
+范围与 11.1 的 `AlertRule` 一致，非法值返回 400。
+
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 规则名称 |
-| `metric` | `string` | 是 | 监控指标 |
-| `operator` | `string` | 是 | 运算符 |
-| `threshold` | `number` | 是 | 阈值 |
-| `duration` | `string` | 是 | 持续时间 |
-| `channels` | `string[]` | 是 | 通知渠道 |
+| `metric` | `string` | 否 | 监控指标（服务端按指标目录校验） |
+| `operator` | `string` | 否 | 比较运算符 |
+| `threshold` | `number` | 否 | 阈值 |
+| `duration` | `string` | 否 | 持续时间（Prometheus 时长格式） |
+| `channels` | `string[]` | 否 | 通知渠道 |
 | `description` | `string` | 否 | 描述 |
 
 **Response `data`:** `AlertRule`
@@ -2028,14 +2045,10 @@ POST /api/alert-rules/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 规则 ID |
+| `id` | `number` | 是 | 规则 ID |
 | `name` | `string` | 是 | 规则名称 |
-| `metric` | `string` | 是 | 监控指标 |
-| `operator` | `string` | 是 | 运算符 |
-| `threshold` | `number` | 是 | 阈值 |
-| `duration` | `string` | 是 | 持续时间 |
-| `channels` | `string[]` | 是 | 通知渠道 |
-| `description` | `string` | 否 | 描述 |
+
+其余字段同 11.2；`id` 缺失或 `name` 为空返回 400。
 
 **Response `data`:** `AlertRule`
 
@@ -2049,7 +2062,7 @@ POST /api/alert-rules/toggle
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 规则 ID |
+| `id` | `number` | 是 | 规则 ID |
 | `enabled` | `boolean` | 是 | 启用/禁用 |
 
 **Response `data`:** `AlertRule`
@@ -2064,7 +2077,7 @@ POST /api/alert-rules/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 规则 ID |
+| `id` | `number` | 是 | 规则 ID |
 
 **Response `data`:** `null`
 
@@ -2088,12 +2101,24 @@ GET /api/system-alerts?level={level}
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | `string` | 告警 ID |
+| `id` | `number` | 告警 ID |
 | `level` | `string` | 级别: `error`（严重） / `warning`（警告） / `info`（信息） |
 | `title` | `string` | 告警标题 |
 | `description` | `string` | 告警详情 |
-| `time` | `string` | 时间（短格式: `HH:mm`） |
+| `time` | `string` | 触发时间 (ISO 8601) |
 | `acknowledged` | `boolean` | 是否已确认 |
+| `acknowledgedBy` | `string` | 确认人 |
+| `acknowledgedAt` | `string` | 确认时间 (ISO 8601) |
+| `domain` | `string` | 告警域: `BUSINESS` / `CLUSTER` |
+| `ruleId` | `number` | 命中的规则 ID |
+| `fingerprint` | `string` | 告警指纹 |
+| `transition` | `string` | 状态迁移描述 |
+| `instanceId` | `string` | 关联实例 ID |
+| `currentValue` | `number` | 触发时的指标值 |
+| `notificationSuppressed` | `boolean` | 通知是否被抑制 |
+| `suppressionCauseAlertId` | `number` | 触发抑制的根因告警 ID |
+| `suppressionReason` | `string` | 抑制原因说明 |
+| `labels` | `Record<string, string>` | 附加标签 |
 
 ### 12.2 确认告警
 
@@ -2105,7 +2130,7 @@ POST /api/system-alerts/acknowledge
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `id` | `string` | 是 | 告警 ID |
+| `id` | `number` | 是 | 告警 ID |
 
 **Response `data`:** `SystemAlert`
 
@@ -2215,7 +2240,7 @@ POST /api/audit-logs/cleanup
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `beforeDays` | `number` | 是 | 清理多少天之前的日志（1-365） |
+| `beforeDays` | `number` | 否 | 清理多少天之前的日志，缺省 `30`，最大 `365` |
 
 **Response `data`:**
 
