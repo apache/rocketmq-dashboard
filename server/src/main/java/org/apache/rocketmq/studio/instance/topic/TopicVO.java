@@ -32,6 +32,12 @@ public class TopicVO extends BaseEntity {
     private TopicType type;
     private int writeQueues;
     private int readQueues;
+
+    /**
+     * False when the vendor API behind this topic carries no queue counts, so the two integers above
+     * are placeholders rather than measurements.
+     */
+    private boolean queueCountsAvailable = true;
     private TopicPerm perm;
     private long messageCount;
     private double tps;

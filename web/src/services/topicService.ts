@@ -17,13 +17,18 @@ import { buildCsv, type CsvColumn } from '../utils/download';
 
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
+// An empty cell reports "not measured"; a cloud vendor that carries no queue counts must not export
+// the placeholder zero as if it were the topic's queue count.
+const queueCountCsv = (topic: Topic, field: 'writeQueues' | 'readQueues') =>
+  topic.queueCountsAvailable === false ? '' : topic[field];
+
 const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
   { header: 'Name', value: (topic) => topic.name },
   { header: 'Namespace', value: (topic) => topic.namespace },
   { header: 'Type', value: (topic) => topic.type },
   { header: 'Cluster ID', value: (topic) => topic.clusterId },
-  { header: 'Write Queues', value: (topic) => topic.writeQueues },
-  { header: 'Read Queues', value: (topic) => topic.readQueues },
+  { header: 'Write Queues', value: (topic) => queueCountCsv(topic, 'writeQueues') },
+  { header: 'Read Queues', value: (topic) => queueCountCsv(topic, 'readQueues') },
   { header: 'Permission', value: (topic) => topic.perm },
   { header: 'Message Count', value: (topic) => topic.messageCount },
   { header: 'TPS', value: (topic) => topic.tps },

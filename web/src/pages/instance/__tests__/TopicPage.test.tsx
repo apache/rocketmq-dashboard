@@ -578,6 +578,25 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('renders the queue counts a vendor cannot measure as unknown', async () => {
+    // A vendor API without queue counts reports 0, so the drawer has to render the placeholder as
+    // unknown rather than as a topic that has no queues.
+    const user = userEvent.setup();
+    mockTopicsList([
+      { ...buildTopics(1)[0], queueCountsAvailable: false, writeQueues: 0, readQueues: 0 },
+    ]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() =>
+      expect(document.querySelector('.ant-modal .ant-descriptions')).not.toBeNull(),
+    );
+    const label = [...document.querySelectorAll('.ant-modal .ant-descriptions-item-label')].find(
+      (element) => element.textContent === '写队列数',
+    );
+    expect(label?.nextElementSibling?.textContent).toBe('-');
+  });
+
   it('still loads the routes when the consumer page fails, and does not claim the topic has no route', async () => {
     const user = userEvent.setup();
     renderWithProviders();

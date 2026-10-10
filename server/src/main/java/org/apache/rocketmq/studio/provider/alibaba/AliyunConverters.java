@@ -127,8 +127,11 @@ final class AliyunConverters {
         vo.setRemark(data.getRemark());
         vo.setGmtCreate(parseDateTime(data.getCreateTime()));
         vo.setGmtModified(parseDateTime(data.getUpdateTime()));
+        // AliyunListTopicsResponseBody.List and GetTopic carry no queue counts at all, so the two
+        // integers stay at zero and the flag keeps the console from reporting them as measurements.
         vo.setWriteQueues(0);
         vo.setReadQueues(0);
+        vo.setQueueCountsAvailable(false);
         return vo;
     }
 

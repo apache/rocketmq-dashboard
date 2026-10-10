@@ -34,6 +34,7 @@ import {
 import type { TableColumnsType } from 'antd';
 import { DownloadOutlined, SwapOutlined } from '@ant-design/icons';
 import type { Instance } from '../api/instance';
+import type { Topic } from '../api/metadata';
 import { listAllTopics } from '../services/topicService';
 import { useLang } from '../i18n/LangContext';
 import { buildCsv, downloadCsv, type CsvColumn } from '../utils/download';
@@ -76,16 +77,21 @@ const FIELD_LABELS: Record<TopicConfigField, string> = {
   perm: 'topicCompare.fieldPermission',
 };
 
+// An empty cell reports "not measured": a vendor API without queue counts must not export the
+// placeholder zero as a queue count.
+const queueCountCsv = (topic: Topic | undefined, field: 'writeQueues' | 'readQueues') =>
+  !topic || topic.queueCountsAvailable === false ? '' : topic[field];
+
 const CSV_COLUMNS: CsvColumn<TopicComparisonRow>[] = [
   { header: 'Topic', value: (row) => row.topicName },
   { header: 'Status', value: (row) => row.status },
   { header: 'Differences', value: (row) => formatTopicDifferences(row.differences) },
   { header: 'Source Type', value: (row) => row.source?.type },
   { header: 'Target Type', value: (row) => row.target?.type },
-  { header: 'Source Write Queues', value: (row) => row.source?.writeQueues },
-  { header: 'Target Write Queues', value: (row) => row.target?.writeQueues },
-  { header: 'Source Read Queues', value: (row) => row.source?.readQueues },
-  { header: 'Target Read Queues', value: (row) => row.target?.readQueues },
+  { header: 'Source Write Queues', value: (row) => queueCountCsv(row.source, 'writeQueues') },
+  { header: 'Target Write Queues', value: (row) => queueCountCsv(row.target, 'writeQueues') },
+  { header: 'Source Read Queues', value: (row) => queueCountCsv(row.source, 'readQueues') },
+  { header: 'Target Read Queues', value: (row) => queueCountCsv(row.target, 'readQueues') },
   { header: 'Source Permission', value: (row) => row.source?.perm },
   { header: 'Target Permission', value: (row) => row.target?.perm },
 ];
