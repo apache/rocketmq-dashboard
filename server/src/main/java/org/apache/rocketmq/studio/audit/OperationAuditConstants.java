@@ -34,6 +34,8 @@ public final class OperationAuditConstants {
         public static final String DELETE_GROUP = "DELETE_GROUP";
         public static final String RESET_OFFSET = "RESET_OFFSET";
 
+        public static final String SEND_MESSAGE = "SEND_MESSAGE";
+
         public static final String ADD_PROXY_ADDRESS = "ADD_PROXY_ADDRESS";
         public static final String REMOVE_PROXY_ADDRESS = "REMOVE_PROXY_ADDRESS";
         public static final String RELOAD_PROXY_CONFIG = "RELOAD_PROXY_CONFIG";
@@ -46,6 +48,7 @@ public final class OperationAuditConstants {
         public static final String TOPIC = "TOPIC";
         public static final String GROUP = "GROUP";
         public static final String PROXY = "PROXY";
+        public static final String MESSAGE = "MESSAGE";
 
         private ResourceType() {
         }
