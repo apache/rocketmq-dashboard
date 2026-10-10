@@ -161,6 +161,29 @@ const deferred = <T,>() => {
 };
 
 describe('Clients page', () => {
+  it('shows one producer connected to two brokers without a false ID collision Test', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: '192.0.2.10@4242',
+        protocol: 'Remoting',
+        address: '192.0.2.10:51001',
+      },
+      {
+        ...connection,
+        clientId: '192.0.2.10@4242',
+        protocol: 'Remoting',
+        address: '192.0.2.10:51002',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+    await screen.findAllByText('192.0.2.10:51001');
+    await screen.findAllByText('192.0.2.10:51002');
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).queryByText('Client ID 连接到多个地址')).not.toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端连接健康')).toBeInTheDocument();
+  });
+
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
       ...connection,
