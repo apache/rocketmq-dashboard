@@ -17,13 +17,16 @@
 package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -122,6 +125,24 @@ class AliyunConvertersTest {
         SubscriptionEntryVO entry = AliyunConverters.toSubscriptionEntry(data);
 
         assertThat(entry.getFilterMode()).isEqualTo("TAG");
+    }
+
+    @Test
+    void toConsumerGroupVoShouldReportUnmeasurableClientAndLagCountsAsUnknownTest() {
+        // ListConsumerGroupsResponseBody.List carries only consumerGroupId, times, messageModel,
+        // maxReceiveTps, remark, status and topicName - no online client count and no backlog.
+        // Leaving the VO defaults would present 0 clients / 0 backlog as measured values; the
+        // console and the Apache provider treat a negative count as unavailable.
+        ListConsumerGroupsResponseBody.List data = ListConsumerGroupsResponseBody.List.builder()
+                .consumerGroupId("cg-orders")
+                .messageModel("CLUSTERING")
+                .build();
+
+        ConsumerGroupVO group = AliyunConverters.toConsumerGroupVO(data, "7");
+
+        assertThat(group.getName()).isEqualTo("cg-orders");
+        assertThat(group.getOnlineInstances()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
     }
 
     @Test

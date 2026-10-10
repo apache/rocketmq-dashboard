@@ -57,6 +57,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.ResetConsumerOffsetPreviewVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -670,6 +671,48 @@ class TencentInstanceProviderTest {
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
         assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
         assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void listConsumerGroupsShouldUseTheDetailClientAndLagCountsTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_orders");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+        DescribeConsumerGroupResponse detail = new DescribeConsumerGroupResponse();
+        detail.setCreatedTime(1600000000000L);
+        detail.setConsumeModel("CLUSTERING");
+        detail.setConsumerNum(3L);
+        detail.setConsumerLag(42L);
+        when(client.DescribeConsumerGroup(any())).thenReturn(detail);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getOnlineInstances()).isEqualTo(3);
+            assertThat(group.getTotalLag()).isEqualTo(42L);
+        });
+    }
+
+    @Test
+    void listConsumerGroupsShouldReportUnmeasurableCountsAsUnknownTest() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_stale");
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+        // The list model carries neither number, and the detail lookup may fail on its own: the row
+        // must not turn the missing values into measured zeros.
+        when(client.DescribeConsumerGroup(any()))
+                .thenThrow(new BusinessException(502, "group detail unavailable"));
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, null);
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.getOnlineInstances()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+            assertThat(group.getTotalLag()).isEqualTo(ConsumerLagResolver.UNKNOWN);
+        });
     }
 
     @Test
