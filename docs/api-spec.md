@@ -1270,7 +1270,7 @@ GET /api/groups/export?names={name1,name2}
 ### 7.1 获取 ACL 规则列表
 
 ```
-GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&instanceId={instanceId}&page={page}&pageSize={pageSize}
+GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decision={decision}&aclVersion={aclVersion}&instanceId={instanceId}&page={page}&pageSize={pageSize}
 ```
 
 **Query Parameters:**
@@ -1281,6 +1281,7 @@ GET /api/acl/rules?principal={principal}&resource={resource}&scope={scope}&decis
 | `resource` | `string` | 否 | 按资源过滤 |
 | `scope` | `string` | 否 | 按作用域过滤 |
 | `decision` | `string` | 否 | 按决策过滤 |
+| `aclVersion` | `string` | 否 | 按 ACL 版本过滤（`1.0` / `2.0`），省略时返回全部版本 |
 | `instanceId` | `string` | 否 | 按所属实例过滤 |
 | `page` | `number` | 否 | 页码，默认 `1` |
 | `pageSize` | `number` | 否 | 每页条数，默认 `20` |
