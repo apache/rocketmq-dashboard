@@ -48,6 +48,10 @@ public enum ToolError {
             "Tool confirm_token is invalid, expired, or does not match the tool, caller, Instance or preview input. Tool: %s",
             "Run with --dry-run again and retry with its fresh token without changing the operation input."),
 
+    CONFIRMATION_PLAN_CHANGED(HttpStatus.CONFLICT, "CONFLICT",
+            "Tool configuration changed since the confirmed preview. Tool: %s",
+            "Run with --dry-run again, review the updated configuration and retry with its fresh token."),
+
     TOOL_NAME_REQUIRED(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT",
             "Tool name is required",
             "Call tools/list and provide one of the returned tool names."),

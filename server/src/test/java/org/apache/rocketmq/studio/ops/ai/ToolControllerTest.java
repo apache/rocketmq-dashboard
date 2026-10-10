@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
+import org.apache.rocketmq.studio.ops.ai.tool.core.ToolError;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolDiscoveryService;
 import org.apache.rocketmq.studio.ops.ai.tool.service.ToolExecutionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -206,6 +208,34 @@ class ToolControllerTest {
         verify(toolExecutor).execute(
                 eq("rmq.topic.create"), argThat(arguments ->
                         Boolean.TRUE.equals(arguments.get("dry_run"))), eq(authentication));
+    }
+
+    @Test
+    void changedTopicPlanReturnsConflictAndFreshPreviewHintTest() throws Exception {
+        when(toolExecutor.executeWithTarget(eq("rmq.topic.update"), anyMap(),
+                eq("instance-id"))).thenThrow(ToolError.CONFIRMATION_PLAN_CHANGED.exception("rmq.topic.update"));
+
+        mockMvc.perform(post("/api/ai/tools/rmq.topic.update/execute")
+                        .queryParam("instanceId", "instance-id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.hint").value(ToolError.CONFIRMATION_PLAN_CHANGED.hint()));
+    }
+
+    @Test
+    void mcpChangedTopicPlanReturnsConflictAndFreshPreviewHintTest() throws Exception {
+        when(toolExecutor.execute(eq("rmq.topic.update"), anyMap(), eq(authentication)))
+                .thenThrow(ToolError.CONFIRMATION_PLAN_CHANGED.exception("rmq.topic.update"));
+
+        mockMvc.perform(post("/api/mcp/tools/call")
+                        .requestAttr(McpAuthentication.ATTRIBUTE, authentication)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"rmq.topic.update\",\"arguments\":{}}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.hint").value(ToolError.CONFIRMATION_PLAN_CHANGED.hint()));
     }
 
 }
