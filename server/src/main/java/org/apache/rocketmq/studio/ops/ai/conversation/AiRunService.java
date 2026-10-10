@@ -232,9 +232,10 @@ public class AiRunService {
             // is persisted, and it reaches the timeline as a thinking block with source=enhance — which
             // is where it belongs, since merging it into the model's reasoning is the bug this design
             // exists to prevent.
+            TimelineEvent.Notice degraded = preparation == null ? degradedNotice(conversation) : null;
             int admissionSeq = sink.writeUser(message, null);
-            if (preparation == null) {
-                admissionSeq = sink.writeTimeline(degradedNotice(conversation));
+            if (degraded != null) {
+                admissionSeq = sink.writeTimeline(degraded);
             }
             applyTurnToConversation(conversation, message, request.mode());
             session.noteWatermark(admissionSeq);
@@ -242,6 +243,14 @@ public class AiRunService {
             session.finishReplay();
             registry.publish(run.getId(), 0L, new LiveEvent.RunStarted(run.getId(), conversation.getId(),
                     conversation.getTitle(), turn));
+            if (degraded != null) {
+                // The persisted notice has to reach the wire too: a client that watches the turn
+                // live must see the same warning a reload shows, which is the live/replay
+                // equivalence the projector promises. seq 0, because the row already carried the
+                // notice and the observer noted that watermark above.
+                registry.publish(run.getId(), 0L,
+                        new LiveEvent.Notice(degraded.level(), degraded.message()));
+            }
             runExecutor.submit(context);
         } catch (RejectedExecutionException exception) {
             log.warn("agent run {} was rejected: the run executor is saturated", run.getId());
