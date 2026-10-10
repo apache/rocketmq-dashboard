@@ -18,9 +18,41 @@ package output
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
+	payload := map[string]any{
+		"items": []any{
+			map[string]any{
+				"msgId": "m1",
+				"size":  json.Number("3"),
+				"ratio": json.Number("0.25"),
+				// 2^53+1: exact as an integer, not representable as a float64 - the case that
+				// motivated decoding studio payloads with UseNumber() in the first place.
+				"offset": json.Number("9007199254740993"),
+			},
+		},
+		"skippedCount": json.Number("5"),
+	}
+	buf := &bytes.Buffer{}
+	if err := YAML(buf, payload); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"size: 3", "ratio: 0.25", "skippedCount: 5", "offset: 9007199254740993"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("YAML output missing %q:\n%s", want, out)
+		}
+	}
+	for _, quoted := range []string{`size: "3"`, `ratio: "0.25"`, `skippedCount: "5"`, `offset: "9007199254740993"`} {
+		if strings.Contains(out, quoted) {
+			t.Fatalf("YAML quoted a number (%s):\n%s", quoted, out)
+		}
+	}
+}
 
 func TestToolCallSummary(t *testing.T) {
 	buf := &bytes.Buffer{}
@@ -63,5 +95,36 @@ func TestRowsEscapesControlCharactersInCellValues(t *testing.T) {
 	}
 	if !strings.Contains(data, `x\ty\nz\rw`) {
 		t.Fatalf("data line does not contain escaped value: %q", data)
+	}
+}
+
+func TestRowsRendersNestedValuesAsJSON(t *testing.T) {
+	buf := &bytes.Buffer{}
+	rows := []map[string]any{
+		{
+			"name":  "group-a",
+			"quota": map[string]any{"max": float64(10), "used": float64(3)},
+			"tags":  []any{"a", "b"},
+		},
+	}
+	columns := []Column{
+		{Header: "NAME", Key: "name"},
+		{Header: "QUOTA", Key: "quota"},
+		{Header: "TAGS", Key: "tags"},
+	}
+	if err := Rows(buf, rows, columns); err != nil {
+		t.Fatal(err)
+	}
+	data := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")[1]
+	// Go's default map/slice formatting is noise ("map[max:10 used:3]"), and nested
+	// values are JSON to begin with, so the cell should carry the JSON form instead.
+	if strings.Contains(data, "map[") || strings.Contains(data, "[a b]") {
+		t.Fatalf("data line renders Go syntax for nested values: %q", data)
+	}
+	if !strings.Contains(data, `"max":10`) {
+		t.Fatalf("data line does not render the nested object as JSON: %q", data)
+	}
+	if !strings.Contains(data, `["a","b"]`) {
+		t.Fatalf("data line does not render the nested array as JSON: %q", data)
 	}
 }
