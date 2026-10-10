@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
+import { App, Modal, message } from 'antd';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -229,9 +229,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     vi.mocked(consumerService.previewConsumerOffsetReset).mockResolvedValue({
@@ -337,6 +337,26 @@ describe('Consumer page', () => {
     await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'missing-group');
 
     expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+  });
+
+  it('stays silent when background auto-refresh ticks fail', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(consumerService.listConsumerGroupPage)
+      .mockResolvedValueOnce(groupPage([group]))
+      .mockRejectedValue(new Error('backend down'));
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation((() => undefined) as never);
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /自动刷新/ }));
+
+    // Enabling auto refresh fires one immediate silent reload plus the 2s interval ticks; the
+    // failed ticks must stay quiet instead of toasting on every tick.
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(4), {
+      timeout: 7000,
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   afterEach(async () => {
@@ -750,6 +770,36 @@ describe('Consumer page', () => {
     expect(cells.filter((cell) => cell === '-')).toHaveLength(2);
   });
 
+  it('renders the filter modes the API returns as localized labels', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        expression: 'tagA',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
+      },
+      {
+        topic: 'sql-topic',
+        expression: 'a > 1',
+        type: 'SQL92',
+        filterMode: 'SQL',
+        consistency: 'consistent',
+      },
+    ]);
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('Tag 过滤')).toBeInTheDocument();
+    expect(screen.getByText('SQL92 过滤')).toBeInTheDocument();
+    // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+    // (SubscriptionFilterModes), so the raw codes must not leak into the table.
+    expect(screen.queryByText('TAG')).not.toBeInTheDocument();
+    expect(screen.queryByText('SQL')).not.toBeInTheDocument();
+  });
+
   it('shows group health diagnostics from subscriptions, progress and clients', async () => {
     const riskyGroup: ConsumerGroup = {
       ...group,
@@ -780,9 +830,9 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: 'tagA',
-        type: 'NORMAL',
-        filterMode: 'Tag 过滤',
-        consistency: '不一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'inconsistent',
       },
     ]);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
@@ -822,16 +872,16 @@ describe('Consumer page', () => {
       {
         topic: 'remote-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
       {
         topic: '%RETRY%remote-cg',
         expression: '*',
-        type: 'RETRY',
-        filterMode: '全量',
-        consistency: '一致',
+        type: 'TAG',
+        filterMode: 'TAG',
+        consistency: 'consistent',
       },
     ]);
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1240,21 +1290,71 @@ describe('Consumer page', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the stack capture time in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes LocalDateTime without an offset, so capturedAt arrives as a UTC wall
+    // clock; parsing it as browser-local would shift the shown capture time by the viewer's zone.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+        groupPage([
+          {
+            ...group,
+            instances: [
+              {
+                clientId: 'client-1',
+                protocol: 'Remoting',
+                address: '10.0.0.1:39210',
+                subscribedTopics: ['remote-topic'],
+                lastHeartbeat: '2026-07-23T00:00:00Z',
+                topicLag: {},
+              },
+            ],
+          },
+        ]),
+      );
+      vi.mocked(consumerService.getConsumerStack).mockResolvedValue({
+        groupName: 'remote-cg',
+        clientId: 'client-1',
+        capturedAt: '2026-07-23T00:00:00',
+        threadCount: 1,
+        threads: [
+          {
+            threadName: 'ConsumeMessageThread_1',
+            threadId: 12,
+            state: 'RUNNABLE',
+            blockedTime: 0,
+            waitedTime: 0,
+            stackTrace: ['org.apache.demo.OrderListener.consume(OrderListener.java:42)'],
+          },
+        ],
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders(<ConsumerPage />);
+
+      await user.click(await screen.findByRole('button', { name: /详情/ }));
+      await user.click(await screen.findByRole('button', { name: /线程栈/ }));
+
+      expect(await screen.findByText('2026-07-23 08:00:00 GMT+8')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1262,15 +1362,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1298,15 +1398,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ])
@@ -1314,15 +1414,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1364,15 +1464,15 @@ describe('Consumer page', () => {
         {
           topic: 'remote-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
         {
           topic: 'new-topic',
           expression: '*',
-          type: 'NORMAL',
-          filterMode: '全量',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'consistent',
         },
       ]);
@@ -1385,8 +1485,8 @@ describe('Consumer page', () => {
         {
           topic: 'stale-topic',
           expression: 'important',
-          type: 'NORMAL',
-          filterMode: 'Tag 过滤',
+          type: 'TAG',
+          filterMode: 'TAG',
           consistency: 'inconsistent',
         },
       ]);
@@ -1395,13 +1495,76 @@ describe('Consumer page', () => {
     expect(screen.getByText('全部 2 个订阅配置一致')).toBeInTheDocument();
   });
 
+  it('stops the subscription check spinner when a silent refresh supersedes it', async () => {
+    const userRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    const silentRequest =
+      deferred<Awaited<ReturnType<typeof consumerService.getConsumerSubscriptions>>>();
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockReturnValueOnce(userRequest.promise)
+      .mockReturnValueOnce(silentRequest.promise)
+      .mockResolvedValue([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    // Opening the modal starts a user-visible check; the modal's 2s auto-refresh then starts a
+    // silent one while that check is still in flight.
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    const checkButton = await screen.findByRole('button', { name: /重新检查/ });
+    expect(checkButton).toHaveClass('ant-btn-loading');
+    await waitFor(() => expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2), {
+      timeout: 10000,
+    });
+
+    await act(async () => {
+      silentRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      await silentRequest.promise;
+    });
+    await act(async () => {
+      userRequest.resolve([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      await userRequest.promise;
+    });
+
+    // Neither request clears the flag on the old code: the user-triggered one is no longer the
+    // current request and the silent one is skipped by the `!silent` guard, so the button kept
+    // spinning forever.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /重新检查/ })).not.toHaveClass('ant-btn-loading'),
+    );
+  });
+
   it('keeps unknown consistency values separate from mismatches', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
       {
         topic: 'unknown-topic',
         expression: '*',
-        type: 'NORMAL',
-        filterMode: '全量',
+        type: 'TAG',
+        filterMode: 'TAG',
         consistency: 'UNKNOWN',
       },
     ]);

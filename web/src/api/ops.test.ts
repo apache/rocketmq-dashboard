@@ -299,7 +299,7 @@ describe('Ops API - System Alerts & Audit', () => {
       data: [
         {
           id: 1,
-          level: 'critical',
+          level: 'error',
           title: 'Disk Full',
           description: 'Disk usage > 95%',
           time: '2026-01-01',
@@ -308,7 +308,7 @@ describe('Ops API - System Alerts & Audit', () => {
       ],
     });
     const result = await listSystemAlerts();
-    expect(result[0].level).toBe('critical');
+    expect(result[0].level).toBe('error');
   });
 
   it('loads related system alerts for an event', async () => {

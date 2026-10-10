@@ -68,7 +68,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { formatDateTime, formatDelay } from '../../utils/format';
+import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -343,7 +343,12 @@ const ConsumerPageContent = ({
         }
         return requestId === groupRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        // A silent (auto-refresh) tick that fails must stay quiet: a toast every 2s while the
+        // backend is down turns one transient outage into an unbounded error storm. Only
+        // user-initiated loads surface the toast.
+        if (requestId === groupRequestIdRef.current && !silent) {
+          message.error(t('consumer.fetchListFailed'));
+        }
         return undefined;
       } finally {
         if (requestId === groupRequestIdRef.current) setLoading(false);
@@ -413,8 +418,13 @@ const ConsumerPageContent = ({
           }
         }
       } finally {
-        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
-          setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        // The loading flag belongs to whichever request is current, not to the request that
+        // raised it: the modal's 2s auto-refresh can supersede a user-visible check while that
+        // check is still in flight, and then only the silent request is left to clear it.
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionLoadingByGroup((prev) =>
+            prev[cacheKey] ? { ...prev, [cacheKey]: false } : prev,
+          );
         }
       }
     },
@@ -1107,12 +1117,16 @@ const ConsumerPageContent = ({
       key: 'filterMode',
       width: 120,
       render: (mode: string) => {
-        const colorMap: Record<string, string> = {
-          全量: 'default',
-          'Tag 过滤': 'blue',
-          'SQL92 过滤': 'purple',
+        // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+        // (SubscriptionFilterModes.fromExpressionType); map those codes to labels instead of
+        // echoing them into the table.
+        const meta: Record<string, { color: string; labelKey: string }> = {
+          TAG: { color: 'blue', labelKey: 'consumer.filterTag' },
+          SQL: { color: 'purple', labelKey: 'consumer.filterSql92' },
+          CLASS_FILTER: { color: 'gold', labelKey: 'consumer.filterClassFilter' },
         };
-        return <Tag color={colorMap[mode] || 'default'}>{mode}</Tag>;
+        const entry = meta[mode];
+        return <Tag color={entry?.color ?? 'default'}>{entry ? t(entry.labelKey) : mode}</Tag>;
       },
     },
     {
@@ -2236,7 +2250,7 @@ const ConsumerPageContent = ({
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="采集时间">
-              {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
+              {selectedStack?.capturedAt ? formatUtcDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
           </Descriptions>
