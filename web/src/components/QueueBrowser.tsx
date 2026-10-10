@@ -73,6 +73,10 @@ export const useQueueBrowser = (instanceId?: string) => {
       pullingRef.current.clear();
       setPulling(new Set());
     });
+    return () => {
+      // Leaving the page invalidates pending loads and pulls just like a scope change.
+      requestSeqRef.current += 1;
+    };
   }, [instanceId, topic]);
 
   const loadQueues = useCallback(async () => {
