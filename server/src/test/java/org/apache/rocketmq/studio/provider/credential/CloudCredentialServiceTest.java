@@ -34,6 +34,13 @@ import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -186,7 +193,7 @@ class CloudCredentialServiceTest {
         stored.setAccessKey("LTAI5tUpdateKey000000001");
         stored.setSecretKey("old-secret");
         when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
-        when(credentialRepository.replace(any(CloudCredentialVO.class))).thenReturn(true);
+        when(credentialRepository.updateFields(1L, null, "new-secret", null)).thenReturn(true);
 
         UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
         request.setId(1L);
@@ -194,9 +201,80 @@ class CloudCredentialServiceTest {
 
         service.update(request);
 
+        verify(credentialRepository).updateFields(1L, null, "new-secret", null);
         verify(aliyunClientFactory).invalidateCredential(1L);
         verify(operationAuditService).record(eq("UPDATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
                 eq("1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void concurrentNameEditShouldNotUndoSecretRotationTest() throws Exception {
+        CloudCredentialVO original = new CloudCredentialVO();
+        original.setId(1L);
+        original.setName("production");
+        original.setVendor(InstanceVendor.ALIYUN);
+        original.setAccessKey("LTAI5tUpdateKey000000001");
+        original.setSecretKey("old-secret");
+        AtomicReference<CloudCredentialVO> persisted = new AtomicReference<>(original);
+        AtomicInteger reads = new AtomicInteger();
+        CountDownLatch bothReadOldRow = new CountDownLatch(2);
+        CountDownLatch rotationSaved = new CountDownLatch(1);
+
+        when(credentialRepository.findById(1L)).thenAnswer(invocation -> {
+            CloudCredentialVO snapshot = copyCredential(persisted.get());
+            if (reads.incrementAndGet() <= 2) {
+                bothReadOldRow.countDown();
+                assertThat(bothReadOldRow.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            return Optional.of(snapshot);
+        });
+        when(credentialRepository.updateFields(eq(1L), any(), any(), any())).thenAnswer(invocation -> {
+            String name = invocation.getArgument(1);
+            String secretKey = invocation.getArgument(2);
+            String remark = invocation.getArgument(3);
+            if (name != null) {
+                assertThat(rotationSaved.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            persisted.updateAndGet(current -> {
+                CloudCredentialVO patched = copyCredential(current);
+                if (name != null) patched.setName(name);
+                if (secretKey != null) patched.setSecretKey(secretKey);
+                if (remark != null) patched.setRemark(remark);
+                return patched;
+            });
+            if (secretKey != null) rotationSaved.countDown();
+            return true;
+        });
+
+        UpdateCloudCredentialDTO rotation = new UpdateCloudCredentialDTO();
+        rotation.setId(1L);
+        rotation.setSecretKey("new-secret");
+        UpdateCloudCredentialDTO rename = new UpdateCloudCredentialDTO();
+        rename.setId(1L);
+        rename.setName("renamed");
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> rotationResult = pool.submit(() -> service.update(rotation));
+            Future<?> renameResult = pool.submit(() -> service.update(rename));
+            rotationResult.get(10, TimeUnit.SECONDS);
+            renameResult.get(10, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(persisted.get().getName()).isEqualTo("renamed");
+        assertThat(persisted.get().getSecretKey()).isEqualTo("new-secret");
+    }
+
+    private static CloudCredentialVO copyCredential(CloudCredentialVO source) {
+        CloudCredentialVO copy = new CloudCredentialVO();
+        copy.setId(source.getId());
+        copy.setName(source.getName());
+        copy.setVendor(source.getVendor());
+        copy.setAccessKey(source.getAccessKey());
+        copy.setSecretKey(source.getSecretKey());
+        copy.setRemark(source.getRemark());
+        return copy;
     }
 
     @Test
@@ -206,7 +284,7 @@ class CloudCredentialServiceTest {
         stored.setVendor(InstanceVendor.TENCENT);
         stored.setAccessKey("AKIDexample");
         when(credentialRepository.findById(1L)).thenReturn(Optional.of(stored));
-        when(credentialRepository.replace(stored)).thenReturn(false);
+        when(credentialRepository.updateFields(1L, "renamed", null, null)).thenReturn(false);
         UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
         request.setId(1L);
         request.setName("renamed");

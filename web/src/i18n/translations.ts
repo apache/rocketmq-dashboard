@@ -1706,6 +1706,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.list.search': { zh: '搜索会话标题', en: 'Search conversation titles' },
   'ai.list.empty': { zh: '暂无会话', en: 'No conversations' },
   'ai.list.loadFailed': { zh: '会话列表加载失败', en: 'Failed to load conversations' },
+  'ai.timeline.loadFailed': { zh: '会话记录加载失败', en: 'Failed to load conversation history' },
   'ai.list.columnTitle': { zh: '会话', en: 'Conversation' },
   'ai.list.columnEngine': { zh: '引擎', en: 'Engine' },
   'ai.list.columnModel': { zh: '模型', en: 'Model' },
