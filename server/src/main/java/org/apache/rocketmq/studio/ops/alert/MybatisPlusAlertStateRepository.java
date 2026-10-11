@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.MetricCollectionScope;
 import org.apache.rocketmq.studio.persistence.entity.RmqAlertState;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
+@Slf4j
 public class MybatisPlusAlertStateRepository implements AlertStateRepository {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -166,7 +168,7 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
             return Optional.empty();
         }
         return Optional.of(new ActiveAlertState(new AlertStateKey(state.getRuleId(), state.getFingerprint()),
-                toState(state), alert.getInstanceId(), readLabels(alert.getLabelsJson())));
+                toState(state), alert.getInstanceId(), readLabels(alert.getId(), alert.getLabelsJson())));
     }
 
     private static AlertDomain ruleDomain(AlertRuleVO rule) {
@@ -199,14 +201,19 @@ public class MybatisPlusAlertStateRepository implements AlertStateRepository {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }
 
-    private static Map<String, String> readLabels(String labelsJson) {
+    private static Map<String, String> readLabels(Long alertId, String labelsJson) {
         if (!StringUtils.hasText(labelsJson)) {
             return Map.of();
         }
         try {
             return OBJECT_MAPPER.readValue(labelsJson, new TypeReference<>() { });
         } catch (Exception error) {
-            throw new IllegalStateException("Unable to read alert labels", error);
+            // Same contract as MybatisPlusAlertRepository.readLabels: a corrupt labels
+            // column degrades to empty labels instead of failing the state read, with
+            // the same warn so the row stays identifiable.
+            log.warn("Degrading unreadable labels of system alert {} to empty labels: {}",
+                    alertId, error.toString());
+            return Map.of();
         }
     }
 }
