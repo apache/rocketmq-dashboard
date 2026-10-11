@@ -356,6 +356,15 @@ const TopicPageContent = ({
   const [loading, setLoading] = useState(true);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
   const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
+  // A failed detail request leaves the per-topic maps empty, which is not the same as "the broker
+  // has no route" or "nobody consumes this": without these flags the route diagnosis renders the
+  // empty fallback as the critical "Broker 上没有 Topic 路由" verdict and offers the rebuild action
+  // for a topic that exists. Kept per request kind so a route failure cannot mislabel the consumer
+  // table, and vice versa.
+  const [routeLoadFailedTopics, setRouteLoadFailedTopics] = useState<Record<string, boolean>>({});
+  const [consumerLoadFailedTopics, setConsumerLoadFailedTopics] = useState<Record<string, boolean>>(
+    {},
+  );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -367,6 +376,8 @@ const TopicPageContent = ({
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncChecking, setSyncChecking] = useState(false);
   const [syncMissing, setSyncMissing] = useState<Topic[]>([]);
+  const [syncCheckedCount, setSyncCheckedCount] = useState(0);
+  const [syncFailedCount, setSyncFailedCount] = useState(0);
   const [syncedTopics, setSyncedTopics] = useState<Set<string>>(() => new Set());
   const [syncingKeys, setSyncingKeys] = useState<Set<string>>(() => new Set());
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -527,20 +538,37 @@ const TopicPageContent = ({
       setSelectedTopic(topic);
       setDetailModalOpen(true);
       setDetailLoading(true);
+      setRouteLoadFailedTopics((previous) => ({ ...previous, [topic.name]: false }));
+      setConsumerLoadFailedTopics((previous) => ({ ...previous, [topic.name]: false }));
+      // Load the two independently: a failing consumer page must not skip the route lookup, or the
+      // modal renders "no route" for a topic whose routes were never requested.
+      let detailFailed = false;
       try {
         await loadTopicConsumers(topic);
-        if (requestId !== detailRequestIdRef.current) return;
-        if (!isCloudInstance) {
+      } catch {
+        detailFailed = true;
+        if (requestId === detailRequestIdRef.current) {
+          setConsumerLoadFailedTopics((previous) => ({ ...previous, [topic.name]: true }));
+        }
+      }
+      if (requestId !== detailRequestIdRef.current) return;
+      if (!isCloudInstance) {
+        try {
           const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
           if (requestId !== detailRequestIdRef.current) return;
           setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+        } catch {
+          detailFailed = true;
+          if (requestId === detailRequestIdRef.current) {
+            setRouteLoadFailedTopics((previous) => ({ ...previous, [topic.name]: true }));
+          }
         }
-      } catch {
-        if (requestId === detailRequestIdRef.current)
-          message.error('Topic 详情加载失败，请稍后重试');
-      } finally {
-        if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
+      if (requestId !== detailRequestIdRef.current) return;
+      if (detailFailed) {
+        message.error('Topic 详情加载失败，请稍后重试');
+      }
+      setDetailLoading(false);
     },
     [loadTopicConsumers, isCloudInstance, selectedInstanceId],
   );
@@ -588,10 +616,14 @@ const TopicPageContent = ({
     setSyncModalOpen(true);
     setSyncChecking(true);
     setSyncMissing([]);
+    setSyncCheckedCount(0);
+    setSyncFailedCount(0);
     setSyncedTopics(new Set());
     try {
+      // Scan the rendered list rather than the raw page: the verdict below quotes a count, and the
+      // table hides rows the client-side filter dropped, so both must cover the same set.
       const results = await Promise.all(
-        topics.map(async (topic) => {
+        filteredTopics.map(async (topic) => {
           const instanceId = topic.instanceId || selectedInstanceId || undefined;
           try {
             return { topic, routes: await getTopicRoutes(topic.name, instanceId) };
@@ -602,6 +634,10 @@ const TopicPageContent = ({
       );
       if (syncRequestIdRef.current !== requestId) return;
       const checked = results.filter((r) => r.routes !== null);
+      // A failed lookup proves nothing about that topic, so the counts are what the empty state has
+      // to quote - iterating the list would report topics as verified that were never resolved.
+      setSyncCheckedCount(checked.length);
+      setSyncFailedCount(results.length - checked.length);
       if (checked.length < results.length) {
         message.error('部分 Topic 路由校验失败，请稍后重试');
       }
@@ -619,6 +655,22 @@ const TopicPageContent = ({
       if (syncRequestIdRef.current === requestId) setSyncChecking(false);
     }
   };
+
+  const renderSyncFailureAlert = () =>
+    syncFailedCount === 0 ? null : (
+      <Alert
+        type="error"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={`路由校验失败：${syncFailedCount} 个 Topic 未能校验`}
+        description="这些 Topic 无法判断是否缺失路由，请重试后再确认是否需要同步。"
+        action={
+          <Button size="small" onClick={() => void openSyncModal()}>
+            重试
+          </Button>
+        }
+      />
+    );
 
   const syncTopicToBroker = async (topic: Topic) => {
     const instanceId = topic.instanceId || selectedInstanceId || undefined;
@@ -668,6 +720,10 @@ const TopicPageContent = ({
         onOk: async () => {
           try {
             await deleteTopic(topic.name, selectedInstanceId || undefined);
+            // Drop the deleted row from the selection: a checked row that disappears would
+            // otherwise keep the batch delete armed with a name that no longer exists, and its
+            // failure path re-seeds that same selection - leaving nothing to uncheck.
+            setSelectedRowKeys((previous) => previous.filter((key) => key !== topic.name));
             await reloadTopicPage();
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
@@ -1060,6 +1116,7 @@ const TopicPageContent = ({
     const routes = getRoutes(topic.name);
     const diagnostics = analyzeTopicRoutes(routes);
     const summary = diagnostics.summary;
+    const routeLoadFailed = routeLoadFailedTopics[topic.name] === true;
 
     return (
       <>
@@ -1069,16 +1126,22 @@ const TopicPageContent = ({
         {!detailLoading && (
           <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
             <Alert
-              type={diagnostics.statusColor}
+              type={routeLoadFailed ? 'error' : diagnostics.statusColor}
               showIcon
-              message={`路由诊断：${diagnostics.statusText}`}
+              message={`路由诊断：${routeLoadFailed ? '加载失败' : diagnostics.statusText}`}
               description={
-                diagnostics.status === 'healthy'
-                  ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                  : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
+                routeLoadFailed
+                  ? '路由信息获取失败，下面的结论与重建操作暂不可用，请重试。'
+                  : diagnostics.status === 'healthy'
+                    ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
+                    : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
               }
               action={
-                routes.length === 0 ? (
+                routeLoadFailed ? (
+                  <Button size="small" onClick={() => void openDetail(topic)}>
+                    重试
+                  </Button>
+                ) : routes.length === 0 ? (
                   <Button
                     size="small"
                     type="primary"
@@ -1737,6 +1800,13 @@ const TopicPageContent = ({
               columns={consumerColumns}
               dataSource={getConsumerPage(selectedTopic.name).items}
               rowKey="group"
+              // An empty table is only "nobody consumes this" after a load that succeeded.
+              locale={{
+                emptyText:
+                  consumerLoadFailedTopics[selectedTopic.name] === true
+                    ? '消费者加载失败，请重试'
+                    : undefined,
+              }}
               pagination={{
                 current: getConsumerPage(selectedTopic.name).page,
                 pageSize: getConsumerPage(selectedTopic.name).pageSize,
@@ -2065,10 +2135,19 @@ const TopicPageContent = ({
           </Flex>
         ) : syncMissing.length === 0 ? (
           <div style={{ padding: '16px 0' }}>
-            <Text type="secondary">所有 Topic 在 Broker 上均有路由，无需同步。</Text>
+            {syncFailedCount > 0 ? (
+              renderSyncFailureAlert()
+            ) : (
+              <Text type="secondary">
+                当前列表中的 {syncCheckedCount} 个 Topic 在 Broker
+                上均有路由，无需同步（本次校验只覆盖当前页与当前筛选，翻页或清除筛选可校验其他
+                Topic）。
+              </Text>
+            )}
           </div>
         ) : (
           <>
+            {renderSyncFailureAlert()}
             <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
               以下 {syncMissing.length} 个 Topic 在 Broker 上找不到路由，可同步写入对应集群的
               Broker（按元数据记录的队列数重建）。

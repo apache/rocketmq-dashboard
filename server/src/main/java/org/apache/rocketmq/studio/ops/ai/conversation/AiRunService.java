@@ -378,6 +378,13 @@ public class AiRunService {
         }
         if (registry.stop(run.getId(), AbortReason.USER_STOP)) {
             log.info("agent run {} is being stopped at the user's request", run.getId());
+        } else if (registry.handle(run.getId()).isPresent()) {
+            // This process owns the run and it is already aborting (a second tab, a retried stop):
+            // registry.stop() returns false for that case as well as for an unowned run, and its
+            // worker writes the terminal state itself. Writing one here would append a second
+            // terminal row - a phantom empty bubble on reload - and close the observers while the
+            // worker is still flushing its buffered text.
+            log.info("agent run {} is already stopping", run.getId());
         } else {
             // The row says active but nothing in this process owns it, so no worker will ever write the
             // terminal state. Writing it here is what keeps the stop button from spinning until the
