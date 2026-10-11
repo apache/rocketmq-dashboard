@@ -33,7 +33,8 @@ public interface CloudCredentialRepository {
 
     CloudCredentialVO save(CloudCredentialVO credential);
 
-    boolean replace(CloudCredentialVO credential);
+    /** A null field is unchanged; an empty remark clears the stored remark. */
+    boolean updateFields(Long id, String name, String secretKey, String remark);
 
     boolean deleteById(Long id);
 }
