@@ -16,8 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { App } from 'antd';
 import { getGeneralSettings, saveGeneralSettings } from '../../../api/settings';
 import { ThemeProvider } from '../../../theme/ThemeProvider';
