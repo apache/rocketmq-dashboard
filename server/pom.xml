@@ -38,6 +38,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <rocketmq.version>5.5.0</rocketmq.version>
         <license.python>python3</license.python>
+        <!-- Ordinary package builds can run while #6287 tracks missing bundled license materials. -->
+        <binary.license.gate.phase>none</binary.license.gate.phase>
     </properties>
 
     <dependencyManagement>
@@ -227,6 +229,31 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Release and server-image builds set -Dbinary.license.gate.phase=package.
+                 Keep the gate defined once; #6287 tracks the missing upstream materials. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.2.0</version>
+                <executions>
+                    <execution>
+                        <id>binary-license-gate</id>
+                        <phase>${binary.license.gate.phase}</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <exec executable="${license.python}" failonerror="true">
+                                    <arg value="${project.basedir}/scripts/legal.py"/>
+                                    <arg value="jar"/>
+                                    <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                                    <arg value="--output"/>
+                                    <arg value="${project.build.directory}/legal"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
@@ -249,43 +276,4 @@
             </plugin>
         </plugins>
     </build>
-    <!-- The binary license gate requires a complete upstream license text inside every JAR that is
-         bundled into the fat JAR (BOOT-INF/lib) and a copy of the Boot loader license. Most
-         Maven-published JARs do not carry one, so the gate cannot pass as part of every developer
-         build; keep it as an explicit release check instead:
-             mvn -Pbinary-license-gate package
-         The container build still enforces the same script as `legal.py check-jar` on the packaged
-         JAR, so redistributed images stay gated. -->
-    <profiles>
-        <profile>
-            <id>binary-license-gate</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <version>3.2.0</version>
-                        <executions>
-                            <execution>
-                                <id>binary-license-gate</id>
-                                <phase>package</phase>
-                                <goals><goal>run</goal></goals>
-                                <configuration>
-                                    <target>
-                                        <exec executable="${license.python}" failonerror="true">
-                                            <arg value="${project.basedir}/scripts/legal.py"/>
-                                            <arg value="jar"/>
-                                            <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
-                                            <arg value="--output"/>
-                                            <arg value="${project.build.directory}/legal"/>
-                                        </exec>
-                                    </target>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>

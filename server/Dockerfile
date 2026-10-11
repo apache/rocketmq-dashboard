@@ -134,7 +134,7 @@ COPY server/style ./style
 COPY server/scripts/legal.py ./scripts/legal.py
 COPY server/LICENSE server/NOTICE ./
 
-RUN mvn package -DskipTests
+RUN mvn package -DskipTests -Dbinary.license.gate.phase=package
 
 # ------------------------------------------------------------------------------
 # Stage 4: runtime — default target (JAR built inside Docker)
