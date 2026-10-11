@@ -151,18 +151,35 @@ func (session *MCPClientSession) sendNotification(
 	return err
 }
 
+var errReconnectIncomplete = errors.New("MCP session reinitialization is incomplete")
+
 func (session *MCPClientSession) sendWithReconnect(ctx context.Context, skipReconnect bool, send func() error) error {
-	session.sendMu.RLock()
-	generation, hadSession := session.sendSnapshot()
-	err := send()
-	session.sendMu.RUnlock()
-	if err != nil && hadSession && !skipReconnect && errors.Is(err, mcptransport.ErrSessionTerminated) {
+	var err error
+	// A call may recover once and send at most twice. Only a definitive session
+	// termination permits replay; an incomplete handshake has not sent the call.
+	for attempt := 0; attempt < 2; attempt++ {
+		session.sendMu.RLock()
+		generation, hadSession := session.sendSnapshot()
+		session.state.RLock()
+		pending := session.state.reconnectPending
+		session.state.RUnlock()
+		if pending && !skipReconnect {
+			err = errReconnectIncomplete
+		} else {
+			err = send()
+		}
+		session.sendMu.RUnlock()
+		if err == nil || skipReconnect || attempt == 1 {
+			return err
+		}
+		if !pending && !(hadSession && errors.Is(err, mcptransport.ErrSessionTerminated)) {
+			return err
+		}
 		if reconnectErr := session.reinitialize(ctx, generation); reconnectErr != nil {
 			return reconnectErr
 		}
-		session.sendMu.RLock()
-		err = send()
-		session.sendMu.RUnlock()
+		// Recheck pending under the send lock on the next attempt: another
+		// caller may have started a newer reconnect before we regain the lock.
 	}
 	return err
 }
@@ -186,6 +203,7 @@ func (session *MCPClientSession) recordInitialization(
 	}
 	session.state.Lock()
 	session.state.initialize = new(request)
+	session.state.generation++
 	session.state.ready = false
 	session.state.Unlock()
 	return nil
@@ -201,9 +219,6 @@ func (session *MCPClientSession) applyInitialization(response *mcptransport.JSON
 	if protocolVersion != "" {
 		session.transport.SetProtocolVersion(protocolVersion)
 	}
-	session.state.Lock()
-	session.state.generation++
-	session.state.Unlock()
 	return nil
 }
 
@@ -223,7 +238,7 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	session.sendMu.Lock()
 	defer session.sendMu.Unlock()
 	session.state.RLock()
-	if session.state.generation != expectedGeneration {
+	if session.state.generation != expectedGeneration && !session.state.reconnectPending {
 		session.state.RUnlock()
 		return nil
 	}
@@ -232,6 +247,10 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 	if initialize == nil {
 		return fmt.Errorf("MCP session terminated before initialization could be replayed")
 	}
+	session.state.Lock()
+	session.state.reconnectPending = true
+	session.state.ready = false
+	session.state.Unlock()
 	response, err := session.transport.SendRequest(ctx, *initialize)
 	if err != nil {
 		return fmt.Errorf("reinitialize MCP session: %w", err)
@@ -254,6 +273,8 @@ func (session *MCPClientSession) reinitialize(ctx context.Context, expectedGener
 		return fmt.Errorf("reinitialize MCP session: send initialized notification: %w", err)
 	}
 	session.state.Lock()
+	session.state.generation++
+	session.state.reconnectPending = false
 	session.state.ready = true
 	session.state.Unlock()
 	return nil
