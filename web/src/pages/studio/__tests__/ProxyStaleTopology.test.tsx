@@ -24,6 +24,7 @@ import {
   queryProxyHomePage,
   reloadProxyConfig,
   removeProxyAddress,
+  type ProxyTopologyNode,
 } from '../../../api/proxy';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
@@ -87,7 +88,7 @@ describe('ProxyPage stale health probe', () => {
   it('keeps the refreshed node list when an older health probe fails', async () => {
     const firstHome = createDeferred<{ proxyAddrList: string[]; currentProxyAddr: string }>();
     const secondHome = createDeferred<{ proxyAddrList: string[]; currentProxyAddr: string }>();
-    const firstTopology = createDeferred<unknown>();
+    const firstTopology = createDeferred<ProxyTopologyNode[]>();
 
     vi.mocked(queryProxyHomePage)
       .mockReturnValueOnce(firstHome.promise)
