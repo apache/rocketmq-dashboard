@@ -109,11 +109,17 @@ const collectUnhandledRejections = () => {
   const handler = (reason: unknown) => {
     reasons.push(reason);
   };
-  process.on('unhandledRejection', handler);
+  const nodeProcess = (globalThis as typeof globalThis & {
+    process: {
+      on: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+      off: (event: 'unhandledRejection', listener: (reason: unknown) => void) => void;
+    };
+  }).process;
+  nodeProcess.on('unhandledRejection', handler);
   return {
     reasons,
     restore: () => {
-      process.off('unhandledRejection', handler);
+      nodeProcess.off('unhandledRejection', handler);
     },
   };
 };
