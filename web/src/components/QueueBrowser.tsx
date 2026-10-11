@@ -59,7 +59,7 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [entries, setEntries] = useState<PulledEntry[]>([]);
   const requestSeqRef = useRef(0);
   const loadingRef = useRef(false);
-  const pullingRef = useRef(new Set<string>());
+  const pullingRef = useRef(new Map<string, symbol>());
 
   useEffect(() => {
     const requestId = ++requestSeqRef.current;
@@ -115,8 +115,11 @@ export const useQueueBrowser = (instanceId?: string) => {
     const key = `${queue.brokerName}-${queue.queueId}`;
     if (pullingRef.current.has(key)) return;
     const offset = offsets[key] ?? queue.minOffset;
-    pullingRef.current.add(key);
-    setPulling(new Set(pullingRef.current));
+    const pullToken = Symbol(key);
+    pullingRef.current.set(key, pullToken);
+    setPulling(new Set(pullingRef.current.keys()));
+    const ownsPull = () =>
+      requestId === requestSeqRef.current && pullingRef.current.get(key) === pullToken;
     try {
       const msg = await pullMessageAtOffset({
         instanceId,
@@ -125,24 +128,26 @@ export const useQueueBrowser = (instanceId?: string) => {
         queueId: queue.queueId,
         offset,
       });
-      if (requestId !== requestSeqRef.current) return;
+      if (!ownsPull()) return;
       setEntries((prev) => [
         ...prev.filter((entry) => entry.key !== key),
         { key, offset, message: msg },
       ]);
     } catch (err) {
-      if (requestId === requestSeqRef.current) {
+      if (ownsPull()) {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      if (requestId === requestSeqRef.current) {
+      if (ownsPull()) {
         pullingRef.current.delete(key);
-        setPulling(new Set(pullingRef.current));
+        setPulling(new Set(pullingRef.current.keys()));
       }
     }
   };
 
   const closeEntry = (key: string) => {
+    pullingRef.current.delete(key);
+    setPulling(new Set(pullingRef.current.keys()));
     setEntries((prev) => prev.filter((entry) => entry.key !== key));
   };
 
