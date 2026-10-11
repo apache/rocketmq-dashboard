@@ -582,6 +582,15 @@ public class RocketMQDLQProvider implements DLQProvider {
         if (deadLetters.isEmpty()) {
             return batch;
         }
+        if (!StringUtils.hasText(targetTopic)) {
+            Set<String> destinations = deadLetters.stream()
+                    .map(deadLetter -> resolveTargetTopic(deadLetter, targetTopic))
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            for (String destination : destinations) {
+                requireSameClusterAsDlqTopic(instanceId, MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName, destination);
+            }
+        }
         try {
             runtimeAdminClientResolver.executeProducer(instanceId, producer -> {
                 for (MessageExt deadLetter : deadLetters) {
