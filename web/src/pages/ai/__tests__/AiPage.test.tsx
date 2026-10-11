@@ -43,6 +43,7 @@ import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
 import { COMPOSER_DRAFT_STORAGE_KEY } from '../hooks/useComposerDraft';
+import HomePage from '../../home';
 
 /**
  * The page shell, end to end: route param in, hooks wired, `ChatThread` + `Composer` out.
@@ -91,7 +92,10 @@ vi.mock('../../../services/instanceService', () => ({
 }));
 
 vi.mock('../../../stores/dataModeStore', () => ({
-  useDataModeStore: (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
+  useDataModeStore: Object.assign(
+    (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
+    { getState: () => dataModeMocks },
+  ),
 }));
 
 beforeAll(() => {
@@ -493,6 +497,100 @@ describe('AiPage', () => {
     // the neutral InfoBanner treatment, never a coloured antd Alert.
     expect(banner.closest('.ant-alert')).toBeNull();
     expect(document.querySelector('.ant-alert-warning')).toBeNull();
+  });
+
+  it('homeModelRemainsSelectableAfterCatalogLoadTest', async () => {
+    vi.mocked(getLlmConfig).mockResolvedValue({
+      provider: 'tongyi',
+      engine: 'http',
+      apiBase: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen-plus',
+      maxTokens: 1024,
+      temperature: 0.2,
+      enabled: true,
+      ready: true,
+    });
+    let resolveModels!: (models: Awaited<ReturnType<typeof getLlmModels>>) => void;
+    vi.mocked(getLlmModels).mockReturnValue(
+      new Promise((resolve) => {
+        resolveModels = resolve;
+      }),
+    );
+    vi.mocked(openRunStream).mockResolvedValue(undefined);
+    useEngineStore.setState({ engine: 'http' });
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <LocationProbe />
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/ai" element={<AiPage />} />
+              <Route path="/ai/c/:conversationId" element={<AiPage />} />
+            </Routes>
+          </MemoryRouter>
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('qwen3.8-max');
+    const homeSelector = screen.getByRole('combobox', { name: '模型名称' });
+    await user.click(homeSelector);
+    // Home appends the configured model after its fixed list; use the real
+    // selector's upward navigation from the selected first option to reach it.
+    fireEvent.keyDown(homeSelector, { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38, which: 38 });
+    await user.click(
+      await screen.findByText('qwen-plus', { selector: '.ant-select-item-option-content span' }),
+    );
+    await waitFor(() => expect(homeSelector.closest('.ant-select')).toHaveTextContent('qwen-plus'));
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{Enter}',
+    );
+    await waitFor(() => expect(readProbeLocation().pathname).toBe('/ai/c/7'));
+    await waitFor(() => expect(getLlmModels).toHaveBeenCalled());
+
+    // The saved-provider service test permits qwen-plus, while its actual Tongyi
+    // catalog contains these twelve IDs rather than the configured model.
+    await act(async () =>
+      resolveModels({
+        status: 0,
+        source: 'builtin',
+        data: [
+          'qwen3.8-max',
+          'qwen3.7-max',
+          'qwen3.7-plus',
+          'gpt-5',
+          'gpt-5.1',
+          'claude-fable-5',
+          'claude-opus-5',
+          'claude-sonnet-5',
+          'deepseek-v4-pro',
+          'deepseek-v4-flash',
+          'MiniMax-M2.5',
+          'glm-5.2',
+        ].map((id) => ({ id })),
+      }),
+    );
+    await waitFor(() => expect(openRunStream).toHaveBeenCalledTimes(1));
+    expect(openRunStream).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ model: 'qwen-plus' }),
+      expect.anything(),
+      expect.anything(),
+    );
+    const selector = screen.getByRole('combobox', { name: '模型名称' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('qwen3.8-max', { selector: '.ant-select-item-option-content span' }),
+    );
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('qwen-plus', { selector: '.ant-select-item-option-content span' }),
+    );
+    expect(selector.closest('.ant-select')).toHaveTextContent('qwen-plus');
+    expect(openRunStream).toHaveBeenCalledTimes(1);
   });
 
   it('handsOffTheHomePageDraftIntoANewConversationAndAutoSendsItExactlyOnceTest', async () => {
