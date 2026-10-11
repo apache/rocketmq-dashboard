@@ -61,6 +61,24 @@ describe('ACL risk diagnostics', () => {
     ]);
   });
 
+  it('treats missing accounts alone as critical when ACL is enabled', () => {
+    const diagnostics = analyzeAclRisk(config({ accounts: [], accountCount: 0 }));
+
+    expect(
+      diagnostics.issues.find((item) => item.code === 'NO_PLAIN_ACCESS_ACCOUNTS'),
+    ).toMatchObject({
+      code: 'NO_PLAIN_ACCESS_ACCOUNTS',
+      severity: 'critical',
+      evidence: ['accountCount=0'],
+    });
+    expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.statusColor).toBe('error');
+    expect(diagnostics.summary).toMatchObject({
+      accountCount: 0,
+      adminAccountCount: 0,
+    });
+  });
+
   it('flags disabled ACL and missing accounts as critical risks', () => {
     const diagnostics = analyzeAclRisk(
       config({
@@ -76,6 +94,9 @@ describe('ACL risk diagnostics', () => {
     expect(diagnostics.score).toBeLessThan(60);
     expect(diagnostics.summary.accountCount).toBe(0);
     expect(diagnostics.summary.broadWhitelistCount).toBe(1);
+    expect(
+      diagnostics.issues.find((item) => item.code === 'NO_PLAIN_ACCESS_ACCOUNTS'),
+    ).toMatchObject({ severity: 'warning' });
     expect(diagnostics.issues.map((item) => item.code)).toEqual(
       expect.arrayContaining([
         'ACL_DISABLED',
