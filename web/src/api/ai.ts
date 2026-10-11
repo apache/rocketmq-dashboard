@@ -285,6 +285,13 @@ async function consumeEventStream(
     // A server that closes without a trailing blank line still delivered its last frame.
     buffer += decoder.decode();
     if (buffer && dispatch(buffer)) return;
+    // A run outlives its HTTP observer. Only the explicit terminal control frame
+    // establishes normal stream completion; EOF can leave the server run active.
+    throw new AiStreamError(
+      'AI stream ended before the done event',
+      'llm.stream.unexpected_eof',
+      'Reload the conversation to recover the persisted run and reconnect if it is still active.',
+    );
   } finally {
     await reader.cancel().catch(() => undefined);
   }
