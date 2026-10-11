@@ -71,6 +71,7 @@ export function useConversationList(
   const [archived, setArchivedValue] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -114,7 +115,7 @@ export function useConversationList(
     return () => {
       requestId.current += 1;
     };
-  }, [load]);
+  }, [load, reloadVersion]);
 
   const setSearch = useCallback((next: string) => {
     setSearchValue(next);
@@ -126,11 +127,11 @@ export function useConversationList(
     setPage(1);
   }, []);
 
-  // Re-running `load` is safe even while the previous query is still in flight: the requestId ref
-  // makes the older response a no-op.
+  // A mutation can finish after its caller has changed filters or pages. Invalidate the current
+  // query instead of running the `load` closure captured when the mutation started.
   const reload = useCallback(() => {
-    void load();
-  }, [load]);
+    setReloadVersion((version) => version + 1);
+  }, []);
 
   return {
     items,
