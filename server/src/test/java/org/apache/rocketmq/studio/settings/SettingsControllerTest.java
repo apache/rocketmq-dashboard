@@ -68,6 +68,17 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
     private NotificationOutboxService notificationOutboxService;
 
     @Test
+    void scopedGeneralSaveShouldPassPreservationIntentTest() throws Exception {
+        mockMvc.perform(post("/api/settings/general/save").contentType(MediaType.APPLICATION_JSON).content("""
+                {"theme":"dark","compact":false,"desktopNotify":false,"notifySound":false,
+                 "sessionTimeout":60,"requireLogin":false,"llmProvider":"openai","model":"old-model",
+                 "baseUrl":"https://api.openai.com/v1","preserveLlmConfig":true}
+                """))
+                .andExpect(status().isOk());
+        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class), org.mockito.ArgumentMatchers.eq(true));
+    }
+
+    @Test
     void getGeneralSettingsShouldReturnSettingsTest() throws Exception {
         GeneralSettingsVO settings = GeneralSettingsVO.builder()
                 .theme("dark")

@@ -64,6 +64,11 @@ class LlmConfigServiceTest {
                 .model("gpt-4o")
                 .baseUrl("https://api.openai.com/v1")
                 .build());
+        doAnswer(invocation -> {
+            java.util.function.UnaryOperator<GeneralSettingsVO> update = invocation.getArgument(0);
+            settingsService.saveGeneralSettings(update.apply(settingsService.getGeneralSettings()));
+            return null;
+        }).when(settingsService).updateGeneralSettings(any());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
         agentProviders = mock(AgentProviderRegistry.class);
         llmConfigService = new LlmConfigService(

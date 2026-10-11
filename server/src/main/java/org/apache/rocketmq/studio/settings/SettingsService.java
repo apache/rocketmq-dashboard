@@ -127,6 +127,26 @@ public class SettingsService {
     }
 
 
+    /** Keep read, construction, secret inheritance and persistence under the same write monitor. */
+    public synchronized void updateGeneralSettings(java.util.function.UnaryOperator<GeneralSettingsVO> update) {
+        saveGeneralSettings(update.apply(settingsRepository.loadGeneralSettings()));
+    }
+
+    /** Explicitly scoped console writes leave AI fields owned by the AI endpoint unchanged. */
+    public synchronized void saveGeneralSettings(GeneralSettingsVO settings, boolean preserveLlmConfig) {
+        if (preserveLlmConfig) {
+            GeneralSettingsVO current = settingsRepository.loadGeneralSettings();
+            settings = settings.toBuilder()
+                    .llmProvider(current.getLlmProvider()).llmEngine(current.getLlmEngine())
+                    .apiKey(current.getApiKey()).clearApiKey(false)
+                    .model(current.getModel()).baseUrl(current.getBaseUrl())
+                    .deploymentName(current.getDeploymentName()).apiVersion(current.getApiVersion())
+                    .awsRegion(current.getAwsRegion()).maxTokens(current.getMaxTokens())
+                    .temperature(current.getTemperature()).build();
+        }
+        saveGeneralSettings(settings);
+    }
+
     public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
         validateLlmBaseUrl(settings.getBaseUrl());

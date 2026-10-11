@@ -43,6 +43,7 @@ const toThemeMode = (value?: string): ThemeMode =>
   value === 'light' || value === 'dark' ? value : 'system';
 
 const buildPayload = (settings: GeneralSettings): GeneralSettingsUpdate => ({
+  preserveLlmConfig: true,
   theme: settings.theme,
   compact: settings.compact,
   desktopNotify: settings.desktopNotify,

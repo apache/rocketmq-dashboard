@@ -2275,6 +2275,9 @@ POST /api/settings/general/save
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
 | `model` | `string` | 是 | 模型名称 |
 | `baseUrl` | `string` | 是 | Base URL |
+| `preserveLlmConfig` | `boolean` | 否 | 默认 `false`；通用设置表单传 `true`，保留服务端当前 AI 配置 |
+
+`preserveLlmConfig=true` 时，请求中的 AI 字段（包括 API Key 及其清空标记）不会覆盖当前值；原有必填字段校验不变。省略该标记或传 `false` 时维持原完整更新契约。控制台通用表单使用该标记，AI 表单只修改 AI 配置，两条路径的读、合并和保存在单个服务进程内串行执行。这不提供跨进程的版本冲突检测；旧调用方的完整更新仍可能覆盖其他写入。标记不存入设置 JSON，也不出现在读取响应中。
 
 **Response `data`:** `null`
 
