@@ -100,6 +100,21 @@ const aggregationLabelKeys: Record<string, string> = {
   SUM: 'alerts.aggregation.SUM',
 };
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
+const testCriteriaFields = new Set([
+  'instanceId',
+  'metric',
+  'operator',
+  'threshold',
+  'thresholdUnit',
+  'consumerGroup',
+  'topic',
+  'clusterName',
+  'brokerName',
+  'duration',
+  'aggregation',
+  'windowSeconds',
+  'consecutiveSamples',
+]);
 const availabilityMetrics = new Set([
   'nameserver.availability',
   'broker.availability',
@@ -206,6 +221,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [transferringRules, setTransferringRules] = useState(false);
   const metricRequestVersion = useRef(0);
+  const testRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
   const notificationTemplateRef = useRef<TextAreaRef>(null);
   const supportsUnavailableCondition = supportsUnavailableOperator(selectedMetric);
@@ -467,6 +483,12 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     }
   };
 
+  const invalidateTestResult = () => {
+    testRequestVersion.current += 1;
+    setTestResult(null);
+    setTesting(false);
+  };
+
   const loadMetricCapabilities = async (instanceId?: string, resetMetric = true) => {
     if (!instanceId?.trim()) return;
     const requestVersion = ++metricRequestVersion.current;
@@ -476,12 +498,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       const metrics = await listNativeAlertMetrics(instanceId.trim(), domain);
       if (requestVersion !== metricRequestVersion.current) return;
       setMetricOptions(metrics);
-      if (resetMetric) form.setFieldValue('metric', undefined);
+      if (resetMetric) {
+        if (form.getFieldValue('metric') !== undefined) invalidateTestResult();
+        form.setFieldValue('metric', undefined);
+      }
       if (
         !resetMetric &&
         nativeRatioMetrics.has(form.getFieldValue('metric')) &&
         !form.getFieldValue('thresholdUnit')
       ) {
+        invalidateTestResult();
         form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
       }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
@@ -838,8 +864,10 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   };
 
   const handleTest = async () => {
+    const requestVersion = ++testRequestVersion.current;
     try {
       const values = await form.validateFields();
+      if (requestVersion !== testRequestVersion.current) return;
       const payload = {
         ...attachThresholdUnit(values),
         ...(nativeRatioMetrics.has(normalizeMetric(values.metric)) ? { thresholdUnit: '%' } : {}),
@@ -848,6 +876,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       const result = await (domain === 'CLUSTER'
         ? testAlertRule(payload)
         : testAlertRule(payload, domain));
+      if (requestVersion !== testRequestVersion.current) return;
       setTestResult(result);
       if (result.samples.length === 0) {
         message.warning(t('alerts.testNoSamples'));
@@ -885,10 +914,11 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         }),
       );
     } catch (error) {
+      if (requestVersion !== testRequestVersion.current) return;
       if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('alerts.testRunFailed'));
     } finally {
-      setTesting(false);
+      if (requestVersion === testRequestVersion.current) setTesting(false);
     }
   };
 
@@ -1107,7 +1137,15 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           </Flex>
         }
       >
-        <Form form={form} layout="vertical">
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(changedValues) => {
+            if (Object.keys(changedValues).some((field) => testCriteriaFields.has(field))) {
+              invalidateTestResult();
+            }
+          }}
+        >
           <div
             style={{
               display: 'grid',
