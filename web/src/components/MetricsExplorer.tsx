@@ -1146,10 +1146,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       customPromql,
       storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
     };
-    setRangeId(nextRange.value);
-    setHistoryOpen(false);
-
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
+      setRangeId(nextRange.value);
+      setHistoryOpen(false);
       setCustomPromql(entry.promql);
       if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
         restoreProtectedDataSource(
@@ -1171,6 +1170,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       return;
     }
 
+    setRangeId(nextRange.value);
+    setHistoryOpen(false);
     localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {

@@ -133,6 +133,24 @@ describe('DataSourceTab', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('drops rows from the previous filter when the new list request fails', async () => {
+    vi.mocked(listDataSourcesPage)
+      .mockResolvedValueOnce({ ...sourcePage, items: [sources[0]], total: 1 })
+      .mockRejectedValueOnce(new Error('request failed'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await selectFilterOption(user, '全部类型', 'Thanos');
+
+    await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
+  });
+
   it('does not report a data source as offline when the backend has not tested it', async () => {
     render(
       <LangProvider>
