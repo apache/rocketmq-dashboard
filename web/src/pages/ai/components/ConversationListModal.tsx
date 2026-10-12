@@ -232,7 +232,6 @@ const ConversationListPanel = ({
       // The modal shell survives closing its panel and knows which conversation is
       // active now. Notify it even when the panel was closed during deletion.
       const activeDeleted = onDeleted(ids.filter((id) => !failed.includes(id)));
-      if (!mountedRef.current) return;
       setDeletingIds([]);
       setSelectedRowKeys((keys) => keys.filter((key) => failed.includes(Number(key))));
       if (failed.length === 0) {
@@ -249,6 +248,11 @@ const ConversationListPanel = ({
       if (activeDeleted) {
         return;
       }
+      // The toasts above are global — antd mounts them at document level, not inside this panel — so
+      // closing the panel mid-delete must not swallow the outcome, least of all a failure. What does
+      // belong to the panel is the refresh below: re-querying a list nobody renders any more wastes a
+      // request and drives this hook's state from a component that is already gone.
+      if (!mountedRef.current) return;
       // A page emptied by the delete has to fall back one, or the pager keeps offering a page that
       // no longer exists; `setPage` re-queries through the hook, `reload` covers every other case.
       if (deletedCount > 0 && deletedCount >= rowCount && page > 1) {

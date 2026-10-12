@@ -402,6 +402,51 @@ describe('ConversationListModal', () => {
     },
   );
 
+  /**
+   * The delete toasts are global, so closing the panel mid-delete must not swallow them. Guarding on
+   * `mountedRef` one statement earlier — where the notify call is — passes every other case in this
+   * file and still loses the failure message, which is the one an operator cannot recover by looking
+   * at a list that is no longer on screen.
+   */
+  it('stillReportsAFailedDeleteAfterThePanelWasClosedTest', async () => {
+    const user = userEvent.setup();
+    listMock.mockResolvedValue(page([conversation(7, 'first'), conversation(8, 'second')], 2, 1));
+    let fail!: (reason: Error) => void;
+    deleteMock.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    const view = renderModal({ activeConversationId: 8 });
+    await screen.findByTestId('ai-conversation-row-delete-7');
+    await user.click(screen.getByTestId('ai-conversation-row-delete-7'));
+    await confirmDelete(user);
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(7));
+
+    // Deleting row 7 while row 8 is open: the shell has nothing to navigate away from, so the toast
+    // is the only signal left that the delete did not happen.
+    view.rerender(
+      <App>
+        <LangProvider>
+          <ConversationListModal
+            open={false}
+            onClose={vi.fn()}
+            onSelect={view.onSelect}
+            activeConversationId={8}
+            onActiveDeleted={view.onActiveDeleted}
+          />
+        </LangProvider>
+      </App>,
+    );
+    await act(async () => {
+      fail(new Error('boom'));
+    });
+
+    expect(await screen.findByText('删除失败，请稍后重试')).toBeInTheDocument();
+    expect(view.onActiveDeleted).not.toHaveBeenCalled();
+  });
+
   it('deletesASingleConversationFromItsRowActionTest', async () => {
     const user = userEvent.setup();
     listMock
