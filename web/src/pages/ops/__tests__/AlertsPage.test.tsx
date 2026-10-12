@@ -577,6 +577,185 @@ describe('AlertsPage', () => {
     expect(within(nextDialog).getByDisplayValue('Business rule')).toBeInTheDocument();
   });
 
+  it('submits an alert rule edit once per confirmation and saves again after it resolves', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...cloneRule(alertRules[0]), instanceId: 'local' }]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'rocketmq_disk_use_ratio',
+        label: 'Broker 磁盘使用率',
+        thresholdUnit: '%',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    let resolveUpdate!: (rule: AlertRule) => void;
+    vi.mocked(updateAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /编\s*辑/ });
+    fireEvent.click(confirmButton);
+    // The dialog must lock synchronously with the first click: `submitting` alone flips only
+    // after validateFields resolves and React re-renders, leaving a window where a second
+    // confirmation slips through.
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(updateAlertRule).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolveUpdate({ ...cloneRule(alertRules[0]), instanceId: 'local' });
+    });
+    expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
+
+    // The finally block must release the lock: after the first save resolves, a second
+    // edit of the same rule has to go through instead of being swallowed by a stuck lock.
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const nextDialog = await screen.findByRole('dialog');
+    expect(within(nextDialog).getByDisplayValue('Broker disk usage')).toBeInTheDocument();
+    fireEvent.click(within(nextDialog).getByRole('button', { name: /编\s*辑/ }));
+
+    await waitFor(() => expect(updateAlertRule).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getAllByText('告警规则已更新').length).toBeGreaterThanOrEqual(2),
+    );
+  });
+
+  it('runs one rule test per click while the first run is pending', async () => {
+    vi.mocked(listAlertRulesPage).mockResolvedValue(
+      pageResult([{ ...cloneRule(alertRules[0]), instanceId: 'local' }]),
+    );
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'rocketmq_disk_use_ratio',
+        label: 'Broker 磁盘使用率',
+        thresholdUnit: '%',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    let resolveTest!: (result: AlertRuleTestResult) => void;
+    vi.mocked(testAlertRule).mockReturnValue(
+      new Promise<AlertRuleTestResult>((resolve) => {
+        resolveTest = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const testButton = within(dialog).getByRole('button', { name: '试运行' });
+    fireEvent.click(testButton);
+    // Same window as the save path: `testing` alone flips only after validateFields resolves,
+    // so the button must already be locked in the tick of the first click.
+    expect(testButton).toHaveClass('ant-btn-loading');
+    fireEvent.click(testButton);
+
+    await waitFor(() => expect(testAlertRule).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolveTest({
+        samples: [
+          {
+            labels: { broker: 'broker-a' },
+            availability: 'AVAILABLE',
+            currentValue: 90,
+            conditionMet: true,
+          },
+        ],
+      });
+    });
+    expect(await within(dialog).findByText('规则试运行结果')).toBeInTheDocument();
+  });
+
+  it('runs one row toggle per click while the first request is pending', async () => {
+    let resolveToggle!: (rule: AlertRule) => void;
+    vi.mocked(toggleAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
+        resolveToggle = resolve;
+      }),
+    );
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    const switchEl = within(getRuleRow('Broker disk usage')).getByRole('switch');
+    // Two clicks inside one act land before the loading re-render commits, so the rendered
+    // `isActionRunning` guard alone cannot stop the second entry — only a synchronous lock can.
+    await act(async () => {
+      fireEvent.click(switchEl);
+      fireEvent.click(switchEl);
+    });
+
+    await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      resolveToggle(cloneRule(alertRules[0]));
+    });
+  });
+
+  it('rechecks the shared action lock when a bulk delete is confirmed and releases it after each run', async () => {
+    let resolveToggle!: (rule: AlertRule) => void;
+    vi.mocked(toggleAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
+        resolveToggle = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+
+    // The outer guard passed before this confirm opened. Start a row toggle while the dialog
+    // is up: the shared lock is now held by the toggle, so the confirmed bulk delete must
+    // re-check inside onOk and stand down instead of racing the toggle on the same lock.
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+    await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledTimes(1));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    expect(bulkDeleteAlertRules).not.toHaveBeenCalled();
+
+    // Once the toggle settles the lock is free again: a re-confirmed bulk delete goes through.
+    await act(async () => {
+      resolveToggle({ ...cloneRule(alertRules[0]), enabled: false });
+    });
+    await user.click(screen.getByRole('button', { name: /批量删除/ }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledTimes(1));
+    expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1]);
+    expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
+    // The bulk action's finally commits together with the success message; wait for the
+    // toolbar to settle before driving the next selection.
+    await waitFor(() =>
+      expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeEnabled(),
+    );
+
+    // And the bulk delete's own finally must release the lock for the next selection.
+    // (The button lookups use a regex because a loading phase leaves jsdom with a
+    // permanently half-unmounted loading icon inside the button, which the accessible
+    // name then includes as a "loading" prefix.)
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量删除/ }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledTimes(2));
+  });
+
   it('resets page, search and status filters when the domain switches', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
