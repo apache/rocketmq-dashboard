@@ -50,6 +50,36 @@ describe('ops service mock data', () => {
     }
   });
 
+  it.each(['CLUSTER', 'BUSINESS'] as const)(
+    'rejects missing alert rule deletes in %s without changing either domain Test',
+    async (domain) => {
+      const beforeCluster = await listAlertRules('CLUSTER');
+      const beforeBusiness = await listAlertRules('BUSINESS');
+      const id = Number.MIN_SAFE_INTEGER;
+
+      await expect(deleteAlertRule(id, domain)).rejects.toThrow(`Alert rule not found: ${id}`);
+      expect(await listAlertRules('CLUSTER')).toEqual(beforeCluster);
+      expect(await listAlertRules('BUSINESS')).toEqual(beforeBusiness);
+    },
+  );
+
+  it('rejects wrong-domain and repeated alert rule deletes Test', async () => {
+    const rule = await createAlertRule({ id: -12345, name: 'delete-contract-test' }, 'BUSINESS');
+    try {
+      await expect(deleteAlertRule(rule.id)).rejects.toThrow(`Alert rule not found: ${rule.id}`);
+      expect((await listAlertRules('BUSINESS')).find((item) => item.id === rule.id)).toEqual(rule);
+      await expect(deleteAlertRule(rule.id, 'BUSINESS')).resolves.toBeUndefined();
+      expect((await listAlertRules('BUSINESS')).some((item) => item.id === rule.id)).toBe(false);
+      await expect(deleteAlertRule(rule.id, 'BUSINESS')).rejects.toThrow(
+        `Alert rule not found: ${rule.id}`,
+      );
+    } finally {
+      if ((await listAlertRules('BUSINESS')).some((item) => item.id === rule.id)) {
+        await deleteAlertRule(rule.id, 'BUSINESS');
+      }
+    }
+  });
+
   it('returns copied alert rule rows', async () => {
     const first = await listAlertRules();
     const originalName = first[0].name;

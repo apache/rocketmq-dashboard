@@ -167,7 +167,8 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
 export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === name);
-    if (idx >= 0) mockTopics.splice(idx, 1);
+    if (idx < 0) throw new Error(`Topic not found: ${name}`);
+    mockTopics.splice(idx, 1);
     return;
   }
   return metadataApi.deleteTopic(name, instanceId);
