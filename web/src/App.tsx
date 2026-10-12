@@ -22,6 +22,11 @@ import { getAuthStatus } from './api/auth';
 import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
+import {
+  USER_ADMIN_STORAGE_KEY,
+  USER_ID_STORAGE_KEY,
+  USER_STORAGE_KEY,
+} from './stores/authStorage';
 import MainLayout from './layouts/MainLayout';
 
 const LoginPage = lazy(() => import('./pages/login'));
@@ -59,6 +64,27 @@ export function AuthGate() {
   const syncAuth = useAuthStore((state) => state.login);
   const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
   const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (isMockMode()) return;
+
+    const onStorage = (event: StorageEvent) => {
+      if (
+        event.key !== null &&
+        event.key !== USER_STORAGE_KEY &&
+        event.key !== USER_ID_STORAGE_KEY &&
+        event.key !== USER_ADMIN_STORAGE_KEY
+      ) {
+        return;
+      }
+      // Another tab may have changed the shared cookie too. Hide the old account's
+      // page while the server confirms which session is now active.
+      setGateState('checking');
+      setAttempt((current) => current + 1);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     if (isMockMode()) return;
