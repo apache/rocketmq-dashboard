@@ -196,6 +196,36 @@ describe('Clients page', () => {
     });
   });
 
+  it('preserves the selected cluster after a failed connection query Test', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pending = deferred<ClientConnection[]>();
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      query?.clusterId === 'ns-prod' ? pending.promise : Promise.resolve(connections),
+    );
+    renderWithProviders(<ClientsPage />);
+    await screen.findByText('audit-svc-0@10.0.2.10:49154');
+    const clusterSelect = screen.getAllByLabelText('所属集群')[0];
+    fireEvent.mouseDown(clusterSelect.querySelector('.ant-select-selector')!);
+    await selectOption(user, 'ns-prod');
+    await waitFor(() => expect(connectionsService.listConnections).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      pending.reject(new Error('Selected cluster unavailable'));
+    });
+    expect(connectionsService.listConnections).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Selected cluster unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).not.toBeInTheDocument();
+    vi.mocked(connectionsService.listConnections).mockResolvedValueOnce([connection]);
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() =>
+      expect(connectionsService.listConnections).toHaveBeenLastCalledWith({
+        namesrvAddr: 'namesrv-1:9876',
+        clusterId: 'ns-prod',
+        type: undefined,
+      }),
+    );
+    expect(await screen.findByText(connection.clientId!)).toBeInTheDocument();
+  });
+
   it('sends cluster and type filters to the backend', async () => {
     const mixedConnections = [
       { ...connection, clusterName: 'ns-prod', type: 'Producer' },
