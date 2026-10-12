@@ -126,12 +126,17 @@ public class RocketMQMessageProvider implements MessageProvider {
             return MessageQueryResult.complete(queryByMsgId(adminExt, topic, msgId));
         }
 
+        boolean keyLookup = StringUtils.hasText(topic) && StringUtils.hasText(key);
         long end = endTime != null ? endTime : System.currentTimeMillis();
-        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        // The one-hour default the API documents belongs to the topic scan. A key lookup reads the
+        // broker's key index instead of scanning a topic, so it gets the same three-day default as
+        // the unique-key lookup below (and as RocketMQ's own queryMessageByUniqKey).
+        long begin = startTime != null ? startTime
+                : end - (keyLookup ? UNIQUE_KEY_DEFAULT_WINDOW_MILLIS : ONE_HOUR_MILLIS);
         if (begin >= end) {
             throw new BusinessException(400, "Message query start time must be before end time");
         }
-        if (StringUtils.hasText(topic) && StringUtils.hasText(key)) {
+        if (keyLookup) {
             return queryByKey(adminExt, topic, key, tag, begin, end);
         }
         if (StringUtils.hasText(topic)) {
