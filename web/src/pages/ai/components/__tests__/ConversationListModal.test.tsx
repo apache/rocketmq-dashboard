@@ -425,20 +425,10 @@ describe('ConversationListModal', () => {
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(7));
 
     // Deleting row 7 while row 8 is open: the shell has nothing to navigate away from, so the toast
-    // is the only signal left that the delete did not happen.
-    view.rerender(
-      <App>
-        <LangProvider>
-          <ConversationListModal
-            open={false}
-            onClose={vi.fn()}
-            onSelect={view.onSelect}
-            activeConversationId={8}
-            onActiveDeleted={view.onActiveDeleted}
-          />
-        </LangProvider>
-      </App>,
-    );
+    // is the only signal left that the delete did not happen. `unmount` rather than `open={false}`
+    // because jsdom never finishes the close animation, so `destroyOnHidden` would leave the panel
+    // — and its `mountedRef` — alive and the guard under test would never engage.
+    view.unmount();
     await act(async () => {
       fail(new Error('boom'));
     });
