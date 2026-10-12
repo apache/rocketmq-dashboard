@@ -579,6 +579,62 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
+  it('reports how many selected messages the export actually contained', async () => {
+    const message = (msgId: string, offset: number) => ({
+      msgId,
+      topic: 'orders',
+      queueId: 0,
+      offset,
+      storeTime: 1_700_000_000_000,
+      keys: `key-${msgId}`,
+      body: 'payload',
+      bodyBase64: null,
+      properties: {},
+      propertiesTruncated: false,
+    });
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [message('dlq-1', 7), message('dlq-2', 8)],
+      total: 2,
+      page: 1,
+      size: 20,
+    } satisfies DLQMessagePage);
+    vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
+      blob: new Blob([''], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      // Two ids were selected, but only one of them was in the scanned window.
+      meta: {
+        truncated: false,
+        failedQueueCount: 0,
+        limit: 5000,
+        exportedRows: 1,
+        selectedRows: 2,
+      },
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    const groupRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!groupRow) throw new Error('DLQ group row not found');
+    await user.click(within(groupRow).getByRole('button', { name: /消息明细/ }));
+    const dialog = await screen.findByRole('dialog', { name: /cg-order/ });
+    for (const msgId of ['dlq-1', 'dlq-2']) {
+      const messageRow = (await within(dialog).findByText(msgId)).closest('tr');
+      if (!messageRow) throw new Error(`DLQ message row not found: ${msgId}`);
+      await user.click(within(messageRow).getByRole('checkbox'));
+    }
+    await user.click(within(dialog).getByRole('button', { name: /导出选中 \(2\)/ }));
+
+    // The page now reports what the server wrote instead of what was requested: two ids were
+    // selected and only one of them was still in the scanned window.
+    await waitFor(() =>
+      expect(
+        screen.getByText('选中的 2 条死信消息中有 1 条不在导出窗口内，未写入文件'),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it('warns when the export scan is incomplete', async () => {
     vi.mocked(messageService.exportDLQExcel).mockResolvedValue({
       blob: new Blob([''], {

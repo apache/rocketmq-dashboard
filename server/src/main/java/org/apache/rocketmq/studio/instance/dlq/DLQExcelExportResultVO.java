@@ -36,4 +36,8 @@ public class DLQExcelExportResultVO {
     private boolean truncated;
     private int failedQueueCount;
     private int limit;
+    /** Rows actually written to the sheet. */
+    private int exportedRows;
+    /** msgIds the caller selected ({@code 0} when the whole window was requested). */
+    private int selectedRows;
 }

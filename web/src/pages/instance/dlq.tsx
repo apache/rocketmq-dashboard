@@ -467,13 +467,24 @@ const DLQPage = () => {
         msgIds: detailSelectedMsgIds.length > 0 ? detailSelectedMsgIds : undefined,
       });
       downloadBlob(blob, `${detailGroup.groupName}-dlq-messages.xlsx`);
+      // The selection is a filter over the scanned window, so the sheet can hold fewer rows than
+      // were ticked (a message outside the window, or already resent by someone else). The server
+      // reports what it wrote; go by that instead of the request.
+      const selectedCount = meta.selectedRows ?? detailSelectedMsgIds.length;
+      const exportedRows = meta.exportedRows;
+      const missingSelectedRows =
+        exportedRows === undefined ? 0 : Math.max(0, selectedCount - exportedRows);
       if (meta.truncated || meta.failedQueueCount > 0) {
         message.warning(
           `导出可能不完整：${meta.failedQueueCount} 个队列无法扫描，导出上限 ${meta.limit} 条`,
         );
+      } else if (missingSelectedRows > 0) {
+        message.warning(
+          `选中的 ${selectedCount} 条死信消息中有 ${missingSelectedRows} 条不在导出窗口内，未写入文件`,
+        );
       } else {
         message.success(
-          `已导出 ${detailSelectedMsgIds.length > 0 ? `选中的 ${detailSelectedMsgIds.length} 条` : '全部'}死信消息（${blob.size} 字节）`,
+          `已导出 ${selectedCount > 0 ? `选中的 ${exportedRows ?? selectedCount} 条` : '全部'}死信消息（${blob.size} 字节）`,
         );
       }
     } catch (error) {
