@@ -284,6 +284,26 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldReplaceUnorderedLegacyDurationsTest() {
+        for (String duration : List.of("1s1m", "1m1m", "1ms1s", "1h2d")) {
+            AlertRuleVO rule = AlertRuleVO.builder()
+                    .name("High Lag")
+                    .metric("rocketmq_consumer_lag_messages")
+                    .operator(">")
+                    .threshold(5000)
+                    .duration(duration)
+                    .enabled(true)
+                    .build();
+            when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+            assertThat(alertService.exportPrometheusRulesYaml())
+                    .as("legacy duration %s", duration)
+                    .contains("for: 5m")
+                    .doesNotContain("for: " + duration);
+        }
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldExcludeNativeClusterRulesTest() {
         AlertRuleVO legacy = AlertRuleVO.builder()
                 .name("High Lag Alert")
