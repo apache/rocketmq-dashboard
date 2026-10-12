@@ -179,7 +179,7 @@ const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
   sortMetricSamples(
     series.values.map((sample, index) => ({
       timestamp: sample.timestamp,
-      value: Number(sample.value),
+      value: finiteNumber(sample.value) ?? Number.NaN,
       kind: 'scalar',
       index,
     })),
