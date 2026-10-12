@@ -17,9 +17,10 @@
 
 import { memo, type CSSProperties } from 'react';
 import { Progress, Tag, theme } from 'antd';
-import { CaretRight, CheckCircle, CircleNotch, XCircle } from '@phosphor-icons/react';
+import { CaretRight, CheckCircle, CircleNotch, MinusCircle, XCircle } from '@phosphor-icons/react';
 import { useLang } from '../../../../i18n/LangContext';
 import type { McpTool } from '../../../../api/ai';
+import type { RunStatus } from '../../../../api/aiEvents';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
 import { toolDisplayName } from '../../render/blocks';
 import { formatBytes } from '../../../../utils/format';
@@ -78,6 +79,7 @@ const usePreStyle = (): CSSProperties => {
 
 export interface ToolBlockProps {
   block: ToolBlockData;
+  runStatus?: RunStatus;
   /** Catalog from `listTools()`, used for the risk tag. Optional: no catalog, no tag. */
   toolCatalog?: readonly McpTool[];
 }
@@ -104,13 +106,15 @@ function resolveCatalogTool(
   return catalog.find((entry) => toolDisplayName(entry.name) === display);
 }
 
-const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
+const ToolBlock = ({ block, toolCatalog, runStatus }: ToolBlockProps) => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const preStyle = usePreStyle();
 
   const catalogTool = resolveCatalogTool(toolCatalog, block.tool);
-  const running = block.status === 'running';
+  const ended = runStatus === 'COMPLETED' || runStatus === 'STOPPED' || runStatus === 'FAILED';
+  const missingResult = block.status === 'running' && ended;
+  const running = block.status === 'running' && !ended;
   const failed = block.status === 'done' && block.success === false;
   const displayName = toolDisplayName(block.tool);
 
@@ -132,7 +136,7 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
   return (
     <details
       data-testid="ai-tool-block"
-      data-status={block.status}
+      data-status={missingResult ? 'missing-result' : block.status}
       className="ai-tool-card"
       open={running || undefined}
       style={{
@@ -160,6 +164,8 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
       >
         {running ? (
           <CircleNotch size={16} className="ai-icon-spin" style={{ color: token.colorPrimary }} />
+        ) : missingResult ? (
+          <MinusCircle size={16} style={{ color: token.colorTextSecondary }} />
         ) : failed ? (
           <XCircle size={16} weight="fill" style={{ color: token.colorError }} />
         ) : (
@@ -190,10 +196,16 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         )}
         <Tag
           data-testid="ai-tool-status"
-          color={running ? 'processing' : failed ? 'error' : 'success'}
+          color={running ? 'processing' : missingResult ? 'default' : failed ? 'error' : 'success'}
           style={{ marginInlineEnd: 0, fontSize: 14, flexShrink: 0 }}
         >
-          {running ? t('ai.tool.running') : failed ? t('ai.tool.failed') : t('ai.tool.success')}
+          {running
+            ? t('ai.tool.running')
+            : missingResult
+              ? t('ai.tool.missingResult')
+              : failed
+                ? t('ai.tool.failed')
+                : t('ai.tool.success')}
         </Tag>
         {block.durationMs !== null && (
           <span style={{ fontSize: 14, color: token.colorTextTertiary, flexShrink: 0 }}>
@@ -250,7 +262,7 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         <summary style={summaryStyle}>{t('ai.tool.output')}</summary>
         {block.output === null ? (
           <div style={{ marginTop: 6, fontSize: 14, color: token.colorTextTertiary }}>
-            {t('ai.tool.outputPending')}
+            {t(missingResult ? 'ai.tool.outputMissing' : 'ai.tool.outputPending')}
           </div>
         ) : (
           <pre data-testid="tool-result" style={{ ...preStyle, marginTop: 6 }}>
