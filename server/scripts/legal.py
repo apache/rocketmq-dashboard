@@ -32,6 +32,58 @@ LEGAL_NAME = re.compile(r"^(licen[sc]e|notice|copying|copyright|patents|authors|
 LICENSE_NAME = re.compile(r"^(licen[sc]e|copying)([._-].*)?$", re.I)
 NOTICE_NAME = re.compile(r"^notice([._-].*)?$", re.I)
 PERMISSIVE = {"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "0BSD"}
+DETERMINATIONS = "scripts/legal-determinations.json"
+COLLECTED = "legal/licenses"
+# ASF Category B: weak copyleft. Allowed in a binary distribution only with a recorded decision,
+# never silently — so an entry has to carry `review` or the gate stays red.
+CATEGORY_B = {"EPL-1.0", "EPL-2.0", "MPL-1.1", "MPL-2.0", "CDDL-1.0", "CDDL-1.1", "LGPL-2.1", "LGPL-3.0"}
+
+
+def artifact_id(jar_name):
+    """`netty-transport-native-epoll-4.2.15.Final-linux-x86_64.jar` -> `netty-transport-native-epoll`.
+
+    Determinations are recorded per artifact, not per build: the leftmost dash-separated part that
+    starts with a digit begins the version, and anything after it is a version suffix or classifier.
+    """
+    base = jar_name[:-4] if jar_name.endswith(".jar") else jar_name
+    parts = base.split("-")
+    for index in range(1, len(parts)):
+        if parts[index][:1].isdigit():
+            return "-".join(parts[:index])
+    return base
+
+
+def load_determinations(base):
+    """The checked-in license determination for artifacts whose JAR carries no license text.
+
+    Most Maven artifacts ship no LICENSE inside the JAR at all, so "the JAR must contain its own
+    upstream license" is not satisfiable in principle. What ASF actually requires of a binary
+    distribution is that the terms travel with it, which this file plus `legal/licenses/` provides:
+    an explicit, reviewable determination per artifact instead of an impossible self-contained one.
+    """
+    path = Path(base) / DETERMINATIONS
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def determination_for(name, determinations):
+    """-> {"kind": "apache"|"collected"|"categoryB", ...} or None when nothing is recorded."""
+    if not determinations:
+        return None
+    key = artifact_id(name)
+    if key in determinations.get("apache", {}):
+        entry = determinations["apache"][key] or {}
+        return {"kind": "apache", "license": "Apache-2.0",
+                "basis": entry.get("basis") or determinations.get("apacheBasis", "")}
+    for kind in ("collected", "categoryB"):
+        if key in determinations.get(kind, {}):
+            entry = dict(determinations[kind][key])
+            entry["kind"] = "categoryB" if kind == "categoryB" else "collected"
+            if entry.get("license") in CATEGORY_B:
+                entry["kind"] = "categoryB"
+            return entry
+    return None
 
 
 def sha(data):
@@ -68,7 +120,8 @@ def texts_from_zip(data):
                 if not name.endswith("/") and is_legal(name)}
 
 
-def add_component(files, components, errors, name, payload, texts, notice, source):
+def add_component(files, components, errors, name, payload, texts, notice, source,
+                  determinations=None, warnings=None, base=SERVER):
     prefix = f"licenses/{safe(name)}/"
     component = {"name": name, "sha256": sha(payload), "source": source, "files": []}
     license_texts = [data for filename, data in texts.items() if LICENSE_NAME.match(PurePosixPath(filename).name)]
@@ -76,7 +129,38 @@ def add_component(files, components, errors, name, payload, texts, notice, sourc
            or b"GNU AFFERO GENERAL PUBLIC LICENSE" in data for data in license_texts):
         errors.append(f"{name}: contains GPL-family terms; dual-license choice/exception and redistribution obligations require manual review")
     if not license_texts or not any(len(data.strip()) >= 300 for data in license_texts):
-        errors.append(f"{name}: missing complete upstream LICENSE/COPYING; a POM name or link is not a substitute")
+        determination = determination_for(name, determinations)
+        if determination is None:
+            errors.append(f"{name}: missing complete upstream LICENSE/COPYING and no determination in "
+                          f"{DETERMINATIONS}; a POM name or link is not a substitute")
+        elif determination["kind"] == "apache":
+            # ASF does not ask a binary distribution to repeat the Apache-2.0 text once per component:
+            # the distribution's own LICENSE already is that text. Their NOTICE, if the JAR carries
+            # one, is still merged into ours by the loop below.
+            component["license"] = "Apache-2.0"
+            component["coveredBy"] = "distribution LICENSE (Apache-2.0)"
+            component["basis"] = determination["basis"]
+        else:
+            source_path = Path(base) / COLLECTED / safe(determination["text"])
+            try:
+                collected = read(source_path)
+            except (OSError, ValueError) as failure:
+                errors.append(f"{name}: collected license text is unusable ({source_path}): {failure}")
+            else:
+                texts = dict(texts)
+                texts["LICENSE"] = collected
+                component["license"] = determination["license"]
+                component["basis"] = determination.get("basis", "")
+                component["textSource"] = f"server/{COLLECTED}/{determination['text']}"
+                if determination["kind"] == "categoryB":
+                    review = determination.get("review")
+                    if not review:
+                        errors.append(f"{name}: ASF Category B ({determination['license']}) is bundled "
+                                      f"without a recorded review decision")
+                    else:
+                        component["categoryBReview"] = review
+                        if warnings is not None:
+                            warnings.append(f"{name}: ASF Category B ({determination['license']}) bundled — {review}")
     for filename, data in sorted(texts.items()):
         if not data.strip():
             errors.append(f"{name}: empty license file {filename}")
@@ -90,12 +174,18 @@ def add_component(files, components, errors, name, payload, texts, notice, sourc
     return notice
 
 
-def finish(files, components, errors, license_text, notice, payload):
+def finish(files, components, errors, license_text, notice, payload, warnings=None):
     for component in components:
-        license_text += f"\n{component['name']}: complete upstream license, copyright and additional terms under META-INF/legal/licenses/{component['name']}/\n".encode()
+        if component.get("coveredBy"):
+            license_text += (f"\n{component['name']}: {component['license']}, covered by the "
+                             f"META-INF/LICENSE text of this distribution\n").encode()
+        else:
+            license_text += f"\n{component['name']}: complete upstream license, copyright and additional terms under META-INF/legal/licenses/{component['name']}/\n".encode()
     files["LICENSE"] = license_text
     files["NOTICE"] = notice
     manifest = {"components": components, "payload": payload, "manualReview": sorted(set(errors)),
+                "warnings": sorted(set(warnings or [])),
+                "categoryB": sorted(c["name"] for c in components if c.get("categoryBReview")),
                 "files": {name: sha(data) for name, data in sorted(files.items())}}
     files["manifest.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
     return files, manifest
@@ -107,6 +197,7 @@ def generated_entry(name):
 
 def collect_jar(jar, base=SERVER):
     files, components, errors, payload = {}, [], [], {}
+    warnings, determinations = [], load_determinations(base)
     license_text, notice = read(base / "LICENSE"), read(base / "NOTICE")
     with zipfile.ZipFile(jar) as archive:
         if len(archive.namelist()) != len(set(archive.namelist())):
@@ -121,23 +212,44 @@ def collect_jar(jar, base=SERVER):
             data = archive.read(name)
             filename = PurePosixPath(name).name
             texts = texts_from_zip(data)
-            notice = add_component(files, components, errors, filename, data, texts, notice, name)
+            notice = add_component(files, components, errors, filename, data, texts, notice, name,
+                                   determinations, warnings, base)
             if filename.startswith("mysql-connector-j-"):
                 errors.append(f"{filename}: applicability of GPLv2 + Universal FOSS Exception and ASF redistribution licensing pending PMC/legal review; this is not the Classpath Exception")
-        # The Spring Boot loader itself is also copied into the JAR, not only the dependencies under BOOT-INF/lib.
+        # The Spring Boot loader itself is also copied into the JAR, not only the dependencies under
+        # BOOT-INF/lib, so its own license and NOTICE have to travel with the distribution too.
         if any(name.startswith("org/springframework/boot/loader/") and name.endswith(".class") for name in archive.namelist()):
-            spring_license = "META-INF/LICENSE.txt"
-            spring_notice = "META-INF/NOTICE.txt"
-            if spring_license not in archive.namelist() or spring_notice not in archive.namelist():
-                errors.append("Spring Boot loader: missing the original META-INF/LICENSE.txt or NOTICE.txt")
+            spring_license, spring_notice = "META-INF/LICENSE.txt", "META-INF/NOTICE.txt"
+            version = re.search(rb"(?m)^Spring-Boot-Version: ([^\r\n]+)", archive.read("META-INF/MANIFEST.MF"))
+            if not version:
+                errors.append("Spring Boot loader: missing version source")
+            loader_version = version.group(1).decode() if version else "unknown"
+            if spring_license in archive.namelist() and spring_notice in archive.namelist():
+                # Up to Boot 3.x the repackage goal copied the loader artifact's own materials here.
+                texts = {name: archive.read(name) for name in (spring_license, spring_notice)}
+                source = "JAR root META-INF"
             else:
-                texts = {name: archive.read(name) for name in [spring_license, spring_notice]}
-                version = re.search(rb"(?m)^Spring-Boot-Version: ([^\r\n]+)", archive.read("META-INF/MANIFEST.MF"))
-                if not version:
-                    errors.append("Spring Boot loader: missing version source")
-                loader = "spring-boot-loader@" + (version.group(1).decode() if version else "unknown")
-                notice = add_component(files, components, errors, loader, b"".join(texts.values()), texts, notice, "JAR root META-INF")
-    return finish(files, components, errors, license_text, notice, payload)
+                # Boot 4.x stopped copying them, and the loader classes arrive embedded in
+                # spring-boot-loader-tools rather than as a dependency JAR, so there is nothing left
+                # in the archive to read. Take the checked-in copies of that artifact's own
+                # META-INF/LICENSE.txt and META-INF/NOTICE.txt instead — and refuse them if they were
+                # collected for a different Boot version, which is how a stale NOTICE would sneak in.
+                texts, source = {}, f"server/{COLLECTED} (spring-boot-loader-tools {loader_version})"
+                for collected_name, embedded_name in (("spring-boot-loader.LICENSE.txt", spring_license),
+                                                      ("spring-boot-loader.NOTICE.txt", spring_notice)):
+                    path = Path(base) / COLLECTED / collected_name
+                    if not path.exists():
+                        errors.append(f"Spring Boot loader: collected {collected_name} is missing ({path})")
+                        continue
+                    texts[embedded_name] = read(path)
+                if loader_version != "unknown" and loader_version.encode() not in texts.get(spring_notice, b""):
+                    errors.append(f"Spring Boot loader: the collected NOTICE is not for {loader_version}; "
+                                  f"re-collect it from spring-boot-loader-tools {loader_version}")
+            if texts:
+                loader = "spring-boot-loader@" + loader_version
+                notice = add_component(files, components, errors, loader, b"".join(texts.values()), texts,
+                                       notice, source, determinations, warnings, base)
+    return finish(files, components, errors, license_text, notice, payload, warnings)
 
 
 def write_bundle(directory, files):
@@ -167,14 +279,22 @@ def check_jar(jar, base=SERVER):
         actual = {name for name in archive.namelist() if generated_entry(name) and not name.endswith("/")}
         if actual != {embedded_path(name) for name in files}:
             raise ValueError("JAR has stale or unregistered legal materials")
+    for warning in manifest["warnings"]:
+        print(f"WARNING {warning}")
     require_complete(manifest)
-    print(f"JAR license check passed: {len(manifest['components'])} actual components")
+    covered = sum(1 for c in manifest["components"] if c.get("coveredBy"))
+    collected = sum(1 for c in manifest["components"] if c.get("textSource"))
+    print(f"JAR license check passed: {len(manifest['components'])} actual components "
+          f"({covered} Apache-2.0 covered by the distribution LICENSE, {collected} from collected text, "
+          f"{len(manifest['categoryB'])} Category B)")
 
 
 def package_jar(jar, output, base=SERVER):
     jar = Path(jar)
     files, manifest = collect_jar(jar, base)
     write_bundle(output, files)
+    # Warnings are printed by the check_jar pass at the end of this function; printing them here too
+    # would double every line.
     # Emit the review materials first for inspection, but do not produce a seemingly compliant distribution package when materials are missing or licensing is unresolved.
     require_complete(manifest)
     with tempfile.NamedTemporaryFile(dir=jar.parent, suffix=".legal.jar", delete=False) as temporary:
