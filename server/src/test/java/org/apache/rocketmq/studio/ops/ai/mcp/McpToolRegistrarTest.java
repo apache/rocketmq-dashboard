@@ -21,6 +21,7 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
@@ -179,6 +180,32 @@ class McpToolRegistrarTest {
         assertThat(String.valueOf(
                 ((Map<?, ?>) result.structuredContent()).get("message")))
                 .contains("Unable to serialize MCP tool result");
+    }
+
+    @Test
+    void aToolLevelRefusalKeepsItsOwnMessageOutOfTheGenericFailurePathTest() {
+        ToolDefinition definition = toolDefinition();
+        ToolExecutionService executor = mock(ToolExecutionService.class);
+        // A BusinessException the executor did not translate is a tool-level refusal: on the HTTP
+        // paths it escapes to the global handler with its own status and message, so the MCP error
+        // result must map that message through — not flatten the refusal into a generic failure
+        // whose text is the exception's toString().
+        when(executor.execute(anyString(), any(), same(AUTHENTICATION)))
+                .thenThrow(new BusinessException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST, "instance is paused"));
+
+        McpSchema.CallToolResult result = McpToolRegistrar.toolSpecification(
+                        definition, executor, objectMapper)
+                .callHandler()
+                .apply(exchange(AUTHENTICATION), new McpSchema.CallToolRequest(
+                        definition.name(), Map.of("instanceId", AUTHENTICATION.instanceId())));
+
+        assertThat(result.isError()).isTrue();
+        assertThat(result.structuredContent()).asInstanceOf(
+                        org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("code", ToolError.EXECUTION_FAILED.code())
+                .containsEntry("message", "instance is paused")
+                .containsEntry("hint", ToolError.EXECUTION_FAILED.hint());
     }
 
     private ToolExecutionService toolExecutor(

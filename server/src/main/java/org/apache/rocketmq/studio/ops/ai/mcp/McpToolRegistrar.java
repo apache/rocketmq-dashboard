@@ -91,12 +91,18 @@ public class McpToolRegistrar {
                     .build();
         } catch (ToolExecutionException exception) {
             return errorResult(exception, objectMapper);
+        } catch (BusinessException exception) {
+            // A tool-level refusal keeps its own HTTP status and message, as on the HTTP paths
+            // where it escapes to the global handler; ToolExecutionException.from preserves both
+            // instead of flattening a 400 into a 500-shaped execution failure.
+            return errorResult(ToolExecutionException.from(exception), objectMapper);
         } catch (RuntimeException exception) {
             // A failure the executor did not translate (a result that cannot be serialised, say)
             // must not escape the handler: the MCP SDK treats a throwing handler as a failure of
             // the whole exchange, which would kill the hosted agent's tool channel for the rest
-            // of the run. One error result, and the agent can see the reason and carry on.
-            return errorResult(ToolError.EXECUTION_FAILED.exception(exception.toString()), objectMapper);
+            // of the run. One error result, and the agent can see the reason and carry on. The
+            // bare message, not toString(): the exception class name is not agent-visible text.
+            return errorResult(ToolError.EXECUTION_FAILED.exception(exception.getMessage()), objectMapper);
         }
     }
 
