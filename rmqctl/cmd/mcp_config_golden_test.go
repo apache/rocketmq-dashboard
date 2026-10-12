@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/studio"
@@ -143,5 +144,39 @@ func TestMCPConfigOmitsDefaultTimeout(t *testing.T) {
 	wantArgs := []any{"mcp", "stdio", "--config", "/tmp/c.yaml", "--instance-id", "x"}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("args = %v, want %v", args, wantArgs)
+	}
+}
+
+// TestMCPConfigRequiresInstanceID pins the fail-closed behaviour: `mcp stdio`
+// refuses to start without an instance identifier (it is deliberately never
+// defaulted from the context), so a snippet emitted without one would exit 1 in
+// the MCP client and the tools would silently never appear. The command used to
+// print it anyway and exit 0.
+func TestMCPConfigRequiresInstanceID(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	app.Store.Getenv = emptyEnv
+
+	exitCode := app.Execute([]string{"mcp", "config"})
+	if exitCode == 0 {
+		t.Fatalf("exit code = 0, want a failure; stdout=%s", stdout)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("no snippet may be printed without --instance-id, got: %s", stdout)
+	}
+	if !strings.Contains(stderr.String(), "--instance-id") ||
+		!strings.Contains(stderr.String(), "INVALID_ARGUMENT") {
+		t.Fatalf("stderr = %q, want INVALID_ARGUMENT naming --instance-id", stderr)
+	}
+
+	// The emitted argv must always be runnable: with the flag, the same snippet is
+	// printed as before.
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := app.Execute([]string{"mcp", "config", "--instance-id", "x"}); exitCode != 0 {
+		t.Fatalf("exit code = %d with --instance-id, want 0; stderr=%s", exitCode, stderr)
+	}
+	if !strings.Contains(stdout.String(), `"--instance-id"`) {
+		t.Fatalf("the snippet must carry the instance: %s", stdout)
 	}
 }

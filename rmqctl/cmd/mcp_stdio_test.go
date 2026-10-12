@@ -26,8 +26,12 @@ import (
 
 func TestMCPConfigEmitsOnlyContextAndConfigReferences(t *testing.T) {
 	app := &App{}
+	// An instance identifier is supplied because the command now refuses to emit a snippet without
+	// one (see TestMCPConfigRequiresInstanceID): `mcp stdio` exits 1 when it is missing, so the
+	// snippet would be unusable.
 	runtime := commandRuntime{options: &option{
-		context: "prod", configPath: "/tmp/rmqctl.yaml", output: "table", timeout: studio.DefaultTimeout,
+		context: "prod", configPath: "/tmp/rmqctl.yaml", instanceID: "instance-prod",
+		output: "table", timeout: studio.DefaultTimeout,
 	}}
 	cmd := app.newMCPConfigCommand(runtime)
 	stdout := &bytes.Buffer{}
@@ -47,8 +51,8 @@ func TestMCPConfigEmitsOnlyContextAndConfigReferences(t *testing.T) {
 		strings.Contains(output, "--cluster") || strings.Contains(output, "--server") {
 		t.Fatalf("config leaked or duplicated context fields: %s", output)
 	}
-	if strings.Contains(output, "--instance-id") {
-		t.Fatalf("config must not invent --instance-id when it is unset: %s", output)
+	if strings.Contains(output, `"--instance-id"`) && !strings.Contains(output, `"instance-prod"`) {
+		t.Fatalf("config must carry the supplied instance, never an invented one: %s", output)
 	}
 }
 
