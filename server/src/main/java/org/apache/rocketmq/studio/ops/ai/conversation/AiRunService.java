@@ -336,6 +336,13 @@ public class AiRunService {
             session.complete();
             throw exception;
         }
+        // A short page means the backlog is exhausted; running out of pages with every one of
+        // them full means the replay was truncated. Say so, because a reload that silently
+        // dropped the older events looks like a complete one.
+        if (replayedRows >= MAX_REPLAY_PAGES * AiConversationService.DEFAULT_TIMELINE_LIMIT) {
+            log.warn("attach replay of run {} hit the {} page ceiling after {} rows; older events are not replayed",
+                    run.getId(), MAX_REPLAY_PAGES, replayedRows);
+        }
         session.finishReplay();
         if (!live) {
             // Nothing is generating here any more, so no further frame will ever arrive. A run reaped by
