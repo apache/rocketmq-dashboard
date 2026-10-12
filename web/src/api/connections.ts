@@ -5,10 +5,10 @@ export interface ClientConnection {
   clientId?: string | null;
   type: string;
   groupOrTopic: string;
-  protocol: string;
+  protocol: string | null;
   address?: string | null;
   language?: string | null;
-  version: string;
+  version: string | null;
   connectedAt?: string | null;
   partial?: boolean;
   clusterName: string;
