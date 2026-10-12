@@ -204,6 +204,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [metricLoading, setMetricLoading] = useState(false);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [transferringRules, setTransferringRules] = useState(false);
   const metricRequestVersion = useRef(0);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -403,9 +405,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   useEffect(() => {
     void listInstances()
-      .then(setInstances)
-      .catch(() => message.error(t('alerts.instanceLoadFailed')));
-  }, []);
+      .then((nextInstances) => {
+        setInstances(nextInstances);
+        setInstancesLoadFailed(false);
+      })
+      .catch(() => {
+        // A transient toast left the picker looking like a deployment without instances once it
+        // faded: the failure is now state, and the retry re-runs this load.
+        setInstancesLoadFailed(true);
+      });
+  }, [instancesReloadNonce]);
 
   const enabledCount = rules.filter((r) => r.enabled).length;
   const selectedCount = selectedRuleIds.length;
@@ -1143,6 +1152,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             >
               <Select
                 placeholder={t('alerts.instanceRequired')}
+                status={instancesLoadFailed ? 'error' : undefined}
                 options={instances.map((instance) => ({
                   value: instance.name,
                   label: `${instance.name}${instance.vendor && instance.vendor !== 'APACHE' ? ` (${instance.vendor})` : ''}`,
@@ -1154,6 +1164,21 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                 }}
               />
             </Form.Item>
+            {instancesLoadFailed && (
+              <Space size={4}>
+                <Typography.Text type="danger" style={{ fontSize: 14 }}>
+                  {t('alerts.instanceLoadFailed')}
+                </Typography.Text>
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto' }}
+                  onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+                >
+                  {t('common.retry')}
+                </Button>
+              </Space>
+            )}
 
             <Form.Item
               name="metric"

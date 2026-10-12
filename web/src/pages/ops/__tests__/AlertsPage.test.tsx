@@ -259,6 +259,23 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('UNAVAILABLE 0null')).not.toBeInTheDocument();
   });
 
+  it('reports a failed instance load in the rule dialog and retries it', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    expect(await screen.findByText('RocketMQ 实例加载失败，请稍后重试')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText('RocketMQ 实例加载失败，请稍后重试')).not.toBeInTheDocument(),
+    );
+  });
+
   it('renders rule configuration labels in English', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     const user = userEvent.setup();
