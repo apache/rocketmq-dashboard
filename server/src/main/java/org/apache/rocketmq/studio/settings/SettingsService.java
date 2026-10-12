@@ -349,7 +349,7 @@ public class SettingsService {
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
                 && PROMETHEUS_COMPATIBLE_TYPES.contains(
-                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
+                        type.replaceAll("[\\s_-]+", "").toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDataSourceKey(String key) {

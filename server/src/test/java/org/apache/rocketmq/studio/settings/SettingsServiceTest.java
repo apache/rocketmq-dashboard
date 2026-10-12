@@ -25,6 +25,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -542,6 +544,24 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "victoria_metrics", " VICTORIA_METRICS ", "victoria-metrics", "VictoriaMetrics", "Victoria Metrics"
+    })
+    void connectionShouldProbeVictoriaMetricsForRecognizedAliasesTest(String type) {
+        prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type(type)
+                .build());
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("Connection successful");
     }
 
     @Test
