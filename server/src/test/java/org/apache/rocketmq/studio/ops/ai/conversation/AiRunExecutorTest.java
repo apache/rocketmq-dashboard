@@ -18,11 +18,9 @@ package org.apache.rocketmq.studio.ops.ai.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.ops.ai.AgentProviderRegistry;
-import org.apache.rocketmq.studio.ops.ai.AgentProvider;
 import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
-import org.apache.rocketmq.studio.ops.ai.conversation.agent.AgentStreamOptions;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.ResumeRecovery;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
@@ -151,10 +149,8 @@ class AiRunExecutorTest {
                     : "conversation:last_seq=" + update.getLastSeq());
             return null;
         }).when(conversationRepository).update(any(RmqAiConversation.class));
-        AiConversationProperties properties = new AiConversationProperties();
-        properties.setStopGrace(Duration.ofMillis(1));
         executor = new AiRunExecutor(new AgentProviderRegistry(List.of(provider)), llmClient, promptEnhancer,
-                registry, runRepository, conversationRepository, eventRepository, properties, objectMapper,
+                registry, runRepository, conversationRepository, eventRepository, properties(), objectMapper,
                 AiRunTestSupport.directExecutor(), AiRunTestSupport.recordingInto(emitters), scheduler,
                 Clock.systemUTC());
         conversation = AiRunTestSupport.conversation(CONVERSATION_ID, "tester");
@@ -227,30 +223,14 @@ class AiRunExecutorTest {
         // the answer was already being finalised) can only find a finished run: writing a second
         // terminal would corrupt the timeline with two run_status events and rewrite the row to
         // STOPPED for an answer the user watched complete.
-        AgentProvider lateStop = new AgentProvider() {
-            @Override
-            public String engine() {
-                return ENGINE;
-            }
-
-            @Override
-            public boolean available() {
-                return true;
-            }
-
-            @Override
-            public String complete(LlmConfigVO config, String prompt, String modelOverride) {
-                throw new UnsupportedOperationException("a run streams events, it does not complete");
-            }
-
-            @Override
-            public void streamEvents(LlmConfigVO config, AgentStreamOptions options,
-                    Consumer<AgentEvent> sink) {
-                sink.accept(new AgentEvent.ResultMeta("session-7", 10L, 3, 4,
-                        AgentEventProjector.SUCCESS_SUBTYPE));
-                ((AgentRunHandle) options.getProcessSink()).requestStop(AbortReason.USER_STOP);
-            }
-        };
+        // The stop must land between the success frame and the projector's terminal write — inside
+        // the stream, not before the script. The stub's afterEvent hook fires exactly there: one
+        // scripted success frame, then requestStop runs with the frame's own projection already done.
+        AiRunTestSupport.StubAgentProvider lateStop = new AiRunTestSupport.StubAgentProvider();
+        lateStop.emit(new AgentEvent.ResultMeta("session-7", 10L, 3, 4,
+                AgentEventProjector.SUCCESS_SUBTYPE));
+        lateStop.afterEvent = (event, options) -> ((AgentRunHandle) options.getProcessSink())
+                .requestStop(AbortReason.USER_STOP);
         AiRunExecutor lateExecutor = new AiRunExecutor(new AgentProviderRegistry(List.of(lateStop)),
                 llmClient, promptEnhancer, registry, runRepository, conversationRepository,
                 eventRepository, properties(), objectMapper, AiRunTestSupport.directExecutor(),
