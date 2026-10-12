@@ -22,6 +22,9 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: ${STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT:5000}
+      mail.smtp.timeout: ${STUDIO_ALERTING_SMTP_READ_TIMEOUT:10000}
+      mail.smtp.writetimeout: ${STUDIO_ALERTING_SMTP_WRITE_TIMEOUT:10000}
   ai:
     mcp:
       server:
