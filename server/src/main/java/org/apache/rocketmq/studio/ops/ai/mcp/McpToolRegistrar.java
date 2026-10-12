@@ -22,6 +22,8 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.ai.AiPayloadGuard;
 import org.apache.rocketmq.studio.ops.ai.auth.McpAuthentication;
 import org.apache.rocketmq.studio.ops.ai.tool.catalog.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolDefinition;
@@ -71,6 +73,14 @@ public class McpToolRegistrar {
         if (authentication == null) {
             return errorResult(ToolError.MCP_AUTHENTICATION_CONTEXT_MISSING.exception(), objectMapper);
         }
+        // The same byte budget the HTTP tool paths enforce through ToolController/McpToolController:
+        // an MCP caller's arguments are model-controlled and arrive over the hosted agent's stdio
+        // transport, so nothing else bounds them before they are serialised and dispatched.
+        try {
+            AiPayloadGuard.validateToolInvocation(definition.name(), request.arguments(), objectMapper);
+        } catch (BusinessException exception) {
+            return errorResult(ToolError.TOOL_PAYLOAD_INVALID.exception(exception.getMessage()), objectMapper);
+        }
         try {
             Object result = toolExecutionService.execute(
                     definition.name(), request.arguments(), authentication);
@@ -81,6 +91,18 @@ public class McpToolRegistrar {
                     .build();
         } catch (ToolExecutionException exception) {
             return errorResult(exception, objectMapper);
+        } catch (BusinessException exception) {
+            // A tool-level refusal keeps its own HTTP status and message, as on the HTTP paths
+            // where it escapes to the global handler; ToolExecutionException.from preserves both
+            // instead of flattening a 400 into a 500-shaped execution failure.
+            return errorResult(ToolExecutionException.from(exception), objectMapper);
+        } catch (RuntimeException exception) {
+            // A failure the executor did not translate (a result that cannot be serialised, say)
+            // must not escape the handler: the MCP SDK treats a throwing handler as a failure of
+            // the whole exchange, which would kill the hosted agent's tool channel for the rest
+            // of the run. One error result, and the agent can see the reason and carry on. The
+            // bare message, not toString(): the exception class name is not agent-visible text.
+            return errorResult(ToolError.EXECUTION_FAILED.exception(exception.getMessage()), objectMapper);
         }
     }
 
