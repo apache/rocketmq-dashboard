@@ -86,6 +86,7 @@ const createHistoryEntry = (
     start: overrides.start ?? 1_799_996_400,
     end: overrides.end ?? 1_800_000_000,
     queriedAt: overrides.queriedAt ?? 1_800_000_000_000,
+    instanceId: overrides.instanceId,
     summary: overrides.summary ?? summarizeMetricData(metricData),
   });
 
@@ -280,6 +281,56 @@ describe('metrics explorer diagnostics', () => {
     expect(loadMetricsQueryHistory()[0].queriedAt).toBe(112);
     expect(clearMetricsQueryHistory()).toBe(true);
     expect(loadMetricsQueryHistory()).toEqual([]);
+  });
+
+  it.each([false, true])(
+    'keeps unscoped history separate from an instance named global (reverse=%s) Test',
+    (reverse) => {
+      const unscoped = createHistoryEntry({ queriedAt: 1 });
+      const scoped = createHistoryEntry({ instanceId: 'global', queriedAt: 2 });
+      const [existing, incoming] = reverse ? [scoped, unscoped] : [unscoped, scoped];
+
+      const merged = mergeMetricsQueryHistory([existing], incoming);
+
+      expect(merged).toEqual([incoming, existing]);
+      localStorage.clear();
+      expect(saveMetricsQueryHistory(merged)).toBe(true);
+      expect(loadMetricsQueryHistory()).toEqual([scoped, unscoped]);
+    },
+  );
+
+  it('deduplicates repeated queries within the literal global instance Test', () => {
+    const older = createHistoryEntry({ instanceId: 'global', queriedAt: 1 });
+    const newer = createHistoryEntry({ instanceId: 'global', queriedAt: 2 });
+
+    expect(mergeMetricsQueryHistory([older], newer)).toEqual([newer]);
+  });
+
+  it('deduplicates persisted legacy IDs using query fields Test', () => {
+    const legacy = {
+      ...createHistoryEntry({ instanceId: 'global', queriedAt: 1 }),
+      id: 'rocketmq5-native:message_in_tps:1h:default:global:1',
+    };
+    localStorage.clear();
+    saveMetricsQueryHistory([legacy]);
+    const newer = createHistoryEntry({ instanceId: 'global', queriedAt: 2 });
+
+    expect(mergeMetricsQueryHistory(loadMetricsQueryHistory(), newer)).toEqual([newer]);
+  });
+
+  it('gives unscoped and literal global queries different IDs at the same timestamp Test', () => {
+    const unscoped = createHistoryEntry({});
+    const scoped = createHistoryEntry({ instanceId: 'global' });
+
+    expect(scoped.id).not.toBe(unscoped.id);
+  });
+
+  it('distinguishes the default source from a source with the literal key default Test', () => {
+    const implicit = createHistoryEntry({ dataSourceKey: '' });
+    const explicit = createHistoryEntry({ dataSourceKey: 'default' });
+
+    expect(explicit.id).not.toBe(implicit.id);
+    expect(mergeMetricsQueryHistory([implicit], explicit)).toEqual([explicit, implicit]);
   });
 
   // The unavailable-storage fallbacks are covered by browserStorage.test.ts, which is where
