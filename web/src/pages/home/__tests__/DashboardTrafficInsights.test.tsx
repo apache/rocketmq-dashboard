@@ -17,9 +17,10 @@
 
 import { App } from 'antd';
 import { render, screen } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { buildDashboardTrafficInsights } from '../../../utils/dashboardTrafficInsights';
 import DashboardTrafficInsights from '../DashboardTrafficInsights';
 
@@ -108,6 +109,10 @@ beforeAll(() => {
   });
 });
 
+afterEach(() => {
+  localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+});
+
 describe('DashboardTrafficInsights', () => {
   it('renders traffic findings and summary cards without duplicating cluster rows', () => {
     renderPanel();
@@ -154,15 +159,20 @@ describe('DashboardTrafficInsights', () => {
     expect(screen.getByText(/未检测到活跃流量/u)).toBeInTheDocument();
   });
 
-  it('formats findings with locale-neutral separators for English users', () => {
-    localStorage.setItem('rocketmq-studio-language', 'en');
+  /**
+   * Both branches of the separator switch, not just the one being added: asserting English alone
+   * leaves `lang === 'zh' ? '、' : '; '` free to collapse to a constant without anything going red.
+   */
+  it.each([
+    { lang: 'zh', heading: '需要关注的流量信号', label: '：', list: '、', other: '; ' },
+    { lang: 'en', heading: 'Traffic signals to review', label: ': ', list: '; ', other: '、' },
+  ])('formats findings with the $lang separators', ({ lang, heading, label, list, other }) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
     renderPanel();
 
-    const alert = screen.getByText(/Traffic signals to review/);
-    const text = alert.textContent ?? '';
-    expect(text).toContain('Traffic signals to review');
-    expect(text).not.toContain('、');
-    expect(text).not.toContain('：');
-    expect(text).toContain('; ');
+    const text = screen.getByText(new RegExp(heading, 'u')).textContent ?? '';
+    expect(text).toContain(`${heading}${label}`);
+    expect(text).toContain(list);
+    expect(text).not.toContain(other);
   });
 });
