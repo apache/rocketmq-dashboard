@@ -411,6 +411,44 @@ describe('Consumer page', () => {
     errorSpy.mockRestore();
   });
 
+  it.each(['empty', 'unchanged', 'failure'])(
+    'keepsBatchSelectionBoundToConfirmedConsumerInventoryTest: %s',
+    async (outcome) => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      let finishRefresh!: (value: ReturnType<typeof groupPage>) => void;
+      let failRefresh!: (error: Error) => void;
+      const refreshedPage = new Promise<ReturnType<typeof groupPage>>((resolve, reject) => {
+        finishRefresh = resolve;
+        failRefresh = reject;
+      });
+      vi.mocked(consumerService.listConsumerGroupPage)
+        .mockResolvedValueOnce(groupPage([group]))
+        .mockReturnValue(refreshedPage);
+      renderWithProviders(<ConsumerPage />);
+      const row = await screen.findByRole('row', { name: /remote-cg/ });
+      await user.click(within(row).getByRole('checkbox'));
+      expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+      // Enabling the ordinary list refresh immediately reads the same instance/query.
+      await user.click(screen.getByRole('button', { name: /自动刷新/ }));
+      await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        if (outcome === 'failure') failRefresh(new Error('list read failed'));
+        else finishRefresh(groupPage(outcome === 'empty' ? [] : [group]));
+      });
+      expect(consumerService.deleteConsumerGroup).not.toHaveBeenCalled();
+      expect(consumerService.batchDeleteConsumerGroups).not.toHaveBeenCalled();
+      if (outcome === 'empty') {
+        expect(screen.queryByText('remote-cg')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+      } else {
+        const retained = screen.getByText('remote-cg').closest('tr') as HTMLElement;
+        expect(within(retained).getByRole('checkbox')).toBeChecked();
+        expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+      }
+    },
+  );
+
   afterEach(async () => {
     await act(async () => {
       cleanup();
