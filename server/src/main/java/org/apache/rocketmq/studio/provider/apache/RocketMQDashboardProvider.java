@@ -355,8 +355,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             totalTopics = allTopics.size();
             totalGroups = allGroups.size();
 
-            // Build per-cluster overview. The topology table is a HashMap, so sort by name to
-            // keep the overview list stable across snapshots, matching the cluster list order.
+            // Build per-cluster overview. A HashMap iterates deterministically for a given key
+            // set, but the cluster list view sorts by name; sort here too so the two views agree.
             List<Map.Entry<String, Set<String>>> sortedClusters =
                     new ArrayList<>(clusterAddrTable.entrySet());
             sortedClusters.sort(Map.Entry.comparingByKey());

@@ -687,7 +687,7 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
-    void dashboardClusterOverviewShouldOrderClustersByName() throws Exception {
+    void dashboardClusterOverviewShouldOrderClustersByNameTest() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
