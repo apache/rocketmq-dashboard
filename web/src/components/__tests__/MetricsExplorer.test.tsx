@@ -15,15 +15,20 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listDataSources } from '../../api/settings';
-import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
-import { LangProvider } from '../../i18n/LangContext';
+import {
+  listMetricProfiles,
+  queryByDataSource,
+  queryMetrics,
+  type MetricData,
+} from '../../api/metrics';
+import { LangProvider, useLang } from '../../i18n/LangContext';
 import { downloadCsv } from '../../utils/download';
 import {
   METRICS_QUERY_HISTORY_STORAGE_KEY,
@@ -83,7 +88,7 @@ const profiles = [
   },
 ];
 
-const metricData = {
+const metricData: MetricData = {
   resultType: 'matrix',
   series: [
     {
@@ -186,6 +191,15 @@ const renderWithProviders = (ui: React.ReactElement) =>
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+
+const LanguageSwitch = () => {
+  const { setLang } = useLang();
+  return (
+    <button type="button" onClick={() => setLang('en')}>
+      switch-language
+    </button>
+  );
+};
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -447,6 +461,76 @@ describe('MetricsExplorer', () => {
       </App>,
     );
 
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(2),
+    );
+  });
+
+  it('keeps the pending custom query when the display language changes', async () => {
+    const user = userEvent.setup();
+    const customQuery = createDeferred<typeof metricData>();
+    vi.mocked(queryMetrics).mockImplementation((query) =>
+      query.metric === 'sum(rocketmq_topic_number)'
+        ? customQuery.promise
+        : Promise.resolve(metricData),
+    );
+
+    render(
+      <App>
+        <LangProvider>
+          <LanguageSwitch />
+          <MetricsExplorer />
+        </LangProvider>
+      </App>,
+    );
+    await screen.findByText('42 messages/s');
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(queryMetrics)
+          .mock.calls.filter((call) => call[0].metric === 'sum(rocketmq_topic_number)'),
+      ).toHaveLength(1),
+    );
+
+    // The display language is not part of the query context: switching it must neither
+    // refetch the profile panels nor abandon the custom query that is still running.
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    expect(listMetricProfiles).toHaveBeenCalledTimes(1);
+    expect(
+      vi
+        .mocked(queryMetrics)
+        .mock.calls.filter(
+          (call) =>
+            call[0].metric === 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+        ),
+    ).toHaveLength(1);
+
+    customQuery.resolve({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          labels: { cluster: 'prod', query: 'custom' },
+          values: [{ timestamp: 1_800_000_000, value: '9' }],
+        },
+      ],
+    });
+
+    // Before the fix the language change discarded this result and nothing restarted the
+    // custom flow, so the panel stayed on its spinner until the page was reloaded.
+    expect(await screen.findByText('cluster=prod / query=custom')).toBeInTheDocument();
+
+    // antd suppresses clicks while a Button is loading, so a second submission proves the
+    // custom panel released the stuck loading state.
+    await user.click(screen.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
       expect(
         vi
@@ -775,6 +859,116 @@ describe('MetricsExplorer', () => {
     expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
   });
 
+  const authenticationView = (instanceId: string) => (
+    <App>
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <LangProvider>
+          <MetricsExplorer instanceId={instanceId} />
+        </LangProvider>
+      </ConfigProvider>
+    </App>
+  );
+
+  it.each(['picker', 'history'] as const)(
+    'cancelsPendingAuthenticationWhenItsSourceLeavesScopeTest (%s)',
+    async (origin) => {
+      const user = userEvent.setup();
+      vi.mocked(listDataSources).mockResolvedValue([
+        {
+          key: 'ds-basic',
+          name: 'Protected Prometheus',
+          type: 'Prometheus',
+          url: '',
+          auth: 'Basic Auth',
+          status: 'healthy',
+          instanceIds: ['instance-1'],
+        },
+      ]);
+      localStorage.setItem(
+        METRICS_QUERY_HISTORY_STORAGE_KEY,
+        JSON.stringify([
+          createHistoryEntry({ dataSourceKey: 'ds-basic', dataSourceName: 'Protected Prometheus' }),
+        ]),
+      );
+      const view = render(authenticationView('instance-1'));
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      if (origin === 'picker') {
+        await user.click(screen.getByRole('combobox', { name: '数据源' }));
+        await user.click(
+          await screen.findByText('Protected Prometheus', {
+            selector: '.ant-select-item-option-content',
+          }),
+        );
+      } else {
+        await user.click(screen.getByRole('button', { name: '查询历史' }));
+        const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+        const row = within(dialog).getByText('Consumer Lag Messages').closest('.ant-list-item')!;
+        await user.click(within(row as HTMLElement).getByRole('button', { name: '恢复' }));
+      }
+      await screen.findByText('凭据仅用于当前数据源，离开该数据源后会被清除。');
+      view.rerender(authenticationView('instance-2'));
+      await waitFor(() =>
+        expect(screen.queryByRole('textbox', { name: '用户名' })).not.toBeInTheDocument(),
+      );
+      const profile = screen.getByRole('combobox', { name: '指标模板' }).closest('.ant-select')!;
+      expect(within(profile as HTMLElement).getByText('RocketMQ 5.x Native')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+      ).toHaveTextContent('1h');
+      await waitFor(() =>
+        expect(queryMetrics).toHaveBeenLastCalledWith(
+          expect.objectContaining({ metric: profiles[0].metrics[0].promql }),
+        ),
+      );
+      const calls = vi.mocked(queryMetrics).mock.calls;
+      const query = calls[calls.length - 1][0];
+      expect(query.end! - query.start!).toBe(3600);
+      expect(queryByDataSource).not.toHaveBeenCalled();
+    },
+  );
+
+  it('canAuthenticateAGlobalSourceAfterTheInstanceChangesTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'global-basic',
+        name: 'Global Protected',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+    const view = renderWithProviders(<MetricsExplorer instanceId="instance-1" />);
+    await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Global Protected', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await screen.findByLabelText('用户名');
+    view.rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-2" />
+        </LangProvider>
+      </App>,
+    );
+    await user.type(screen.getByLabelText('用户名'), 'reader');
+    await user.type(screen.getByLabelText('密码'), 'test-password');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'global-basic',
+          username: 'reader',
+          password: 'test-password',
+          instanceId: 'instance-2',
+        }),
+      ),
+    );
+  });
+
   it('prompts for basic credentials and supplies them only to the selected data source query', async () => {
     const user = userEvent.setup();
     vi.mocked(listDataSources).mockResolvedValue([
@@ -1049,6 +1243,36 @@ describe('MetricsExplorer', () => {
       }),
     );
     expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+  });
+
+  it('keeps the active query unchanged when history references a removed profile', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      METRICS_QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        createHistoryEntry({
+          profileId: 'removed-profile',
+          profileName: 'Removed Profile',
+          metricName: 'Removed Metric',
+        }),
+      ]),
+    );
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const historyDialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const historyItem = within(historyDialog).getByText('Removed Metric').closest('.ant-list-item');
+    expect(historyItem).not.toBeNull();
+    await user.click(within(historyItem as HTMLElement).getByRole('button', { name: '恢复' }));
+
+    expect(screen.getByRole('dialog', { name: '指标查询历史' })).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected')?.textContent,
+    ).toBe('1h');
+    expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+    expect(vi.mocked(queryMetrics)).toHaveBeenCalledTimes(queryCount);
   });
 
   it('keeps the current data source when cancelling a protected history restore', async () => {

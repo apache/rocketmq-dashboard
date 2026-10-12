@@ -29,13 +29,17 @@ import org.apache.rocketmq.studio.instance.acl.AclUserVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +50,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -270,6 +275,45 @@ class TencentAclServiceTest {
         assertThat(request.getPermRead()).isTrue();
         assertThat(request.getPermWrite()).isTrue();
         assertThat(created.getActions()).containsExactly("PUB", "SUB");
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidRuleActions")
+    void ruleMutationsShouldRejectInvalidActionsBeforeChangingRolePermissionsTest(List<String> actions) {
+        AclRuleVO rule = AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("*")
+                .actions(actions)
+                .build();
+
+        assertThatThrownBy(() -> service.createRule(INSTANCE_ID, rule))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> service.updateRule(INSTANCE_ID, rule))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(clientFactory, client);
+    }
+
+    static Stream<List<String>> invalidRuleActions() {
+        return Stream.of(null, List.of(), List.of("PBU"), List.of("PUB", "PBU"),
+                List.of(""), List.of(" SUB "), Arrays.asList("SUB", null));
+    }
+
+    @Test
+    void updateRuleShouldPreserveCaseInsensitivePermissionActionsTest() throws Exception {
+        AclRuleVO updated = service.updateRule(INSTANCE_ID, AclRuleVO.builder()
+                .principal("reader-role")
+                .resource("*")
+                .actions(List.of("pub", "sUb", "pub"))
+                .build());
+
+        ArgumentCaptor<ModifyRoleRequest> requestCaptor = ArgumentCaptor.forClass(ModifyRoleRequest.class);
+        verify(client).ModifyRole(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getPermRead()).isTrue();
+        assertThat(requestCaptor.getValue().getPermWrite()).isTrue();
+        assertThat(updated.getActions()).containsExactly("PUB", "SUB");
     }
 
     @Test

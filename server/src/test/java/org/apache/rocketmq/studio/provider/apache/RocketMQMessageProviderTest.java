@@ -44,6 +44,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
@@ -704,6 +705,89 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicBoundsRepeatedUnmatchedBatchesTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 0L, 0L, 100L, 100L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation ->
+                new PullResult(PullStatus.NO_MATCHED_MSG, (Long) invocation.getArgument(2) + 1,
+                        0L, 100L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(35)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicStopsWhenUnmatchedBatchDoesNotAdvanceTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 30L, 30L);
+        when(pullConsumer.pull(queue, "*", 10L, 32))
+                .thenReturn(new PullResult(PullStatus.NO_MATCHED_MSG, 10L, 0L, 30L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(1)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicContinuesAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 20L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
+    void queryByTopicResetsIllegalOffsetCounterAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 17L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        for (long offset : new long[] {10L, 11L, 12L, 17L, 18L, 19L}) {
+            when(pullConsumer.pull(queue, "*", offset, 32))
+                    .thenReturn(new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 50L, null));
+        }
+        when(pullConsumer.pull(queue, "*", 13L, 32)).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
     void queryByTopicKeepsNewestMessagesWhenEarlierQueuesFillTheDefaultLimit() throws Exception {
         MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
         MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
@@ -1022,6 +1106,71 @@ class RocketMQMessageProviderTest {
         verify(adminExt).queryMessage(topicCaptor.capture(), keyCaptor.capture(), anyInt(), anyLong(), anyLong());
         assertThat(topicCaptor.getValue()).isEqualTo("CUSTOM_TRACE");
         assertThat(keyCaptor.getValue()).isEqualTo("shared-key");
+    }
+
+    @Test
+    void getMessageTraceByKeyKeepsOnlyContextsWhoseKeysContainTheQueryToken() throws Exception {
+        // One trace message batches every context for the source topic. The index lists each
+        // space-separated business key, so a lookup for order-A hits contexts for order-B and
+        // order-A-suffix too. Only whole key tokens may be returned.
+        String pubA = traceContext("Pub", "1000", "cn", "producer-a", "orders", "msg-a",
+                "tag", "order-A", "127.0.0.1:10911", "10", "5", "0", "offset-msg-a", "true");
+        String pubMulti = traceContext("Pub", "1001", "cn", "producer-a2", "orders", "msg-a2",
+                "tag", "extra order-A", "127.0.0.1:10911", "10", "5", "0", "offset-msg-a2", "true");
+        String pubB = traceContext("Pub", "1002", "cn", "producer-b", "orders", "msg-b",
+                "tag", "order-B", "127.0.0.1:10911", "10", "5", "0", "offset-msg-b", "true");
+        String subA = traceContext("SubAfter", "req-a", "msg-a", "5", "true", "order-A",
+                "0", "3000", "consumer-a");
+        String subB = traceContext("SubAfter", "req-b", "msg-b", "5", "false", "order-B",
+                "0", "3001", "consumer-b");
+        String subSuffix = traceContext("SubAfter", "req-suffix", "msg-prefix", "5", "false",
+                "order-A-suffix", "0", "3002", "consumer-prefix");
+        String txA = traceContext("EndTransaction", "1003", "cn", "tx-a", "orders", "msg-a",
+                "tag", "extra order-A", "127.0.0.1:10911", "0", "tx-1", "COMMIT_MESSAGE", "false");
+        String txB = traceContext("EndTransaction", "1004", "cn", "tx-b", "orders", "msg-b",
+                "tag", "order-B", "127.0.0.1:10911", "0", "tx-2", "ROLLBACK_MESSAGE", "false");
+        String recall = traceContext("Recall", "2500", "cn", "producer-recall", "orders", "msg-recall", "false");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(pubA, pubMulti, pubB, subA, subB, subSuffix, txA, txB, recall)
+                .getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO byKey = provider.getMessageTraceByKey("instance-a", "order-A", "orders", null);
+
+        assertThat(byKey.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly(
+                        "producer=producer-a, storeHost=127.0.0.1:10911",
+                        "producer=producer-a2, storeHost=127.0.0.1:10911",
+                        "group=consumer-a, contextCode=0",
+                        "group=tx-a, transactionState=COMMIT_MESSAGE");
+        assertThat(byKey.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-a");
+
+        TraceRecordVO bySuffix = provider.getMessageTraceByKey(
+                "instance-a", "order-A-suffix", "orders", null);
+
+        assertThat(bySuffix.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly("group=consumer-prefix, contextCode=0");
+        assertThat(bySuffix.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-prefix");
+
+        // Message-id filtering stays exact and is not replaced by the key token check.
+        TraceRecordVO byMsgB = provider.getMessageTrace("instance-a", "msg-b", "orders");
+
+        assertThat(byMsgB.getNodes()).extracting(TraceNodeVO::getDescription)
+                .containsExactly(
+                        "producer=producer-b, storeHost=127.0.0.1:10911",
+                        "group=consumer-b, contextCode=0",
+                        "group=tx-b, transactionState=ROLLBACK_MESSAGE");
+        assertThat(byMsgB.getConsumerStatus()).extracting(ConsumerStatusVO::getGroup)
+                .containsExactly("consumer-b");
+
+        TraceRecordVO byRecall = provider.getMessageTrace("instance-a", "msg-recall", "orders");
+
+        assertThat(byRecall.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("recall");
+        assertThat(byRecall.getNodes().get(0).getDescription()).contains("producer-recall");
+        assertThat(byRecall.getConsumerStatus()).isEmpty();
     }
 
     @Test

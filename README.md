@@ -14,7 +14,7 @@ Studio. Open the agent at the repository root and paste the prompt below:
 ```text
 Set up and run RocketMQ Studio locally from this repository:
 1. Check that Docker and Docker Compose are installed. If not, tell me how to install them and stop.
-2. Create the shared network: `docker network create rocketmq_net` (ignore the error if it already exists).
+2. Create the shared network if it does not exist: `docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`.
 3. Build and start Studio: `docker compose -f deploy/docker-compose.yml up -d --build`.
 4. Wait for the backend to become healthy, then open http://127.0.0.1:6789 and confirm the page loads.
 Report the running containers and any errors. Do not modify source code or create commits.
@@ -30,7 +30,7 @@ Run from the repository root:
 
 ```bash
 # 1. Create the shared Docker network (the compose files attach to it as external)
-docker network create rocketmq_net
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 
 # 2. Build and start RocketMQ Studio (mysql + rocketmq-server + rocketmq-web)
 docker compose -f deploy/docker-compose.yml up -d --build
@@ -49,7 +49,7 @@ default deployment. Import `upgrade-demo-instance.sql` first and then `upgrade-d
 target the current numeric-ID schema and are idempotent. They are sample-data loaders, not upgrade migrations,
 and should never be imported into a production database.
 
-**Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
+**Studio ports:** Frontend 6789 (Nginx, also proxies `/api`), Backend 8888 (Spring Boot, container-internal — published only when the backend runs outside compose)
 
 To enable login protection for a shared environment, copy `deploy/.env.example` to
 `deploy/.env`, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and configure

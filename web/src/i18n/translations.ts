@@ -105,6 +105,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.clusterHealth': { zh: '集群健康概览', en: 'Cluster Health' },
   'dashboard.clusterName': { zh: '集群名称', en: 'Cluster Name' },
   'dashboard.allInstances': { zh: '全部已配置实例', en: 'All configured instances' },
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load dashboard' },
+  'dashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not load the cluster overview. Check the connection and retry.',
+  },
   'dashboard.instanceFilter': { zh: '实例筛选', en: 'Instance filter' },
   'dashboard.broker': { zh: 'Broker', en: 'Broker' },
   'dashboard.proxy': { zh: 'Proxy', en: 'Proxy' },
@@ -210,6 +215,10 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
   'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
+  'clients.partialScan': {
+    zh: '客户端连接列表不完整：部分查询失败。',
+    en: 'Client connections are incomplete: some queries failed.',
+  },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
   'clients.selectNameserverPlaceholder': { zh: '选择 NameServer', en: 'Select NameServer' },
   'cluster.k8sIdExtra': {
@@ -913,6 +922,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Configure business-flow alert rules for consumer lag, DLQ, and notification channels',
   },
   'alerts.totalRules': { zh: '规则总数', en: 'Total Rules' },
+  'alerts.totalRulesWithCount': { zh: '共 {count} 条规则', en: '{count} rules total' },
   'alerts.enabled': { zh: '已启用', en: 'Enabled' },
   'alerts.disabled': { zh: '已禁用', en: 'Disabled' },
   'alerts.triggered24h': { zh: '24h 触发', en: 'Triggered (24h)' },
@@ -1192,6 +1202,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'deliveries.allChannels': { zh: '全部通道', en: 'All channels' },
   'deliveries.allStatuses': { zh: '全部状态', en: 'All statuses' },
   'deliveries.allInstances': { zh: '全部实例', en: 'All instances' },
+  'deliveries.search': { zh: '搜索告警标题或失败原因', en: 'Search alert title or error' },
+  'deliveries.timeRange': { zh: '投递时间范围', en: 'Delivery time range' },
+  'deliveries.startTime': { zh: '投递开始时间', en: 'Delivery start time' },
+  'deliveries.endTime': { zh: '投递结束时间', en: 'Delivery end time' },
   'deliveries.loadFailed': {
     zh: '告警投递记录加载失败，请稍后重试',
     en: 'Failed to load alert deliveries. Please try again later.',
@@ -1339,6 +1353,14 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── System Alerts ───
   'sysAlerts.title': { zh: '系统告警', en: 'System Alerts' },
   'sysAlerts.clearAcked': { zh: '清除已确认', en: 'Clear Acknowledged' },
+  'sysAlerts.clearAckedConfirm': {
+    zh: '清除所有已确认告警？',
+    en: 'Clear every acknowledged alert?',
+  },
+  'sysAlerts.clearAckedConfirmDesc': {
+    zh: '会永久删除全部已确认的系统告警及其通知投递记录，无法撤销。',
+    en: 'Permanently deletes every acknowledged system alert and its notification delivery records. This cannot be undone.',
+  },
   'sysAlerts.acknowledge': { zh: '确认', en: 'Acknowledge' },
   'sysAlerts.severe': { zh: '严重', en: 'Critical' },
   'sysAlerts.warning': { zh: '警告', en: 'Warning' },
@@ -1347,8 +1369,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.acknowledged': { zh: '告警已确认', en: 'Alert Acknowledged' },
   'sysAlerts.cleared': { zh: '已清除所有已确认告警', en: 'Cleared all acknowledged alerts' },
   'sysAlerts.subtitle': {
-    zh: '集群运行告警监控，当前 {n} 条未确认',
-    en: 'Cluster alert monitoring, {n} unacknowledged',
+    zh: '集群运行告警监控，本页 {n} 条未确认',
+    en: 'Cluster alert monitoring, {n} unacknowledged on this page',
   },
   'sysAlerts.firing': { zh: '触发中', en: 'Firing' },
   'sysAlerts.resolved': { zh: '已恢复', en: 'Resolved' },
@@ -1512,6 +1534,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.CREATE_ACL_USER': { zh: '创建 ACL 用户', en: 'Create ACL User' },
   'audit.op.UPDATE_ACL_USER': { zh: '更新 ACL 用户', en: 'Update ACL User' },
   'audit.op.DELETE_ACL_USER': { zh: '删除 ACL 用户', en: 'Delete ACL User' },
+  'audit.op.REVEAL_ACL_USER_CREDENTIALS': {
+    zh: '查看 ACL 用户凭据',
+    en: 'Reveal ACL User Credentials',
+  },
   'audit.op.UPSERT_PLAIN_ACCESS_CONFIG': {
     zh: '更新 Plain Access 配置',
     en: 'Upsert Plain Access Config',
@@ -1523,11 +1549,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.CREATE_CLOUD_CREDENTIAL': { zh: '创建云凭据', en: 'Create Cloud Credential' },
   'audit.op.UPDATE_CLOUD_CREDENTIAL': { zh: '更新云凭据', en: 'Update Cloud Credential' },
   'audit.op.DELETE_CLOUD_CREDENTIAL': { zh: '删除云凭据', en: 'Delete Cloud Credential' },
+  'audit.op.REVEAL_CLOUD_CREDENTIAL': { zh: '查看云凭据', en: 'Reveal Cloud Credential' },
   'audit.op.CREATE_ALERT_RULE': { zh: '创建告警规则', en: 'Create Alert Rule' },
   'audit.op.UPDATE_ALERT_RULE': { zh: '更新告警规则', en: 'Update Alert Rule' },
   'audit.op.TOGGLE_ALERT_RULE': { zh: '启停告警规则', en: 'Toggle Alert Rule' },
   'audit.op.DELETE_ALERT_RULE': { zh: '删除告警规则', en: 'Delete Alert Rule' },
   'audit.op.ACKNOWLEDGE_SYSTEM_ALERT': { zh: '确认系统告警', en: 'Acknowledge System Alert' },
+  'audit.op.CREATE_ALERT_SILENCE': { zh: '创建告警静默', en: 'Create Alert Silence' },
+  'audit.op.DELETE_ALERT_SILENCE': { zh: '删除告警静默', en: 'Delete Alert Silence' },
+  'audit.op.IMPORT_CLOUD_INSTANCES': { zh: '导入云端实例', en: 'Import Cloud Instances' },
+  'audit.op.UPDATE_GROUP_SETTINGS': { zh: '更新消费组设置', en: 'Update Group Settings' },
   'audit.op.CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS': {
     zh: '清除已确认告警',
     en: 'Clear Acknowledged Alerts',
@@ -1552,6 +1583,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.res.SETTINGS': { zh: '设置', en: 'Settings' },
   'audit.res.METRICS_DATA_SOURCE': { zh: '指标数据源', en: 'Metrics Data Source' },
   'audit.res.CLOUD_CREDENTIAL': { zh: '云凭据', en: 'Cloud Credential' },
+  'audit.res.ALERT_SILENCE': { zh: '告警静默', en: 'Alert Silence' },
   'audit.res.ALERT_RULE': { zh: '告警规则', en: 'Alert Rule' },
   'audit.res.SYSTEM_ALERT': { zh: '系统告警', en: 'System Alert' },
   'audit.res.K8S_CERTIFICATE': { zh: 'K8s 证书', en: 'K8s Certificate' },
@@ -1696,6 +1728,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.list.search': { zh: '搜索会话标题', en: 'Search conversation titles' },
   'ai.list.empty': { zh: '暂无会话', en: 'No conversations' },
   'ai.list.loadFailed': { zh: '会话列表加载失败', en: 'Failed to load conversations' },
+  'ai.timeline.loadFailed': { zh: '会话记录加载失败', en: 'Failed to load conversation history' },
   'ai.list.columnTitle': { zh: '会话', en: 'Conversation' },
   'ai.list.columnEngine': { zh: '引擎', en: 'Engine' },
   'ai.list.columnModel': { zh: '模型', en: 'Model' },
@@ -1852,7 +1885,7 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // ─── AI tool playground ───
   'ai.tools.title': { zh: 'AI 工具', en: 'AI tools' },
-  'ai.tools.selectCluster': { zh: '选择集群', en: 'Select a cluster' },
+  'ai.tools.selectInstance': { zh: '选择实例', en: 'Select an instance' },
   'ai.tools.globalScope': { zh: '全局工具', en: 'Global tools' },
   'ai.tools.selectTool': { zh: '选择工具', en: 'Select a tool' },
   'ai.tools.inputLabel': { zh: '输入参数 (JSON)', en: 'Input (JSON)' },
@@ -1888,9 +1921,9 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: 'AI 工具目录加载失败',
     en: 'Failed to load the AI tool catalog',
   },
-  'ai.clusterListLoadFailed': {
-    zh: '集群列表加载失败，已显示全局工具',
-    en: 'Failed to load clusters; showing global tools',
+  'ai.instanceListLoadFailed': {
+    zh: '实例列表加载失败，已显示全局工具',
+    en: 'Failed to load instances; showing global tools',
   },
   'ai.mode.title': { zh: '对话模式', en: 'Chat mode' },
   'ai.mode.chat': { zh: '对话', en: 'Chat' },
@@ -2245,6 +2278,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'topicCompare.export': { zh: '导出结果', en: 'Export results' },
 
   // ─── Consumer Page ───
+  'consumer.pageSubtitle': {
+    zh: '管理消费者组订阅关系与消费进度，共 {count} 个 Group',
+    en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
+  },
+  'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
+  'consumer.importDoneSkipped': {
+    zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
+    en: 'Imported {created} groups; {invalid} invalid rows were skipped',
+  },
+  'consumer.importDoneFailed': {
+    zh: '已导入 {created} 个 Group，{failed} 个失败',
+    en: 'Imported {created} groups; {failed} failed',
+  },
+  'consumer.importFailed': {
+    zh: '{failed} 个 Group 导入失败',
+    en: 'Failed to import {failed} groups',
+  },
   'consumer.name': { zh: 'Group 名称', en: 'Group Name' },
   'consumer.subType': { zh: '订阅组类型', en: 'Sub Type' },
   'consumer.subMode': { zh: '订阅模式', en: 'Sub Mode' },
@@ -2280,6 +2331,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.filterAll': { zh: '全量', en: 'Full' },
   'consumer.filterTag': { zh: 'Tag 过滤', en: 'Tag Filter' },
   'consumer.filterSql92': { zh: 'SQL92 过滤', en: 'SQL92 Filter' },
+  'consumer.filterClassFilter': { zh: 'Class 过滤', en: 'Class Filter' },
   'consumer.expression': { zh: '订阅表达式', en: 'Expression' },
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },
@@ -3101,6 +3153,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.detail': { zh: '消息详情', en: 'Message Detail' },
   'message.body': { zh: '消息主体', en: 'Message Body' },
   'message.properties': { zh: '消息属性', en: 'Message Properties' },
+  'message.propertiesTruncated': {
+    zh: '属性过多或单值过长，服务端已截断展示',
+    en: 'Some properties were shortened by the server',
+  },
   'message.info': { zh: '消息信息', en: 'Message Info' },
   'message.tracking': { zh: '消息追踪', en: 'Message Tracking' },
   'message.showAll': { zh: '显示全部内容', en: 'Show All Content' },
@@ -3516,6 +3572,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.ttlRemaining': { zh: 'TTL 剩余', en: 'TTL Remaining' },
   'liteTopic.totalMessages': { zh: '总消息数', en: 'Total Messages' },
   'liteTopic.consumedMessages': { zh: '已消费消息', en: 'Consumed Messages' },
+  'liteTopic.consumedTruncated.title': {
+    zh: '已消费量与总消息数只覆盖部分 lite topic',
+    en: 'Consumed and total counts cover only part of the session',
+  },
+  'liteTopic.consumedTruncated.description': {
+    zh: '该会话的 lite topic 数量超过单次统计上限，已消费量与总消息数只统计了其中一部分（显示为下界），待消费量是完整的；消费进度因此不显示。',
+    en: 'This session has more lite topics than one scan covers, so the consumed and total message counts cover only part of them and are shown as lower bounds; the pending count is complete. The consumption progress is hidden for that reason.',
+  },
   'liteTopic.pendingMessages': { zh: '待消费消息', en: 'Pending Messages' },
   'liteTopic.consumptionRate': { zh: '消费速率', en: 'Consumption Rate' },
   'liteTopic.active': { zh: '活跃', en: 'Active' },
@@ -3553,7 +3617,12 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Enter new TTL value (ms)',
   },
   'liteTopic.extendTtlModalTitle': { zh: '延长 TTL', en: 'Extend TTL' },
-  'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
+  'liteTopic.instance': { zh: '所属实例', en: 'Owning Instance' },
+  'liteTopic.instancePlaceholder': { zh: '选择所属实例', en: 'Select the owning instance' },
+  'liteTopic.instanceRequired': {
+    zh: '请选择 Topic 所属的实例',
+    en: 'Select the instance that owns the topic',
+  },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
   'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
@@ -3593,6 +3662,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.begin': { zh: '开始', en: 'Begin' },
   'common.end': { zh: '结束', en: 'End' },
   'common.selectInstance': { zh: '选择实例', en: 'Select Instance' },
+  'instanceSelect.notFound': { zh: '暂无匹配实例', en: 'No matching instances' },
   'common.selectProxy': { zh: '选择代理', en: 'Select Proxy' },
   'common.enableProxy': { zh: '启用代理', en: 'Enable Proxy' },
   'common.proxyDisabled': { zh: '代理禁用', en: 'Proxy Disabled' },

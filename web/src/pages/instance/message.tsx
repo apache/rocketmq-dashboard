@@ -54,6 +54,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
+import MessageProperties from '../../components/MessageProperties';
 import {
   useQueueBrowser,
   QueueBrowserControls,
@@ -71,11 +72,15 @@ import {
 import { listTopics } from '../../services/topicService';
 import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
+import { formatBytes, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
+  messageTraceTopicOwnerKey,
+  type MessageTraceTopicOwner,
 } from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -118,19 +123,6 @@ const TOPIC_TAG_COLORS: Record<string, string> = {
 const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startOf('day'), dayjs()];
 
 /* ─── Helpers ─── */
-
-const formatSize = (bytes: number): string => {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${bytes} B`;
-};
-
-const formatTimeMs = (value: number | string): string => {
-  if (!value) return '-';
-  const d = new Date(value);
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
-};
 
 const formatBody = (body: string): string => {
   try {
@@ -312,6 +304,7 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
+  traceTopicOwner: MessageTraceTopicOwner;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
   instancesFailed: boolean;
@@ -321,13 +314,17 @@ type InstanceFilterProps = {
 const MessagePage = () => {
   const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
     useInstanceFilter();
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
+  const traceTopicOwner = useMemo(() => ({ userId, username }), [userId, username]);
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
   return (
     <MessagePageContent
-      key={selectedInstanceId || 'no-instance'}
+      key={`${messageTraceTopicOwnerKey(traceTopicOwner)}:${selectedInstanceId || 'no-instance'}`}
       selectedInstanceId={selectedInstanceId}
+      traceTopicOwner={traceTopicOwner}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
       instancesFailed={instancesFailed}
@@ -341,6 +338,7 @@ const MessagePage = () => {
    ═══════════════════════════════════════════ */
 const MessagePageContent = ({
   selectedInstanceId,
+  traceTopicOwner,
   selectInstance,
   instanceOptions,
   instancesFailed,
@@ -403,7 +401,7 @@ const MessagePageContent = ({
   const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
   const [traceQueryValue, setTraceQueryValue] = useState('');
   const [customTraceTopic, setCustomTraceTopic] = useState(() =>
-    readMessageTraceTopic(selectedInstanceId),
+    readMessageTraceTopic(selectedInstanceId, traceTopicOwner),
   );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
@@ -474,8 +472,8 @@ const MessagePageContent = ({
           : undefined;
 
   useEffect(() => {
-    writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
-  }, [customTraceTopic, selectedInstanceId]);
+    writeMessageTraceTopic(selectedInstanceId, customTraceTopic, traceTopicOwner);
+  }, [customTraceTopic, selectedInstanceId, traceTopicOwner]);
 
   const currentQueryParams: MessageQuery =
     queryMode === 'topic'
@@ -658,6 +656,10 @@ const MessagePageContent = ({
     }
   };
 
+  // Both tabs render halves of the trace payload — Trace draws the nodes, Verify draws the
+  // consumerStatus table — so a modal opened or switched straight onto either one must fetch it.
+  const rendersTracePayload = (tab: string) => tab === 'trace' || tab === 'consumer';
+
   const openDetail = (record: MessageRecord, tab = 'content') => {
     traceGenerationRef.current += 1;
     setSelectedMsg(record);
@@ -666,12 +668,12 @@ const MessagePageContent = ({
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
-    if (tab === 'trace') void loadMessageTrace(record);
+    if (rendersTracePayload(tab)) void loadMessageTrace(record);
   };
 
   const handleModalTabChange = (tab: string) => {
     setModalTab(tab);
-    if (tab === 'trace' && selectedMsg) void loadMessageTrace(selectedMsg);
+    if (rendersTracePayload(tab) && selectedMsg) void loadMessageTrace(selectedMsg);
   };
 
   const runTraceQuery = async () => {
@@ -837,7 +839,7 @@ const MessagePageContent = ({
       key: 'size',
       width: 80,
       align: 'right',
-      render: (size: number) => formatSize(size),
+      render: (size: number) => formatBytes(size),
     },
     {
       title: t('common.actions'),
@@ -953,7 +955,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatSize(selectedMsg.size)}
+              {formatBytes(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>
@@ -1012,6 +1014,10 @@ const MessagePageContent = ({
           >
             {formatBody(selectedMsg.body)}
           </Paragraph>
+          <MessageProperties
+            properties={selectedMsg.properties}
+            propertiesTruncated={selectedMsg.propertiesTruncated}
+          />
         </>
       ),
     },

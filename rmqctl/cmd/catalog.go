@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -191,7 +192,7 @@ func runTool(
 	// Fill client-side defaults (x-client-default: NOW) before required
 	// validation and argument assembly so a schema-required field with a
 	// client default is self-consistent. Explicit flags always win.
-	applyClientDefaults(tool, arguments)
+	filled := applyClientDefaults(tool, arguments)
 	// Pass the explicit --instance-id value through to tools whose schema
 	// declares the instance identifier (decision 7: pass-through of the
 	// caller's explicit value, not a default injection). Platform-level
@@ -200,6 +201,9 @@ func runTool(
 		arguments[instanceField] = target.InstanceID
 	}
 	if err := validateSchemaArguments(tool, tool.InputSchema, arguments); err != nil {
+		return err
+	}
+	if err := rejectReplayWithAutoFilledDefaults(arguments, filled); err != nil {
 		return err
 	}
 
@@ -263,8 +267,10 @@ var nowMillis = func() int64 { return time.Now().UnixMilli() }
 // Filling happens before required validation so required fields with a client
 // default (e.g. group reset-offset --timestamp) validate cleanly. The catalog
 // generator rejects x-client-default on nested properties, so only top-level
-// fields need to be considered.
-func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) {
+// fields need to be considered. The filled fields are returned so a caller can
+// tell an auto-filled value from an explicitly supplied one.
+func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) []toolcatalog.Field {
+	var filled []toolcatalog.Field
 	for _, field := range tool.InputSchema.Fields {
 		if field.ClientDefault != toolcatalog.ClientDefaultNow {
 			continue
@@ -273,7 +279,29 @@ func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) {
 			continue
 		}
 		arguments[field.Name] = nowMillis()
+		filled = append(filled, field)
 	}
+	return filled
+}
+
+// rejectReplayWithAutoFilledDefaults refuses a --confirm-token replay whose
+// previewed input cannot be reproduced. The server signs the previewed
+// business input into the token (the timestamp of a group reset-offset
+// preview included), while an x-client-default: NOW field is filled on every
+// invocation — so a replay that omits the flag carries a fresh value, never
+// matches the preview, and is answered with a mismatch error whose hint
+// ("without changing the operation input") the caller did obey. Naming the
+// flag to pin turns that dead end into an instruction.
+func rejectReplayWithAutoFilledDefaults(arguments map[string]any, filled []toolcatalog.Field) error {
+	if len(filled) == 0 || !argumentPresent(arguments, "confirm_token") {
+		return nil
+	}
+	field := filled[0]
+	return types.NewCLIError(types.CodeInvalidArgument,
+		fmt.Sprintf("--confirm-token cannot replay an auto-filled --%s", field.Flag),
+		fmt.Sprintf("The preview signed its own --%s into the token, and this call filled a new value, so the server "+
+			"would reject it as a preview mismatch. Pin the previewed value with --%s <value from the preview plan>, or "+
+			"drop --confirm-token to let --yes run the preview and the call together.", field.Flag, field.Flag))
 }
 
 func schemaFlagUsage(field toolcatalog.Field) string {
@@ -318,41 +346,78 @@ func confirmRisk(cmd *cobra.Command, runtime commandRuntime, tool toolcatalog.To
 	if confirm == nil {
 		confirm = defaultConfirm
 	}
-	return confirm(cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, runtime.targetServer())
+	return confirm(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), tool.CommandPath(), tool.RiskLevel, runtime.targetServer())
 }
 
 // defaultConfirm is the production confirmation implementation. It only
 // prompts when stdin is a character device (interactive terminal); pipes and
-// redirected input are rejected so scripts must pass --yes explicitly.
-func defaultConfirm(in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
-	file, ok := in.(*os.File)
-	if !ok || file == nil {
+// redirected input are rejected so scripts must pass --yes explicitly. The
+// command context is watched while waiting for the answer so a Ctrl-C aborts
+// the prompt instead of leaving it open for a "yes" that would run the
+// mutation with an already-canceled context.
+func defaultConfirm(ctx context.Context, in io.Reader, out io.Writer, commandPath, riskLevel, server string) error {
+	// Anything that can report its own mode qualifies as a potential terminal: production passes
+	// *os.File, and the character-device check below is what actually gates interactive use.
+	statter, ok := in.(interface{ Stat() (os.FileInfo, error) })
+	if !ok || statter == nil {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
-	stat, err := file.Stat()
+	stat, err := statter.Stat()
 	if err != nil {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
-	fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
-	fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
-	reader := bufio.NewReader(in)
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		return types.NewCLIError(
-			types.CodeCommandFailed,
-			fmt.Sprintf("confirmation for %q failed: %v", commandPath, err),
-			"Re-run the command and confirm interactively, or pass --yes to skip the prompt.")
+	if _, err := fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel); err != nil {
+		return fmt.Errorf("write confirmation warning: %w", err)
 	}
-	if !isAffirmative(strings.TrimSpace(answer)) {
-		return types.NewCLIError(
-			types.CodeCommandFailed,
-			fmt.Sprintf("execution of %q cancelled", commandPath),
-			"Re-run the command and type yes, or pass --yes to skip the prompt.")
+	if _, err := fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server); err != nil {
+		return fmt.Errorf("write confirmation prompt: %w", err)
 	}
-	return nil
+
+	// The stdin read itself cannot be interrupted, so run it alongside the context: a canceled
+	// context always wins over an answer that may already have been typed, and the buffered
+	// channel lets the reader goroutine retire after a canceled prompt without leaking.
+	reads := make(chan confirmRead, 1)
+	go func() {
+		reader := bufio.NewReader(in)
+		answer, err := reader.ReadString('\n')
+		reads <- confirmRead{answer: answer, err: err}
+	}()
+	if ctx.Err() != nil {
+		return confirmInterrupted(commandPath)
+	}
+	select {
+	case <-ctx.Done():
+		return confirmInterrupted(commandPath)
+	case read := <-reads:
+		if read.err != nil {
+			return types.NewCLIError(
+				types.CodeCommandFailed,
+				fmt.Sprintf("confirmation for %q failed: %v", commandPath, read.err),
+				"Re-run the command and confirm interactively, or pass --yes to skip the prompt.")
+		}
+		if !isAffirmative(strings.TrimSpace(read.answer)) {
+			return types.NewCLIError(
+				types.CodeCommandFailed,
+				fmt.Sprintf("execution of %q cancelled", commandPath),
+				"Re-run the command and type yes, or pass --yes to skip the prompt.")
+		}
+		return nil
+	}
+}
+
+type confirmRead struct {
+	answer string
+	err    error
+}
+
+func confirmInterrupted(commandPath string) error {
+	return types.NewCLIError(
+		types.CodeCanceled,
+		fmt.Sprintf("confirmation for %q was interrupted", commandPath),
+		"The command was canceled (for example with Ctrl-C); rerun it if that was unintended.")
 }
 
 func riskConfirmationRequired(commandPath, riskLevel string) error {

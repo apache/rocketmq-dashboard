@@ -87,8 +87,8 @@ export interface MessageResultSnapshot {
   tag: string;
   key: string;
   brokerName: string;
-  queueId: number;
-  queueOffset: number;
+  queueId: number | null;
+  queueOffset: number | null;
   storeTime: number;
   bornHost: string;
   storeHost: string;

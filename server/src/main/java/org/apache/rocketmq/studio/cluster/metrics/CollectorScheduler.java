@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Set;
 
 /** Runs independent, bounded collection jobs for each configured instance. */
@@ -262,7 +263,16 @@ public class CollectorScheduler {
 
     @Scheduled(fixedDelayString = "${studio.alerting.snapshot-cleanup-interval:PT1H}")
     public void cleanUpSnapshots() {
-        Duration retention = Duration.parse(properties.getSnapshotRetention());
+        Duration retention;
+        try {
+            retention = Duration.parse(properties.getSnapshotRetention());
+        } catch (DateTimeParseException | NullPointerException error) {
+            // A malformed value must not turn the hourly scheduler into a permanent failure
+            // loop; skip this run and keep the old snapshots rather than guessing a horizon.
+            log.warn("Ignoring malformed studio.alerting.snapshot-retention '{}': {}", properties.getSnapshotRetention(),
+                    error.getMessage());
+            return;
+        }
         if (retention.isNegative() || retention.isZero()) {
             return;
         }

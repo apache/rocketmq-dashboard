@@ -126,6 +126,7 @@ const TopicConfigComparisonDrawer = ({
       return;
     }
     const requestId = ++requestIdRef.current;
+    setResult(null);
     setLoading(true);
     try {
       const [sourceTopics, targetTopics] = await Promise.all([

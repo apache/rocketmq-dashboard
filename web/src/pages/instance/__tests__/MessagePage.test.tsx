@@ -376,6 +376,33 @@ describe('Message page query history', () => {
     expect(retryItems[0]).toHaveTextContent('2');
   });
 
+  it('shows message properties and warns when the server shortened them', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      {
+        ...createMessage('MID-PROPERTIES'),
+        properties: { traceId: 'trace-123', route: 'priority' },
+        propertiesTruncated: true,
+      },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-PROPERTIES');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    const properties = screen.getByRole('region', { name: '消息属性' });
+    expect(within(properties).getByText('traceId')).toBeInTheDocument();
+    expect(within(properties).getByText('trace-123')).toBeInTheDocument();
+    expect(within(properties).getByText('priority')).toBeInTheDocument();
+    expect(
+      within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
+    ).toBeInTheDocument();
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
@@ -588,6 +615,45 @@ describe('Message page query history', () => {
     ).toBeInTheDocument();
   });
 
+  it('loads the trace payload when the Verify tab is opened directly from Content', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-VERIFY')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-VERIFY');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-VERIFY')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+
+    // Switch straight to Verify without visiting Trace: the consumer-status table must load.
+    await user.click(screen.getByRole('tab', { name: '验证' }));
+    expect(await screen.findByText('cg-billing')).toBeInTheDocument();
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([
@@ -612,5 +678,26 @@ describe('Message page query history', () => {
     expect(locationItems[0]).toHaveTextContent('-');
     expect(locationItems[1]).toHaveTextContent('-');
     expect(locationItems[2]).toHaveTextContent('-');
+  });
+
+  it('renders a message larger than a megabyte with the matching unit', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BIG-SIZE'), size: 5 * 1024 ** 3 },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BIG-SIZE');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    const row = await screen.findByRole('row', { name: /MID-BIG-SIZE/ });
+    expect(within(row).getByText('5.0 GB')).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
 });

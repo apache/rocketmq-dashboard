@@ -50,6 +50,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -69,6 +70,12 @@ public class NotificationOutboxService {
     private static final int DEFAULT_HEARTBEAT_THREADS = 2;
     private static final int MAX_HEARTBEAT_THREADS = 4;
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** The test message must name the channel it exercises, not always DingTalk. */
+    private static final Map<String, String> TEST_MESSAGE_DESCRIPTIONS = Map.of(
+            "dingtalk", "DingTalk notification configuration is working.",
+            "email", "Email notification configuration is working.",
+            "sms", "SMS notification configuration is working.");
 
     private final RmqAlertNotificationOutboxMapper mapper;
     private final SettingsRepository settingsRepository;
@@ -157,8 +164,8 @@ public class NotificationOutboxService {
         }
         GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
         SystemAlertVO alert = SystemAlertVO.builder().level(org.apache.rocketmq.studio.common.domain.enums.AlertLevel.info)
-                .title("RocketMQ Studio test notification").description("DingTalk notification configuration is working.")
-                .build();
+                .title("RocketMQ Studio test notification")
+                .description(TEST_MESSAGE_DESCRIPTIONS.get(channel)).build();
         try {
             String content = AlertNotificationTemplate.render(null, alert, null);
             if ("email".equals(channel)) sendEmail(settings, alert, content);
@@ -190,7 +197,12 @@ public class NotificationOutboxService {
             row.setStatus(NotificationOutboxStatus.PENDING.name());
             row.setAttemptCount(0);
             row.setMessageContent(AlertNotificationTemplate.render(rule.getNotificationTemplate(), alert, rule));
-            row.setNextAttemptAt(silenceEndsAt == null ? utcNow() : silenceEndsAt);
+            LocalDateTime now = utcNow();
+            row.setNextAttemptAt(silenceEndsAt == null ? now : silenceEndsAt);
+            // The retention cutoff is computed in UTC; leaving these to the database defaults would
+            // stamp them with the session clock (Asia/Shanghai in the compose deploy) instead.
+            row.setGmtCreate(now);
+            row.setGmtModified(now);
             mapper.insert(row);
         }
     }
@@ -209,18 +221,25 @@ public class NotificationOutboxService {
     }
 
     public PageResult<NotificationDeliveryPageVO> listDeliveries(String channel, String status, String instanceId,
-            int page, int pageSize) {
+            String search, LocalDateTime from, LocalDateTime to, int page, int pageSize) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Delivery start time must not be after end time");
+        }
         int safePage = Math.max(1, page);
         int safePageSize = Math.min(100, Math.max(1, pageSize));
         String normalizedChannel = normalizeFilter(channel);
         String normalizedStatus = normalizeStatus(status);
         String normalizedInstanceId = normalizeTrim(instanceId);
-        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId);
+        String normalizedSearch = normalizeTrim(search);
+        long total = mapper.countPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to);
         if (total == 0) {
             return PageResult.empty(safePage, safePageSize);
         }
-        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId, safePageSize,
-                (long) (safePage - 1) * safePageSize), total, safePage, safePageSize);
+        return PageResult.of(mapper.findPage(normalizedChannel, normalizedStatus, normalizedInstanceId,
+                normalizedSearch, from, to, safePageSize, (long) (safePage - 1) * safePageSize),
+                total, safePage, safePageSize);
     }
 
     public void retryFailedDelivery(Long deliveryId) {
@@ -237,7 +256,8 @@ public class NotificationOutboxService {
         int updated = mapper.update(null, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("attempt_count", 0)
                 .set("next_attempt_at", now).set("sending_started_at", null).set("claim_token", null)
-                .set("last_error", null).eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
+                .set("last_error", null).set("gmt_modified", now)
+                .eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
         if (updated != 1) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
@@ -249,6 +269,10 @@ public class NotificationOutboxService {
         if (deliveryIds == null || deliveryIds.isEmpty() || deliveryIds.size() > 100) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Provide between 1 and 100 notification delivery IDs");
+        }
+        if (deliveryIds.stream().anyMatch(id -> id == null)) {
+            throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
+                    "Notification delivery IDs must not contain null");
         }
         List<Long> succeeded = new ArrayList<>();
         Map<Long, String> failures = new java.util.LinkedHashMap<>();
@@ -404,7 +428,9 @@ public class NotificationOutboxService {
             throw new IllegalStateException("No configured " + channel + " webhook");
         }
         UrlHostGuard.check(webhook, false);
-        ResponseEntity<String> response = restTemplate.postForEntity(dingTalkWebhook(webhook, settings, channel),
+        // The URL already contains escaped query values, including the DingTalk signature.
+        // The String overload would treat it as a URI template and encode those escapes again.
+        ResponseEntity<String> response = restTemplate.postForEntity(URI.create(dingTalkWebhook(webhook, settings, channel)),
                 payload(alert, channel, content), String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException("Webhook returned " + response.getStatusCode());
@@ -547,6 +573,10 @@ public class NotificationOutboxService {
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,
             UpdateWrapper<RmqAlertNotificationOutbox> updates) {
+        // Every claimed state change stamps gmt_modified from the same UTC clock as the retention
+        // cutoff. Without this the ON UPDATE CURRENT_TIMESTAMP default rewrites it in the database
+        // session's timezone and the purge compares two clocks.
+        updates.set("gmt_modified", utcNow());
         return mapper.update(null, updates.eq("id", row.getId()).eq("status", NotificationOutboxStatus.SENDING.name())
                 .eq("claim_token", claimToken)) == 1;
     }
