@@ -182,11 +182,11 @@ const compareTimestampDesc = (left: string | null, right: string | null): number
 };
 
 const buildTargetKey = (record: AuditRecord): string =>
-  [
-    normalizeText(record.clusterId, 'global'),
-    normalizeAuditCode(record.resourceType) || 'RESOURCE',
-    normalizeText(record.target, '-'),
-  ].join('|');
+  JSON.stringify([
+    record.clusterId?.trim() || null,
+    normalizeAuditCode(record.resourceType) || null,
+    record.target?.trim() || null,
+  ]);
 
 const toRiskRecord = (record: AuditRecord): AuditRiskRecord | null => {
   const failed = isFailedAuditResult(record.result);
