@@ -402,4 +402,18 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
+
+  it('does not render a Connections column for nameservers', async () => {
+    // The backend NameServerVO has no connection count; the column used to
+    // fabricate a hardcoded 0 for every nameserver (and export it to CSV).
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByRole('tab', { name: /NameServer|Nameserver/i }));
+    await screen.findAllByRole('columnheader');
+
+    expect(
+      screen.queryByRole('columnheader', { name: /连接数|[Cc]onnections/ }),
+    ).not.toBeInTheDocument();
+  });
 });

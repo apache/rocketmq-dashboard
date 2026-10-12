@@ -63,7 +63,6 @@ class LiteTopicSessionToolHandlerTest {
                 .totalMessages(10L)
                 .consumedMessages(4L)
                 .pendingMessages(6L)
-                .popProgress(40)
                 .liteTopicCreationCount(1)
                 .liteTopics(List.of(entry))
                 .build());
@@ -74,8 +73,27 @@ class LiteTopicSessionToolHandlerTest {
         assertThat(output).isEqualTo(new LiteTopicSessionOutput(
                 "sess-1", "client-1", "10.0.0.1:5678", "chat", "cg-chat",
                 1789092000000L, 1789092600000L, 3600L, 1800L, "ACTIVE",
-                10L, 4L, 6L, 40, 1,
+                10L, 4L, false, 6L, 1,
                 List.of(new LiteTopicSessionOutput.Entry("chat/sess-1/0", "ACTIVE", 1800L))));
+    }
+
+    @Test
+    void carriesATruncatedConsumedScanIntoTheToolOutputTest() {
+        when(liteTopicService.getSession("sess-3")).thenReturn(LiteTopicSessionVO.builder()
+                .sessionId("sess-3")
+                .totalMessages(1500L)
+                .consumedMessages(1000L)
+                .pendingMessages(500L)
+                .consumedScanTruncated(true)
+                .build());
+
+        LiteTopicSessionOutput output = handler.execute(new LiteTopicSessionInput("sess-3"), context());
+
+        // The full-record assertion above cannot catch a mapping that hardcodes false or inverts the
+        // flag: its VO never sets the field, so `false` is correct there either way.
+        assertThat(output.consumedScanTruncated()).isTrue();
+        assertThat(output.totalMessages()).isEqualTo(1500L);
+        assertThat(output.consumedMessages()).isEqualTo(1000L);
     }
 
     @Test

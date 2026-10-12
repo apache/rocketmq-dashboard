@@ -184,18 +184,38 @@ class AlertServiceTest {
         assertThat(updated.isEnabled()).isTrue();
         verify(alertRepository).replaceRule(cluster);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(2L);
+        verify(alertStateRepository, never()).deleteByRuleId(2L);
     }
 
     @Test
     void updatingRuleShouldResetItsPreviousEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
+                .operator(">").threshold(50).instanceId("local").build();
         AlertRuleVO rule = AlertRuleVO.builder().id(4L).name("Lag").metric("consumer.lag.total")
                 .operator(">").threshold(100).instanceId("local").build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
         when(alertRepository.replaceRule(rule)).thenReturn(true);
 
         alertService.updateRule(rule);
 
         verify(alertStateRepository).deleteByRuleId(4L);
+    }
+
+    @Test
+    void updatingOnlyNonSemanticFieldsShouldPreserveEvaluationStateTest() {
+        AlertRuleVO existing = AlertRuleVO.builder().id(4L).name("Lag old")
+                .metric("consumer.lag.total").operator(">").threshold(100)
+                .instanceId("local").enabled(true).severity("warning").build();
+        AlertRuleVO updated = AlertRuleVO.builder().id(4L).name("Lag renamed")
+                .metric("consumer.lag.total").operator(">").threshold(100)
+                .instanceId("local").enabled(true).severity("critical")
+                .channels(List.of("dingtalk")).build();
+        when(alertRepository.findRuleById(4L)).thenReturn(Optional.of(existing));
+        when(alertRepository.replaceRule(updated)).thenReturn(true);
+
+        alertService.updateRule(updated);
+
+        verify(alertStateRepository, never()).deleteByRuleId(4L);
     }
 
     @Test
@@ -1212,18 +1232,18 @@ class AlertServiceTest {
                 .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
         verify(alertRepository).replaceRule(rule);
         verify(alertRepository, never()).findAllRules();
-        verify(alertStateRepository).deleteByRuleId(1L);
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
     }
 
     @Test
-    void domainBulkOperationsShouldResetEachMutatedRuleStateTest() {
+    void domainBulkDisableAndDeleteShouldResetEachMutatedRuleStateTest() {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("Broker unavailable")
                 .domain(AlertDomain.CLUSTER).enabled(false).build();
         when(alertRepository.findRulesByIds(List.of(1L))).thenReturn(List.of(rule));
         when(alertRepository.replaceRule(rule)).thenReturn(true);
         when(alertRepository.deleteRule(1L)).thenReturn(true);
 
-        alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L), true);
+        alertService.bulkToggleRules(AlertDomain.CLUSTER, List.of(1L), false);
         alertService.bulkDeleteRules(AlertDomain.CLUSTER, List.of(1L));
 
         verify(alertStateRepository, org.mockito.Mockito.times(2)).deleteByRuleId(1L);
