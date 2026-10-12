@@ -132,9 +132,17 @@
             <artifactId>mysql-connector-j</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!-- H2 backs the `dev` profile and the schema-migration tests only; nothing under src/main
+             references it and the container runs `prod` against MySQL. Scope=test keeps it out of the
+             distributed fat JAR: it is dual MPL-2.0/EPL-1.0, i.e. ASF Category B, which needs legal
+             review to ship in a binary release, and there is no reason to ship it.
+             Consequence: running the packaged JAR with -Dspring.profiles.active=dev needs H2 on the
+             classpath (java -cp "app.jar:h2-*.jar" ...); `mvn test -Dspring.profiles.active=dev` is
+             unaffected because the tests get it from this scope. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
         </dependency>
         <!-- RocketMQ Admin Tools (kept from trunk #694) -->
         <dependency>
