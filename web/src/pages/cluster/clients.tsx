@@ -294,21 +294,17 @@ const ClientsPage = () => {
   const clusterConnections = useMemo(() => connections, [connections]);
 
   const connectionStats = useMemo(() => {
-    const instances = Array.from(
-      new Map(
-        clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
-          connection,
-        ]),
-      ).values(),
-    );
+    // Every tile describes the connections the table below lists: the page header and the table
+    // footer both count these rows, and the diagnostics panel already reports the de-duplicated
+    // view (unique clients / addresses). Collapsing a client that serves several groups into one
+    // entry here made the summary disagree with both, e.g. 5 in the header of a 7-row page.
     return {
-      total: instances.length,
-      producers: instances.filter((connection) => connection.type === 'Producer').length,
-      consumers: instances.filter((connection) => connection.type === 'Consumer').length,
-      protocols: countBy(instances.map((connection) => connection.protocol)),
+      total: clusterConnections.length,
+      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
+      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        instances.map(
+        clusterConnections.map(
           (connection) =>
             `${connection.language ?? UNKNOWN_LANGUAGE} ${connection.version ?? UNKNOWN_LANGUAGE}`,
         ),
