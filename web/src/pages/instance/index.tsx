@@ -166,6 +166,11 @@ const InstancePage = () => {
       }
     } catch {
       if (requestId === requestIdRef.current) {
+        // A failed reload must not leave the previous query's rows listed under the new
+        // filter — BrokerCluster clears its data for the same reason. Selection follows,
+        // so no batch action can target rows that are no longer on screen.
+        setInstances([]);
+        setSelectedRowKeys([]);
         message.error(t('instance.listLoadFailed'));
       }
     } finally {

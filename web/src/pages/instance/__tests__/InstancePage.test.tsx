@@ -135,7 +135,6 @@ describe('InstancePage', () => {
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
     expect(instanceService.listInstances).toHaveBeenCalledWith({});
-
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: 'proxy-hz' },
     });
@@ -160,6 +159,28 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
     );
+  });
+
+  it('clears the previous filter rows when a reload fails after the filter changes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+
+    // Switch the type filter and have the new query fail: the rows fetched for the
+    // previous filter must not stay listed under the new one behind a transient toast.
+    vi.mocked(instanceService.listInstances).mockRejectedValueOnce(new Error('backend unavailable'));
+    const typeSelect = screen.getByRole('combobox');
+    fireEvent.mouseDown(typeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+    );
+    await waitFor(() => expect(screen.queryByText('production-proxy')).not.toBeInTheDocument());
+    expect(screen.queryByText('development-direct')).not.toBeInTheDocument();
   });
 
   it('renders instance management copy in English mode', async () => {
