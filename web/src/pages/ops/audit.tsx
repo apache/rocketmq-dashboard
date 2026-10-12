@@ -181,6 +181,7 @@ const AuditPage: React.FC = () => {
     dateRange,
     resultFilter,
     refreshKey,
+    t,
   ]);
 
   useEffect(
@@ -232,7 +233,7 @@ const AuditPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFilter, refreshKey]);
+  }, [activeFilter, refreshKey, t]);
 
   const { Text } = Typography;
 
@@ -305,7 +306,6 @@ const AuditPage: React.FC = () => {
     } finally {
       cleanupInFlightRef.current = false;
       setCleaning(false);
->>>>>>> upstream/rocketmq-studio
     }
   };
 
