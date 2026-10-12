@@ -157,6 +157,131 @@ describe('DLQ page', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ['Page', 2, 20],
+    ['PageSize', 1, 10],
+  ] as const)(
+    'refreshesTheCurrent%sAfterASelectedResendCompletesTest',
+    async (_label, nextPage, nextSize) => {
+      let resolveResend!: (result: DLQResendResult) => void;
+      vi.mocked(messageService.resendDLQSelected).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveResend = resolve;
+          }),
+      );
+      const messages = Array.from({ length: 40 }, (_, index) => ({
+        msgId: `message-${index + 1}`,
+        topic: 'orders',
+        queueId: 0,
+        offset: index,
+        storeTime: 1_700_000_000_000,
+        keys: '',
+        body: 'payload',
+        bodyBase64: null,
+        properties: {},
+        propertiesTruncated: false,
+      }));
+      vi.mocked(messageService.listDLQMessages).mockImplementation(
+        async ({ page = 1, pageSize = 20 }) => ({
+          items: messages.slice((page - 1) * pageSize, page * pageSize),
+          total: messages.length,
+          page,
+          size: pageSize,
+        }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<DLQPage />);
+      await screen.findByText('cg-order');
+      await user.click(screen.getByRole('button', { name: /消息明细/ }));
+      const firstRow = (await screen.findByText('message-1')).closest('tr')!;
+      await user.click(within(firstRow).getByRole('checkbox'));
+      await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+      await waitFor(() => expect(messageService.resendDLQSelected).toHaveBeenCalledTimes(1));
+      if (nextPage === 2) {
+        await user.click(screen.getByTitle('2'));
+      } else {
+        const drawer = screen.getByRole('dialog', { name: /DLQ 消息明细/ });
+        await user.click(within(drawer).getByRole('combobox'));
+        await user.click(
+          await screen.findByText('10 / page', { selector: '.ant-select-item-option-content' }),
+        );
+      }
+      const currentId = nextPage === 2 ? 'message-21' : 'message-2';
+      const currentRow = (await screen.findByText(currentId)).closest('tr')!;
+      await user.click(within(currentRow).getByRole('checkbox'));
+      await act(async () =>
+        resolveResend({ matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' }),
+      );
+      await waitFor(() =>
+        expect(messageService.listDLQMessages).toHaveBeenLastCalledWith(
+          expect.objectContaining({ page: nextPage, pageSize: nextSize }),
+        ),
+      );
+      expect(screen.getByText(currentId)).toBeInTheDocument();
+      expect(
+        within(screen.getByText(currentId).closest('tr')!).getByRole('checkbox'),
+      ).toBeChecked();
+      if (nextPage === 2) {
+        expect(screen.queryByText('message-1')).not.toBeInTheDocument();
+      } else {
+        expect(
+          within(screen.getByText('message-1').closest('tr')!).getByRole('checkbox'),
+        ).not.toBeChecked();
+      }
+    },
+  );
+
+  it.each(['close', 'unmount'] as const)(
+    'doesNotRefreshAnInactiveDrawerAfterResend%sTest',
+    async (action) => {
+      let resolveResend!: (result: DLQResendResult) => void;
+      vi.mocked(messageService.resendDLQSelected).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveResend = resolve;
+          }),
+      );
+      vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+        items: [
+          {
+            msgId: 'inactive-drawer-message',
+            topic: 'orders',
+            queueId: 0,
+            offset: 1,
+            storeTime: 1_700_000_000_000,
+            keys: '',
+            body: 'payload',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+      const user = userEvent.setup();
+      const view = renderWithProviders(<DLQPage />);
+      await screen.findByText('cg-order');
+      await user.click(screen.getByRole('button', { name: /消息明细/ }));
+      const row = (await screen.findByText('inactive-drawer-message')).closest('tr')!;
+      await user.click(within(row).getByRole('checkbox'));
+      await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+      await waitFor(() => expect(messageService.resendDLQSelected).toHaveBeenCalledTimes(1));
+      if (action === 'close') {
+        const drawer = screen.getByRole('dialog', { name: /DLQ 消息明细/ });
+        await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+      } else {
+        view.unmount();
+      }
+      await act(async () =>
+        resolveResend({ matched: 1, resent: 1, failed: 0, outcome: 'SUCCESS' }),
+      );
+      expect(messageService.listDLQMessages).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/重发完成：成功/)).not.toBeInTheDocument();
+    },
+  );
   it('says so when the instance list itself failed to load', async () => {
     // Every instance-scoped request needs an instanceId, so a failed /instances request leaves the page
     // with nothing it can show. Rendering that as an empty result tells the operator the instance has no
