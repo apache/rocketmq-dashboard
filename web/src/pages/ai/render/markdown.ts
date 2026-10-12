@@ -28,8 +28,28 @@
  * every assistant text block, live or replayed.
  */
 export function normalizeAiMarkdown(content: string): string {
+  let fence: { marker: string; length: number } | null = null;
   return content
-    .replace(/^(#{1,6})(?=\S)/gm, '$1 ')
-    .replace(/^([-+*])(?=\S)/gm, '$1 ')
-    .replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/gim, '```$1\n');
+    .split(/(?<=\n)/)
+    .map((line) => {
+      const marker = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)/.exec(line);
+      if (fence) {
+        if (
+          marker &&
+          marker[1][0] === fence.marker &&
+          marker[1].length >= fence.length &&
+          !marker[2].trim()
+        ) {
+          fence = null;
+        }
+        return line;
+      }
+      // A backtick fence cannot contain backticks in its info string. Tilde fences can.
+      if (marker && (marker[1][0] === '~' || !marker[2].includes('`'))) {
+        fence = { marker: marker[1][0], length: marker[1].length };
+        return line.replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/i, '```$1\n');
+      }
+      return line.replace(/^(#{1,6})(?=\S)/, '$1 ').replace(/^([-+*])(?=\S)/, '$1 ');
+    })
+    .join('');
 }
