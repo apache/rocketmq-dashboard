@@ -131,6 +131,9 @@ const LiteTopicPage: React.FC = () => {
   const [topicList, setTopicList] = useState<LiteTopicItem[]>([]);
   const [quota, setQuota] = useState<LiteTopicQuota | null>(null);
   const [capabilitySupported, setCapabilitySupported] = useState(true);
+  const [capabilityFailed, setCapabilityFailed] = useState(false);
+  const [capabilityRetrying, setCapabilityRetrying] = useState(false);
+  const [capabilityRetryVersion, setCapabilityRetryVersion] = useState(0);
   const [patternFilter, setPatternFilter] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState('');
   const [ttlStatusFilter, setTTLStatusFilter] = useState('');
@@ -161,6 +164,7 @@ const LiteTopicPage: React.FC = () => {
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
+  const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
 
   useEffect(() => {
@@ -175,6 +179,7 @@ const LiteTopicPage: React.FC = () => {
       options: { clear?: boolean; collectNamespaceOptions?: boolean } = {},
     ) => {
       const requestId = ++displayRequestId.current;
+      displayQueryRef.current = { pattern, namespace };
 
       if (options.clear) {
         setTopicList([]);
@@ -225,6 +230,16 @@ const LiteTopicPage: React.FC = () => {
     const bootstrapIsActive = () =>
       mountedState.current && bootstrapId === bootstrapCounter.current;
 
+    const loadNamespaceOptions = async () => {
+      if (!bootstrapIsActive()) return;
+      try {
+        const list = await queryLiteTopicList();
+        if (bootstrapIsActive()) setNamespaceOptions(collectNamespaces(list));
+      } catch {
+        // The active display request owns user-visible error handling.
+      }
+    };
+
     const initialize = async () => {
       try {
         const capability = await queryLiteTopicCapability();
@@ -232,6 +247,7 @@ const LiteTopicPage: React.FC = () => {
         if (capability && capability.supported === false) {
           ++displayCounter.current;
           setCapabilitySupported(false);
+          setCapabilityFailed(false);
           setTopicList([]);
           setQuota(null);
           setLoading(false);
@@ -241,34 +257,35 @@ const LiteTopicPage: React.FC = () => {
         if (!bootstrapIsActive()) return;
         ++displayCounter.current;
         setCapabilitySupported(false);
+        setCapabilityFailed(true);
         setTopicList([]);
         setQuota(null);
         setLoading(false);
         return;
       }
 
+      setCapabilitySupported(true);
+      setCapabilityFailed(false);
       if (displayCounter.current === initialDisplayRequestId) {
-        await fetchData(undefined, undefined, { collectNamespaceOptions: true });
+        const query = displayQueryRef.current;
+        const unfiltered = !query.pattern && !query.namespace;
+        await fetchData(query.pattern, query.namespace, { collectNamespaceOptions: unfiltered });
+        if (!unfiltered) await loadNamespaceOptions();
       } else {
-        try {
-          const list = await queryLiteTopicList();
-          if (bootstrapIsActive()) {
-            setNamespaceOptions(collectNamespaces(list));
-          }
-        } catch {
-          // The active display request owns user-visible error handling.
-        }
+        await loadNamespaceOptions();
       }
     };
 
-    void initialize();
+    void initialize().finally(() => {
+      if (bootstrapIsActive()) setCapabilityRetrying(false);
+    });
 
     return () => {
       mountedState.current = false;
       ++bootstrapCounter.current;
       ++displayCounter.current;
     };
-  }, [fetchData]);
+  }, [capabilityRetryVersion, fetchData]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -794,8 +811,24 @@ const LiteTopicPage: React.FC = () => {
       <div style={{ padding: 0 }}>
         <PageHeader title={t('liteTopic.title')} />
         <Alert
-          message={t('liteTopic.notSupported')}
-          type="info"
+          message={t(
+            capabilityFailed ? 'liteTopic.capabilityCheckFailed' : 'liteTopic.notSupported',
+          )}
+          type={capabilityFailed ? 'error' : 'info'}
+          action={
+            capabilityFailed ? (
+              <Button
+                loading={capabilityRetrying}
+                disabled={capabilityRetrying}
+                onClick={() => {
+                  setCapabilityRetrying(true);
+                  setCapabilityRetryVersion((version) => version + 1);
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            ) : undefined
+          }
           showIcon
           icon={<Info size={16} />}
           style={{ marginTop: 16 }}
