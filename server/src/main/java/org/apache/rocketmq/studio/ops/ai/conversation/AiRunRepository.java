@@ -54,6 +54,15 @@ public interface AiRunRepository {
 
     void update(RmqAiRun run);
 
+    /**
+     * Writes the run's fields only while the row is still in a non-terminal status, and returns the
+     * affected row count. The RUNNING transition of a worker is the one write that must carry this
+     * guard: a stop landing between admission and the worker's start finalises the row first, and a
+     * blind update would overwrite that terminal row with RUNNING — an active row nobody owns,
+     * locking the conversation behind 409s until the orphan sweep reaps it.
+     */
+    int updateWhileNonTerminal(RmqAiRun run);
+
     /** Used by the startup reaper: any run left non-terminal across a restart is orphaned. */
     List<RmqAiRun> findByStatusIn(Collection<String> statuses);
 
