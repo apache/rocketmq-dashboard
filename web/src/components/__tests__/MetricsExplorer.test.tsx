@@ -16,7 +16,7 @@
  */
 
 import { App, ConfigProvider } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1520,4 +1520,132 @@ describe('MetricsExplorer', () => {
     );
     expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('secret-value');
   });
+});
+
+describe('metrics history source restoration', () => {
+  it.each([
+    { kind: 'profile', availability: 'removed' },
+    { kind: 'custom', availability: 'removed' },
+    { kind: 'profile', availability: 'out-of-scope' },
+    { kind: 'custom', availability: 'out-of-scope' },
+    { kind: 'profile', availability: 'default' },
+    { kind: 'custom', availability: 'default' },
+  ])(
+    'restoresOnlyTheRecordedHistorySourceTest ($kind, $availability)',
+    async ({ kind, availability }) => {
+      const user = userEvent.setup();
+      const sources = [
+        {
+          key: 'active-source',
+          name: 'Active source',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-a'],
+        },
+      ];
+      if (availability === 'out-of-scope') {
+        sources.push({
+          key: 'history-source',
+          name: 'History source',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-b'],
+        });
+      }
+      vi.mocked(listDataSources).mockResolvedValue(sources);
+      localStorage.setItem(
+        METRICS_QUERY_HISTORY_STORAGE_KEY,
+        JSON.stringify([
+          createHistoryEntry({
+            id: 'source-history',
+            profileId: kind === 'custom' ? '__custom__' : 'rocketmq4-exporter',
+            metricId: kind === 'custom' ? 'custom' : 'consumer_lag_messages',
+            metricName: 'Saved history query',
+            instanceId: 'instance-a',
+            dataSourceKey: availability === 'default' ? '' : 'history-source',
+            dataSourceName: availability === 'default' ? '' : 'History source',
+            promql: 'sum(rocketmq_message_accumulation)',
+          }),
+        ]),
+      );
+      renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      await user.click(screen.getByRole('combobox', { name: '数据源' }));
+      await user.click(
+        await screen.findByText('Active source', {
+          selector: '.ant-select-item-option-content',
+        }),
+      );
+      await waitFor(() => expect(queryByDataSource).toHaveBeenCalledTimes(1));
+      await screen.findByText('42 messages/s');
+      const input = screen.getByRole('textbox', { name: '自定义查询' });
+      await user.type(input, 'sum(up)');
+      await user.click(screen.getByRole('button', { name: '查询' }));
+      const previousCustomChart = await screen.findByRole('img', {
+        name: '自定义查询 time series',
+      });
+      fireEvent.change(input, { target: { value: 'rate(rocketmq_messages_in_total[5m])' } });
+      const defaultCount = vi.mocked(queryMetrics).mock.calls.length;
+      const sourceCount = vi.mocked(queryByDataSource).mock.calls.length;
+      const storedProfile = localStorage.getItem('rocketmq-studio.metric-profile');
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+      const item = within(dialog).getByText('Saved history query').closest('.ant-list-item');
+      await user.click(within(item as HTMLElement).getByRole('button', { name: '恢复' }));
+
+      if (availability === 'default') {
+        // A deliberately default-source entry remains valid, for both restoration paths.
+        await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(defaultCount + 2));
+        expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount);
+        expect(
+          screen.getByRole('combobox', { name: '数据源' }).closest('.ant-select'),
+        ).toHaveTextContent('默认数据源');
+        expect(
+          screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+        ).toHaveTextContent('6h');
+        expect(queryMetrics).toHaveBeenCalledWith(
+          expect.objectContaining({
+            metric: kind === 'custom' ? 'sum(rocketmq_message_accumulation)' : 'sum(up)',
+            step: '2m',
+          }),
+        );
+        return;
+      }
+
+      expect(queryMetrics).toHaveBeenCalledTimes(defaultCount);
+      expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount);
+      expect(
+        await screen.findByText('该历史记录中的数据源“History source”已不可用，已保留当前查询。'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: '指标查询历史' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: '数据源' }).closest('.ant-select'),
+      ).toHaveTextContent('Active source');
+      expect(
+        screen.getByRole('combobox', { name: '指标模板' }).closest('.ant-select'),
+      ).toHaveTextContent('RocketMQ 5.x Native');
+      expect(
+        screen.getByLabelText('时间范围').querySelector('.ant-segmented-item-selected'),
+      ).toHaveTextContent('1h');
+      expect(input).toHaveValue('rate(rocketmq_messages_in_total[5m])');
+      expect(localStorage.getItem('rocketmq-studio.metric-profile')).toBe(storedProfile);
+      expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: '自定义查询 time series' })).toBe(previousCustomChart);
+      // The rejected restore must preserve the activated source ref and committed custom query too.
+      await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+      await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      await waitFor(() => expect(queryByDataSource).toHaveBeenCalledTimes(sourceCount + 2));
+      expect(queryMetrics).toHaveBeenCalledTimes(defaultCount);
+      expect(queryByDataSource).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          key: 'active-source',
+          query: expect.objectContaining({ metric: 'sum(up)', step: '30s' }),
+        }),
+      );
+    },
+  );
 });
