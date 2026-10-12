@@ -309,5 +309,8 @@ describe('AlertsPage rule test results', () => {
       expect(within(editor).getByText('未命中')).toBeInTheDocument();
       expect(testButton).not.toHaveClass('ant-btn-loading');
     },
+    // Opening the editor, running two tests and retyping the threshold is a long chain of
+    // userEvent interactions; the case above needs the same budget for the same reason.
+    30_000,
   );
 });
