@@ -318,3 +318,83 @@ func TestRunSingleFileModeDigestMatchesSource(t *testing.T) {
 		t.Fatalf("SDK contract was not rendered from the source: %s", contract)
 	}
 }
+
+// TestRunRejectsCapabilityViolatingTheSchemaPattern pins that the generator
+// enforces the requiredCapabilities item pattern rmq-tools.schema.json declares
+// (^[A-Z][A-Z0-9_]*$), so the JSON schema and this validator cannot drift apart.
+func TestRunRejectsCapabilityViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    requiredCapabilities: []",
+		"    requiredCapabilities: [TOPIC_MANAGEMENT, topic-read]",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema pattern") {
+		t.Fatalf("err = %v, want capability pattern failure", err)
+	}
+}
+
+// TestRunRejectsDuplicateCapability pins the uniqueItems constraint the schema
+// declares for requiredCapabilities.
+func TestRunRejectsDuplicateCapability(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    requiredCapabilities: []",
+		"    requiredCapabilities: [TOPIC_MANAGEMENT, TOPIC_MANAGEMENT]",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "must be unique") {
+		t.Fatalf("err = %v, want duplicate capability failure", err)
+	}
+}
+
+// TestRunRejectsPermissionViolatingTheSchemaPattern pins the permission pattern
+// rmq-tools.schema.json declares (resource:scope, both lower-kebab tokens).
+func TestRunRejectsPermissionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    permission: topic:read",
+		"    permission: topicRead",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema pattern") {
+		t.Fatalf("err = %v, want permission pattern failure", err)
+	}
+}
+
+// TestRunRejectsToolNameViolatingTheSchemaPattern pins the tool-name pattern
+// rmq-tools.schema.json declares (dotted rmq.* path).
+func TestRunRejectsToolNameViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"  - name: rmq.topic.list",
+		"  - name: topic.list",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema tool-name pattern") {
+		t.Fatalf("err = %v, want tool-name pattern failure", err)
+	}
+}
+
+// TestRunRejectsPropertyNameDerivingAnUnusableFlag pins the derived-flag guard:
+// toFlagName maps _ to -, so a property named _mode derives -mode, which no flag
+// parser accepts. An explicit x-cli-flag is already checked; a name-derived flag
+// must clear the same bar.
+func TestRunRejectsPropertyNameDerivingAnUnusableFlag(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		`        topicName:
+          type: string
+          minLength: 1`,
+		`        topicName:
+          type: string
+          minLength: 1
+        _mode:
+          type: string
+          minLength: 1`,
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "derives an unusable CLI flag") {
+		t.Fatalf("err = %v, want derived-flag failure", err)
+	}
+}
