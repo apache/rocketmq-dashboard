@@ -53,6 +53,43 @@ const record = (overrides: Partial<AuditRecord> = {}): AuditRecord => ({
 });
 
 describe('audit risk insights', () => {
+  it('keeps unscoped failures distinct from a real global cluster Test', () => {
+    const insights = buildAuditRiskInsights(null, [
+      record({ id: 1, result: 'FAILED', clusterId: null }),
+      record({ id: 2, result: 'FAILED', clusterId: 'global' }),
+    ]);
+    expect(insights.hotTargets).toEqual([]);
+    expect(insights.issues.some((issue) => issue.code === 'REPEATED_TARGET_FAILURES')).toBe(false);
+  });
+
+  it('preserves true repeated failures in each nullable scope Test', () => {
+    const rows = [
+      record({ id: 1, result: 'FAILED', clusterId: null }),
+      record({ id: 2, result: 'PARTIAL', clusterId: null }),
+      record({ id: 3, result: 'FAILED', clusterId: 'global' }),
+      record({ id: 4, result: 'FAILED', clusterId: 'global' }),
+    ];
+    for (const records of [rows, [...rows].reverse()]) {
+      const insights = buildAuditRiskInsights(null, records);
+      expect(insights.hotTargets).toHaveLength(2);
+      expect(insights.hotTargets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ clusterId: '-', failed: 1, partial: 1, total: 2 }),
+          expect.objectContaining({ clusterId: 'global', failed: 2, partial: 0, total: 2 }),
+        ]),
+      );
+      expect(new Set(insights.hotTargets.map((target) => target.key)).size).toBe(2);
+    }
+  });
+
+  it('does not confuse a literal placeholder target with an unknown target Test', () => {
+    const insights = buildAuditRiskInsights(null, [
+      record({ id: 1, result: 'FAILED', target: null }),
+      record({ id: 2, result: 'FAILED', target: '-' }),
+    ]);
+    expect(insights.hotTargets).toEqual([]);
+  });
+
   it('normalizes backend result aliases before classifying failures', () => {
     expect(normalizeAuditResult(' failure ')).toBe('FAILED');
     expect(isFailedAuditResult('FAILURE')).toBe(true);
