@@ -93,7 +93,12 @@ RUN mkdir -p /app/lib \
 ENV LOADER_PATH=/app/lib
 
 EXPOSE 8888
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# `java -jar` runs the fat JAR's Main-Class, which spring-boot-maven-plugin sets to JarLauncher, and
+# JarLauncher ignores LOADER_PATH — so the provided-scope connector downloaded above never reached the
+# classpath and the container died with "Cannot load driver class: com.mysql.cj.jdbc.Driver".
+# PropertiesLauncher is the launcher that honours loader.path, and it is already inside the JAR.
+ENTRYPOINT ["java", "-cp", "app.jar", "-Dloader.path=/app/lib", \
+            "org.springframework.boot.loader.launch.PropertiesLauncher"]
 
 # ------------------------------------------------------------------------------
 # Stage 3a: runtime-prebuilt — deploy.sh target (JAR built on host)
