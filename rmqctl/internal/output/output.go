@@ -58,21 +58,24 @@ func YAML(w io.Writer, value any) error {
 	return encoder.Close()
 }
 
-// restoreNumbers turns json.Number values back into numbers. The studio client decodes with
-// UseNumber() so integer literals survive untouched, and json.Number is a string type: yaml.v3
-// would emit it quoted, so `size: 3` came out as `size: "3"` and the YAML no longer round-tripped
-// to the payload the server sent. The JSON path needs no such step because encoding/json marshals
-// json.Number as a bare literal.
+// restoreNumbers preserves JSON numeric literals as numeric YAML scalars. Converting through
+// int64/float64 would round large integers and precise decimals, or underflow small exponents.
+// Explicit tags also preserve numbers outside yaml.v3's implicit numeric resolution range.
 func restoreNumbers(value any) any {
 	switch typed := value.(type) {
 	case json.Number:
-		if i, err := typed.Int64(); err == nil {
-			return i
+		if typed == "" {
+			return ""
 		}
-		if f, err := typed.Float64(); err == nil {
-			return f
+		if _, err := json.Marshal(typed); err != nil {
+			return typed.String()
 		}
-		return typed.String()
+		literal := typed.String()
+		tag := "!!int"
+		if strings.ContainsAny(literal, ".eE") {
+			tag = "!!float"
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: literal}
 	case map[string]any:
 		restored := make(map[string]any, len(typed))
 		for key, entry := range typed {
