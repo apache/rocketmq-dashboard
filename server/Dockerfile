@@ -61,6 +61,11 @@ RUN if ! command -v python3 >/dev/null 2>&1; then \
     fi
 
 COPY server/scripts/legal.py /opt/studio-legal/scripts/legal.py
+# legal.py resolves its base to the parent of scripts/, so the determination table and the collected
+# upstream license texts have to land at the same relative paths here as under server/ — otherwise
+# check-jar re-derives materials from an empty determination set and reports the JAR as mismatched.
+COPY server/scripts/legal-determinations.json /opt/studio-legal/scripts/legal-determinations.json
+COPY server/legal/licenses /opt/studio-legal/legal/licenses
 COPY server/LICENSE server/NOTICE /opt/studio-legal/
 COPY server/LICENSE server/NOTICE /usr/share/licenses/rocketmq-studio/
 
