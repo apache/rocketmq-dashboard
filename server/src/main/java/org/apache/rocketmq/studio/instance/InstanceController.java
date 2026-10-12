@@ -47,6 +47,16 @@ public class InstanceController {
         return Result.ok(instanceService.listInstances(type, search));
     }
 
+    @GetMapping("/page")
+    public Result<InstancePageVO> listInstancesPage(
+            @RequestParam(required = false) InstanceType type,
+            @RequestParam(required = false) String vendor,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(instanceService.listInstancesPage(type, vendor, search, page, pageSize));
+    }
+
     @GetMapping("/{instanceId}/capabilities")
     public Result<InstanceCapabilitiesVO> getCapabilities(@PathVariable String instanceId) {
         return Result.ok(instanceCapabilityService.getCapabilities(
