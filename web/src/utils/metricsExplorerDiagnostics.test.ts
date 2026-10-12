@@ -94,30 +94,44 @@ describe('metrics explorer diagnostics', () => {
     const data: MetricData = {
       resultType: 'matrix',
       warnings: [],
-      series: [{
-        labels: { instance: 'broker-a' },
-        values: [{ timestamp: 2, value: '12' }],
-        histograms: [
-          { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
-          { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
-        ],
-      }],
+      series: [
+        {
+          labels: { instance: 'broker-a' },
+          values: [{ timestamp: 2, value: '12' }],
+          histograms: [
+            { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
+            { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
+          ],
+        },
+      ],
     };
 
-    expect(toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({ timestamp, kind })))
-      .toEqual([
-        { timestamp: 1, kind: 'histogram' },
-        { timestamp: 2, kind: 'scalar' },
-        { timestamp: 3, kind: 'histogram' },
-      ]);
+    expect(
+      toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({
+        timestamp,
+        kind,
+      })),
+    ).toEqual([
+      { timestamp: 1, kind: 'histogram' },
+      { timestamp: 2, kind: 'scalar' },
+      { timestamp: 3, kind: 'histogram' },
+    ]);
     expect(summarizeMetricData(data)).toMatchObject({
-      seriesCount: 1, visibleSeriesCount: 1, sampleCount: 3,
-      scalarSampleCount: 1, histogramSampleCount: 2,
-      earliestTimestamp: 1, latestTimestamp: 3,
+      seriesCount: 1,
+      visibleSeriesCount: 1,
+      sampleCount: 3,
+      scalarSampleCount: 1,
+      histogramSampleCount: 2,
+      earliestTimestamp: 1,
+      latestTimestamp: 3,
     });
     expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({
-      sampleType: 'mixed', sampleCount: 3, latestTimestamp: 3,
-      latestValue: 20, histogramCount: 4, histogramSum: 20,
+      sampleType: 'mixed',
+      sampleCount: 3,
+      latestTimestamp: 3,
+      latestValue: 20,
+      histogramCount: 4,
+      histogramSum: 20,
     });
     const rows = buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' });
     expect(rows.map((row) => row.sampleType)).toEqual(['histogram', 'scalar', 'histogram']);
@@ -289,5 +303,45 @@ describe('metrics explorer diagnostics', () => {
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, '{"broken"');
 
     expect(loadMetricsQueryHistory()).toEqual([]);
+  });
+});
+
+describe('query history chronology', () => {
+  it('retainsTheMostRecentQueriesWhenAnOlderQueryFinishesLastTest', () => {
+    const recent = Array.from({ length: METRICS_QUERY_HISTORY_LIMIT }, (_, index) => ({
+      ...createHistoryEntry({ queriedAt: 1_800_000_000_000 - index * 100 }),
+      id: `custom-${index}`,
+      profileId: '__custom__',
+      metricId: 'custom',
+      promql: `sum(rocketmq_messages_in_total{topic="orders-${index}"})`,
+    }));
+    const slowOldQuery = createHistoryEntry({ queriedAt: 1_799_999_998_000 });
+    const merged = mergeMetricsQueryHistory(recent, slowOldQuery);
+    expect(merged).toEqual(recent);
+  });
+
+  it('ordersQueriesByStartTimeInsteadOfCompletionTimeTest', () => {
+    const newest = createHistoryEntry({ dataSourceKey: 'newest', queriedAt: 3_000 });
+    const middle = createHistoryEntry({ dataSourceKey: 'middle', queriedAt: 2_000 });
+    const oldest = createHistoryEntry({ dataSourceKey: 'oldest', queriedAt: 1_000 });
+    const previous = [newest, oldest];
+    const merged = mergeMetricsQueryHistory(previous, middle);
+    expect(merged.map((entry) => entry.queriedAt)).toEqual([3_000, 2_000, 1_000]);
+    expect(previous).toEqual([newest, oldest]);
+    saveMetricsQueryHistory(merged);
+    expect(loadMetricsQueryHistory()).toEqual(merged);
+  });
+
+  it('retainsStableTieOrderAndDeduplicatesRecentQueriesTest', () => {
+    const first = createHistoryEntry({ dataSourceKey: 'first', queriedAt: 2_000 });
+    const second = createHistoryEntry({ dataSourceKey: 'second', queriedAt: 2_000 });
+    const incoming = createHistoryEntry({ dataSourceKey: 'incoming', queriedAt: 2_000 });
+    expect(mergeMetricsQueryHistory([first, second], incoming)).toEqual([incoming, first, second]);
+    const updated = createHistoryEntry({ dataSourceKey: 'first', queriedAt: 3_000 });
+    expect(mergeMetricsQueryHistory([incoming, first, second], updated)).toEqual([
+      updated,
+      incoming,
+      second,
+    ]);
   });
 });

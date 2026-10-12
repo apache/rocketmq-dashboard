@@ -16,7 +16,7 @@
  */
 
 import { App, ConfigProvider } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1517,4 +1517,30 @@ describe('MetricsExplorer', () => {
     );
     expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).not.toContain('secret-value');
   });
+});
+
+it('keepsNewerCustomQueryAheadOfSlowProfileHistoryTest', async () => {
+  const pendingProfile = createDeferred<MetricData>();
+  vi.mocked(queryMetrics).mockImplementation((query) =>
+    query.metric === profiles[0].metrics[0].promql
+      ? pendingProfile.promise
+      : Promise.resolve(metricData),
+  );
+  renderWithProviders(<MetricsExplorer />);
+  await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(1));
+  vi.mocked(Date.now).mockReturnValue(1_800_000_001_000);
+  const input = await screen.findByRole('textbox', { name: '自定义查询' });
+  fireEvent.change(input, { target: { value: 'sum(rocketmq_messages_in_total)' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await screen.findByRole('img', { name: '自定义查询 time series' });
+  await act(async () => pendingProfile.resolve(metricData));
+  await screen.findByRole('img', { name: 'Message In TPS time series' });
+  const stored = JSON.parse(
+    localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY) ?? '[]',
+  ) as MetricsQueryHistoryEntry[];
+  expect(stored.map((entry) => entry.profileId)).toEqual(['__custom__', 'rocketmq5-native']);
+  await userEvent.setup().click(screen.getByRole('button', { name: '查询历史' }));
+  const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+  const firstHistoryItem = dialog.querySelector('.ant-list-item');
+  expect(firstHistoryItem).toHaveTextContent('自定义查询');
 });

@@ -340,7 +340,9 @@ export const buildMetricSeriesDetailRows = (
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
@@ -497,8 +499,9 @@ export const mergeMetricsQueryHistory = (
   limit = METRICS_QUERY_HISTORY_LIMIT,
 ) => {
   const duplicateKey = historyIdentity(entry);
-  return [entry, ...entries.filter((item) => historyIdentity(item) !== duplicateKey)].slice(
-    0,
-    limit,
-  );
+  // Parallel queries can finish out of order. Apply the same newest-query-first
+  // ordering as history loading before deciding which entries fit the limit.
+  return [entry, ...entries.filter((item) => historyIdentity(item) !== duplicateKey)]
+    .sort((left, right) => right.queriedAt - left.queriedAt)
+    .slice(0, limit);
 };
