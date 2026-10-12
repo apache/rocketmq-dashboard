@@ -134,8 +134,13 @@ public interface InstanceProvider {
         return createConsumerGroup(instanceId, group);
     }
 
+    /**
+     * Updates an existing consumer group in place. A provider that cannot update a group must reject the
+     * request rather than fall back to creation: answering an update with the vendor's create call either
+     * fails on the group that already exists or reports success without applying the requested change.
+     */
     default ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
-        return createConsumerGroup(instanceId, group);
+        throw new BusinessException(501, "Updating an existing consumer group is not supported by this provider");
     }
 
     void deleteConsumerGroup(String instanceId, String groupName);
