@@ -310,6 +310,16 @@ public class TencentAclService {
             throw new BusinessException(400,
                     "Tencent Cloud roles only support ALLOW ACL rules");
         }
+        if (rule.getActions() == null || rule.getActions().isEmpty()) {
+            throw new BusinessException(400, "Tencent Cloud ACL rules require at least one action");
+        }
+        for (String action : rule.getActions()) {
+            if (!"PUB".equalsIgnoreCase(action) && !"SUB".equalsIgnoreCase(action)
+                    && !"ALL".equalsIgnoreCase(action)) {
+                throw new BusinessException(400,
+                        "Tencent Cloud ACL rules only support PUB, SUB or ALL actions");
+            }
+        }
     }
 
     private static boolean isOptionalValue(String actual, String expected) {

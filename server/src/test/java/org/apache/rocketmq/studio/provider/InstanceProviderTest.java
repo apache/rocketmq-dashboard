@@ -17,12 +17,19 @@
 package org.apache.rocketmq.studio.provider;
 
 import java.util.Arrays;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class InstanceProviderTest {
@@ -43,5 +50,21 @@ public class InstanceProviderTest {
         assertThat(result.getTotal()).isEqualTo(2);
         assertThat(result.getPage()).isEqualTo(Integer.MAX_VALUE);
         assertThat(result.getPageSize()).isEqualTo(100);
+    }
+
+    @Test
+    public void updateConsumerGroupShouldRejectProvidersThatCannotUpdateTest() {
+        InstanceProvider provider = mock(InstanceProvider.class);
+        when(provider.updateConsumerGroup(anyString(), any())).thenCallRealMethod();
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("group-a");
+
+        // An update answered by the create API would either fail on the existing group or report
+        // success without applying the change, so the default must not fall back to creation.
+        assertThatThrownBy(() -> provider.updateConsumerGroup("instance-a", group))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("not supported by this provider")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+        verify(provider, never()).createConsumerGroup(anyString(), any());
     }
 }

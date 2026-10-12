@@ -47,7 +47,7 @@ export function normalizeDuration(duration: string): string {
 }
 
 export function attachThresholdUnit<T extends { metric: string; duration?: string }>(
-  values: T,
+  values: T & { thresholdUnit?: string },
 ): Omit<T, 'metric' | 'duration'> & {
   metric: string;
   duration?: string;
@@ -58,6 +58,11 @@ export function attachThresholdUnit<T extends { metric: string; duration?: strin
     ...values,
     metric,
     ...(values.duration === undefined ? {} : { duration: normalizeDuration(values.duration) }),
-    thresholdUnit: thresholdUnits[metric] ?? '',
+    // The map stays authoritative for the five built-in metric names, so a stale unit left over
+    // from another metric pick never survives. Everything else - the native catalog metrics carry
+    // messages/seconds and the ratio metrics '%' - keeps the unit the form resolved: re-deriving it
+    // from the map would blank every native rule, rendering "> 12000" and an empty
+    // ${thresholdUnit} in notification templates.
+    thresholdUnit: thresholdUnits[metric] ?? values.thresholdUnit ?? '',
   };
 }

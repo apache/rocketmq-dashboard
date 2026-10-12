@@ -28,6 +28,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -124,6 +125,51 @@ class GrafanaDashboardServiceTest {
             assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"a\""));
             assertEquals("b.json", zip.getNextEntry().getName());
             assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"b\""));
+            assertNull(zip.getNextEntry());
+        }
+    }
+
+    @Test
+    void getDashboardsArchiveShouldResolveResourcesOnce() {
+        List<Resource> resources = List.of(
+                resource("a.json", "{\"uid\":\"a\",\"title\":\"A\",\"tags\":[\"rocketmq\"]}"),
+                resource("b.json", "{\"uid\":\"b\",\"title\":\"B\",\"tags\":[\"rocketmq\"]}"),
+                resource("c.json", "{\"uid\":\"c\",\"title\":\"C\",\"tags\":[\"rocketmq\"]}"));
+        AtomicInteger resolutions = new AtomicInteger();
+        GrafanaDashboardService service = new GrafanaDashboardService(new ObjectMapper()) {
+            @Override
+            protected Resource[] resolveResources() {
+                resolutions.incrementAndGet();
+                return resources.toArray(new Resource[0]);
+            }
+        };
+
+        service.getDashboardsArchive();
+
+        assertEquals(1, resolutions.get(),
+                "archive export should resolve the pattern once, not once per dashboard entry");
+    }
+
+    @Test
+    void getDashboardsArchiveShouldSkipUnreadableAssetsLikeTheVisibleList() throws Exception {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("a.json", "{\"uid\":\"a\",\"title\":\"A\",\"tags\":[\"rocketmq\"]}"),
+                new ByteArrayResource(new byte[0]) {
+                    @Override
+                    public String getFilename() {
+                        return "boom.json";
+                    }
+
+                    @Override
+                    public InputStream getInputStream() throws java.io.IOException {
+                        throw new java.io.IOException("unreadable");
+                    }
+                });
+
+        byte[] archive = service.getDashboardsArchive();
+
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive), StandardCharsets.UTF_8)) {
+            assertEquals("a.json", zip.getNextEntry().getName());
             assertNull(zip.getNextEntry());
         }
     }
