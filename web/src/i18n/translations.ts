@@ -94,6 +94,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
   'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
 
+  // ─── Metrics Explorer ───
+  'metricsExplorer.unavailableHistorySource': {
+    zh: '该历史记录中的数据源“{source}”已不可用，已保留当前查询。',
+    en: 'The data source "{source}" in this history entry is unavailable. The current query was kept.',
+  },
+
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
