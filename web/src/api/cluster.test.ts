@@ -171,7 +171,7 @@ describe('K8s certificate API', () => {
     const target = { clusterId: 'cluster-1', addr: '127.0.0.1:9876' };
     const requests = [
       ['/nameservers/restart', target],
-      ['/nameservers/upgrade', { ...target, version: '5.4.0' }],
+      ['/nameservers/upgrade', { ...target, targetVersion: '5.4.0' }],
       ['/nameservers/create', target],
       ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876' }],
       ['/nameservers/delete', target],
@@ -184,12 +184,34 @@ describe('K8s certificate API', () => {
     });
 
     await expect(restartNameServer(target)).resolves.toBeUndefined();
-    await expect(upgradeNameServer({ ...target, version: '5.4.0' })).resolves.toBeUndefined();
+    await expect(upgradeNameServer({ ...target, targetVersion: '5.4.0' })).resolves.toBeUndefined();
     await expect(createNameServer(target)).resolves.toBeUndefined();
     await expect(
       updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
     ).resolves.toBeUndefined();
     await expect(deleteNameServer(target)).resolves.toBeUndefined();
+  });
+
+  // UpgradeNameServerDTO declares @NotBlank String targetVersion (the Java service reads
+  // getTargetVersion()); a `version` key would bind null and the request would always be
+  // rejected with 400 "targetVersion is required". Every assertion runs inside the mock
+  // handler, so expect.assertions keeps a reply that never matched from passing the test.
+  it('sends the targetVersion the nameserver upgrade DTO requires', async () => {
+    expect.assertions(4);
+    mock.onPost('/nameservers/upgrade').reply((config) => {
+      const body = JSON.parse(config.data);
+      expect(body.clusterId).toBe('cluster-1');
+      expect(body.addr).toBe('127.0.0.1:9876');
+      expect(body.targetVersion).toBe('5.3.1');
+      expect(body).not.toHaveProperty('version');
+      return [200, { code: 200, data: null }];
+    });
+
+    await upgradeNameServer({
+      clusterId: 'cluster-1',
+      addr: '127.0.0.1:9876',
+      targetVersion: '5.3.1',
+    });
   });
 
   it('loads NameServer configuration drift for the selected cluster', async () => {

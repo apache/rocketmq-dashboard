@@ -372,7 +372,7 @@ export async function restartNameServer(data: { clusterId: string; addr: string 
 export async function upgradeNameServer(data: {
   clusterId: string;
   addr: string;
-  version: string;
+  targetVersion: string;
 }): Promise<void> {
   if (isMockMode()) {
     const exists = getMockCluster(data.clusterId).nameServers.some(

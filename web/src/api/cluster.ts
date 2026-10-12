@@ -305,10 +305,13 @@ export async function restartNameServer(data: { clusterId: string; addr: string 
   await client.post('/nameservers/restart', data);
 }
 
+// UpgradeNameServerDTO requires a non-blank targetVersion; the field was
+// previously declared as `version`, so every caller sent a body the backend
+// rejected with 400 "targetVersion is required".
 export async function upgradeNameServer(data: {
   clusterId: string;
   addr: string;
-  version: string;
+  targetVersion: string;
 }) {
   await client.post('/nameservers/upgrade', data);
 }
