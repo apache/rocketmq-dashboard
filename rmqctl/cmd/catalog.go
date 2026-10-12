@@ -192,7 +192,7 @@ func runTool(
 	// Fill client-side defaults (x-client-default: NOW) before required
 	// validation and argument assembly so a schema-required field with a
 	// client default is self-consistent. Explicit flags always win.
-	applyClientDefaults(tool, arguments)
+	filled := applyClientDefaults(tool, arguments)
 	// Pass the explicit --instance-id value through to tools whose schema
 	// declares the instance identifier (decision 7: pass-through of the
 	// caller's explicit value, not a default injection). Platform-level
@@ -201,6 +201,9 @@ func runTool(
 		arguments[instanceField] = target.InstanceID
 	}
 	if err := validateSchemaArguments(tool, tool.InputSchema, arguments); err != nil {
+		return err
+	}
+	if err := rejectReplayWithAutoFilledDefaults(arguments, filled); err != nil {
 		return err
 	}
 
@@ -264,8 +267,10 @@ var nowMillis = func() int64 { return time.Now().UnixMilli() }
 // Filling happens before required validation so required fields with a client
 // default (e.g. group reset-offset --timestamp) validate cleanly. The catalog
 // generator rejects x-client-default on nested properties, so only top-level
-// fields need to be considered.
-func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) {
+// fields need to be considered. The filled fields are returned so a caller can
+// tell an auto-filled value from an explicitly supplied one.
+func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) []toolcatalog.Field {
+	var filled []toolcatalog.Field
 	for _, field := range tool.InputSchema.Fields {
 		if field.ClientDefault != toolcatalog.ClientDefaultNow {
 			continue
@@ -274,7 +279,29 @@ func applyClientDefaults(tool toolcatalog.Tool, arguments map[string]any) {
 			continue
 		}
 		arguments[field.Name] = nowMillis()
+		filled = append(filled, field)
 	}
+	return filled
+}
+
+// rejectReplayWithAutoFilledDefaults refuses a --confirm-token replay whose
+// previewed input cannot be reproduced. The server signs the previewed
+// business input into the token (the timestamp of a group reset-offset
+// preview included), while an x-client-default: NOW field is filled on every
+// invocation — so a replay that omits the flag carries a fresh value, never
+// matches the preview, and is answered with a mismatch error whose hint
+// ("without changing the operation input") the caller did obey. Naming the
+// flag to pin turns that dead end into an instruction.
+func rejectReplayWithAutoFilledDefaults(arguments map[string]any, filled []toolcatalog.Field) error {
+	if len(filled) == 0 || !argumentPresent(arguments, "confirm_token") {
+		return nil
+	}
+	field := filled[0]
+	return types.NewCLIError(types.CodeInvalidArgument,
+		fmt.Sprintf("--confirm-token cannot replay an auto-filled --%s", field.Flag),
+		fmt.Sprintf("The preview signed its own --%s into the token, and this call filled a new value, so the server "+
+			"would reject it as a preview mismatch. Pin the previewed value with --%s <value from the preview plan>, or "+
+			"drop --confirm-token to let --yes run the preview and the call together.", field.Flag, field.Flag))
 }
 
 func schemaFlagUsage(field toolcatalog.Field) string {
@@ -342,8 +369,12 @@ func defaultConfirm(ctx context.Context, in io.Reader, out io.Writer, commandPat
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
-	fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
-	fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
+	if _, err := fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel); err != nil {
+		return fmt.Errorf("write confirmation warning: %w", err)
+	}
+	if _, err := fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server); err != nil {
+		return fmt.Errorf("write confirmation prompt: %w", err)
+	}
 
 	// The stdin read itself cannot be interrupted, so run it alongside the context: a canceled
 	// context always wins over an answer that may already have been typed, and the buffered

@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -64,6 +65,11 @@ class LlmConfigServiceTest {
                 .model("gpt-4o")
                 .baseUrl("https://api.openai.com/v1")
                 .build());
+        doAnswer(invocation -> {
+            UnaryOperator<GeneralSettingsVO> update = invocation.getArgument(0);
+            settingsService.saveGeneralSettings(update.apply(settingsService.getGeneralSettings()));
+            return null;
+        }).when(settingsService).updateGeneralSettings(any());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
         agentProviders = mock(AgentProviderRegistry.class);
         llmConfigService = new LlmConfigService(
@@ -308,9 +314,33 @@ class LlmConfigServiceTest {
         ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
         verify(settingsService).saveGeneralSettings(captor.capture());
         assertThat(captor.getValue().getApiKey()).isBlank();
+        // A blank key alone is not the clear signal: SettingsService's merge reads a blank key
+        // with clearApiKey=false as "keep the stored key" and persists it again, so the flag has
+        // to survive the rebuild of the settings VO.
+        assertThat(captor.getValue().isClearApiKey()).isTrue();
         when(settingsService.getGeneralSettings()).thenReturn(captor.getValue());
         assertThat(llmConfigService.getConfig().getApiKey()).isBlank();
         assertThat(llmConfigService.getConfig().isApiKeyConfigured()).isFalse();
+    }
+
+    @Test
+    void saveConfigShouldNotAskToClearTheStoredApiKeyOnAnOrdinarySaveTest() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .apiKey("sk-new")
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        // The merge must keep filling in a key the form left blank, so an ordinary save must not
+        // carry a clear flag.
+        assertThat(captor.getValue().isClearApiKey()).isFalse();
+        assertThat(captor.getValue().getApiKey()).isEqualTo("sk-new");
     }
 
     @Test

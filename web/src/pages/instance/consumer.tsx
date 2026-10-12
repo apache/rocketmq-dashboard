@@ -68,7 +68,7 @@ import PageHeader from '../../components/PageHeader';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { formatDateTime, formatDelay } from '../../utils/format';
+import { formatDateTime, formatDelay, formatUtcDateTime } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -289,6 +289,13 @@ const ConsumerPageContent = ({
   const [stackError, setStackError] = useState<string | null>(null);
   const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
@@ -343,7 +350,12 @@ const ConsumerPageContent = ({
         }
         return requestId === groupRequestIdRef.current ? result : undefined;
       } catch {
-        if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        // A silent (auto-refresh) tick that fails must stay quiet: a toast every 2s while the
+        // backend is down turns one transient outage into an unbounded error storm. Only
+        // user-initiated loads surface the toast.
+        if (requestId === groupRequestIdRef.current && !silent) {
+          message.error(t('consumer.fetchListFailed'));
+        }
         return undefined;
       } finally {
         if (requestId === groupRequestIdRef.current) setLoading(false);
@@ -413,8 +425,13 @@ const ConsumerPageContent = ({
           }
         }
       } finally {
-        if (subscriptionRequestIdRef.current[cacheKey] === requestId && !silent) {
-          setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
+        // The loading flag belongs to whichever request is current, not to the request that
+        // raised it: the modal's 2s auto-refresh can supersede a user-visible check while that
+        // check is still in flight, and then only the silent request is left to clear it.
+        if (subscriptionRequestIdRef.current[cacheKey] === requestId) {
+          setSubscriptionLoadingByGroup((prev) =>
+            prev[cacheKey] ? { ...prev, [cacheKey]: false } : prev,
+          );
         }
       }
     },
@@ -548,7 +565,9 @@ const ConsumerPageContent = ({
 
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
+    const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
+    if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
     if (original && values.consumeEnable === false && original.consumeEnable !== false) {
@@ -573,7 +592,7 @@ const ConsumerPageContent = ({
           onCancel: () => resolve(false),
         });
       });
-      if (!confirmed) return;
+      if (!confirmed || requestId !== settingsRequestIdRef.current) return;
     }
     setSettingsSubmitting(true);
     try {
@@ -582,6 +601,13 @@ const ConsumerPageContent = ({
         name: settingsGroup.name,
         ...values,
       });
+      if (requestId !== settingsRequestIdRef.current) return;
+      // Subsequent edits must be compared with the settings the broker just accepted,
+      // not the snapshot from when this modal was first opened.
+      originalSettingsRef.current = {
+        consumeEnable: values.consumeEnable,
+        consumeMessageOrderly: values.consumeMessageOrderly,
+      };
       setGroups((current) =>
         current.map((group) =>
           group.name === settingsGroup.name
@@ -596,9 +622,11 @@ const ConsumerPageContent = ({
       );
       message.success('消费组配置已保存');
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      if (requestId === settingsRequestIdRef.current) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
     } finally {
-      setSettingsSubmitting(false);
+      if (requestId === settingsRequestIdRef.current) setSettingsSubmitting(false);
     }
   };
 
@@ -775,19 +803,25 @@ const ConsumerPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -843,14 +877,18 @@ const ConsumerPageContent = ({
     const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
     if (failedCount === 0) {
       if (invalidCount > 0) {
-        message.warning(`已导入 ${createdGroups.length} 个 Group，${invalidCount} 行无效已跳过`);
+        message.warning(
+          t('consumer.importDoneSkipped', { created: createdGroups.length, invalid: invalidCount }),
+        );
       } else {
-        message.success(`已导入 ${createdGroups.length} 个 Group`);
+        message.success(t('consumer.importDone', { created: createdGroups.length }));
       }
     } else if (createdGroups.length > 0) {
-      message.warning(`已导入 ${createdGroups.length} 个 Group，${failedCount} 个失败`);
+      message.warning(
+        t('consumer.importDoneFailed', { created: createdGroups.length, failed: failedCount }),
+      );
     } else {
-      message.error(`${failedCount} 个 Group 导入失败`);
+      message.error(t('consumer.importFailed', { failed: failedCount }));
     }
   };
 
@@ -1103,12 +1141,16 @@ const ConsumerPageContent = ({
       key: 'filterMode',
       width: 120,
       render: (mode: string) => {
-        const colorMap: Record<string, string> = {
-          全量: 'default',
-          'Tag 过滤': 'blue',
-          'SQL92 过滤': 'purple',
+        // The providers normalize the broker expression types to TAG / SQL / CLASS_FILTER
+        // (SubscriptionFilterModes.fromExpressionType); map those codes to labels instead of
+        // echoing them into the table.
+        const meta: Record<string, { color: string; labelKey: string }> = {
+          TAG: { color: 'blue', labelKey: 'consumer.filterTag' },
+          SQL: { color: 'purple', labelKey: 'consumer.filterSql92' },
+          CLASS_FILTER: { color: 'gold', labelKey: 'consumer.filterClassFilter' },
         };
-        return <Tag color={colorMap[mode] || 'default'}>{mode}</Tag>;
+        const entry = meta[mode];
+        return <Tag color={entry?.color ?? 'default'}>{entry ? t(entry.labelKey) : mode}</Tag>;
       },
     },
     {
@@ -1431,7 +1473,7 @@ const ConsumerPageContent = ({
       {/* ─── Header ─── */}
       <PageHeader
         title={t('group.title')}
-        subtitle={`管理消费者组订阅关系与消费进度，共 ${totalGroups} 个 Group`}
+        subtitle={t('consumer.pageSubtitle', { count: totalGroups })}
       />
 
       {/* ─── Filter Bar ─── */}
@@ -1574,7 +1616,7 @@ const ConsumerPageContent = ({
             pageSize,
             total: totalGroups,
             showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个 Group`,
+            showTotal: (total) => t('consumer.totalGroups', { count: total }),
             pageSizeOptions: [10, 20, 50, 100],
             onChange: (nextPage, nextPageSize) => {
               setSelectedRowKeys([]);
@@ -1636,6 +1678,8 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsSubmitting(false);
+          originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
         width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
@@ -2232,7 +2276,7 @@ const ConsumerPageContent = ({
               </Text>
             </Descriptions.Item>
             <Descriptions.Item label="采集时间">
-              {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
+              {selectedStack?.capturedAt ? formatUtcDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
           </Descriptions>
@@ -2453,7 +2497,10 @@ const ConsumerPageContent = ({
         title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportConsumerGroups()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}

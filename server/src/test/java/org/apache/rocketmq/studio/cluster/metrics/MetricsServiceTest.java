@@ -620,6 +620,33 @@ class MetricsServiceTest {
         verifyNoInteractions(metricsSourceFactory, metricsSource);
     }
 
+    @Test
+    void queryInstanceShouldRejectAmbiguousDedicatedSourcesTest() {
+        DataSourceVO first = dataSource("ds-1", List.of("instance-a"));
+        DataSourceVO second = dataSource("ds-2", List.of("instance-a"));
+        when(settingsService.listDataSources()).thenReturn(List.of(first, second));
+
+        assertThatExceptionOfType(BusinessException.class)
+                .isThrownBy(() -> metricsService.queryInstance("instance-a", rawQuery()))
+                .satisfies(exception -> assertThat(exception.getCode()).isEqualTo(409));
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryInstanceShouldRejectDedicatedSourcesEvenWithASoleSharedSourceTest() {
+        // Two dedicated bindings must stay ambiguous even when exactly one shared source also
+        // covers the instance: the shared fallback only applies when no dedicated source exists.
+        DataSourceVO first = dataSource("ds-1", List.of("instance-a"));
+        DataSourceVO second = dataSource("ds-2", List.of("instance-a"));
+        DataSourceVO shared = dataSource("ds-shared", List.of("instance-a", "instance-b"));
+        when(settingsService.listDataSources()).thenReturn(List.of(shared, first, second));
+
+        assertThatExceptionOfType(BusinessException.class)
+                .isThrownBy(() -> metricsService.queryInstance("instance-a", rawQuery()))
+                .satisfies(exception -> assertThat(exception.getCode()).isEqualTo(409));
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
     private DataSourceVO dataSource(String key, List<String> instanceIds) {
         return DataSourceVO.builder()
                 .key(key)
