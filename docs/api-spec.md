@@ -575,7 +575,7 @@ POST /api/nameservers/update
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `version` | `string` | 否 | NameServer 版本（不传则不修改） |
 
 **Response `data`:** `NameServerInfo`
 
