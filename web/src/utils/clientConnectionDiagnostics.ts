@@ -154,12 +154,12 @@ const issue = (
 });
 
 const connectionIdentity = (connection: ClientConnection): string =>
-  [
+  JSON.stringify([
     normalizeText(connection.type),
     normalizeText(connection.clientId),
     normalizeText(connection.groupOrTopic),
     normalizeText(connection.address),
-  ].join('|');
+  ]);
 
 const resourceKey = (connection: ClientConnection): string =>
   `${normalizeText(connection.type)}:${normalizeText(connection.groupOrTopic)}`;
@@ -264,7 +264,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   identityCounts.forEach((count, identity) => {
     if (count <= 1) return;
-    const [, clientId, resource, address] = identity.split('|');
+    const [, clientId, resource, address]: string[] = JSON.parse(identity);
     issues.push(
       issue(
         'EXACT_DUPLICATE_CONNECTION',
