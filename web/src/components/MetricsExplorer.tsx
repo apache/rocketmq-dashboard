@@ -56,6 +56,7 @@ import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
 import { downloadCsv } from '../utils/download';
 import { tableScrollX } from '../utils/table';
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../utils/browserStorage';
 import {
   buildMetricCsvFilename,
   buildMetricCsvFromRows,
@@ -723,7 +724,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         // A re-run after an earlier failure must clear the error banner, or the recovered
         // panels below would stay hidden behind it until the component is remounted.
         setProfileError(false);
-        const storedProfileId = localStorage.getItem(PROFILE_STORAGE_KEY);
+        const storedProfileId = readLocalStorage(PROFILE_STORAGE_KEY);
         const initialProfile =
           nextProfiles.find((profile) => profile.id === storedProfileId) ?? nextProfiles[0];
         setProfileId(initialProfile?.id ?? '');
@@ -749,7 +750,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleProfileChange = (nextProfileId: string) => {
     const nextProfile = profiles.find((profile) => profile.id === nextProfileId);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfileId);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfileId);
     setProfileId(nextProfileId);
     void loadAll(nextProfile, selectedRange);
   };
@@ -893,9 +894,9 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       rangeIdRef.current = replay.checkpoint.rangeId;
       setCustomPromql(replay.checkpoint.customPromql);
       if (replay.checkpoint.storedProfileId === null) {
-        localStorage.removeItem(PROFILE_STORAGE_KEY);
+        removeLocalStorage(PROFILE_STORAGE_KEY);
       } else {
-        localStorage.setItem(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
+        writeLocalStorage(PROFILE_STORAGE_KEY, replay.checkpoint.storedProfileId);
       }
     }
     setPendingDataSource(null);
@@ -1159,7 +1160,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       profileId,
       rangeId,
       customPromql,
-      storedProfileId: localStorage.getItem(PROFILE_STORAGE_KEY),
+      storedProfileId: readLocalStorage(PROFILE_STORAGE_KEY),
     };
     if (entry.profileId === CUSTOM_HISTORY_PROFILE_ID) {
       setRangeId(nextRange.value);
@@ -1187,7 +1188,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
     setRangeId(nextRange.value);
     setHistoryOpen(false);
-    localStorage.setItem(PROFILE_STORAGE_KEY, nextProfile.id);
+    writeLocalStorage(PROFILE_STORAGE_KEY, nextProfile.id);
     setProfileId(nextProfile.id);
     if (nextDataSource && getDataSourceAuthMode(nextDataSource.auth) !== 'none') {
       restoreProtectedDataSource(

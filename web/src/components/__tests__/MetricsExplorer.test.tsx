@@ -228,6 +228,29 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('42 messages/s')).toBeInTheDocument();
   });
 
+  it('still loads the profiles when storage access is blocked', async () => {
+    // Safari private mode and hardened cookie policies make localStorage access throw;
+    // utils/browserStorage exists so every other storage consumer survives that. The
+    // explorer must not turn a blocked read into a "profiles failed to load" page.
+    const blocked = () => {
+      throw new DOMException('Access is denied for this document', 'SecurityError');
+    };
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(blocked);
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked);
+    const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(blocked);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('RocketMQ 5.x Native')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument(),
+    );
+
+    getItemSpy.mockRestore();
+    setItemSpy.mockRestore();
+    removeItemSpy.mockRestore();
+  });
+
   it('sorts provider samples before drawing and selecting the latest value', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({
       ...metricData,
