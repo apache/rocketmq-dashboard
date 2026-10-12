@@ -20,7 +20,9 @@ import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../moc
 import { formatOnlineInstances } from '../utils/consumerConnections';
 import { buildCsv, type CsvColumn } from '../utils/download';
 
-const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
+const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
+  retryQueueNums?: number;
+})[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
 const GROUP_EXPORT_COLUMNS: CsvColumn<ConsumerGroup>[] = [
@@ -193,19 +195,37 @@ export async function getConsumerGroupSettings(
   name: string,
   instanceId: string,
 ): Promise<ConsumerGroupSettings> {
-  if (isMockMode()) return { groupName: name, retryQueueNums: 1, retryMaxTimes: 16 };
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === name && item.instanceId === instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${name}`);
+    return {
+      groupName: name,
+      retryQueueNums: group.retryQueueNums ?? 1,
+      retryMaxTimes: group.retryMaxTimes ?? 16,
+    };
+  }
   return metadataApi.getConsumerGroupSettings(name, instanceId);
 }
 
 export async function updateConsumerGroupSettings(
   data: Omit<ConsumerGroupSettings, 'groupName'> & { instanceId: string; name: string },
 ) {
-  if (isMockMode())
+  if (isMockMode()) {
+    const group = consumerGroupsState.find(
+      (item) => item.name === data.name && item.instanceId === data.instanceId,
+    );
+    if (!group) throw new Error(`Consumer group not found: ${data.name}`);
+    group.retryQueueNums = data.retryQueueNums;
+    group.retryMaxTimes = data.retryMaxTimes;
+    group.gmtModified = new Date().toISOString();
     return {
       groupName: data.name,
       retryQueueNums: data.retryQueueNums,
       retryMaxTimes: data.retryMaxTimes,
     };
+  }
   return metadataApi.updateConsumerGroupSettings(data);
 }
 
