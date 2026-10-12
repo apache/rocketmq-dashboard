@@ -335,6 +335,92 @@ describe('UserManagementPage', () => {
     expect(within(drawer).getByText('暂无活跃会话')).toBeInTheDocument();
   });
 
+  it('does not replace another user session drawer when a previous revocation completes', async () => {
+    vi.mocked(listStudioUsers).mockResolvedValue({
+      ...studioUserPage,
+      items: [
+        studioUserPage.items[0],
+        { ...studioUserPage.items[0], id: 8, username: 'second-user' },
+      ],
+    });
+    const secondSessions = [{ ...sessionDetails[0], id: 99, userId: 8 }];
+    vi.mocked(listStudioUserSessions).mockImplementation(async (id) =>
+      id === 8 ? secondSessions : sessionDetails,
+    );
+    let completeRevoke!: () => void;
+    vi.mocked(revokeStudioUserSessions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeRevoke = () => resolve({ userId: 7, revokedSessionCount: 2 });
+        }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    const firstRow = await screen.findByRole('row', { name: /operator/ });
+    await user.click(within(firstRow).getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    await user.click(within(drawer).getByRole('button', { name: '注销全部' }));
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+    await user.click(within(drawer).getByRole('button', { name: /close/i }));
+    const secondRow = screen.getByRole('row', { name: /second-user/ });
+    await user.click(within(secondRow).getByRole('button', { name: '会话' }));
+    const secondDrawer = await screen.findByRole('dialog', { name: 'second-user 的会话' });
+    expect(await within(secondDrawer).findByText('99')).toBeInTheDocument();
+    await act(async () => completeRevoke());
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+    expect(within(secondDrawer).getByText('99')).toBeInTheDocument();
+    expect(within(secondDrawer).queryByText('19')).not.toBeInTheDocument();
+  });
+
+  it('does not reload session details after their drawer is closed during revocation', async () => {
+    let completeRevoke!: () => void;
+    vi.mocked(revokeStudioUserSessions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeRevoke = () => resolve({ userId: 7, revokedSessionCount: 2 });
+        }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    await user.click(within(drawer).getByRole('button', { name: '注销全部' }));
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+    await user.click(within(drawer).getByRole('button', { name: /close/i }));
+    await act(async () => completeRevoke());
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+    expect(listStudioUserSessions).toHaveBeenCalledTimes(1);
+    // rc-drawer keeps the dialog node in the a11y tree until its exit motion finishes, and that
+    // motion is timer-driven: asserting synchronously passed in isolation and failed every
+    // full-suite run, where the timers lag behind the awaited reload.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('does not present a failed session read as an account without sessions', async () => {
+    vi.mocked(listStudioUserSessions).mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+
+    // The rows never arrived, so the drawer must not report zero active sessions or claim the
+    // account has none - a transient toast is the only other hint and it fades.
+    await waitFor(() => expect(within(drawer).queryByText('暂无活跃会话')).not.toBeInTheDocument());
+    expect(
+      within(drawer).getByText('活跃会话').closest('th,td')?.nextElementSibling?.textContent,
+    ).toBe('-');
+
+    await user.click(within(drawer).getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(listStudioUserSessions).toHaveBeenCalledTimes(2));
+    expect(await within(drawer).findByText('5分钟')).toBeInTheDocument();
+  });
+
   it('refreshes the open session detail drawer', async () => {
     vi.mocked(listStudioUserSessions)
       .mockResolvedValueOnce(sessionDetails)

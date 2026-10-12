@@ -72,12 +72,15 @@ import {
 import { listTopics } from '../../services/topicService';
 import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import useAuthStore from '../../stores/authStore';
 import { downloadBlob } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
 import { formatBytes, formatTimeMs } from '../../utils/format';
 import {
   readMessageTraceTopic,
   writeMessageTraceTopic,
+  messageTraceTopicOwnerKey,
+  type MessageTraceTopicOwner,
 } from '../../utils/messageTraceTopicStorage';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -301,6 +304,7 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
    ═══════════════════════════════════════════ */
 type InstanceFilterProps = {
   selectedInstanceId: string | undefined;
+  traceTopicOwner: MessageTraceTopicOwner;
   selectInstance: (instanceId: string) => void;
   instanceOptions: { value: string; label: string }[];
   instancesFailed: boolean;
@@ -310,13 +314,17 @@ type InstanceFilterProps = {
 const MessagePage = () => {
   const { selectedInstanceId, selectInstance, instanceOptions, instancesFailed, reloadInstances } =
     useInstanceFilter();
+  const userId = useAuthStore((state) => state.userId);
+  const username = useAuthStore((state) => state.user);
+  const traceTopicOwner = useMemo(() => ({ userId, username }), [userId, username]);
   // Keying the content by the selected instance makes React remount it whenever the instance
   // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
   // so query results, the detail modal and in-flight request ownership all reset cleanly.
   return (
     <MessagePageContent
-      key={selectedInstanceId || 'no-instance'}
+      key={`${messageTraceTopicOwnerKey(traceTopicOwner)}:${selectedInstanceId || 'no-instance'}`}
       selectedInstanceId={selectedInstanceId}
+      traceTopicOwner={traceTopicOwner}
       selectInstance={selectInstance}
       instanceOptions={instanceOptions}
       instancesFailed={instancesFailed}
@@ -330,6 +338,7 @@ const MessagePage = () => {
    ═══════════════════════════════════════════ */
 const MessagePageContent = ({
   selectedInstanceId,
+  traceTopicOwner,
   selectInstance,
   instanceOptions,
   instancesFailed,
@@ -392,7 +401,7 @@ const MessagePageContent = ({
   const [traceQueryMode, setTraceQueryMode] = useState<'msgid' | 'key'>('msgid');
   const [traceQueryValue, setTraceQueryValue] = useState('');
   const [customTraceTopic, setCustomTraceTopic] = useState(() =>
-    readMessageTraceTopic(selectedInstanceId),
+    readMessageTraceTopic(selectedInstanceId, traceTopicOwner),
   );
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [directConsumeOpen, setDirectConsumeOpen] = useState(false);
@@ -463,8 +472,8 @@ const MessagePageContent = ({
           : undefined;
 
   useEffect(() => {
-    writeMessageTraceTopic(selectedInstanceId, customTraceTopic);
-  }, [customTraceTopic, selectedInstanceId]);
+    writeMessageTraceTopic(selectedInstanceId, customTraceTopic, traceTopicOwner);
+  }, [customTraceTopic, selectedInstanceId, traceTopicOwner]);
 
   const currentQueryParams: MessageQuery =
     queryMode === 'topic'
