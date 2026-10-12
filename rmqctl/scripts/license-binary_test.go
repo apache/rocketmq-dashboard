@@ -60,7 +60,7 @@ func TestBinaryLicensePackagingTest(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			pack := func(osName, material, completionDir string, success bool) {
+			pack := func(osName, material, completionDir, wantOutput string, success bool) {
 				t.Helper()
 				cmd := exec.Command("bash", filepath.Join(root, "rmqctl/scripts/package-release.sh"),
 					binary, osName, "amd64", "fixture", material, filepath.Join(dir, "packages"))
@@ -69,8 +69,14 @@ func TestBinaryLicensePackagingTest(t *testing.T) {
 				if (err == nil) != success {
 					t.Fatalf("packaging gate returned the wrong result success=%v err=%v\n%s", success, err, output)
 				}
+				// A missing completion directory has to fail with the guard's own diagnostic: dropping
+				// the guard still exits non-zero (the cp below it fails), so the status alone does not
+				// pin it and the operator would be left with a cryptic cp error instead.
+				if wantOutput != "" && !strings.Contains(string(output), wantOutput) {
+					t.Fatalf("packaging gate did not report %q:\n%s", wantOutput, output)
+				}
 			}
-			pack(target, legal, completion, true)
+			pack(target, legal, completion, "", true)
 			contents := map[string]string{}
 			archive := filepath.Join(dir, "packages", "rmqctl-"+target+"-amd64-fixture")
 			if target == "windows" {
@@ -135,13 +141,13 @@ func TestBinaryLicensePackagingTest(t *testing.T) {
 					t.Fatalf("the package is missing completion/%s", name)
 				}
 			}
-			pack("darwin", legal, completion, false)
-			pack(target, "", completion, false)
-			pack(target, legal, filepath.Join(dir, "completion-not-generated"), false)
+			pack("darwin", legal, completion, "", false)
+			pack(target, "", completion, "", false)
+			pack(target, legal, filepath.Join(dir, "completion-not-generated"), "Missing completion scripts", false)
 			if err := os.WriteFile(filepath.Join(legal, "NOTICE"), []byte("tampered"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			pack(target, legal, completion, false)
+			pack(target, legal, completion, "", false)
 		})
 	}
 }
