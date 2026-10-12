@@ -297,6 +297,38 @@ describe('Clients page', () => {
     expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
   });
 
+  it('countsEveryListedConnectionWhenAClientServesSeveralGroupsTest', async () => {
+    // A RocketMQ client registers one entry per group it serves - its own group plus the shared
+    // CLIENT_INNER_PRODUCER - so the same clientId appears on several rows. The summary tiles
+    // describe the connections the table lists; the de-duplicated clients stay the diagnostics
+    // panel's job ("唯一 Client / 唯一地址" below).
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      { ...connection, clientId: 'shared-client', groupOrTopic: 'order-create' },
+      { ...connection, clientId: 'shared-client', groupOrTopic: 'CLIENT_INNER_PRODUCER' },
+      {
+        ...connection,
+        clientId: 'order-consumer',
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        address: '10.0.1.40:49152',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await waitFor(() => {
+      expect(within(screen.getByTestId('connection-total')).getByText('3')).toBeInTheDocument();
+    });
+    expect(within(screen.getByTestId('producer-total')).getByText('2')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('1')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('gRPC: 3'),
+    ).toBeInTheDocument();
+
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(diagnostics.textContent).toContain('唯一 Client: 2');
+    expect(diagnostics.textContent).toContain('唯一地址: 2');
+  });
+
   it('renders client connection diagnostics for risky inventories', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
       {
