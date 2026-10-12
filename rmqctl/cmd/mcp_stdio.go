@@ -162,7 +162,21 @@ func (p *stdioProxy) run(ctx context.Context) error {
 			p.handleResult(result)
 		}
 	}
-	return p.inputErr
+	// A call can queue notifications before its result, but select may consume
+	// the result first. Forward the remaining notifications before exiting.
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case message, ok := <-p.session.Notifications():
+			if !ok {
+				return p.inputErr
+			}
+			p.handleNotification(message)
+		default:
+			return p.inputErr
+		}
+	}
 }
 
 func (p *stdioProxy) handleNotification(message json.RawMessage) {
@@ -282,6 +296,29 @@ func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callEr
 		}
 		if hint == "" {
 			hint = "Check the MCP configuration and retry the request."
+		}
+		rpcError = jsonRPCError{
+			Code:    jsonrpcServerErrorCode,
+			Message: message,
+			Data: &jsonRPCErrorData{
+				Code:    code,
+				Message: message,
+				Hint:    hint,
+			},
+		}
+	} else {
+		// Connection refusals, TLS failures, timeouts and protocol-decode errors carry no HTTP
+		// status, but the caller still needs the cause: an MCP client that only receives
+		// "stdio proxy call failed" cannot tell the user (or the model) anything but "go look at
+		// the logs". normalizeCLIError classifies them the same way the CLI's own error path
+		// does, and the sanitized text travels in both message and data so the frame is
+		// actionable on its own.
+		cliError := normalizeCLIError(callErr)
+		code := safeStdioDiagnostic(cliError.Code)
+		message := safeStdioDiagnostic(cliError.Message)
+		hint := safeStdioDiagnostic(cliError.Hint)
+		if message == "" {
+			message = "stdio proxy call failed"
 		}
 		rpcError = jsonRPCError{
 			Code:    jsonrpcServerErrorCode,

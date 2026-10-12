@@ -21,11 +21,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
@@ -80,6 +78,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Real MetadataProvider implementation.
@@ -146,9 +145,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqTopic::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqTopic::getInstanceId, "")
+                                        .or().isNull(RmqTopic::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
@@ -171,9 +175,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqTopic> query = new LambdaQueryWrapper<RmqTopic>()
-                .eq(instanceId != null, RmqTopic::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqTopic::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqTopic::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqTopic::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqTopic::getInstanceId, "")
+                                        .or().isNull(RmqTopic::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqTopic::getClusterId, clusterId)
                 .eq(StringUtils.hasText(type), RmqTopic::getTopicType, type)
                 .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
@@ -237,9 +246,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqGroup::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqGroup::getInstanceId, "")
+                                        .or().isNull(RmqGroup::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
                         SqlLikeUtils.contains(search))
@@ -259,9 +273,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         String configuredCluster = StringUtils.hasText(instanceId)
                 ? runtimeAdminClientResolver.configuredClusterName(instanceId) : null;
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
-                .eq(instanceId != null, RmqGroup::getInstanceId,
-                        configuredCluster == null ? normalizeMetadataScope(instanceId) : "")
-                .eq(configuredCluster != null, RmqGroup::getClusterId, configuredCluster)
+                .and(instanceId != null, scope -> {
+                    scope.eq(RmqGroup::getInstanceId, normalizeMetadataScope(instanceId));
+                    if (configuredCluster != null) {
+                        scope.or(legacy -> legacy.eq(RmqGroup::getClusterId, configuredCluster)
+                                .and(empty -> empty.eq(RmqGroup::getInstanceId, "")
+                                        .or().isNull(RmqGroup::getInstanceId)));
+                    }
+                })
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("name"),
                         SqlLikeUtils.contains(search))
@@ -276,6 +295,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private static final int ONLINE_ENRICHMENT_THREADS = 8;
     private static final long ONLINE_ENRICHMENT_TIMEOUT_SECONDS = 3;
+
+    private record GroupLiveSnapshot(List<ConsumerInstanceVO> instances, int onlineInstances,
+            boolean consumeStatsAvailable, long totalLag, int delaySeconds,
+            boolean consumptionTimestampAvailable) {
+        private static GroupLiveSnapshot empty() {
+            return new GroupLiveSnapshot(List.of(), 0, false, 0L, 0, false);
+        }
+    }
 
     private final ExecutorService onlineEnrichmentExecutor = Executors.newFixedThreadPool(
             ONLINE_ENRICHMENT_THREADS, runnable -> {
@@ -313,43 +340,71 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return;
         }
         List<Future<?>> futures = new ArrayList<>(groups.size());
+        List<AtomicReference<GroupLiveSnapshot>> snapshots = new ArrayList<>(groups.size());
         for (ConsumerGroupVO vo : groups) {
-            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, vo)));
+            String groupName = vo.getName();
+            AtomicReference<GroupLiveSnapshot> snapshot = new AtomicReference<>(GroupLiveSnapshot.empty());
+            snapshots.add(snapshot);
+            futures.add(onlineEnrichmentExecutor.submit(() -> enrichGroupLiveStats(instanceId, groupName, snapshot)));
         }
-        for (int i = 0; i < groups.size(); i++) {
-            try {
-                futures.get(i).get(ONLINE_ENRICHMENT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                futures.get(i).cancel(true);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            } catch (ExecutionException e) {
-                // leave the stats at zero
+        // One absolute deadline for the whole batch (the InstanceResourceCountRunner
+        // precedent): a hanging broker must not multiply the wait by the number of
+        // groups, so each future only gets the time the batch has left.
+        long startedNanos = System.nanoTime();
+        long timeoutNanos = TimeUnit.SECONDS.toNanos(ONLINE_ENRICHMENT_TIMEOUT_SECONDS);
+        try {
+            for (Future<?> future : futures) {
+                long remainingNanos = timeoutNanos - (System.nanoTime() - startedNanos);
+                try {
+                    if (remainingNanos <= 0) {
+                        throw new TimeoutException("enrichment batch deadline reached");
+                    }
+                    future.get(remainingNanos, TimeUnit.NANOSECONDS);
+                } catch (TimeoutException e) {
+                    future.cancel(true);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (ExecutionException e) {
+                    // leave the stats at the last completed phase
+                }
+            }
+        } finally {
+            // A canceled broker call may continue, but it can only update its private snapshot.
+            for (int index = 0; index < groups.size(); index++) {
+                GroupLiveSnapshot liveStats = snapshots.get(index).get();
+                ConsumerGroupVO vo = groups.get(index);
+                vo.setInstances(liveStats.instances());
+                vo.setOnlineInstances(liveStats.onlineInstances());
+                vo.setConsumeStatsAvailable(liveStats.consumeStatsAvailable());
+                vo.setTotalLag(liveStats.totalLag());
+                vo.setDelaySeconds(liveStats.delaySeconds());
+                vo.setConsumptionTimestampAvailable(liveStats.consumptionTimestampAvailable());
             }
         }
     }
 
-    private void enrichGroupLiveStats(String instanceId, ConsumerGroupVO vo) {
+    private void enrichGroupLiveStats(String instanceId, String groupName,
+            AtomicReference<GroupLiveSnapshot> snapshot) {
         // The detail modal reuses the listed group as-is, so the online instance list has to be
         // filled here too; both fields come from the same connection set to stay consistent.
         ProxyConsumerResolver.ConsumerConnectionResolution connection =
-                resolveConsumerConnection(instanceId, vo.getName());
+                resolveConsumerConnection(instanceId, groupName);
         List<ConsumerInstanceVO> instances = ConsumerConnections.toInstances(connection.connection());
-        vo.setInstances(instances);
-        vo.setOnlineInstances(connection.available() ? instances.size() : -1);
+        int onlineInstances = connection.available() ? instances.size() : -1;
+        snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, false, 0L, 0, false));
         try {
             ConsumeStats stats;
             if (StringUtils.hasText(instanceId)) {
                 stats = runtimeAdminClientResolver.execute(instanceId,
-                        admin -> admin.examineConsumeStats(vo.getName()));
+                        admin -> admin.examineConsumeStats(groupName));
             } else {
-                stats = adminExecute(admin -> admin.examineConsumeStats(vo.getName()));
+                stats = adminExecute(admin -> admin.examineConsumeStats(groupName));
             }
             if (stats == null) {
                 return;
             }
-            vo.setConsumeStatsAvailable(true);
+            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true, 0L, 0, false));
             if (stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
                 return;
             }
@@ -370,12 +425,15 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     newestConsumedTimestamp = lastTimestamp;
                 }
             }
-            vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
+            int delaySeconds = 0;
+            boolean timestampAvailable = false;
             if (newestConsumedTimestamp > 0) {
-                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
-                vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
-                vo.setConsumptionTimestampAvailable(true);
+                long elapsedSeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                delaySeconds = (int) Math.max(elapsedSeconds, 0);
+                timestampAvailable = true;
             }
+            snapshot.set(new GroupLiveSnapshot(instances, onlineInstances, true,
+                    lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag, delaySeconds, timestampAvailable));
         } catch (Exception e) {
             // No consume stats (e.g. POP-only group without an offset table): keep zeros.
         }
@@ -640,7 +698,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
+            // Reads do not create retry topics; a missing route is treated as an empty business state.
             ConsumeStats stats = admin.examineConsumeStats(name);
             if (stats == null || stats.getOffsetTable() == null) {
                 return Collections.emptyList();
@@ -693,7 +751,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String instanceId, String name) {
         try {
-            ensureRetryTopicExists(admin, name);
+            // Reads do not create retry topics; a missing route is treated as an empty business state.
             ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
             if (conn == null || conn.getSubscriptionTable() == null) {
                 return Collections.emptyList();
@@ -749,6 +807,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private boolean isGroupNotOnline(Exception e) {
+        if (MqResponseCodes.hasResponseCode(e, ResponseCode.TOPIC_NOT_EXIST)) {
+            return true;
+        }
         if (e instanceof org.apache.rocketmq.client.exception.MQBrokerException brokerException) {
             return brokerException.getResponseCode()
                     == org.apache.rocketmq.remoting.protocol.ResponseCode.CONSUMER_NOT_ONLINE;
@@ -770,50 +831,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     // ── Helper methods ──────────────────────────────────────────────────
-
-    /**
-     * examineConsumeStats / examineConsumerConnectionInfo locate brokers through the
-     * {@code %RETRY%<group>} topic route, but 5.x POP consumer groups only get their
-     * retry topic created once a retry actually happens, so brand-new groups fail with
-     * CODE 17. Create the standard retry topic on every master broker when missing
-     * (same shape the broker itself creates lazily); the call is idempotent.
-     */
-    private void ensureRetryTopicExists(MQAdminExt admin, String groupName) {
-        String retryTopic = MixAll.getRetryTopic(groupName);
-        try {
-            TopicRouteData route = admin.examineTopicRouteInfo(retryTopic);
-            if (route != null && route.getBrokerDatas() != null && !route.getBrokerDatas().isEmpty()) {
-                return;
-            }
-        } catch (Exception e) {
-            log.info("Retry topic {} not routable yet, creating it: {}", retryTopic, e.getMessage());
-        }
-        try {
-            ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-                return;
-            }
-            TopicConfig retryConfig = new TopicConfig();
-            retryConfig.setTopicName(retryTopic);
-            retryConfig.setReadQueueNums(1);
-            retryConfig.setWriteQueueNums(1);
-            retryConfig.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
-            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-                String brokerAddr = brokerData.selectBrokerAddr();
-                if (brokerAddr == null || brokerAddr.isBlank()) {
-                    continue;
-                }
-                try {
-                    admin.createAndUpdateTopicConfig(brokerAddr, retryConfig);
-                } catch (Exception e) {
-                    log.warn("Failed to create retry topic {} on broker {}: {}",
-                            retryTopic, brokerAddr, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to ensure retry topic {} exists: {}", retryTopic, e.getMessage());
-        }
-    }
 
     /**
      * Resolves the lag for a single queue without clamping the broker's {@code -1} "unknown"

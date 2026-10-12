@@ -226,6 +226,41 @@ class AiConversationServiceTest {
         assertThat(AiConversationService.capTitle("y".repeat(600))).hasSize(512);
     }
 
+    @Test
+    void deriveTitleShouldCutOnCodePointBoundariesTest() {
+        // The emoji below is one supplementary character carried as two UTF-16 units. At the
+        // budget the old UTF-16 cut kept only its high surrogate, corrupting the stored title; it
+        // must now stay whole or drop whole.
+        String emoji = String.valueOf(Character.toChars(0x1F600));
+        assertThat(AiConversationService.deriveTitle("x".repeat(39) + emoji))
+                .isEqualTo("x".repeat(39) + emoji);
+        assertThat(AiConversationService.deriveTitle("x".repeat(40) + emoji))
+                .isEqualTo("x".repeat(40));
+        assertThat(AiConversationService.deriveTitle("x".repeat(39) + emoji + "tail"))
+                .isEqualTo("x".repeat(39) + emoji);
+    }
+
+    @Test
+    void capTitleShouldCutOnCodePointBoundariesTest() {
+        String emoji = String.valueOf(Character.toChars(0x1F600));
+        // 32 x (15 y + 1 emoji) fills the 512-code-point budget exactly, but it is 544 UTF-16
+        // units, so the old unit-based cut stopped after 30 groups plus two y's: it lost code
+        // points here rather than splitting an emoji. The next case covers the split itself.
+        String mixed = ("y".repeat(15) + emoji).repeat(32);
+        assertThat(AiConversationService.capTitle(mixed + emoji + "z".repeat(600)))
+                .isEqualTo(mixed);
+        // A three-unit period puts the old 512-unit cut in the middle of a surrogate pair
+        // (512 = 3 x 170 + 2); the cap must drop the whole character instead of storing half of one.
+        assertThat(AiConversationService.capTitle(("y" + emoji).repeat(300)))
+                .isEqualTo(("y" + emoji).repeat(256));
+        // 511 ASCII characters plus one emoji is exactly the 512-code-point budget; appending one
+        // more emoji must drop it whole instead of leaving half a surrogate pair behind.
+        assertThat(AiConversationService.capTitle("y".repeat(511) + emoji + emoji))
+                .isEqualTo("y".repeat(511) + emoji);
+        assertThat(AiConversationService.capTitle(null)).isNull();
+        assertThat(AiConversationService.capTitle("short")).isEqualTo("short");
+    }
+
     // --- timeline --------------------------------------------------------------
 
     @Test
@@ -366,6 +401,24 @@ class AiConversationServiceTest {
         order.verify(conversationRepository).deleteByIds(List.of(1L, 2L, 3L));
         // A batch smaller than the limit means the backlog is gone; looping again would just re-query.
         verify(conversationRepository, times(1)).findIdsCreatedBefore(any(), anyInt());
+    }
+
+    @Test
+    void retentionShouldRemoveTheWorkspaceOfEveryPurgedConversationTest() {
+        when(conversationRepository.findIdsCreatedBefore(any(LocalDateTime.class), eq(500)))
+                .thenReturn(List.of(1L, 2L, 3L));
+        when(conversationRepository.deleteByIds(anyList())).thenReturn(3);
+
+        service.purgeExpired();
+
+        // The workspace holds the child's HOME, so the agent transcript lives there: a purge that
+        // only deletes rows keeps it on disk forever, under a conversation the user cannot see any
+        // more. It is removed after the rows, the same order the on-request delete uses.
+        InOrder order = inOrder(conversationRepository, workspace);
+        order.verify(conversationRepository).deleteByIds(List.of(1L, 2L, 3L));
+        order.verify(workspace).delete(1L);
+        order.verify(workspace).delete(2L);
+        order.verify(workspace).delete(3L);
     }
 
     @Test

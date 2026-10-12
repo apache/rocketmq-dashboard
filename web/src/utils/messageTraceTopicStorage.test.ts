@@ -18,6 +18,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readMessageTraceTopic, writeMessageTraceTopic } from './messageTraceTopicStorage';
 
+const accountA = { userId: 12, username: 'operator-a' };
+const accountB = { userId: 13, username: 'operator-b' };
+const anonymous = { userId: null, username: null };
+
 describe('message trace topic storage', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -28,20 +32,36 @@ describe('message trace topic storage', () => {
   });
 
   it('stores normalized topics independently for each instance', () => {
-    writeMessageTraceTopic('instance/a', '  CUSTOM_TRACE  ');
-    writeMessageTraceTopic('instance-b', 'OTHER_TRACE');
+    writeMessageTraceTopic('instance/a', '  CUSTOM_TRACE  ', accountA);
+    writeMessageTraceTopic('instance-b', 'OTHER_TRACE', accountA);
 
-    expect(readMessageTraceTopic('instance/a')).toBe('CUSTOM_TRACE');
-    expect(readMessageTraceTopic('instance-b')).toBe('OTHER_TRACE');
-    expect(readMessageTraceTopic('instance-c')).toBe('');
+    expect(readMessageTraceTopic('instance/a', accountA)).toBe('CUSTOM_TRACE');
+    expect(readMessageTraceTopic('instance-b', accountA)).toBe('OTHER_TRACE');
+    expect(readMessageTraceTopic('instance-c', accountA)).toBe('');
+  });
+
+  it('does not share a trace topic between browser accounts or anonymous mode', () => {
+    writeMessageTraceTopic('instance-a', 'TRACE_A', accountA);
+    writeMessageTraceTopic('instance-a', 'TRACE_B', accountB);
+
+    expect(readMessageTraceTopic('instance-a', accountA)).toBe('TRACE_A');
+    expect(readMessageTraceTopic('instance-a', accountB)).toBe('TRACE_B');
+    expect(readMessageTraceTopic('instance-a', anonymous)).toBe('');
+  });
+
+  it('ignores an unscoped legacy value whose owner cannot be identified', () => {
+    localStorage.setItem('rocketmq-studio-message-trace-topic:instance-a', 'LEGACY_TRACE');
+
+    expect(readMessageTraceTopic('instance-a', accountA)).toBe('');
+    expect(readMessageTraceTopic('instance-a', accountB)).toBe('');
   });
 
   it('removes blank topics so the provider default is restored', () => {
-    writeMessageTraceTopic('instance-a', 'CUSTOM_TRACE');
+    writeMessageTraceTopic('instance-a', 'CUSTOM_TRACE', accountA);
 
-    writeMessageTraceTopic('instance-a', '   ');
+    writeMessageTraceTopic('instance-a', '   ', accountA);
 
-    expect(readMessageTraceTopic('instance-a')).toBe('');
+    expect(readMessageTraceTopic('instance-a', accountA)).toBe('');
   });
 
   it('treats denied browser storage as an optional preference', () => {
@@ -52,7 +72,7 @@ describe('message trace topic storage', () => {
       throw new DOMException('storage denied', 'SecurityError');
     });
 
-    expect(() => writeMessageTraceTopic('instance-a', 'CUSTOM_TRACE')).not.toThrow();
-    expect(readMessageTraceTopic('instance-a')).toBe('');
+    expect(() => writeMessageTraceTopic('instance-a', 'CUSTOM_TRACE', accountA)).not.toThrow();
+    expect(readMessageTraceTopic('instance-a', accountA)).toBe('');
   });
 });

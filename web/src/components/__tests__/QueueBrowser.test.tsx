@@ -15,24 +15,52 @@
  * limitations under the License.
  */
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { message } from 'antd';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { formatTimeMs, useQueueBrowser } from '../QueueBrowser';
+import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
   pullMessageAtOffset: vi.fn(),
 }));
 
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 const queue = (brokerName: string): QueueOffset => ({
@@ -57,6 +85,16 @@ const messageRecord = (msgId: string): MessageRecord => ({
   properties: {},
   size: 2,
 });
+
+const renderLoadedBrowser = async (queues = [queue('broker-a')]) => {
+  vi.mocked(getQueueOffsets).mockResolvedValue(queues);
+  const { result } = renderHook(() => useQueueBrowser('instance-a'));
+  act(() => result.current.setTopic('topic-a'));
+  await act(async () => {
+    await result.current.loadQueues();
+  });
+  return result;
+};
 
 function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string }) {
   const state = useQueueBrowser(instanceId);
@@ -90,23 +128,90 @@ function QueueBrowserProbe({ instanceId = 'instance-a' }: { instanceId?: string 
   );
 }
 
-describe('formatTimeMs', () => {
-  it('preserves the Unix epoch timestamp', () => {
-    expect(formatTimeMs(0)).not.toBe('-');
-  });
-
-  it.each(['not-a-date', Number.NaN, Number.POSITIVE_INFINITY])(
-    'returns a placeholder for invalid timestamp %s',
-    (value) => {
-      expect(formatTimeMs(value)).toBe('-');
-    },
+function QueueBrowserResultsProbe() {
+  const state = useQueueBrowser('instance-a');
+  const firstQueue = state.queues[0];
+  return (
+    <div>
+      <button type="button" onClick={() => state.setTopic('topic-a')}>
+        topic-a
+      </button>
+      <button type="button" onClick={() => void state.loadQueues()}>
+        load
+      </button>
+      <button type="button" onClick={() => firstQueue && void state.handlePull(firstQueue)}>
+        pull
+      </button>
+      <QueueBrowserResults state={state} />
+    </div>
   );
-});
+}
 
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getQueueOffsets).mockReset();
+    vi.mocked(pullMessageAtOffset).mockReset();
   });
+
+  describe('page lifetime', () => {
+    afterEach(() => vi.restoreAllMocks());
+    it.each([
+      { operation: 'load', abandoned: true },
+      { operation: 'pull', abandoned: true },
+      { operation: 'load', abandoned: false },
+      { operation: 'pull', abandoned: false },
+    ])(
+      'onlyReportsFailuresOwnedByTheMountedPageTest ($operation/$abandoned)',
+      async ({ operation, abandoned }) => {
+        const errorToast = vi
+          .spyOn(message, 'error')
+          .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+        let reject!: (error: Error) => void;
+        const pending = new Promise<never>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        });
+        vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+        vi.mocked(pullMessageAtOffset).mockResolvedValue(messageRecord('fresh-message'));
+        if (operation === 'load') vi.mocked(getQueueOffsets).mockReturnValueOnce(pending);
+        else vi.mocked(pullMessageAtOffset).mockReturnValueOnce(pending);
+        const user = userEvent.setup();
+        const view = render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        if (operation === 'pull') {
+          await waitFor(() =>
+            expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'),
+          );
+          await user.click(screen.getByRole('button', { name: 'pull' }));
+        }
+        if (abandoned) view.unmount();
+        await act(async () => {
+          reject(new Error('queue request failed'));
+        });
+        expect(errorToast).toHaveBeenCalledTimes(abandoned ? 0 : 1);
+        if (!abandoned) view.unmount();
+        render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+        await user.click(screen.getByRole('button', { name: 'pull' }));
+        await waitFor(() =>
+          expect(screen.getByLabelText('entries')).toHaveTextContent('fresh-message'),
+        );
+        expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+      },
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   it('keeps the newest topic queue load when an older request resolves later', async () => {
     const topicA = createDeferred<QueueOffset[]>();
@@ -201,6 +306,109 @@ describe('QueueBrowser request ownership', () => {
     await act(async () => pull.resolve(messageRecord('message-a')));
   });
 
+  it('does not reopen a closed message card when its replacement pull resolves', async () => {
+    const replacement = createDeferred<MessageRecord | null>();
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(replacement.promise);
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await screen.findByText('initial-message');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await waitFor(() => expect(pullMessageAtOffset).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByRole('button', { name: 'close' }));
+
+    await act(async () => replacement.resolve(messageRecord('late-message')));
+
+    expect(screen.queryByText('initial-message')).not.toBeInTheDocument();
+    expect(screen.queryByText('late-message')).not.toBeInTheDocument();
+  });
+
+  it('closing one queue keeps another queue pull active', async () => {
+    const closedPull = createDeferred<MessageRecord | null>();
+    const otherPull = createDeferred<MessageRecord | null>();
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(closedPull.promise)
+      .mockReturnValueOnce(otherPull.promise);
+    const browser = await renderLoadedBrowser([queue('broker-a'), queue('broker-b')]);
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      void browser.current.handlePull(queue('broker-b'));
+      browser.current.closeEntry('broker-a-0');
+    });
+
+    await act(async () => closedPull.resolve(messageRecord('late-message')));
+    expect(browser.current.entries).toEqual([]);
+    expect([...browser.current.pulling]).toEqual(['broker-b-0']);
+    await act(async () => otherPull.resolve(messageRecord('other-message')));
+    expect(browser.current.entries.map((entry) => entry.message?.msgId)).toEqual(['other-message']);
+    expect(browser.current.pulling.size).toBe(0);
+  });
+
+  it('a dismissed pull cannot unlock or overwrite a newly requested message', async () => {
+    const stalePull = createDeferred<MessageRecord | null>();
+    const currentPull = createDeferred<MessageRecord | null>();
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(stalePull.promise)
+      .mockReturnValueOnce(currentPull.promise);
+    const browser = await renderLoadedBrowser();
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      browser.current.closeEntry('broker-a-0');
+      void browser.current.handlePull(queue('broker-a'));
+    });
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(3);
+
+    await act(async () => stalePull.resolve(messageRecord('stale-message')));
+    expect(browser.current.entries).toEqual([]);
+    expect(browser.current.pulling.has('broker-a-0')).toBe(true);
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+    });
+    expect(pullMessageAtOffset).toHaveBeenCalledTimes(3);
+    await act(async () => currentPull.resolve(messageRecord('current-message')));
+    expect(browser.current.entries.map((entry) => entry.message?.msgId)).toEqual([
+      'current-message',
+    ]);
+    expect(browser.current.pulling.size).toBe(0);
+  });
+
+  it('ignores a dismissed pull failure', async () => {
+    const dismissedPull = createDeferred<MessageRecord | null>();
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(messageRecord('initial-message'))
+      .mockReturnValueOnce(dismissedPull.promise);
+    const browser = await renderLoadedBrowser();
+    await act(async () => {
+      await browser.current.handlePull(queue('broker-a'));
+    });
+    act(() => {
+      void browser.current.handlePull(queue('broker-a'));
+      browser.current.closeEntry('broker-a-0');
+    });
+
+    await act(async () => dismissedPull.reject(new Error('dismissed request failed')));
+    expect(errorToast).not.toHaveBeenCalled();
+    expect(browser.current.entries).toEqual([]);
+    expect(browser.current.pulling.size).toBe(0);
+    errorToast.mockRestore();
+  });
+
   it('keeps a replacement pull locked when a stale pull settles', async () => {
     const stalePull = createDeferred<MessageRecord | null>();
     const currentPull = createDeferred<MessageRecord | null>();
@@ -271,5 +479,27 @@ describe('QueueBrowser request ownership', () => {
     });
 
     expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+  });
+
+  it('shows the properties of a pulled queue message', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockResolvedValue({
+      ...messageRecord('message-with-properties'),
+      properties: { traceId: 'queue-trace-123' },
+      propertiesTruncated: true,
+    });
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    const properties = await screen.findByRole('region', { name: '消息属性' });
+    expect(within(properties).getByText('queue-trace-123')).toBeInTheDocument();
+    expect(
+      within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
+    ).toBeInTheDocument();
   });
 });

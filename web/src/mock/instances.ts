@@ -15,7 +15,28 @@
  * limitations under the License.
  */
 
-import type { Instance } from '../api/instance';
+import type { Instance, InstanceCapability } from '../api/instance';
+
+const MOCK_APACHE_PROVIDER_CAPABILITIES = [
+  'TOPIC_MANAGEMENT',
+  'CONSUMER_GROUP_MANAGEMENT',
+  'MESSAGE_QUERY',
+  'MESSAGE_TRACE',
+  'MESSAGE_SEND',
+  'DIRECT_MESSAGE_CONSUME',
+  'ACL_MANAGEMENT',
+  'DLQ_MANAGEMENT',
+] as const satisfies readonly InstanceCapability[];
+
+const MOCK_CLOUD_PROVIDER_CAPABILITIES = [
+  'TOPIC_MANAGEMENT',
+  'CONSUMER_GROUP_MANAGEMENT',
+  'MESSAGE_QUERY',
+  'MESSAGE_TRACE',
+  'MESSAGE_SEND',
+  'DIRECT_MESSAGE_CONSUME',
+  'ACL_MANAGEMENT',
+] as const satisfies readonly InstanceCapability[];
 
 export const mockInstances: Instance[] = [
   {
@@ -74,3 +95,11 @@ export const mockInstances: Instance[] = [
     gmtModified: '2026-08-03 10:00:00',
   },
 ];
+
+export function getMockInstanceCapabilities(instance: Instance): InstanceCapability[] {
+  const capabilities =
+    instance.vendor === 'ALIYUN' || instance.vendor === 'TENCENT'
+      ? MOCK_CLOUD_PROVIDER_CAPABILITIES
+      : MOCK_APACHE_PROVIDER_CAPABILITIES;
+  return [...capabilities];
+}

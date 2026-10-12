@@ -203,9 +203,25 @@ public class AiRunService {
 
         // Prepared at admission, not on the worker: an unusable workspace configuration is an operator
         // error the caller should hear about now, and a degraded conversation must say so in its first
-        // persisted event rather than in a log line nobody reads.
-        RmqctlWorkspace.Preparation preparation =
-                workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+        // persisted event rather than in a log line nobody reads. The http engine is the exception: it
+        // has no agent CLI and never reads the workspace, so preparing one would let a broken tools
+        // configuration fail - and a missing one warn on every turn of - a plain completion.
+        boolean httpEngine = AiRunExecutor.isHttpEngine(engine);
+        RmqctlWorkspace.Preparation preparation;
+        try {
+            preparation = httpEngine ? null
+                    : workspace.prepare(conversation.getId(), conversation.getInstanceId()).orElse(null);
+        } catch (RuntimeException exception) {
+            // The row is already inserted and would otherwise stay QUEUED with no owner: every later
+            // message would be refused 409 until the orphan sweep reaps it. Finalize it here — through
+            // the exactly-once terminal path, like the stop of an owner-less run — and rethrow so the
+            // caller still hears the reason.
+            log.error("could not prepare the agent workspace for run {}; failing the run", run.getId(),
+                    exception);
+            runExecutor.terminate(detachedContext(run), RunStatus.FAILED, StopReason.PROVIDER_ERROR,
+                    AiRunExecutor.ERROR_CODE_INTERNAL, exception.toString());
+            throw exception;
+        }
 
         long timeoutMillis = runExecutor.streamTimeoutMillis(engine);
         AgentRunHandle handle = runExecutor.newHandle(run.getId());
@@ -220,9 +236,13 @@ public class AiRunService {
             // is persisted, and it reaches the timeline as a thinking block with source=enhance — which
             // is where it belongs, since merging it into the model's reasoning is the bug this design
             // exists to prevent.
+            // One verdict, used by both the persisted row and the live frame below: an http-engine
+            // turn has no workspace to be degraded about, so it gets neither.
+            TimelineEvent.Notice degraded =
+                    preparation == null && !httpEngine ? degradedNotice(conversation) : null;
             int admissionSeq = sink.writeUser(message, null);
-            if (preparation == null) {
-                admissionSeq = sink.writeTimeline(degradedNotice(conversation));
+            if (degraded != null) {
+                admissionSeq = sink.writeTimeline(degraded);
             }
             applyTurnToConversation(conversation, message, request.mode());
             session.noteWatermark(admissionSeq);
@@ -230,6 +250,14 @@ public class AiRunService {
             session.finishReplay();
             registry.publish(run.getId(), 0L, new LiveEvent.RunStarted(run.getId(), conversation.getId(),
                     conversation.getTitle(), turn));
+            if (degraded != null) {
+                // The persisted notice has to reach the wire too: a client that watches the turn
+                // live must see the same warning a reload shows, which is the live/replay
+                // equivalence the projector promises. seq 0, because the row already carried the
+                // notice and the observer noted that watermark above.
+                registry.publish(run.getId(), 0L,
+                        new LiveEvent.Notice(degraded.level(), degraded.message()));
+            }
             runExecutor.submit(context);
         } catch (RejectedExecutionException exception) {
             log.warn("agent run {} was rejected: the run executor is saturated", run.getId());
@@ -366,6 +394,13 @@ public class AiRunService {
         }
         if (registry.stop(run.getId(), AbortReason.USER_STOP)) {
             log.info("agent run {} is being stopped at the user's request", run.getId());
+        } else if (registry.handle(run.getId()).isPresent()) {
+            // This process owns the run and it is already aborting (a second tab, a retried stop):
+            // registry.stop() returns false for that case as well as for an unowned run, and its
+            // worker writes the terminal state itself. Writing one here would append a second
+            // terminal row - a phantom empty bubble on reload - and close the observers while the
+            // worker is still flushing its buffered text.
+            log.info("agent run {} is already stopping", run.getId());
         } else {
             // The row says active but nothing in this process owns it, so no worker will ever write the
             // terminal state. Writing it here is what keeps the stop button from spinning until the
@@ -381,13 +416,28 @@ public class AiRunService {
      * the same deltas but not the same clock — a client estimate is what the user watched, so the
      * replay should show that exact number. Idempotent: a duplicate report simply overwrites.
      *
+     * <p>The update is partial on purpose. The report arrives exactly when a run is finishing — the
+     * client sends it as its stream closes, which also happens mid-run when the connection drops
+     * while the run keeps executing — so a full-row write read before
+     * {@link AiRunExecutor#finalizeRun} updates the row races it and writes the stale
+     * {@code RUNNING} state back over the terminal one. That resurrects the run as active: every
+     * later turn of the conversation is refused with 409 until the orphan sweep reaps the row, and
+     * the non-null columns the stale read still carries — {@code status}, {@code end_seq} and
+     * {@code gmt_modified} — are written back over the terminal ones. The nullable terminal facts
+     * (duration, tokens, finished_at) survive: MyBatis-Plus defaults to {@code FieldStrategy.NOT_NULL},
+     * so a null field never reaches the SET clause. Only the speed column is touched, the same
+     * partial-update shape {@code rememberRuntimeSession} uses.
+     *
      * @throws BusinessException 404 when the run does not exist or belongs to somebody else
      */
     public RmqAiRun reportSpeed(Long runId, double tokensPerSecond) {
         String owner = AiConversationService.currentOwner();
         RmqAiRun run = requireOwnedRun(runId, owner);
+        RmqAiRun update = new RmqAiRun();
+        update.setId(run.getId());
+        update.setTokensPerSecond(tokensPerSecond);
+        runRepository.update(update);
         run.setTokensPerSecond(tokensPerSecond);
-        runRepository.update(run);
         return run;
     }
 

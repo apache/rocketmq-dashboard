@@ -130,7 +130,7 @@ describe('InstancePage', () => {
   });
 
   it('loads server-filtered results when the search or type changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
@@ -248,7 +248,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores duplicate create submissions while the first request is pending', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockImplementation(() => new Promise(() => {}));
     renderPage();
 
@@ -272,7 +272,7 @@ describe('InstancePage', () => {
   });
 
   it('reloads the current filters after creating an instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockResolvedValue(instance(9, 'new-proxy'));
     renderPage();
 
@@ -309,7 +309,7 @@ describe('InstancePage', () => {
   });
 
   it('creates an Apache instance with an explicit Proxy Local deployment type', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockResolvedValue(
       instance(3, 'local-proxy', 'PROXY_LOCAL'),
     );
@@ -339,7 +339,7 @@ describe('InstancePage', () => {
   });
 
   it('updates instance type and endpoint through the edit dialog', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.updateInstance).mockResolvedValue(
       instance(1, 'production-proxy', 'DIRECT'),
     );
@@ -373,7 +373,7 @@ describe('InstancePage', () => {
   });
 
   it('keeps the endpoint editable for Apache instances but read-only for cloud vendors', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(1, 'production-proxy'),
       {
@@ -409,7 +409,7 @@ describe('InstancePage', () => {
   });
 
   it('submits a cloud instance whose stored endpoint is blank', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const blankEndpointCloud = {
       ...instance(2, 'aliyun-prod'),
       vendor: 'ALIYUN' as InstanceVendor,
@@ -441,7 +441,7 @@ describe('InstancePage', () => {
   });
 
   it('surfaces the server error reason when creating an instance fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.createInstance).mockRejectedValue({
       response: { data: { message: 'Instance name already exists: new-proxy' } },
     });
@@ -465,7 +465,7 @@ describe('InstancePage', () => {
   });
 
   it('surfaces the server error reason when updating an instance fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.updateInstance).mockRejectedValue({
       response: { data: { message: 'Instance endpoint is not reachable' } },
     });
@@ -486,7 +486,7 @@ describe('InstancePage', () => {
   });
 
   it('reloads the latest filters after a pending instance deletion completes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingDelete = deferred<void>();
     vi.mocked(instanceService.deleteInstance).mockReturnValue(pendingDelete.promise);
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
@@ -518,7 +518,7 @@ describe('InstancePage', () => {
   });
 
   it('shows vendor tabs in the add instance modal and switches description', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
@@ -535,7 +535,7 @@ describe('InstancePage', () => {
   });
 
   it('imports every Aliyun instance of the credential via one-click import', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -587,7 +587,7 @@ describe('InstancePage', () => {
   });
 
   it('imports every Tencent instance of the credential via one-click import', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -643,7 +643,7 @@ describe('InstancePage', () => {
   });
 
   it('shows the total cloud import failure count when details are truncated', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
         {
@@ -688,7 +688,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores a stale region response after the cloud credential changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const oldRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     const latestRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
@@ -751,7 +751,7 @@ describe('InstancePage', () => {
   });
 
   it('ignores a stale instance response after the cloud region changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const oldInstances =
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
@@ -840,7 +840,7 @@ describe('InstancePage', () => {
   });
 
   it('clears a pending region load when the cloud vendor changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingRegions = deferred<Array<{ regionId: string; regionName: string }>>();
     vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue(
       cloudCredentialPage([
@@ -898,7 +898,7 @@ describe('InstancePage', () => {
   });
 
   it('clears a pending instance load when the cloud vendor changes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const pendingInstances =
       deferred<
         Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
@@ -974,7 +974,7 @@ describe('InstancePage', () => {
   });
 
   it('sorts and renders instances without remarks', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(10, 'instance-without-remark', 'PROXY_CLUSTER', null),
       instance(11, 'instance-with-remark', 'PROXY_CLUSTER', 'production'),
@@ -1009,7 +1009,7 @@ describe('InstancePage', () => {
   });
 
   it('deletes selected instances through the toolbar batch delete button', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance(20, 'batch-a'),
       instance(21, 'batch-b'),
@@ -1044,7 +1044,7 @@ describe('InstancePage', () => {
   });
 
   it('clears selections hidden by a search result', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([instance(22, 'search-selected'), instance(23, 'search-visible')])
       .mockResolvedValueOnce([instance(23, 'search-visible')]);
@@ -1066,7 +1066,7 @@ describe('InstancePage', () => {
   });
 
   it('clears selections hidden by a type-filter result', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([
         instance(24, 'proxy-selected'),
@@ -1094,7 +1094,7 @@ describe('InstancePage', () => {
   });
 
   it('reconciles selections when a mutation refresh removes an instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances)
       .mockResolvedValueOnce([instance(26, 'refresh-selected'), instance(27, 'refresh-trigger')])
       .mockResolvedValueOnce([instance(27, 'refresh-trigger')]);

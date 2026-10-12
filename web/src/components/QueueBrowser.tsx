@@ -34,6 +34,8 @@ import {
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import type { MessageRecord, QueueOffset } from '../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../api/message';
+import MessageProperties from './MessageProperties';
+import { formatTimeMs } from '../utils/format';
 
 const { Text, Paragraph } = Typography;
 
@@ -41,12 +43,6 @@ export interface TopicOption {
   label: string;
   value: string;
 }
-
-export const formatTimeMs = (value: number | string) => {
-  const ts = typeof value === 'string' ? Date.parse(value) : value;
-  if (!Number.isFinite(ts)) return '-';
-  return new Date(ts).toLocaleString('zh-CN', { hour12: false });
-};
 
 export interface PulledEntry {
   key: string;
@@ -63,7 +59,7 @@ export const useQueueBrowser = (instanceId?: string) => {
   const [entries, setEntries] = useState<PulledEntry[]>([]);
   const requestSeqRef = useRef(0);
   const loadingRef = useRef(false);
-  const pullingRef = useRef(new Set<string>());
+  const pullingRef = useRef(new Map<string, symbol>());
 
   useEffect(() => {
     const requestId = ++requestSeqRef.current;
@@ -77,6 +73,10 @@ export const useQueueBrowser = (instanceId?: string) => {
       pullingRef.current.clear();
       setPulling(new Set());
     });
+    return () => {
+      // Leaving the page invalidates pending loads and pulls just like a scope change.
+      requestSeqRef.current += 1;
+    };
   }, [instanceId, topic]);
 
   const loadQueues = useCallback(async () => {
@@ -119,8 +119,11 @@ export const useQueueBrowser = (instanceId?: string) => {
     const key = `${queue.brokerName}-${queue.queueId}`;
     if (pullingRef.current.has(key)) return;
     const offset = offsets[key] ?? queue.minOffset;
-    pullingRef.current.add(key);
-    setPulling(new Set(pullingRef.current));
+    const pullToken = Symbol(key);
+    pullingRef.current.set(key, pullToken);
+    setPulling(new Set(pullingRef.current.keys()));
+    const ownsPull = () =>
+      requestId === requestSeqRef.current && pullingRef.current.get(key) === pullToken;
     try {
       const msg = await pullMessageAtOffset({
         instanceId,
@@ -129,24 +132,26 @@ export const useQueueBrowser = (instanceId?: string) => {
         queueId: queue.queueId,
         offset,
       });
-      if (requestId !== requestSeqRef.current) return;
+      if (!ownsPull()) return;
       setEntries((prev) => [
         ...prev.filter((entry) => entry.key !== key),
         { key, offset, message: msg },
       ]);
     } catch (err) {
-      if (requestId === requestSeqRef.current) {
+      if (ownsPull()) {
         message.error(err instanceof Error ? err.message : '拉取消息失败');
       }
     } finally {
-      if (requestId === requestSeqRef.current) {
+      if (ownsPull()) {
         pullingRef.current.delete(key);
-        setPulling(new Set(pullingRef.current));
+        setPulling(new Set(pullingRef.current.keys()));
       }
     }
   };
 
   const closeEntry = (key: string) => {
+    pullingRef.current.delete(key);
+    setPulling(new Set(pullingRef.current.keys()));
     setEntries((prev) => prev.filter((entry) => entry.key !== key));
   };
 
@@ -387,6 +392,10 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                           </pre>
                         </Card>
                       )}
+                      <MessageProperties
+                        properties={entry.message.properties}
+                        propertiesTruncated={entry.message.propertiesTruncated}
+                      />
                     </>
                   ) : (
                     <Text type="secondary">该 offset 处无消息</Text>

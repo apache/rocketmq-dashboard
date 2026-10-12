@@ -37,10 +37,12 @@ public interface AdminClient {
     }
 
     TopicVO createTopic(String instanceId, TopicVO topic);
+    TopicVO importTopic(String instanceId, TopicVO topic);
     TopicVO updateTopic(String instanceId, TopicVO topic);
     void deleteTopic(String instanceId, String name);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
+    ConsumerGroupVO importConsumerGroup(ConsumerGroupVO group);
     ConsumerGroupVO updateConsumerGroup(ConsumerGroupVO group);
     ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name);
     ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,

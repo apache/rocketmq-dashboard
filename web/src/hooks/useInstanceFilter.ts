@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
@@ -34,7 +34,11 @@ function decodeRouteSegment(segment: string | undefined) {
 
 /**
  * 实例维度页面的公共筛选逻辑：从 /instance/:instanceId/<section> 路由解析当前实例，
- * 无实例参数时重定向到第一个实例；实例列表加载失败时降级为不过滤。
+ * 无实例参数时重定向到第一个实例。
+ *
+ * 实例列表加载失败时没有可用的降级：服务端的实例维度接口都要求 instanceId，所以页面只能
+ * 停在“无实例”状态。失败因此必须暴露给页面（instancesFailed），否则一次失败的请求与
+ * “该实例下确实没有数据”在界面上无法区分，而页面会把后者当成空结果展示。
  */
 export function useInstanceFilter() {
   const navigate = useNavigate();
@@ -47,6 +51,8 @@ export function useInstanceFilter() {
 
   const [instances, setInstances] = useState<Instance[]>([]);
   const [instancesLoading, setInstancesLoading] = useState(true);
+  const [instancesFailed, setInstancesFailed] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Keep the latest selected instance id in a ref so the instance *list* is only
   // fetched when needed (section / navigation changes) and not re-fetched every
@@ -62,6 +68,7 @@ export function useInstanceFilter() {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
+        setInstancesFailed(false);
         setInstances(nextInstances);
         const selectedInstanceId = routeInstanceIdRef.current;
         const isKnownInstance = nextInstances.some(
@@ -74,7 +81,7 @@ export function useInstanceFilter() {
         }
       })
       .catch(() => {
-        // 实例列表加载失败时不做实例过滤，保持页面数据可用
+        if (!cancelled) setInstancesFailed(true);
       })
       .finally(() => {
         if (!cancelled) setInstancesLoading(false);
@@ -82,7 +89,7 @@ export function useInstanceFilter() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, section]);
+  }, [navigate, section, reloadToken]);
 
   const selectedInstanceId =
     routeInstanceId !== undefined && instances.some((instance) => instance.name === routeInstanceId)
@@ -94,6 +101,8 @@ export function useInstanceFilter() {
     navigate(`/instance/${encodeURIComponent(name)}/${section}`);
   };
 
+  const reloadInstances = useCallback(() => setReloadToken((token) => token + 1), []);
+
   const instanceOptions = instances.map((instance) => ({
     value: instance.name,
     label: instance.name,
@@ -102,9 +111,11 @@ export function useInstanceFilter() {
   return {
     instances,
     instancesLoading,
+    instancesFailed,
     selectedInstanceId,
     selectedInstance,
     selectInstance,
+    reloadInstances,
     instanceOptions,
   };
 }

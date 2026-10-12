@@ -21,12 +21,19 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -82,6 +89,155 @@ class MqAdminExtFactoryTest {
         assertThat(factory.created.get()).isEqualTo(2);
         verify(admin, times(2)).start();
         verify(admin).shutdown();
+    }
+
+    @Test
+    void releaseShouldWaitForInFlightActionBeforeShutdownTest() throws Exception {
+        DefaultMQAdminExt retiredAdmin = mock(DefaultMQAdminExt.class);
+        DefaultMQAdminExt replacementAdmin = mock(DefaultMQAdminExt.class);
+        List<DefaultMQAdminExt> clients = List.of(retiredAdmin, replacementAdmin);
+        AtomicInteger created = new AtomicInteger();
+        MqAdminExtFactory factory = new MqAdminExtFactory() {
+            @Override
+            protected DefaultMQAdminExt newAdmin(RPCHook rpcHook) {
+                return clients.get(created.getAndIncrement());
+            }
+        };
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        AtomicReference<String> result = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        factory.execute("namesrv:9876", null, ignored -> null);
+        Thread inFlight = Thread.startVirtualThread(() -> {
+            try {
+                result.set(factory.execute("namesrv:9876", null, ignored -> {
+                    started.countDown();
+                    if (!proceed.await(2, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test admin action was not released");
+                    }
+                    return "completed";
+                }));
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+            }
+        });
+        try {
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            factory.release("namesrv:9876");
+            verify(retiredAdmin, never()).shutdown();
+
+            factory.execute("namesrv:9876", null, ignored -> null);
+            assertThat(created.get()).isEqualTo(2);
+            verify(replacementAdmin, never()).shutdown();
+        } finally {
+            proceed.countDown();
+            inFlight.join(2000);
+        }
+
+        assertThat(inFlight.isAlive()).isFalse();
+        assertThat(failure.get()).isNull();
+        assertThat(result.get()).isEqualTo("completed");
+        verify(retiredAdmin).shutdown();
+        verify(replacementAdmin, never()).shutdown();
+        factory.shutdown();
+    }
+
+    @Test
+    void shutdownShouldWaitForInFlightActionAndRejectNewCallsTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch proceed = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread inFlight = Thread.startVirtualThread(() -> {
+            try {
+                factory.execute("namesrv:9876", null, ignored -> {
+                    started.countDown();
+                    if (!proceed.await(2, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test admin action was not released");
+                    }
+                    return null;
+                });
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+            }
+        });
+        try {
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            factory.shutdown();
+            verify(admin, never()).shutdown();
+            assertThatThrownBy(() -> factory.execute("namesrv:9876", null, ignored -> null))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("shutting down");
+        } finally {
+            proceed.countDown();
+            inFlight.join(2000);
+        }
+
+        assertThat(inFlight.isAlive()).isFalse();
+        assertThat(failure.get()).isNull();
+        verify(admin).shutdown();
+    }
+
+    @Test
+    void shutdownShouldRejectActionThatHasNotAcquiredItsLeaseTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        CountDownLatch creationStarted = new CountDownLatch(1);
+        CountDownLatch allowCreation = new CountDownLatch(1);
+        MqAdminExtFactory factory = new MqAdminExtFactory() {
+            @Override
+            protected DefaultMQAdminExt newAdmin(RPCHook rpcHook) {
+                creationStarted.countDown();
+                try {
+                    if (!allowCreation.await(2, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test client creation was not released");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Test client creation was interrupted", exception);
+                }
+                return admin;
+            }
+        };
+        AtomicBoolean actionRan = new AtomicBoolean();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread caller = Thread.startVirtualThread(() -> {
+            try {
+                factory.execute("namesrv:9876", null, ignored -> {
+                    actionRan.set(true);
+                    return null;
+                });
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+            }
+        });
+        assertThat(creationStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        Thread shutdown = Thread.startVirtualThread(factory::shutdown);
+        try {
+            awaitClosed(factory);
+        } finally {
+            allowCreation.countDown();
+            caller.join(2000);
+            shutdown.join(2000);
+        }
+
+        assertThat(caller.isAlive()).isFalse();
+        assertThat(shutdown.isAlive()).isFalse();
+        assertThat(actionRan).isFalse();
+        assertThat(failure.get())
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("shutting down");
+        verify(admin).shutdown();
+    }
+
+    private static void awaitClosed(MqAdminExtFactory factory) throws Exception {
+        Field closedField = MqAdminExtFactory.class.getDeclaredField("closed");
+        closedField.setAccessible(true);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!closedField.getBoolean(factory) && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertThat(closedField.getBoolean(factory)).isTrue();
     }
 
     @Test

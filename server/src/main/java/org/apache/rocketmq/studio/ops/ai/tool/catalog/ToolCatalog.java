@@ -57,8 +57,10 @@ public class ToolCatalog {
 
     /**
      * Platform-level tools that are not addressed by a Studio instance: the four global tools
-     * (cluster/dashboard/audit/alert) plus the seven physical-infrastructure tools
-     * (nameserver/broker/proxy). They are exempt from the mandatory {@code instanceId} argument.
+     * (cluster/dashboard/audit/alert), the seven physical-infrastructure tools
+     * (nameserver/broker/proxy) and the three LiteTopic reads, whose server-side source is the
+     * configured default cluster's broker lite admin API rather than an Instance. They are
+     * exempt from the mandatory {@code instanceId} argument.
      */
     static final Set<String> INSTANCE_ID_EXEMPT_TOOLS = Set.of(
             "rmq.cluster.list",
@@ -71,7 +73,12 @@ public class ToolCatalog {
             "rmq.broker.describe",
             "rmq.broker.config",
             "rmq.proxy.list",
-            "rmq.proxy.config");
+            "rmq.proxy.config",
+            // LiteTopic reads come from the configured default cluster's broker lite admin
+            // API, which is not instance-scoped server-side; see LiteTopicService.
+            "rmq.litetopic.list",
+            "rmq.litetopic.session",
+            "rmq.litetopic.quota");
 
     private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 

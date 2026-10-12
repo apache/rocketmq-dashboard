@@ -29,6 +29,10 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
+import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
@@ -37,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -82,6 +87,7 @@ public class MetadataService {
     private final OperationAuditService operationAuditService;
     private final MessageService messageService;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final ResourceOwnershipGuard ownershipGuard;
 
     /**
      * Canonicalizes registered instance names and legacy numeric IDs, while preserving physical
@@ -151,14 +157,20 @@ public class MetadataService {
     }
 
     public TopicVO createTopic(String instanceId, TopicVO topic) {
+        return saveTopic(instanceId, topic, false);
+    }
+
+    private TopicVO saveTopic(String instanceId, TopicVO topic, boolean importing) {
         requireTopic(topic);
         if (SystemTopicFilter.isSystem(topic.getName())) {
             throw new BusinessException(400, "System topics cannot be created: " + topic.getName());
         }
-        topic.setInstanceId(instanceId);
-        InstanceProvider provider = resolve(instanceId);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
+        topic.setInstanceId(target);
+        InstanceProvider provider = resolve(target);
         return executeWithAudit(provider, Operation.CREATE_TOPIC, ResourceType.TOPIC, topic.getName(),
-                instanceId, topicDetail(topic), () -> provider.createTopic(instanceId, topic));
+                target, topicDetail(topic), () -> importing
+                                        ? provider.importTopic(target, topic) : provider.createTopic(target, topic));
     }
 
     public TopicVO updateTopic(TopicVO topic) {
@@ -167,11 +179,12 @@ public class MetadataService {
 
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         requireTopic(topic);
-        topic.setInstanceId(instanceId);
-        guardImmutableType(instanceId, topic);
-        InstanceProvider provider = resolve(instanceId);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.TOPIC, topic.getName()), false);
+        topic.setInstanceId(target);
+        guardImmutableType(target, topic);
+        InstanceProvider provider = resolve(target);
         return executeWithAudit(provider, Operation.UPDATE_TOPIC, ResourceType.TOPIC, topic.getName(),
-                instanceId, topicDetail(topic), () -> provider.updateTopic(instanceId, topic));
+                target, topicDetail(topic), () -> provider.updateTopic(target, topic));
     }
 
     /** The registered message type of an existing topic is immutable (creation-only attribute). */
@@ -191,8 +204,8 @@ public class MetadataService {
     }
 
     public void deleteTopic(String instanceId, String name) {
-        String target = normalizeInstanceId(instanceId);
         String topicName = requireName(name, "topic name");
+        String target = requireWriteInstance(instanceId, ownershipGuard.topicResource(topicName), true);
         InstanceProvider provider = resolve(target);
         executeWithAudit(provider, Operation.DELETE_TOPIC, ResourceType.TOPIC,
                 topicName, target, null, () -> provider.deleteTopic(target, topicName));
@@ -280,6 +293,9 @@ public class MetadataService {
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
         requireSendMessageRequest(request);
+        request.setTopic(requireName(request.getTopic(), "topicName"));
+        request.setInstanceId(requireWriteInstance(request.getInstanceId(),
+                ownershipGuard.topicResource(request.getTopic()), true));
         return resolve(request.getInstanceId()).sendMessage(request);
     }
 
@@ -293,25 +309,103 @@ public class MetadataService {
     public SendMessageVO redeliverMessage(String instanceId, String groupName, String sourceTopic,
                                           String msgId, String targetTopic) {
         String group = requireName(groupName, "group name");
-        MessageRecordVO original = findMessageForRedelivery(instanceId, sourceTopic, msgId);
-        return redeliverMessage(instanceId, group, original, targetTopic);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, group), true);
+        if (StringUtils.hasText(sourceTopic)) {
+            requireWriteInstance(target, ownershipGuard.topicResource(sourceTopic), true);
+        }
+        MessageRecordVO original = findMessageForRedelivery(target, sourceTopic, msgId);
+        return redeliverMessage(target, group, original, targetTopic);
     }
 
     public SendMessageVO redeliverMessage(String instanceId, String groupName, MessageRecordVO original,
                                           String targetTopic) {
         String group = requireName(groupName, "group name");
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, group), true);
+        if (original == null) {
+            throw new BusinessException(400, "Message to redeliver must not be null");
+        }
+        requireExactSourceMessage(original);
         String destination = StringUtils.hasText(targetTopic)
                 ? targetTopic.trim()
                 : MixAll.getRetryTopic(group);
         SendMessageDTO request = SendMessageDTO.builder()
-                .instanceId(normalizeInstanceId(instanceId))
+                .instanceId(target)
                 .topic(destination)
                 .tag(original.getTag())
                 .key(original.getKey())
                 .body(original.getBody())
                 .properties(redeliveryProperties(original.getProperties()))
                 .build();
-        return sendMessage(request);
+        InstanceVO instance = ownershipGuard.requireInstance(target);
+        List<Resource> resources = List.of(new Resource(Kind.GROUP, group),
+                ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination));
+        resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
+        return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request));
+    }
+
+    /**
+     * A source loaded by {@link #findMessageForRedelivery} is the message explorer's display
+     * projection, not the stored record: the body stops at {@code MAX_BODY_DISPLAY_BYTES}, a binary
+     * body is replaced by Base64 text, and the property map is capped. Publishing that projection
+     * stores different bytes and silently drops properties, so a lossy source is refused instead.
+     * <p>The property check fires on the two loss modes the projection can prove. Reaching
+     * {@link MessagePropertyDisplay#MAX_PROPERTIES} entries means whole entries were dropped: the
+     * projection cannot say which ones, but the cap itself is the proof, and since
+     * {@code limitProperties} sorts by key the lowercase user keys are exactly what is lost. An
+     * abbreviated value on a visible user key is the other mode. System-reserved keys alone are
+     * never enough — {@link #redeliveryProperties} discards them before the send, so a map that
+     * stayed under the cap with intact values republishes the same user properties.
+     * <p>Refuses display projections whose body or user properties cannot be republished exactly.
+     */
+    public void requireExactSourceMessage(MessageRecordVO original) {
+        if (original.isBodyTruncated()) {
+            throw new BusinessException(409,
+                    "Source message body is truncated for display and cannot be redelivered exactly");
+        }
+        if ("BASE64".equalsIgnoreCase(original.getBodyEncoding())) {
+            throw new BusinessException(409,
+                    "Source message body is binary and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated() && isPropertyDisplayCapReached(original.getProperties())) {
+            throw new BusinessException(409,
+                    "Source message properties reached the display cap, so whole entries were dropped "
+                            + "and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated() && hasAbbreviatedUserProperty(original.getProperties())) {
+            throw new BusinessException(409,
+                    "Source message properties are truncated for display and cannot be redelivered exactly");
+        }
+    }
+
+    /**
+     * True when the projection kept {@link MessagePropertyDisplay#MAX_PROPERTIES} entries, which
+     * happens only if the raw map held more and the overflow was dropped whole.
+     */
+    private static boolean isPropertyDisplayCapReached(Map<String, String> properties) {
+        return properties != null && properties.size() >= MessagePropertyDisplay.MAX_PROPERTIES;
+    }
+
+    /**
+     * True when a <em>user</em> property visible in the display projection carries an abbreviated
+     * value: republishing it would store a cut value. System-reserved keys are excluded —
+     * {@link #redeliveryProperties} drops them before the send, abbreviated or not.
+     */
+    private static boolean hasAbbreviatedUserProperty(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return false;
+        }
+        return properties.entrySet().stream()
+                .anyMatch(entry -> !isSystemProperty(entry.getKey())
+                        && isAbbreviatedValue(entry.getValue()));
+    }
+
+    /**
+     * Mirrors the display projection's abbreviation: any value whose rendered form ends in the
+     * {@code ABBREVIATION_SUFFIX} marker was cut, whether it sits on a user or a system key.
+     */
+    private static boolean isAbbreviatedValue(String value) {
+        return value != null && value.length() >= MessagePropertyDisplay.ABBREVIATION_SUFFIX.length()
+                && value.endsWith(MessagePropertyDisplay.ABBREVIATION_SUFFIX);
     }
 
     /** Drops the system-reserved keys {@code Message.putUserProperty} would reject (§15.5.1 KEYS defect). */
@@ -338,7 +432,13 @@ public class MetadataService {
                 || key.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX);
     }
 
-    /** Loads the exact source message used by redelivery without exposing or publishing its body. */
+    /**
+     * Loads the message-explorer record used as the redelivery source without exposing or
+     * publishing its body. This is the explorer's <em>display projection</em>, not the stored
+     * record: the body is capped and binary bodies are Base64-text, so
+     * {@link #redeliverMessage(String, String, MessageRecordVO, String)} refuses lossy sources
+     * instead of republishing them.
+     */
     public MessageRecordVO findMessageForRedelivery(String instanceId, String sourceTopic, String msgId) {
         String messageId = requireName(msgId, "message id");
         List<MessageRecordVO> matches = messageService.queryMessages(
@@ -474,13 +574,17 @@ public class MetadataService {
 
     private ConsumerGroupVO saveConsumerGroup(String instanceId, ConsumerGroupVO group, String operation,
                                               BiFunction<InstanceProvider, String, ConsumerGroupVO> mutation) {
-        if (group != null) {
-            group.setInstanceId(instanceId);
+        ResourceOwnershipGuard.requireText(instanceId, "instanceId");
+        if (group == null) {
+            throw new BusinessException(400, "Group request is required");
         }
-        InstanceProvider provider = resolve(instanceId);
+        group.setName(requireName(group.getName(), "groupName"));
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, group.getName()),
+                Operation.UPDATE_GROUP.equals(operation));
+        group.setInstanceId(target);
+        InstanceProvider provider = resolve(target);
         return executeWithAudit(provider, operation, ResourceType.GROUP,
-                group == null ? null : group.getName(), instanceId, consumerGroupDetail(group),
-                () -> mutation.apply(provider, instanceId));
+                group.getName(), target, consumerGroupDetail(group), () -> mutation.apply(provider, target));
     }
 
     public ConsumerGroupSettingsVO getConsumerGroupSettings(String instanceId, String name) {
@@ -491,10 +595,9 @@ public class MetadataService {
 
     public ConsumerGroupSettingsVO updateConsumerGroupSettings(String instanceId, String name,
                                                                  ConsumerGroupSettingsCommand command) {
-        instanceId = normalizeInstanceId(instanceId);
-        requireApacheInstance(instanceId);
         String groupName = requireName(name, "consumer group name");
-        return adminClient.updateConsumerGroupSettings(instanceId, groupName, command);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        return adminClient.updateConsumerGroupSettings(target, groupName, command);
     }
 
 
@@ -503,7 +606,8 @@ public class MetadataService {
     }
 
     public void deleteConsumerGroup(String instanceId, String name) {
-        String target = normalizeInstanceId(instanceId);
+        String target = requireWriteInstance(instanceId,
+                new Resource(Kind.GROUP, requireName(name, "groupName")), true);
         deleteConsumerGroup(target, name, (provider, groupName) -> provider.deleteConsumerGroup(target, groupName));
     }
 
@@ -512,19 +616,7 @@ public class MetadataService {
         InstanceProvider provider = resolve(instanceId);
         executeWithAudit(provider, Operation.DELETE_GROUP, ResourceType.GROUP,
                 groupName, instanceId, null, () -> mutation.accept(provider, groupName));
-        cascadeDeleteDlqTopic(instanceId, groupName);
-    }
-
-    /** Best-effort DLQ cascade (decision 17): a missing or undeletable %DLQ% topic never blocks group deletion. */
-    private void cascadeDeleteDlqTopic(String instanceId, String groupName) {
-        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
-        try {
-            deleteTopic(instanceId, dlqTopic);
-            log.info("Cascaded DLQ topic deletion for consumer group {}: {}", groupName, dlqTopic);
-        } catch (Exception e) {
-            log.warn("Failed to cascade delete DLQ topic {} for consumer group {}: {}",
-                    dlqTopic, groupName, e.getMessage());
-        }
+        // Derived topic cleanup is handled by the Apache layer inside the group ownership lock.
     }
 
     public void resetOffset(String name, long timestamp, String topic) {
@@ -533,16 +625,18 @@ public class MetadataService {
 
     public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
                                                            long timestamp, String topic) {
-        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
-        return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        requireWriteInstance(target, ownershipGuard.topicResource(topicName), true);
+        return resolve(target).previewResetOffset(target, groupName, timestamp, topicName);
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
-        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
+        instanceId = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        requireWriteInstance(instanceId, ownershipGuard.topicResource(topicName), true);
         InstanceProvider provider = resolve(instanceId);
         String normalizedInstanceId = instanceId;
         executeWithAudit(provider, Operation.RESET_OFFSET, ResourceType.GROUP, groupName, instanceId,
@@ -556,9 +650,12 @@ public class MetadataService {
      */
     public List<String> skipAccumulated(String instanceId, String name, String topic) {
         String groupName = requireName(name, "consumer group name");
-        List<String> topics = resolveSkipAccumulatedTopics(instanceId, groupName, topic);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        List<String> topics = resolveSkipAccumulatedTopics(target, groupName, topic);
+        topics.forEach(subscriptionTopic -> requireWriteInstance(target,
+                ownershipGuard.topicResource(subscriptionTopic), true));
         long timestamp = System.currentTimeMillis();
-        topics.forEach(subscriptionTopic -> resetOffset(instanceId, groupName, timestamp, subscriptionTopic));
+        topics.forEach(subscriptionTopic -> resetOffset(target, groupName, timestamp, subscriptionTopic));
         return topics;
     }
 
@@ -612,6 +709,18 @@ public class MetadataService {
         if (topic == null) {
             throw new BusinessException(400, "Topic request is required");
         }
+        topic.setName(requireName(topic.getName(), "topicName"));
+    }
+
+    private String requireWriteInstance(String instanceId, Resource resource, boolean required) {
+        ResourceOwnershipGuard.requireText(instanceId, "instanceId");
+        InstanceVO instance = ownershipGuard.requireInstance(instanceId);
+        // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
+        if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
+            ownershipGuard.check(instance, resource, required);
+            ownershipGuard.requireSupportedProvider(instance);
+        }
+        return instance.getName();
     }
 
     private void requireSendMessageRequest(SendMessageDTO request) {
@@ -646,7 +755,8 @@ public class MetadataService {
                 }
                 ConsumerGroupVO group = request.toConsumerGroupVO();
                 group.setInstanceId(normalizedInstanceId);
-                imported.add(createConsumerGroup(group));
+                imported.add(saveConsumerGroup(normalizedInstanceId, group, Operation.CREATE_GROUP,
+                        (provider, target) -> provider.importConsumerGroup(target, group)));
             } catch (Exception exception) {
                 failures.add(ImportConsumerGroupsResultVO.Failure.builder()
                         .index(index)
@@ -747,7 +857,7 @@ public class MetadataService {
                 }
                 TopicVO topic = request.toTopicVO();
                 topic.setInstanceId(normalizedInstanceId);
-                imported.add(createTopic(topic));
+                imported.add(saveTopic(normalizedInstanceId, topic, true));
             } catch (Exception exception) {
                 failures.add(ImportTopicsResultVO.Failure.builder()
                         .index(index)

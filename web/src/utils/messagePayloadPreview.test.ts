@@ -117,7 +117,7 @@ describe('messagePayloadPreview', () => {
     expect(scalarPreview.issues.map((issue) => issue.code)).toEqual(['SCALAR_JSON_BODY']);
   });
 
-  it('reports duplicate form properties before they can overwrite earlier values', () => {
+  it('reports duplicate form properties and keeps only the first value', () => {
     const result = buildMessagePropertiesFromRows([
       { key: 'traceId', value: 'first' },
       { key: 'tenant', value: 'demo' },
@@ -134,6 +134,7 @@ describe('messagePayloadPreview', () => {
       severity: 'error',
       names: ['traceId'],
     });
+    expect(result.issues[0].description).toContain('仅保留第一个值');
   });
 
   it('reports form property values that do not have a key', () => {

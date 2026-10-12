@@ -132,7 +132,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -176,7 +176,7 @@ describe('ACL page', () => {
   });
 
   it('shows a non-copyable placeholder when an ACL user has no access key', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.pageAclUsers).mockResolvedValue({
       items: [
         {
@@ -203,7 +203,7 @@ describe('ACL page', () => {
   });
 
   it('clamps rules back to a valid page when the current page becomes empty', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const ruleItems = (count: number) =>
       Array.from({ length: count }, (_, index) => ({
         id: index + 1,
@@ -246,7 +246,7 @@ describe('ACL page', () => {
   });
 
   it('closes an ACL rule dialog when switching to another instance', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 1,
@@ -295,7 +295,7 @@ describe('ACL page', () => {
   });
 
   it('keeps users available when loading rules fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.listAclRules).mockRejectedValue(new Error('rules unavailable'));
     renderWithProviders(<AclPage />);
 
@@ -313,7 +313,7 @@ describe('ACL page', () => {
   });
 
   it('uses Tencent role names for role-backed ACL rules and users', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 21,
@@ -424,8 +424,155 @@ describe('ACL page', () => {
     expect(await within(userRow).findByText('full-secret-key')).toBeInTheDocument();
   });
 
-  it('renders backend users on the user tab', async () => {
+  it.each(['edit', 'create'] as const)('preservesTencentPrincipal%sTest', async (mode) => {
     const user = userEvent.setup();
+    const readerRule = {
+      principal: 'reader-role',
+      resource: '*',
+      resourceType: 'Cluster',
+      resourcePattern: 'LITERAL',
+      actions: ['SUB'],
+      decision: 'ALLOW',
+      scope: 'cluster',
+      aclVersion: '1.0',
+      gmtCreate: '2026-07-23T00:00:00Z',
+    } as AclRule;
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 21,
+        name: 'tencent-rmq',
+        type: 'CLOUD',
+        endpoint: 'vpc.tencent:8080',
+        vendor: 'TENCENT',
+        cloudInstanceId: 'rmq-cloud',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [readerRule, { ...readerRule, principal: 'publisher-role', actions: ['PUB'] }],
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.pageAclUsers).mockResolvedValue({
+      items: ['reader-role', 'publisher-role'].map(
+        (username) =>
+          ({
+            username,
+            admin: false,
+            clusters: ['rmq-cloud'],
+            accessKey: null,
+            secretKey: null,
+          }) as AclUser,
+      ),
+      total: 2,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(aclService.updateAclRule).mockResolvedValue({ ...readerRule, id: 'reader-role' });
+    vi.mocked(aclService.createAclRule).mockResolvedValue({
+      ...readerRule,
+      id: 'publisher-role',
+      principal: 'publisher-role',
+      actions: ['PUB'],
+    });
+    renderWithProviders(<AclPage />, '/instance/tencent-rmq/acl');
+    await waitFor(() =>
+      expect(screen.getByTestId('acl-local-metadata-notice')).toHaveTextContent(
+        'Tencent Cloud Role',
+      ),
+    );
+    if (mode === 'edit') {
+      const readerRow = await screen.findByRole('row', { name: /reader-role/ });
+      await user.click(within(readerRow).getByRole('button', { name: /编辑/ }));
+    } else {
+      await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    }
+    const dialog = await screen.findByRole('dialog');
+    const principal = within(dialog).getByLabelText('主体');
+    if (mode === 'edit') {
+      expect(principal).toBeDisabled();
+      expect(
+        within(dialog).getByText('reader-role', { selector: '.ant-select-selection-item' }),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('订阅 (SUB)')).toBeChecked();
+      await user.click(within(dialog).getByLabelText('发布 (PUB)'));
+      await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+      await waitFor(() => expect(aclService.updateAclRule).toHaveBeenCalledTimes(1));
+      expect(aclService.createAclRule).not.toHaveBeenCalled();
+      expect(aclService.updateAclRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'reader-role',
+          principal: 'reader-role',
+          actions: expect.arrayContaining(['SUB', 'PUB']),
+          instanceId: 'tencent-rmq',
+        }),
+      );
+      expect(vi.mocked(aclService.updateAclRule).mock.calls[0][0].actions).toHaveLength(2);
+    } else {
+      expect(principal).toBeEnabled();
+      await user.click(principal);
+      await user.click(
+        await screen.findByText('publisher-role', { selector: '.ant-select-item-option-content' }),
+      );
+      expect(
+        within(dialog).getByText('publisher-role', { selector: '.ant-select-selection-item' }),
+      ).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: /添\s*加/ }));
+      await waitFor(() => expect(aclService.createAclRule).toHaveBeenCalledTimes(1));
+      expect(aclService.updateAclRule).not.toHaveBeenCalled();
+      expect(aclService.createAclRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          principal: 'publisher-role',
+          actions: ['PUB'],
+          instanceId: 'tencent-rmq',
+        }),
+      );
+    }
+  });
+
+  it('keepsLocalMetadataPrincipalEditableTest', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.updateAclRule).mockResolvedValue({
+      id: 1,
+      principal: 'remote-admin',
+      resource: 'remote-topic',
+      resourceType: 'Topic',
+      resourcePattern: 'LITERAL',
+      actions: ['PUB'],
+      decision: 'ALLOW',
+      scope: 'cluster',
+      aclVersion: 2,
+    });
+    renderWithProviders(<AclPage />);
+    const row = await screen.findByRole('row', { name: /remote-user/ });
+    await user.click(within(row).getByRole('button', { name: /编辑/ }));
+    const dialog = await screen.findByRole('dialog');
+    const principal = within(dialog).getByLabelText('主体');
+    expect(principal).toBeEnabled();
+    await user.click(principal);
+    await user.click(
+      await screen.findByText('remote-admin', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    await waitFor(() => expect(aclService.updateAclRule).toHaveBeenCalledTimes(1));
+    expect(aclService.createAclRule).not.toHaveBeenCalled();
+    expect(aclService.updateAclRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 1,
+        principal: 'remote-admin',
+        resource: 'remote-topic',
+        actions: ['PUB'],
+      }),
+    );
+  });
+
+  it('renders backend users on the user tab', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
@@ -435,7 +582,7 @@ describe('ACL page', () => {
   });
 
   it('shows missing backend timestamps as unavailable', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.listAclRules).mockResolvedValue({
       items: [
         {
@@ -483,7 +630,7 @@ describe('ACL page', () => {
   });
 
   it('does not submit masked credentials when editing a user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -519,7 +666,7 @@ describe('ACL page', () => {
 
   it('ignores duplicate admin toggles while an update is pending', async () => {
     vi.mocked(aclService.updateAclUser).mockImplementation(() => new Promise(() => {}));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<AclPage />);
 
     await user.click(await screen.findByText('用户管理'));
@@ -533,7 +680,7 @@ describe('ACL page', () => {
   });
 
   it('does not submit masked credentials when toggling admin', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -563,7 +710,7 @@ describe('ACL page', () => {
   });
 
   it('creates a user with the selected cluster scope', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAclUser).mockResolvedValue({
       id: 13,
       username: 'orders-service',
@@ -598,7 +745,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server user page after creating an ACL user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAclUser).mockResolvedValue({
       id: 13,
       username: 'orders-service',
@@ -628,7 +775,7 @@ describe('ACL page', () => {
   });
 
   it('reloads the server user page after deleting one ACL user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
       void config.onOk?.();
       return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -647,7 +794,7 @@ describe('ACL page', () => {
   });
 
   it('replaces the cluster scope of an existing user', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.updateAclUser).mockResolvedValue({
       id: 11,
       username: 'remote-admin',
@@ -680,7 +827,7 @@ describe('ACL page', () => {
   });
 
   it('examines the broker cluster ACL config', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
       clusterId: 'DefaultCluster',
       aclEnabled: true,
@@ -727,7 +874,7 @@ describe('ACL page', () => {
       deferred<Awaited<ReturnType<typeof aclService.examineBrokerClusterAclConfig>>>();
     const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig)
       .mockReturnValueOnce(firstExamine.promise)
       .mockReturnValueOnce(secondExamine.promise)
@@ -823,7 +970,7 @@ describe('ACL page', () => {
     const secondReveal = deferred<CredentialResponse>();
     const thirdReveal = deferred<CredentialResponse>();
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.getAclUserCredentials)
       .mockReturnValueOnce(firstReveal.promise)
       .mockReturnValueOnce(secondReveal.promise)
@@ -897,7 +1044,7 @@ describe('ACL page', () => {
   });
 
   it('renders ACL risk diagnostics for the examined cluster config', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
       clusterId: 'DefaultCluster',
       aclEnabled: true,
@@ -934,7 +1081,7 @@ describe('ACL page', () => {
   });
 
   it('creates a plain access account', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(aclService.createAndUpdatePlainAccessConfig).mockResolvedValue({
       accessKey: 'new-svc',
       admin: false,
