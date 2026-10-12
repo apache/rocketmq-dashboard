@@ -802,6 +802,11 @@ const ClusterPage = () => {
   const applyConfigUpdate = async (
     request: NonNullable<ReturnType<typeof buildConfigUpdateRequest>>,
   ) => {
+    if (configSubmittingRef.current) return;
+    configSubmittingRef.current = true;
+    // Following the nsSubmittingRef convention from the nameserver dialog: the spinner on the
+    // OK button does not stop a click fired before React re-renders, and the preview must not
+    // read the cluster while a write is changing it.
     // A write can change only some Brokers. Any preview from before the write,
     // including one still in flight, no longer describes the cluster afterward.
     configPreviewRequest.invalidate();
@@ -829,6 +834,7 @@ const ClusterPage = () => {
     } catch {
       message.error(t('cluster.configUpdateFailed', { brokers: '' }));
     } finally {
+      configSubmittingRef.current = false;
       setConfigSubmitting(false);
     }
   };
