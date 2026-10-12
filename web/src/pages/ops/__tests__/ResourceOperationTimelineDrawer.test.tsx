@@ -169,6 +169,37 @@ describe('ResourceOperationTimelineDrawer', () => {
     );
   });
 
+  describe('retention pagination', () => {
+    afterEach(() => vi.mocked(opsService.listAuditRecords).mockReset());
+
+    it.each([0, 5])('recoversAfterRetentionRemovesTheCurrentPageTest (total=%s)', async (total) => {
+      const user = userEvent.setup();
+      vi.mocked(opsService.listAuditRecords)
+        .mockResolvedValueOnce({ items: [timelineRecord], total: 21, page: 1, size: 20 })
+        .mockResolvedValueOnce({ items: [], total, page: 2, size: 20 })
+        .mockResolvedValueOnce({
+          items: total ? [{ ...timelineRecord, operator: 'remaining-user' }] : [],
+          total,
+          page: 1,
+          size: 20,
+        });
+      renderDrawer();
+      await screen.findByText(/ops-user/);
+      await user.click(screen.getByTitle('2'));
+      await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(3));
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 20,
+        resourceType: 'TOPIC',
+        target: 'topic-a',
+        clusterId: 'prod-cn',
+      });
+      if (total) expect(await screen.findByText(/remaining-user/)).toBeInTheDocument();
+      else expect(screen.queryByText(/ops-user/)).not.toBeInTheDocument();
+      expect(opsService.listAuditRecords).toHaveBeenCalledTimes(3);
+    });
+  });
+
   it('applies the selected date range to the resource query and export', async () => {
     const user = userEvent.setup();
     renderDrawer();
