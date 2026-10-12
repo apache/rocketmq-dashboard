@@ -86,7 +86,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
-      STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-nameserver:9876}
+      # The NameServer container's unique name, not its service alias: on a shared network
+      # (rocketmq_net) a service name like `nameserver` can resolve to another stack's container.
+      STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-rmq-nameserver:9876}
       RMQ_LLM_TOKEN: ${RMQ_LLM_TOKEN:-}
       RMQ_ANTHROPIC_BASE_URL: ${RMQ_ANTHROPIC_BASE_URL:-}
       RMQ_LLM_CLI_ALLOWED_ENVIRONMENT: ${RMQ_LLM_CLI_ALLOWED_ENVIRONMENT:-}

@@ -66,8 +66,9 @@ RocketMQ 集群。要管理真实资源，请注册一个指向你自己 RocketM
 docker compose -f deploy/rocketmq/docker-compose.yml up -d
 ```
 
-用 `docker compose -f deploy/rocketmq/docker-compose.yml ps` 确认集群就绪。Studio 通过共享网络
-以 `nameserver:9876`（后端默认值）访问它。
+用 `docker compose -f deploy/rocketmq/docker-compose.yml ps` 确认集群就绪。Studio 通过共享网络以
+NameServer 容器的唯一名 `rmq-nameserver:9876` 访问它（由 `deploy/docker-compose.yml` 设置；网络
+共享时服务名 `nameserver` 可能解析到其他 stack 的容器）。
 
 **RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
 

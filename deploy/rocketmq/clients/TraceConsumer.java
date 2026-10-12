@@ -5,7 +5,7 @@ import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 
 public class TraceConsumer {
     public static void main(String[] args) throws Exception {
-        String namesrv = System.getenv().getOrDefault("NAMESRV_ADDR", "nameserver:9876");
+        String namesrv = System.getenv().getOrDefault("NAMESRV_ADDR", "rmq-nameserver:9876");
         String topic = System.getenv().getOrDefault("TOPIC", "StudioTest");
 
         // enableMsgTrace=true 开启消息轨迹，轨迹 topic 为 null 时使用默认 RMQ_SYS_TRACE_TOPIC

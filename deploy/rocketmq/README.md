@@ -15,7 +15,7 @@ deploy/rocketmq/
 ├── conf/
 │   ├── broker-0.conf       # rocketmq-studio-0，traceOn + traceTopicEnable 开启轨迹
 │   ├── broker-1.conf       # rocketmq-studio-1，同上
-│   └── rmq-proxy.json      # Proxy 集群模式，指向 nameserver:9876，关闭 topic 类型校验
+│   └── rmq-proxy.json      # Proxy 集群模式，指向 rmq-nameserver:9876，关闭 topic 类型校验
 └── clients/
     ├── TraceProducer.java  # 1 TPS 发送（带 Key），enableMsgTrace=true，经 proxy:8080 接入
     └── TraceConsumer.java  # Push 消费，enableMsgTrace=true，经 proxy:8080 接入
@@ -41,11 +41,12 @@ docker compose logs -f producer consumer
 
 ```bash
 # 集群状态：rocketmq-studio 下两个 broker
-docker compose exec nameserver sh bin/mqadmin clusterList -n nameserver:9876
+# 地址用容器的唯一名，网络共享时服务名 nameserver 可能解析到其他 stack 的容器
+docker compose exec nameserver sh bin/mqadmin clusterList -n rmq-nameserver:9876
 
 # 消息轨迹数据（轨迹写入 RMQ_SYS_TRACE_TOPIC）
 docker compose exec broker-0 sh bin/mqadmin consumeMessage \
-  -n nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5
+  -n rmq-nameserver:9876 -t RMQ_SYS_TRACE_TOPIC -c 5
 ```
 
 更多查询命令（queryMsgByUniqueKey / queryMsgTraceById / queryMsgByKey）见
@@ -55,7 +56,7 @@ docker compose exec broker-0 sh bin/mqadmin consumeMessage \
 
 | 组件 | 容器内地址 | 宿主机地址 |
 |------|-----------|-----------|
-| NameServer | nameserver:9876 | localhost:9876 |
+| NameServer | rmq-nameserver:9876 | localhost:9876 |
 | Broker-0 | broker-0:10911 | localhost:10911 |
 | Broker-1 | broker-1:20911 | localhost:20911 |
 | Proxy remoting | proxy:8080 | localhost:8080 |
