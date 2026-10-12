@@ -101,6 +101,40 @@ describe('API client response contract', () => {
     expect(message.error).toHaveBeenCalledWith('Topic name is required');
   });
 
+  it('extracts the backend message from a rejected blob export', async () => {
+    // The export endpoints answer a refusal with the same JSON envelope, but axios hands the body
+    // back as a Blob for a responseType: 'blob' request.
+    mock.onGet('/dlq/export-excel').reply(
+      501,
+      new Blob(
+        [
+          JSON.stringify({
+            code: 501,
+            message: 'DLQ operations are not supported for cloud instances',
+            data: null,
+          }),
+        ],
+        { type: 'application/json' },
+      ),
+    );
+
+    await expect(client.get('/dlq/export-excel', { responseType: 'blob' })).rejects.toThrow(
+      'DLQ operations are not supported for cloud instances',
+    );
+    expect(message.error).toHaveBeenCalledWith(
+      'DLQ operations are not supported for cloud instances',
+    );
+  });
+
+  it('keeps the transport error when a rejected blob carries no envelope', async () => {
+    mock.onGet('/dlq/export-excel').reply(502, new Blob(['<html>bad gateway</html>']));
+
+    await expect(client.get('/dlq/export-excel', { responseType: 'blob' })).rejects.toThrow(
+      'Request failed with status code 502',
+    );
+    expect(message.error).not.toHaveBeenCalled();
+  });
+
   it('uses a stable fallback for malformed error envelopes', async () => {
     mock.onGet('/clusters').reply(200, { code: '500', data: null });
 

@@ -32,6 +32,23 @@ function isBusinessResponse(data: unknown): data is BusinessResponse {
   return typeof data === 'object' && data !== null;
 }
 
+/**
+ * A `responseType: 'blob'` request hands its error body back as a Blob, so the envelope is opaque
+ * to {@link getBusinessError}. The export endpoints answer their refusals with the same JSON
+ * envelope as everything else (e.g. "Audit log export exceeds the maximum of 10000 records"), and
+ * without this the caller surfaces axios's transport text instead.
+ */
+async function getBusinessErrorFromBlob(data: unknown): Promise<string | null> {
+  if (typeof Blob === 'undefined' || !(data instanceof Blob)) {
+    return null;
+  }
+  try {
+    return getBusinessError(JSON.parse(await data.text()));
+  } catch {
+    return null;
+  }
+}
+
 function getBusinessError(data: unknown): string | null {
   if (!isBusinessResponse(data) || data.code === undefined) {
     return null;
@@ -99,7 +116,7 @@ client.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
       handleSessionUnauthorized();
       return Promise.reject(error);
@@ -111,7 +128,9 @@ client.interceptors.response.use(
       }
       return Promise.reject(error);
     }
-    const errorMessage = getBusinessError(error.response?.data);
+    const errorMessage =
+      getBusinessError(error.response?.data) ??
+      (await getBusinessErrorFromBlob(error.response?.data));
     if (errorMessage) {
       message.error(errorMessage);
       if (error instanceof Error) {
