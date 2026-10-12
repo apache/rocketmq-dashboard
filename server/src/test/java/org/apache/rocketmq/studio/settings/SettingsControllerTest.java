@@ -41,6 +41,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -75,7 +76,7 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
                  "baseUrl":"https://api.openai.com/v1","preserveLlmConfig":true}
                 """))
                 .andExpect(status().isOk());
-        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class), org.mockito.ArgumentMatchers.eq(true));
+        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class), eq(true));
     }
 
     @Test

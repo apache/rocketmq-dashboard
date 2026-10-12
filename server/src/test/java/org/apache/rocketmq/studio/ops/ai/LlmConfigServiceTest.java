@@ -30,6 +30,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,7 +66,7 @@ class LlmConfigServiceTest {
                 .baseUrl("https://api.openai.com/v1")
                 .build());
         doAnswer(invocation -> {
-            java.util.function.UnaryOperator<GeneralSettingsVO> update = invocation.getArgument(0);
+            UnaryOperator<GeneralSettingsVO> update = invocation.getArgument(0);
             settingsService.saveGeneralSettings(update.apply(settingsService.getGeneralSettings()));
             return null;
         }).when(settingsService).updateGeneralSettings(any());

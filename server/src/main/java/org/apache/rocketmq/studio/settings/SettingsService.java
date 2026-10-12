@@ -51,6 +51,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 @Slf4j
 @Service
@@ -128,7 +129,7 @@ public class SettingsService {
 
 
     /** Keep read, construction, secret inheritance and persistence under the same write monitor. */
-    public synchronized void updateGeneralSettings(java.util.function.UnaryOperator<GeneralSettingsVO> update) {
+    public synchronized void updateGeneralSettings(UnaryOperator<GeneralSettingsVO> update) {
         saveGeneralSettings(update.apply(settingsRepository.loadGeneralSettings()));
     }
 
