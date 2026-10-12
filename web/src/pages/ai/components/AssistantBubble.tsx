@@ -107,28 +107,32 @@ const AssistantBubble = ({
 
   // The standard per-message action: copy the answer as markdown. Clipboard API first, the
   // hidden-textarea fallback second (non-secure contexts), silent no-op third.
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const done = () => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(answerText)
-        .then(done)
-        .catch(() => undefined);
-      return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(answerText);
+        done();
+        return;
+      }
+    } catch {
+      // A denied Clipboard API write can still succeed through the textarea fallback.
     }
     const textarea = document.createElement('textarea');
     textarea.value = answerText;
     textarea.style.position = 'fixed';
     textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
     try {
-      if (document.execCommand('copy')) done();
+      document.body.appendChild(textarea);
+      textarea.select();
+      if (document.execCommand?.('copy')) done();
+    } catch {
+      // Unsupported copying degrades silently without reporting success.
     } finally {
-      document.body.removeChild(textarea);
+      textarea.remove();
     }
   };
 

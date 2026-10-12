@@ -379,3 +379,29 @@ describe('consumer group CSV export', () => {
     }
   });
 });
+
+describe('consumer group page mock pagination contract', () => {
+  it('rejects page 0 like the backend', async () => {
+    await expect(listConsumerGroupPage({ page: 0, pageSize: 20 })).rejects.toThrow(
+      'page must be greater than zero',
+    );
+  });
+
+  it('rejects negative pages that would slice from the end', async () => {
+    await expect(listConsumerGroupPage({ page: -1, pageSize: 1 })).rejects.toThrow(
+      'page must be greater than zero',
+    );
+  });
+
+  it('rejects pageSize above the backend cap of 100', async () => {
+    await expect(listConsumerGroupPage({ page: 1, pageSize: 101 })).rejects.toThrow(
+      'pageSize must be between 1 and 100',
+    );
+  });
+
+  it('rejects pageSize 0', async () => {
+    await expect(listConsumerGroupPage({ page: 1, pageSize: 0 })).rejects.toThrow(
+      'pageSize must be between 1 and 100',
+    );
+  });
+});

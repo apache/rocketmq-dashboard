@@ -56,10 +56,13 @@ package_source() {
   # deploy/.env 是环境专属配置（如 STUDIO_METRICS_PROMETHEUS_BASE_URL），不随源码覆盖远端
   # rmqctl 必须随包上传：server 镜像构建上下文是仓库根目录，Dockerfile 的 Go 阶段要 COPY rmqctl/
   # （rmqctl/bin 是本地构建产物，不上传）
+  # LICENSE and NOTICE travel with the package for the same reason: the rmqctl stage of
+  # server/Dockerfile runs `COPY LICENSE NOTICE /src/` against the repository root as its build
+  # context, so building in a fresh remote directory fails at that step without them.
   tar czf "$SRC_TAR" -C "$PROJECT_DIR" \
     --exclude='web/node_modules' --exclude='web/dist' --exclude='server/target' \
     --exclude='deploy/.env' --exclude='rmqctl/bin' \
-    server web deploy rmqctl
+    LICENSE NOTICE server web deploy rmqctl
   log "打包完成 ($(du -h "$SRC_TAR" | cut -f1))"
 }
 
@@ -67,10 +70,13 @@ upload_source() {
   info "📤 传输源码到 $REMOTE:$REMOTE_PATH ..."
   run_remote "mkdir -p $REMOTE_PATH"
   scp -q "$SRC_TAR" "$REMOTE:$REMOTE_PATH/"
-  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）
-  run_remote "cd $REMOTE_PATH && [ -f deploy/.env ] && cp deploy/.env /tmp/deploy-env-backup; \
-    rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
-    [ -f /tmp/deploy-env-backup ] && mv /tmp/deploy-env-backup deploy/.env || true"
+  # 保留远端环境专属配置（tar 已排除，这里防 rm -rf 误删）。
+  # 任一步失败（备份 .env、清理、解压、恢复 .env）都必须让远端命令以非零退出：
+  # 旧写法用 `;` 分隔并以 `|| true` 结尾，tar 解压失败也被吞掉，部署会带着残缺源码继续走到
+  # docker build 才在别处报错。解压失败时仍先恢复 .env，再以原退出码终止。
+  run_remote "cd $REMOTE_PATH && { [ ! -f deploy/.env ] || cp deploy/.env /tmp/deploy-env-backup; } && \
+    { rm -rf server web deploy && tar xzf $(basename "$SRC_TAR") && rm $(basename "$SRC_TAR"); \
+      rc=\$?; { [ ! -f /tmp/deploy-env-backup ] || mv /tmp/deploy-env-backup deploy/.env; }; exit \$rc; }"
   run_remote 'docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net'
   log "源码就位，rocketmq_net 网络就绪"
 }
