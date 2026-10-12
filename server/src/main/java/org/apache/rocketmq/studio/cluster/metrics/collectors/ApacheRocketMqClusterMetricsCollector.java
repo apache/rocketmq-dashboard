@@ -104,12 +104,14 @@ public class ApacheRocketMqClusterMetricsCollector implements ClusterMetricsColl
                 : Map.of("brokerName", brokerName);
         if (!StringUtils.hasText(address)) {
             samples.add(unavailable(BROKER_AVAILABILITY, instance, clusterId, labels, collectedAt));
+            addUnavailableRuntimeMetrics(instance, clusterId, labels, collectedAt, samples);
             return;
         }
         try {
             KVTable runtime = admin.fetchBrokerRuntimeStats(address);
             if (runtime == null || runtime.getTable() == null) {
                 samples.add(unavailable(BROKER_AVAILABILITY, instance, clusterId, labels, collectedAt));
+                addUnavailableRuntimeMetrics(instance, clusterId, labels, collectedAt, samples);
                 return;
             }
             samples.add(available(BROKER_AVAILABILITY, instance, clusterId, labels, 1D, collectedAt));
@@ -125,7 +127,21 @@ public class ApacheRocketMqClusterMetricsCollector implements ClusterMetricsColl
             log.warn("Failed to collect runtime metrics for broker {} on instance {}: {}", brokerName,
                     instance.getName(), error.getMessage());
             samples.add(unavailable(BROKER_AVAILABILITY, instance, clusterId, labels, collectedAt));
+            addUnavailableRuntimeMetrics(instance, clusterId, labels, collectedAt, samples);
         }
+    }
+
+    /**
+     * A broker whose runtime stats cannot be read at all must still report an unavailable sample for
+     * each metric those stats carry: alert reconciliation treats a missing sample as "the value
+     * cleared" and would resolve an active disk/JVM/send-queue incident on the collection failure
+     * itself. The parse-miss branches already do this through {@code metricOrUnavailable}.
+     */
+    private void addUnavailableRuntimeMetrics(InstanceVO instance, String clusterId,
+            Map<String, String> labels, Instant collectedAt, List<MetricSample> samples) {
+        samples.add(unavailable(BROKER_DISK_USAGE_RATIO, instance, clusterId, labels, collectedAt));
+        samples.add(unavailable(BROKER_JVM_HEAP_USAGE_RATIO, instance, clusterId, labels, collectedAt));
+        samples.add(unavailable(BROKER_SEND_QUEUE_USAGE_RATIO, instance, clusterId, labels, collectedAt));
     }
 
     private static java.util.Optional<Double> parseDiskUsage(String raw) {
