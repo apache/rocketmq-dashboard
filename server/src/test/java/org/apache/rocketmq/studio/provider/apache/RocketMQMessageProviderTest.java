@@ -705,6 +705,89 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicBoundsRepeatedUnmatchedBatchesTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 0L, 0L, 100L, 100L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation ->
+                new PullResult(PullStatus.NO_MATCHED_MSG, (Long) invocation.getArgument(2) + 1,
+                        0L, 100L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(35)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicStopsWhenUnmatchedBatchDoesNotAdvanceTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 30L, 30L);
+        when(pullConsumer.pull(queue, "*", 10L, 32))
+                .thenReturn(new PullResult(PullStatus.NO_MATCHED_MSG, 10L, 0L, 30L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(1)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicContinuesAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 20L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
+    void queryByTopicResetsIllegalOffsetCounterAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 17L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        for (long offset : new long[] {10L, 11L, 12L, 17L, 18L, 19L}) {
+            when(pullConsumer.pull(queue, "*", offset, 32))
+                    .thenReturn(new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 50L, null));
+        }
+        when(pullConsumer.pull(queue, "*", 13L, 32)).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
     void queryByTopicKeepsNewestMessagesWhenEarlierQueuesFillTheDefaultLimit() throws Exception {
         MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
         MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
