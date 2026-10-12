@@ -131,10 +131,70 @@ const cidrPrefix = (address: string): number | null => {
   return Number.isFinite(prefix) ? prefix : null;
 };
 
+/**
+ * Count recognized native plain-ACL ranges without enumerating addresses. Keep the
+ * existing IPv4 /8 and IPv6 /16 breadth thresholds; this is not an ACL validator.
+ * Unknown expressions fall through to the previous conservative classification.
+ */
+const nativeRangeClass = (value: string): WhitelistClass | undefined => {
+  const ipv6 = value.includes(':');
+  let segments: string[];
+  if (ipv6) {
+    const compressed = value.split('::');
+    if (compressed.length > 2) return undefined;
+    const left = compressed[0].split(':');
+    const right = compressed.length === 2 ? compressed[1].split(':') : [];
+    const explicit = [...left, ...right];
+    const variableIndex = explicit.findIndex((part) => part === '*' || part.includes('-'));
+    // The native IPv6 grammar requires an explicit prefix, then a final wildcard
+    // or a final range optionally followed by one wildcard (see the server validator).
+    if (
+      variableIndex < 1 ||
+      explicit.slice(0, variableIndex).some((part) => !/^[0-9a-f]{1,4}$/.test(part))
+    )
+      return undefined;
+    const tail = explicit.slice(variableIndex);
+    if (tail.length > 2 || (tail.length === 2 && (tail[0] === '*' || tail[1] !== '*')))
+      return undefined;
+    if (compressed.length === 2) {
+      const zeros = 8 - explicit.length;
+      if (zeros <= 0 || !left.every((part) => /^[0-9a-f]{1,4}$/.test(part))) return undefined;
+      segments = [...left, ...Array<string>(zeros).fill('0'), ...right];
+    } else {
+      segments = left;
+    }
+  } else {
+    segments = value.split('.');
+    if (segments.length !== 4 || !/^\d{1,3}$/.test(segments[0])) return undefined;
+    const variableIndex = segments.findIndex((part) => part === '*' || part.includes('-'));
+    if (variableIndex < 1 || segments.slice(variableIndex + 1).some((part) => part !== '*'))
+      return undefined;
+  }
+  if (segments.length !== (ipv6 ? 8 : 4)) return undefined;
+  const maximum = ipv6 ? 65535 : 255;
+  const partPattern = ipv6 ? /^[0-9a-f]{1,4}$/ : /^\d{1,3}$/;
+  let count = 1n;
+  for (const segment of segments) {
+    if (segment === '*') {
+      count *= BigInt(maximum + 1);
+      continue;
+    }
+    const endpoints = segment.split('-');
+    if (endpoints.length > 2 || endpoints.some((part) => !partPattern.test(part))) return undefined;
+    const low = parseInt(endpoints[0], ipv6 ? 16 : 10);
+    const high = parseInt(endpoints[endpoints.length - 1], ipv6 ? 16 : 10);
+    if (low > high || high > maximum) return undefined;
+    count *= BigInt(high - low + 1);
+  }
+  return count >= 2n ** BigInt(ipv6 ? 112 : 24) ? 'broad' : 'scoped';
+};
+
 const classifyWhitelistAddress = (address: string): WhitelistClass => {
   const normalized = address.trim().toLowerCase();
   if (!normalized) return 'scoped';
   if (OPEN_WHITELIST_VALUES.has(normalized)) return 'open';
+  const nativeClass = nativeRangeClass(normalized);
+  if (nativeClass !== undefined) return nativeClass;
   if (normalized.includes('*')) return 'open';
 
   const prefix = cidrPrefix(normalized);

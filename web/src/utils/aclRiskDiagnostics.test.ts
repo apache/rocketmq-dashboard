@@ -226,3 +226,136 @@ describe('ACL risk diagnostics', () => {
     );
   });
 });
+
+describe('native address scope', () => {
+  it.each([
+    '10.0.2.*',
+    '10.0.0-255.*',
+    '2001:db8:0:0:0:0:0:*',
+    '192.168.*.*',
+    '1050::0005:0600:300c:1-20:*',
+  ])('does not grade a bounded native range %s as unrestricted Test', (whiteRemoteAddress) => {
+    const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+    expect(result.summary.broadWhitelistCount).toBe(0);
+    expect(result.issues.map((item) => item.code)).not.toContain('BROAD_ACCOUNT_WHITELIST');
+  });
+  it('grades a native /8-sized range as broad rather than all addresses Test', () => {
+    const result = analyzeAclRisk(
+      config({ accounts: [account({ whiteRemoteAddress: '10.*.*.*' })] }),
+    );
+    expect(result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')?.severity).toBe(
+      'warning',
+    );
+  });
+  it.each(['*', '*.*.*.*', '*:*:*:*:*:*:*:*'])(
+    'retains unrestricted-source warnings for %s Test',
+    (whiteRemoteAddress) => {
+      const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+      expect(result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')?.severity).toBe(
+        'critical',
+      );
+    },
+  );
+  it('keeps actual administrator and default-permission warnings Test', () => {
+    const result = analyzeAclRisk(
+      config({
+        accounts: [
+          account({ whiteRemoteAddress: '10.*.*.*', admin: true, defaultTopicPerm: 'ALL' }),
+        ],
+      }),
+    );
+    expect(result.issues.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['ADMIN_WITH_BROAD_ACCESS', 'DEFAULT_TOPIC_ALLOW']),
+    );
+  });
+  it.each(['192.168.1.{1,2,3}', '192.168.1.10,192.168.1.11', '1050::0005:0600:300c:{1,2,3}'])(
+    'retains bounded literal/set/list controls %s Test',
+    (whiteRemoteAddress) => {
+      const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+      expect(result.summary.broadWhitelistCount).toBe(0);
+    },
+  );
+  it('keeps an unrecognised wildcard conservative Test', () => {
+    const result = analyzeAclRisk(
+      config({ accounts: [account({ whiteRemoteAddress: 'unparsed:*' })] }),
+    );
+    expect(result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')?.severity).toBe(
+      'critical',
+    );
+  });
+});
+
+describe('native address classification controls', () => {
+  it.each(['10.0-255.*.*', '10.0.0.0/8', '2001:db8::/16'])(
+    'retains the broad threshold for %s Test',
+    (whiteRemoteAddress) => {
+      const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+      expect(result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')?.severity).toBe(
+        'warning',
+      );
+    },
+  );
+  it.each([
+    '10.0-254.*.*',
+    '2001:db8::/17',
+    '2001:DB8::0-FFFF:*',
+    '192.168.1-100.*',
+    '192.168.1.10-20',
+  ])('keeps narrower ranges scoped for %s Test', (whiteRemoteAddress) => {
+    const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+    expect(result.summary.broadWhitelistCount).toBe(0);
+    expect(result.status).toBe('healthy');
+  });
+  it.each([
+    '10.*.1.*',
+    '192.168.300.*',
+    '192.168.100-1.*',
+    '*.*.*.1',
+    '::*',
+    '::1-20:*',
+    '1050::0005:*:300c:1',
+    '2001:db8:::*',
+    '2001:db8::gggg:*',
+    '2001:db8:*',
+    '10.0.1-2.3-4',
+  ])('does not downgrade an unrecognized wildcard %s Test', (whiteRemoteAddress) => {
+    const result = analyzeAclRisk(config({ accounts: [account({ whiteRemoteAddress })] }));
+    const risk = result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST');
+    // Preserve the existing fallback: unknown wildcards are critical, other unknown forms scoped.
+    expect(risk?.severity).toBe(whiteRemoteAddress.includes('*') ? 'critical' : undefined);
+  });
+  it('uses the same classifier for the global whitelist contract Test', () => {
+    const result = analyzeAclRisk(config({ globalWhiteRemoteAddresses: ['10.0.2.*', '10.*.*.*'] }));
+    expect(result.summary.broadWhitelistCount).toBe(1);
+    expect(result.issues.find((item) => item.code === 'BROAD_GLOBAL_WHITELIST')?.severity).toBe(
+      'warning',
+    );
+  });
+  it('retains the strongest finding across account whitelist entries Test', () => {
+    const result = analyzeAclRisk(
+      config({ accounts: [account({ whiteRemoteAddress: '10.0.2.*,10.*.*.*' })] }),
+    );
+    expect(result.summary.broadWhitelistCount).toBe(1);
+    expect(result.issues.find((item) => item.code === 'BROAD_ACCOUNT_WHITELIST')?.severity).toBe(
+      'warning',
+    );
+  });
+  it('keeps permission findings for a bounded administrator address Test', () => {
+    const result = analyzeAclRisk(
+      config({
+        accounts: [
+          account({
+            whiteRemoteAddress: '10.0.2.*',
+            admin: true,
+            defaultTopicPerm: 'ALL',
+            groupPerms: ['*=SUB'],
+          }),
+        ],
+      }),
+    );
+    expect(result.issues.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['DEFAULT_TOPIC_ALLOW', 'WILDCARD_GROUP_PERMISSION']),
+    );
+    expect(result.issues.map((item) => item.code)).not.toContain('ADMIN_WITH_BROAD_ACCESS');
+  });
+});
