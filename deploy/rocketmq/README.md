@@ -17,8 +17,8 @@ deploy/rocketmq/
 │   ├── broker-1.conf       # rocketmq-studio-1，同上
 │   └── rmq-proxy.json      # Proxy 集群模式，指向 nameserver:9876，关闭 topic 类型校验
 └── clients/
-    ├── TraceProducer.java  # 1 TPS 发送（带 Key），enableMsgTrace=true，经 proxy:8080 接入
-    └── TraceConsumer.java  # Push 消费，enableMsgTrace=true，经 proxy:8080 接入
+    ├── TraceProducer.java  # 1 TPS 发送（带 Key），enableMsgTrace=true，直连 NameServer（NAMESRV_ADDR）
+    └── TraceConsumer.java  # Push 消费，enableMsgTrace=true，直连 NameServer（NAMESRV_ADDR）
 ```
 
 ## 快速开始
