@@ -210,6 +210,57 @@ const createDeferred = <T,>() => {
 };
 
 describe('MetricsExplorer', () => {
+  it.each(['unmount', 'return'] as const)(
+    'cancels an obsolete scoped-source fallback on %s Test',
+    async (nextAction) => {
+      const user = userEvent.setup();
+      vi.mocked(listDataSources).mockResolvedValue([
+        {
+          key: 'scoped-a',
+          name: 'Scoped A',
+          type: 'Prometheus',
+          url: '',
+          auth: 'None',
+          status: 'healthy',
+          instanceIds: ['instance-a'],
+        },
+      ]);
+      const scoped = (instanceId: string) => (
+        <App>
+          <LangProvider>
+            <MetricsExplorer instanceId={instanceId} />
+          </LangProvider>
+        </App>
+      );
+      const view = render(scoped('instance-a'));
+      await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+      await user.click(
+        await screen.findByText('Scoped A', { selector: '.ant-select-item-option-content' }),
+      );
+      await waitFor(() =>
+        expect(queryByDataSource).toHaveBeenCalledWith(
+          expect.objectContaining({ key: 'scoped-a', instanceId: 'instance-a' }),
+        ),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        view.rerender(scoped('instance-b'));
+        if (nextAction === 'unmount') view.unmount();
+        else view.rerender(scoped('instance-a'));
+        vi.mocked(queryMetrics).mockClear();
+        vi.mocked(queryByDataSource).mockClear();
+        act(() => {
+          vi.runOnlyPendingTimers();
+        });
+        expect(queryMetrics).not.toHaveBeenCalled();
+        expect(queryByDataSource).not.toHaveBeenCalled();
+        if (nextAction === 'return') expect(screen.getAllByTitle('Scoped A').length).toBeGreaterThan(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('loads a metric profile and renders its Prometheus series', async () => {
     renderWithProviders(<MetricsExplorer />);
 
