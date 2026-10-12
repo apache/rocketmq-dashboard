@@ -384,6 +384,115 @@ describe('LiteTopic Page', () => {
     expect(csv).not.toContain('expired-*');
   });
 
+  it('renders an unknown backlog as unknown instead of zero', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'measured-*',
+        topicCount: 3,
+        consumerCount: 2,
+        totalBacklog: 12,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-1'],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'unreadable-*',
+        topicCount: 3,
+        consumerCount: 2,
+        averageTTL: 60000,
+        ttlStatus: 'ACTIVE',
+        lastActiveTime: 1893456000000,
+        sessionIds: ['session-2'],
+      },
+    ]);
+    renderPage();
+
+    const measuredRow = (await screen.findByText('measured-*')).closest('tr')!;
+    expect(within(measuredRow).getByText('12')).toBeInTheDocument();
+
+    const unreadableRow = screen.getByText('unreadable-*').closest('tr')!;
+    expect(within(unreadableRow).getByText('-')).toBeInTheDocument();
+    expect(within(unreadableRow).queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('sorts rows with an unknown backlog last in both directions', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'loud-*',
+        topicCount: 1,
+        consumerCount: 1,
+        totalBacklog: 5000,
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'unreadable-*',
+        topicCount: 1,
+        consumerCount: 1,
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'quiet-*',
+        topicCount: 1,
+        consumerCount: 1,
+        totalBacklog: 5,
+        sessionIds: [],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('unreadable-*')).toBeInTheDocument();
+    const patternOrder = () =>
+      screen.getAllByText(/^(quiet|loud|unreadable)-\*$/).map((element) => element.textContent);
+
+    // Unknown backlog must neither hide among the quiet topics (ascending) nor claim the
+    // top of the pile (descending): it always sorts after every measured value.
+    const backlogHeader = screen.getByRole('columnheader', { name: /积压/ });
+    await user.click(backlogHeader);
+    expect(backlogHeader).toHaveAttribute('aria-sort', 'ascending');
+    expect(patternOrder()).toEqual(['quiet-*', 'loud-*', 'unreadable-*']);
+
+    await user.click(screen.getByRole('columnheader', { name: /积压/ }));
+    expect(patternOrder()).toEqual(['loud-*', 'quiet-*', 'unreadable-*']);
+  });
+
+  it('exports an unknown backlog as an explicit UNKNOWN marker', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'quiet-*',
+        topicCount: 1,
+        consumerCount: 1,
+        totalBacklog: 0,
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'unreadable-*',
+        topicCount: 1,
+        consumerCount: 1,
+        sessionIds: [],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('unreadable-*')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出' }));
+
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [, csv] = vi.mocked(downloadCsv).mock.calls[0];
+    // A measured 0 stays 0; an unreadable backlog must say so instead of an empty cell.
+    expect(csv).toContain('"default","quiet-*","1","1","0"');
+    expect(csv).toContain('"default","unreadable-*","1","1","UNKNOWN"');
+  });
+
   it('keeps an early filtered display while a delayed bootstrap supplies namespace options', async () => {
     const capability = createDeferred<{ supported: boolean }>();
     const bootstrapList = createDeferred<LiteTopicItem[]>();

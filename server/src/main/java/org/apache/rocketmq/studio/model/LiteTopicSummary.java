@@ -75,8 +75,13 @@ public class LiteTopicSummary {
         return (double) consumerCount / topicCount;
     }
 
+    /**
+     * Empty only when the aggregation provably holds nothing: no consumers and a measured zero
+     * backlog. A {@code null} backlog means the broker could not be read — unknown, not zero — so
+     * an unreadable backlog is never classified as an empty aggregation.
+     */
     public boolean isEmptyAggregation() {
         return (consumerCount == null || consumerCount == 0)
-                && (totalBacklog == null || totalBacklog == 0);
+                && totalBacklog != null && totalBacklog == 0;
     }
 }
