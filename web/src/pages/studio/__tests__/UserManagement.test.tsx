@@ -393,7 +393,10 @@ describe('UserManagementPage', () => {
     await act(async () => completeRevoke());
     await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
     expect(listStudioUserSessions).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // rc-drawer keeps the dialog node in the a11y tree until its exit motion finishes, and that
+    // motion is timer-driven: asserting synchronously passed in isolation and failed every
+    // full-suite run, where the timers lag behind the awaited reload.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('does not present a failed session read as an account without sessions', async () => {
