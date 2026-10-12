@@ -55,11 +55,16 @@ public class LiteTopicSession {
 
     private Long consumedMessages;
 
+    /**
+     * True when the consumed-message count only covers the first
+     * {@code MAX_SESSION_LITE_TOPIC_SCAN} lite topics of the session, so the reported
+     * {@code consumedMessages} and {@code totalMessages} are lower bounds rather than totals.
+     */
+    private boolean consumedScanTruncated;
+
     private Long pendingMessages;
 
     private Double consumptionRate;
-
-    private PopConsumeProgress popProgress;
 
     private Integer liteTopicCreationCount;
 
@@ -78,13 +83,4 @@ public class LiteTopicSession {
         return (double) consumedMessages / totalMessages * 100.0;
     }
 
-    @Data
-    public static class PopConsumeProgress {
-        private Integer ackTimeoutSeconds;
-        private Integer maxReconsumeTimes;
-        private Integer totalPopInFlightCount;
-        private Integer lastPopTime;
-        private Integer popCheckpoint;
-        private Integer totalPopCount;
-    }
 }

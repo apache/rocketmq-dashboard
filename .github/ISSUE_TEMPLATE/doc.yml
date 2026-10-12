@@ -61,7 +61,7 @@ body:
       label: Are You Willing to Submit a Pull Request?
       description: >
         Not required, but doc pull requests are usually merged quickly. Base the branch on
-        `master`, and keep README.md and README_zh.md in sync when you change either one.
+        `rocketmq-studio`, and keep README.md and README_zh.md in sync when you change either one.
       options:
         - label: Yes, I am willing to submit a pull request.
 
