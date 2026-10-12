@@ -1292,6 +1292,36 @@ describe('MetricsExplorer', () => {
     expect(reopened.querySelector('.ant-list-item')).toHaveTextContent('自定义查询');
   });
 
+  it('keepsNewerCustomHistoryAheadOfASlowEarlierProfileQueryTest', async () => {
+    const user = userEvent.setup();
+    const pendingProfile = createDeferred<MetricData>();
+    vi.mocked(queryMetrics).mockReturnValueOnce(pendingProfile.promise);
+    renderWithProviders(<MetricsExplorer />);
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(1));
+
+    vi.mocked(Date.now).mockReturnValue(1_800_000_001_000);
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+
+    await act(async () => pendingProfile.resolve(metricData));
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+    const rows = dialog.querySelectorAll('.ant-list-item');
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('自定义查询');
+    expect(rows[1]).toHaveTextContent('Message In TPS');
+    const persisted: MetricsQueryHistoryEntry[] = JSON.parse(
+      localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)!,
+    );
+    expect(persisted.map((entry) => entry.queriedAt)).toEqual([
+      1_800_000_001_000, 1_800_000_000_000,
+    ]);
+    expect(persisted[0].promql).toBe('sum(rocketmq_topic_number)');
+  });
+
   it('restores profile, range, and source from query history', async () => {
     const user = userEvent.setup();
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));

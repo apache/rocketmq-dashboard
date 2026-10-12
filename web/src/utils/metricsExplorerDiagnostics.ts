@@ -340,7 +340,9 @@ export const buildMetricSeriesDetailRows = (
       seriesLabel: metricSeriesLabel(series, metric.name),
       labels: stableLabelsText(series.labels),
       sampleType: fromHistogram
-        ? samples.some((sample) => sample.kind === 'scalar') ? 'mixed' : 'histogram'
+        ? samples.some((sample) => sample.kind === 'scalar')
+          ? 'mixed'
+          : 'histogram'
         : 'scalar',
       sampleCount: samples.length,
       latestTimestamp: latest?.timestamp,
@@ -496,9 +498,16 @@ export const mergeMetricsQueryHistory = (
   entry: MetricsQueryHistoryEntry,
   limit = METRICS_QUERY_HISTORY_LIMIT,
 ) => {
-  const duplicateKey = historyIdentity(entry);
-  return [entry, ...entries.filter((item) => historyIdentity(item) !== duplicateKey)].slice(
-    0,
-    limit,
-  );
+  // Responses can finish out of order. Keep the newest query for each identity before
+  // applying the cap; a late older response must not displace more recent history.
+  const identities = new Set<string>();
+  return [entry, ...entries]
+    .sort((left, right) => right.queriedAt - left.queriedAt)
+    .filter((item) => {
+      const identity = historyIdentity(item);
+      if (identities.has(identity)) return false;
+      identities.add(identity);
+      return true;
+    })
+    .slice(0, limit);
 };
