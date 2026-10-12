@@ -31,6 +31,7 @@ import {
     Typography
 } from 'antd';
 import moment from 'moment';
+import dayjs from 'dayjs';
 import {ExportOutlined, SearchOutlined, SendOutlined} from '@ant-design/icons';
 import DlqMessageDetailViewDialog from "../../components/DlqMessageDetailViewDialog"; // Ensure this path is correct
 import {useLanguage} from '../../i18n/LanguageContext'; // Ensure this path is correct
@@ -52,8 +53,9 @@ const DlqMessageQueryPage = () => {
     // Consumer 查询状态
     const [allConsumerGroupList, setAllConsumerGroupList] = useState([]);
     const [selectedConsumerGroup, setSelectedConsumerGroup] = useState(null);
-    const [timepickerBegin, setTimepickerBegin] = useState(moment().subtract(3, 'hour')); // 默认三小时前
-    const [timepickerEnd, setTimepickerEnd] = useState(moment());
+    // 同 Message 页：DatePicker（antd v5, dayjs）需要 dayjs 对象，传 Moment 会被原地改坏
+    const [timepickerBegin, setTimepickerBegin] = useState(dayjs().subtract(3, 'hour')); // 默认三小时前
+    const [timepickerEnd, setTimepickerEnd] = useState(dayjs());
     const [messageShowList, setMessageShowList] = useState([]);
     const [paginationConf, setPaginationConf] = useState({
         current: 1,
@@ -117,7 +119,7 @@ const DlqMessageQueryPage = () => {
             });
             return;
         }
-        if (moment(timepickerEnd).valueOf() < moment(timepickerBegin).valueOf()) {
+        if (timepickerEnd.valueOf() < timepickerBegin.valueOf()) {
             notificationApi.error({message: t.END_TIME_LATER_THAN_BEGIN_TIME, delay: 2000});
             return;
         }
@@ -127,8 +129,8 @@ const DlqMessageQueryPage = () => {
         try {
             const resp = await remoteApi.queryDlqMessageByConsumerGroup(
                 selectedConsumerGroup,
-                moment(timepickerBegin).valueOf(),
-                moment(timepickerEnd).valueOf(),
+                timepickerBegin.valueOf(),
+                timepickerEnd.valueOf(),
                 page,
                 pageSize,
                 taskId

@@ -19,6 +19,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {Card, Col, DatePicker, message, notification, Row, Select, Spin, Table} from 'antd';
 import * as echarts from 'echarts';
 import moment from 'moment';
+import dayjs from 'dayjs';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi, tools} from '../../api/remoteApi/remoteApi';
 
@@ -32,7 +33,8 @@ const DashboardPage = () => {
     const topicLineChartRef = useRef(null);
 
     const [loading, setLoading] = useState(false);
-    const [date, setDate] = useState(moment());
+    // DatePicker 需要 dayjs 对象（详见 Message 页的说明）
+    const [date, setDate] = useState(dayjs());
     const [topicNames, setTopicNames] = useState([]);
     const [selectedTopic, setSelectedTopic] = useState(null);
     const [brokerTableData, setBrokerTableData] = useState([]);
