@@ -142,6 +142,7 @@ const UserManagementPage = () => {
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
   const sessionDetailsRequestSeqRef = useRef(0);
+  const sessionDrawerUserIdRef = useRef<number | null>(null);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
@@ -155,6 +156,7 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      sessionDrawerUserIdRef.current = null;
       setSessionDrawerUser(null);
       setSessionDetails([]);
       return;
@@ -203,6 +205,7 @@ const UserManagementPage = () => {
     () => () => {
       requestSeqRef.current += 1;
       sessionDetailsRequestSeqRef.current += 1;
+      sessionDrawerUserIdRef.current = null;
     },
     [],
   );
@@ -233,12 +236,14 @@ const UserManagementPage = () => {
   );
 
   const openSessionDrawer = (record: StudioUser) => {
+    sessionDrawerUserIdRef.current = record.id;
     setSessionDrawerUser(record);
     setSessionDetails([]);
     void loadSessionDetails(record);
   };
 
   const closeSessionDrawer = () => {
+    sessionDrawerUserIdRef.current = null;
     sessionDetailsRequestSeqRef.current += 1;
     setSessionDrawerUser(null);
     setSessionDetails([]);
@@ -328,7 +333,9 @@ const UserManagementPage = () => {
           navigate('/login', { replace: true });
           return;
         }
-        if (sessionDrawerUser?.id === record.id) {
+        // The operator may have closed or changed drawers while revocation was pending.
+        // Do not let its follow-up read take ownership of another user's session details.
+        if (sessionDrawerUserIdRef.current === record.id) {
           await loadSessionDetails({ ...record, activeSessionCount: 0 });
         }
         await loadUsers();
