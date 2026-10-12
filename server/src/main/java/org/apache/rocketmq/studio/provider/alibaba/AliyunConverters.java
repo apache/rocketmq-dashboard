@@ -164,6 +164,11 @@ final class AliyunConverters {
                 .group(data.getConsumerGroupId())
                 .consumeType(toConsumeType(data.getMessageModel()))
                 .messageModel(data.getMessageModel())
+                // ListTopicSubscriptions carries no lag or TPS field, so the VO defaults (0/0)
+                // would render as measured "0 backlog / 0 TPS" in the console and in the AI tool
+                // output. Flag them unavailable, the same way the Apache provider does when
+                // consume stats cannot be read.
+                .metricsAvailable(false)
                 .build();
     }
 

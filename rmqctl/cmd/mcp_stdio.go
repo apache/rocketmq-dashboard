@@ -306,6 +306,29 @@ func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callEr
 				Hint:    hint,
 			},
 		}
+	} else {
+		// Connection refusals, TLS failures, timeouts and protocol-decode errors carry no HTTP
+		// status, but the caller still needs the cause: an MCP client that only receives
+		// "stdio proxy call failed" cannot tell the user (or the model) anything but "go look at
+		// the logs". normalizeCLIError classifies them the same way the CLI's own error path
+		// does, and the sanitized text travels in both message and data so the frame is
+		// actionable on its own.
+		cliError := normalizeCLIError(callErr)
+		code := safeStdioDiagnostic(cliError.Code)
+		message := safeStdioDiagnostic(cliError.Message)
+		hint := safeStdioDiagnostic(cliError.Hint)
+		if message == "" {
+			message = "stdio proxy call failed"
+		}
+		rpcError = jsonRPCError{
+			Code:    jsonrpcServerErrorCode,
+			Message: message,
+			Data: &jsonRPCErrorData{
+				Code:    code,
+				Message: message,
+				Hint:    hint,
+			},
+		}
 	}
 	errorPayload := jsonRPCErrorPayload{
 		JSONRPC: "2.0",
