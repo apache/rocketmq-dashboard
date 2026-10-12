@@ -275,7 +275,14 @@ public class AiRunExecutor {
         RmqAiRun run = context.getRun();
         Outcome outcome = new Outcome();
         try {
-            markRunning(context);
+            if (!markRunning(context)) {
+                // A stop landed between registration and this write and finalised the row, so the
+                // guarded RUNNING write matched no row. Anything further from this worker —
+                // streaming, or a terminal write of its own — would resurrect a run that already
+                // ended: an active row nobody owns locks the conversation behind 409s until the
+                // orphan sweep reaps it.
+                return;
+            }
             streamWithLostResumeRetry(context, outcome);
         } catch (LlmGatewayException exception) {
             log.warn("agent run {} failed: {} - {}", run.getId(), exception.getCode(), exception.getMessage());
@@ -302,15 +309,26 @@ public class AiRunExecutor {
         }
     }
 
-    private void markRunning(RunContext context) {
+    /**
+     * Writes the RUNNING transition through the guarded update, and reports whether it landed. The
+     * guard, not a pre-read of the context state, is what closes the resurrection race: a stop can
+     * finalise the row between any in-memory check and the database write, but it cannot slip
+     * between the guard and the write inside one UPDATE statement.
+     *
+     * @return false when the row was already finalised by a stop that beat this worker to the DB
+     */
+    private boolean markRunning(RunContext context) {
         RmqAiRun run = context.getRun();
         LocalDateTime now = LocalDateTime.now(clock);
         run.setStatus(RunStatus.RUNNING.name());
         run.setStartedAt(now);
         run.setGmtModified(now);
-        runRepository.update(run);
-        log.debug("agent run {} of conversation {} is RUNNING (turn {}, engine {})",
-                run.getId(), run.getConversationId(), run.getTurn(), run.getEngine());
+        boolean admitted = runRepository.updateWhileNonTerminal(run) > 0;
+        if (admitted) {
+            log.debug("agent run {} of conversation {} is RUNNING (turn {}, engine {})",
+                    run.getId(), run.getConversationId(), run.getTurn(), run.getEngine());
+        }
+        return admitted;
     }
 
     /**
