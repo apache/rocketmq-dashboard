@@ -91,15 +91,17 @@ const parseSilenceLabels = (
   invalidMessage: string,
 ): Record<string, string> | undefined => {
   if (!value?.trim()) return undefined;
-  const labels: Record<string, string> = {};
+  const labels = new Map<string, string>();
   for (const pair of value.split(',')) {
     const separator = pair.indexOf('=');
-    if (separator <= 0 || !pair.slice(separator + 1).trim()) {
+    const key = pair.slice(0, separator).trim();
+    const labelValue = pair.slice(separator + 1).trim();
+    if (separator <= 0 || !key || !labelValue || labels.has(key)) {
       throw new Error(invalidMessage);
     }
-    labels[pair.slice(0, separator).trim()] = pair.slice(separator + 1).trim();
+    labels.set(key, labelValue);
   }
-  return labels;
+  return Object.fromEntries(labels);
 };
 
 const localDateTimeToUtc = (value: string) => new Date(`${value}:00`).toISOString();

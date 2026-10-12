@@ -737,6 +737,48 @@ describe('SystemAlertsPage', () => {
     expect(payload.labels).toBeUndefined();
   });
 
+  it.each(['brokerName=a, brokerName=b', ' =broker-a'])(
+    'rejectsSilenceLabelsWithoutDroppingConditionsTest: %s',
+    async (labels) => {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+      fireEvent.change(screen.getByLabelText('标签范围'), { target: { value: labels } });
+      fireEvent.change(screen.getByLabelText('开始时间'), {
+        target: { value: '2026-08-11T01:00' },
+      });
+      fireEvent.change(screen.getByLabelText('结束时间'), {
+        target: { value: '2026-08-11T02:00' },
+      });
+      await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+      expect(await screen.findByText('标签格式应为 key=value，并以逗号分隔')).toBeInTheDocument();
+      expect(createAlertSilence).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preservesPrototypeNamedSilenceLabelsInTheRequestTest', async () => {
+    vi.mocked(createAlertSilence).mockResolvedValue({
+      id: 10,
+      startsAt: '2026-08-11T01:00',
+      endsAt: '2026-08-11T02:00',
+      createdBy: 'admin',
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    fireEvent.change(screen.getByLabelText('标签范围'), {
+      target: { value: ' __proto__ =broker-a,constructor=rack=one,toString=orders' },
+    });
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-08-11T01:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-11T02:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+    await waitFor(() => expect(createAlertSilence).toHaveBeenCalledTimes(1));
+    const labels = vi.mocked(createAlertSilence).mock.calls[0][0].labels;
+    expect(JSON.parse(JSON.stringify(labels))).toEqual(
+      JSON.parse('{"__proto__":"broker-a","constructor":"rack=one","toString":"orders"}'),
+    );
+  });
+
   it('surfaces the label validation message when the silence labels are invalid', async () => {
     vi.mocked(listAlertSilencesPage).mockResolvedValue({
       items: [],
