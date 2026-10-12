@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.alert;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Instant;
 
@@ -96,6 +98,29 @@ class AlertRuleEvaluatorTest {
                 .operator(">=").threshold(0.85).enabled(true).build();
 
         assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.9)).matches()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0.0,-0.0,false", "-0.0,0.0,false", "0.0,-0.0,true", "-0.0,0.0,true"})
+    void numericEqualityTreatsBothZeroSignsEquallyTest(double value, double threshold, boolean percent) {
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator("==").threshold(threshold).thresholdUnit(percent ? "%" : null).enabled(true).build();
+        MetricSample zero = sample(MetricAvailability.AVAILABLE, value);
+
+        assertThat(evaluator.evaluate(rule, zero).conditionMet()).isTrue();
+        rule.setOperator("!=");
+        assertThat(evaluator.evaluate(rule, zero).conditionMet()).isFalse();
+    }
+
+    @Test
+    void equalityStillDistinguishesUnequalFiniteValuesTest() {
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator("==").threshold(0.5).enabled(true).build();
+        assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.5)).conditionMet()).isTrue();
+        assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, Math.nextUp(0.5))).conditionMet()).isFalse();
+        rule.setOperator("!=");
+        assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, 0.5)).conditionMet()).isFalse();
+        assertThat(evaluator.evaluate(rule, sample(MetricAvailability.AVAILABLE, Math.nextUp(0.5))).conditionMet()).isTrue();
     }
 
     private static MetricSample sample(MetricAvailability availability, Double value) {
