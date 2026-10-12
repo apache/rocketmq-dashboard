@@ -503,8 +503,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
             List<BrokerRouteVO> routes = new ArrayList<>();
             if (routeData.getQueueDatas() != null) {
-                // The queue list order comes from the broker's table walk and is not stable
-                // across snapshots; order by broker name so the route table does not reshuffle.
+                // The route rows come straight off the broker's table walk; order them by
+                // broker name so the route table agrees with the queue stats view on the same screen.
                 List<QueueData> orderedQueueDatas = new ArrayList<>(routeData.getQueueDatas());
                 orderedQueueDatas.sort(Comparator.comparing(QueueData::getBrokerName,
                         Comparator.nullsLast(Comparator.naturalOrder())));

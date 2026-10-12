@@ -307,7 +307,7 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
-    void getTopicRoutesShouldOrderRoutesByBrokerName() throws Exception {
+    void getTopicRoutesShouldOrderRoutesByBrokerNameTest() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         QueueData brokerZ = new QueueData();
         brokerZ.setBrokerName("broker-z");
@@ -316,8 +316,8 @@ class RocketMQMetadataProviderTest {
         brokerA.setBrokerName("broker-a");
         brokerA.setPerm(6);
         TopicRouteData routeData = new TopicRouteData();
-        // The route table's queue list is rebuilt per snapshot, so its order is not stable;
-        // the route listing must order by broker name like the queue stats view does.
+        // The route listing must order by broker name the way the queue stats view on the
+        // same screen does.
         routeData.setQueueDatas(List.of(brokerZ, brokerA));
         when(admin.examineTopicRouteInfo("TopicA")).thenReturn(routeData);
 
