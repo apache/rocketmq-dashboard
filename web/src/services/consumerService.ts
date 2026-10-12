@@ -48,8 +48,8 @@ function copyConsumerInstance(
 ): ConsumerGroup['instances'][number] {
   return {
     ...instance,
-    subscribedTopics: [...instance.subscribedTopics],
-    topicLag: { ...instance.topicLag },
+    ...(instance.subscribedTopics ? { subscribedTopics: [...instance.subscribedTopics] } : {}),
+    ...(instance.topicLag ? { topicLag: { ...instance.topicLag } } : {}),
   };
 }
 
