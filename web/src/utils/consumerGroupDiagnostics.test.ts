@@ -156,7 +156,7 @@ describe('consumer group diagnostics', () => {
 
     expect(diagnostics.status).toBe('warning');
     expect(diagnostics.summary).toMatchObject({
-      reportedLag: 0,
+      reportedLag: null,
       unknownQueueCount: 1,
       maxQueueLag: null,
       maxHeartbeatAgeSeconds: 660,
@@ -166,4 +166,53 @@ describe('consumer group diagnostics', () => {
       expect.arrayContaining(['SUBSCRIPTION_UNKNOWN', 'UNKNOWN_QUEUE_LAG', 'STALE_HEARTBEAT']),
     );
   });
+});
+
+describe('reported lag completeness', () => {
+  it.each([
+    ['all unknown', [queue({ diffTotal: -1 })], 0],
+    ['partly known', [queue({ diffTotal: 17 }), queue({ queueId: 1, diffTotal: -1 })], 17],
+    ['no observations', [], 0],
+  ])('does not replace an unknown aggregate with %s data Test', (_, progress, subtotal) => {
+    const result = analyzeConsumerGroupHealth(
+      group({ totalLag: -1, instances: [] }),
+      [subscription()],
+      progress,
+    );
+    expect(result.summary.totalKnownLag).toBe(subtotal);
+    expect(result.summary.reportedLag).toBeNull();
+  });
+  it('retains a complete queue-derived total when no aggregate is reported Test', () => {
+    const result = analyzeConsumerGroupHealth(
+      group({ totalLag: -1 }),
+      [subscription()],
+      [queue({ diffTotal: 17 }), queue({ queueId: 1, diffTotal: 0 })],
+    );
+    expect(result.summary.reportedLag).toBe(17);
+  });
+  it.each([0, 700])('retains the separately measured aggregate %s Test', (totalLag) => {
+    const result = analyzeConsumerGroupHealth(
+      group({ totalLag }),
+      [subscription()],
+      [queue({ diffTotal: -1 })],
+    );
+    expect(result.summary.reportedLag).toBe(totalLag);
+  });
+  it('keeps an observed positive backlog as evidence for an offline group Test', () => {
+    const result = analyzeConsumerGroupHealth(
+      group({ totalLag: -1, onlineInstances: 0, instances: [] }),
+      [subscription()],
+      [queue({ diffTotal: 17 }), queue({ queueId: 1, diffTotal: -1 })],
+    );
+    expect(result.issues.map((item) => item.code)).toContain('NO_ACTIVE_CLIENTS_WITH_LAG');
+  });
+});
+
+it('retains a measured zero from complete queue observations Test', () => {
+  const result = analyzeConsumerGroupHealth(
+    group({ totalLag: -1 }),
+    [subscription()],
+    [queue({ diffTotal: 0 })],
+  );
+  expect(result.summary.reportedLag).toBe(0);
 });
