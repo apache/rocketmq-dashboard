@@ -269,6 +269,29 @@ class AuditServiceTest {
     }
 
     @Test
+    void cleanupLogsRecordsWhatItDeletedTest() {
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(42);
+
+        auditService.cleanupLogs(90);
+
+        ArgumentCaptor<org.apache.rocketmq.studio.ops.audit.AuditRecordVO> saved =
+                ArgumentCaptor.forClass(org.apache.rocketmq.studio.ops.audit.AuditRecordVO.class);
+        verify(auditRepository).save(saved.capture());
+        assertThat(saved.getValue().getOperationType()).isEqualTo("CLEANUP_AUDIT_LOGS");
+        assertThat(saved.getValue().getDetail()).contains("beforeDays=90", "deleted=42");
+        assertThat(saved.getValue().getResult()).isEqualTo("SUCCESS");
+    }
+
+    @Test
+    void cleanupLogsRecordsNothingWhenNothingWasDeletedTest() {
+        when(auditRepository.deleteBefore(any(LocalDateTime.class), eq(500), eq(20))).thenReturn(0);
+
+        auditService.cleanupLogs(90);
+
+        verify(auditRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
     void queryLogsShouldTrimSearchTermBeforeDelegating() {
         auditService.queryLogs(1, 10, "  ops  ", null, null, null, null, false,
                 null, null, null);
