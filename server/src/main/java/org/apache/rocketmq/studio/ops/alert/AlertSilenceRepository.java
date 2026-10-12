@@ -24,9 +24,13 @@ import java.util.List;
 public interface AlertSilenceRepository {
     AlertSilenceVO save(AlertSilenceVO silence);
 
+    AlertSilenceVO update(AlertSilenceVO silence);
+
     List<AlertSilenceVO> findAll();
 
     PageResult<AlertSilenceVO> findPage(int page, int pageSize);
+
+    AlertSilenceVO findById(Long id);
 
     List<AlertSilenceVO> findActiveCandidates(AlertDomain domain, Long ruleId, String instanceId, LocalDateTime now);
 
