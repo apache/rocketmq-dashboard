@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package output
 
 import (
@@ -21,6 +22,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
@@ -51,6 +54,47 @@ func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
 		if strings.Contains(out, quoted) {
 			t.Fatalf("YAML quoted a number (%s):\n%s", quoted, out)
 		}
+	}
+
+	// Round-trip through a real YAML decode too: rendering unquoted is only half the contract,
+	// the consumer on the other side must read the types back - integers keep their exact digits
+	// beyond 2^53 and floats stay floats.
+	var decoded map[string]any
+	if err := yaml.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("YAML decode: %v", err)
+	}
+	items, ok := decoded["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("items = %#v, want one entry", decoded["items"])
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("items[0] = %#v, want a mapping", items[0])
+	}
+	if got, ok := item["size"].(int); !ok || got != 3 {
+		t.Fatalf("size = %#v, want int 3", item["size"])
+	}
+	if got, ok := item["ratio"].(float64); !ok || got != 0.25 {
+		t.Fatalf("ratio = %#v, want float64 0.25", item["ratio"])
+	}
+	switch got := item["offset"].(type) {
+	case int:
+		if got != 9007199254740993 {
+			t.Fatalf("offset = %d, want 9007199254740993", got)
+		}
+	case int64:
+		if got != 9007199254740993 {
+			t.Fatalf("offset = %d, want 9007199254740993", got)
+		}
+	case uint64:
+		if got != 9007199254740993 {
+			t.Fatalf("offset = %d, want 9007199254740993", got)
+		}
+	default:
+		t.Fatalf("offset = %#v, want an integer type with value 9007199254740993", item["offset"])
+	}
+	if got, ok := decoded["skippedCount"].(int); !ok || got != 5 {
+		t.Fatalf("skippedCount = %#v, want int 5", decoded["skippedCount"])
 	}
 }
 
