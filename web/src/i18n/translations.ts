@@ -105,6 +105,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.clusterHealth': { zh: '集群健康概览', en: 'Cluster Health' },
   'dashboard.clusterName': { zh: '集群名称', en: 'Cluster Name' },
   'dashboard.allInstances': { zh: '全部已配置实例', en: 'All configured instances' },
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load dashboard' },
+  'dashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not load the cluster overview. Check the connection and retry.',
+  },
   'dashboard.instanceFilter': { zh: '实例筛选', en: 'Instance filter' },
   'dashboard.broker': { zh: 'Broker', en: 'Broker' },
   'dashboard.proxy': { zh: 'Proxy', en: 'Proxy' },
