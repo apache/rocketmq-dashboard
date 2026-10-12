@@ -360,7 +360,7 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
-    void discoverClustersShouldOrderClustersByNameRegardlessOfTableOrder() throws Exception {
+    void discoverClustersShouldOrderClustersByNameRegardlessOfTableOrderTest() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
 
@@ -381,7 +381,7 @@ class RocketMQClusterProviderTest {
         List<ClusterVO> clusters = provider.discoverClusters();
 
         // RealClusterProvider already returns clusters sorted by name; the instance-backed
-        // discovery must agree so the cluster list does not reshuffle between requests.
+        // discovery must agree, so both views list the same clusters in the same order.
         assertThat(clusters).extracting(ClusterVO::getId)
                 .containsExactly("alpha-cluster", "zeta-cluster");
     }
