@@ -126,6 +126,8 @@ public class AiRunExecutor {
     static final String ERROR_CODE_INTERNAL = "ai.run.internal_error";
 
     private static final String PROVIDER_TIMEOUT_CODE = "llm.provider.timeout";
+    /** The agent stream closed without ever delivering a result frame. */
+    static final String ERROR_CODE_NO_RESULT = "llm.provider.no_result";
     private static final Set<String> OUTPUT_LIMIT_CODES =
             Set.of("llm.provider.output_too_large", "llm.provider.response_too_large");
     private static final String ERROR_MAX_TURNS_SUBTYPE = "error_max_turns";
@@ -497,6 +499,14 @@ public class AiRunExecutor {
             return new Terminal(RunStatus.FAILED, stopReasonForSubtype(outcome.subtype),
                     "llm.provider." + outcome.subtype,
                     "agent run ended with subtype: " + outcome.subtype, outcome, false);
+        }
+        if (!isHttpEngine(context.getEngine()) && !StringUtils.hasText(outcome.subtype)) {
+            // The agent stream closed without ever delivering a result frame: nothing was projected,
+            // nothing failed with a frame of its own — the provider process simply went away mid-turn.
+            // A turn with no answer is not a successful one. HTTP completion turns never carry a result
+            // frame at all, so their fall through to COMPLETED stays correct — that is the exclusion here.
+            return new Terminal(RunStatus.FAILED, StopReason.PROVIDER_ERROR, ERROR_CODE_NO_RESULT,
+                    "agent stream ended without a result frame", outcome, false);
         }
         return new Terminal(RunStatus.COMPLETED, null, null, null, outcome, false);
     }
