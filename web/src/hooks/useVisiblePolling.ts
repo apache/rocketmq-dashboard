@@ -26,12 +26,15 @@ export function useVisiblePolling(
 
   useEffect(() => {
     if (!enabled) return;
+    let active = true;
 
     const pollWhenVisible = () => {
       if (document.visibilityState !== 'visible' || pollInFlightRef.current) return;
 
       const inFlight = Promise.resolve()
-        .then(poll)
+        .then(() => {
+          if (active && document.visibilityState === 'visible') return poll();
+        })
         .catch(() => undefined)
         .finally(() => {
           if (pollInFlightRef.current === inFlight) {
@@ -44,6 +47,7 @@ export function useVisiblePolling(
     document.addEventListener('visibilitychange', pollWhenVisible);
 
     return () => {
+      active = false;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };

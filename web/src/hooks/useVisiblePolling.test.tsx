@@ -33,11 +33,43 @@ describe('useVisiblePolling', () => {
   let visibilityState = 'visible';
 
   beforeEach(() => {
+    visibilityState = 'visible';
     vi.useFakeTimers();
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(
       () => visibilityState as DocumentVisibilityState,
     );
   });
+
+  it.each(['disable', 'unmount', 'hidden', 'replace'] as const)(
+    'discardsAQueuedPollAfter%sTest',
+    async (change) => {
+      const poll = vi.fn().mockResolvedValue(undefined);
+      const replacement = vi.fn().mockResolvedValue(undefined);
+      const { rerender, unmount } = renderHook(
+        ({ enabled, callback }) => useVisiblePolling(enabled, 1000, callback),
+        { initialProps: { enabled: true, callback: poll } },
+      );
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      if (change === 'disable') rerender({ enabled: false, callback: poll });
+      if (change === 'replace') rerender({ enabled: true, callback: replacement });
+      if (change === 'unmount') unmount();
+      if (change === 'hidden') visibilityState = 'hidden';
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(poll).not.toHaveBeenCalled();
+      if (change !== 'unmount') {
+        visibilityState = 'visible';
+        rerender({ enabled: true, callback: replacement });
+        await act(async () => {
+          vi.advanceTimersByTime(1000);
+        });
+        expect(replacement).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
 
   afterEach(() => {
     vi.useRealTimers();
