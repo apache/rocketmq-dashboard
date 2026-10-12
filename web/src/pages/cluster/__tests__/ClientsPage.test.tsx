@@ -237,6 +237,67 @@ describe('Clients page', () => {
     },
   );
 
+  it.each([
+    ['zh', '所属集群'],
+    ['en', 'Cluster'],
+  ])('keeps independent all-cluster resources distinguishable (%s) Test', async (lang, label) => {
+    localStorage.setItem('rocketmq-studio-language', lang);
+    try {
+      vi.mocked(connectionsService.listConnections).mockResolvedValue([
+        {
+          ...connection,
+          groupOrTopic: 'DefaultProducer',
+          clientId: 'producer',
+          clusterName: 'cluster-a',
+          protocol: 'Remoting',
+          version: 'V5_0_0',
+        },
+        {
+          ...connection,
+          groupOrTopic: 'DefaultProducer',
+          clientId: 'producer',
+          clusterName: 'cluster-b',
+          protocol: 'Remoting',
+          version: 'V5_1_0',
+          address: '10.0.0.2:40000',
+        },
+      ]);
+      renderWithProviders(<ClientsPage />);
+      await screen.findAllByText('10.0.0.2:40000');
+      const diagnostics = screen.getByTestId('client-connection-diagnostics');
+      expect(within(diagnostics).getAllByText('DefaultProducer')).toHaveLength(2);
+      const inventory = within(diagnostics).getAllByText('DefaultProducer').map((cell) => cell.closest('tr')!);
+      expect(within(inventory[0]).getByText('cluster-a')).toBeInTheDocument();
+      expect(within(inventory[1]).getByText('cluster-b')).toBeInTheDocument();
+      expect(within(inventory[0].closest('table')!).getByText(label)).toBeInTheDocument();
+      const producerStatistic = screen.getByText('Producer', { selector: '.ant-statistic-title' }).parentElement!;
+      expect(producerStatistic.querySelector('.ant-statistic-content-value')).toHaveTextContent('2');
+      expect(within(diagnostics).queryByText('同一资源存在多版本客户端')).not.toBeInTheDocument();
+      expect(within(diagnostics).queryByText('Client ID 连接到多个地址')).not.toBeInTheDocument();
+      expect(connectionsService.listConnections).toHaveBeenCalledWith(
+        expect.objectContaining({ namesrvAddr: 'namesrv-1:9876', clusterId: undefined }),
+      );
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
+  });
+
+  it('identifies the physical cluster of each duplicate-record issue Test', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(
+      ['cluster-a', 'cluster-b'].flatMap((clusterName) => [
+        { ...connection, groupOrTopic: 'DefaultProducer', clientId: 'producer', clusterName },
+        { ...connection, groupOrTopic: 'DefaultProducer', clientId: 'producer', clusterName },
+      ]),
+    );
+    renderWithProviders(<ClientsPage />);
+    await screen.findAllByText(connection.address!);
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    const issues = within(diagnostics).getAllByText('连接记录重复');
+    expect(issues).toHaveLength(2);
+    expect(within(issues[0].closest('tr')!).getByText('所属集群: cluster-a')).toBeInTheDocument();
+    expect(within(issues[1].closest('tr')!).getByText('所属集群: cluster-b')).toBeInTheDocument();
+  });
+
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
       ...connection,

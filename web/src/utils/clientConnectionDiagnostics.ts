@@ -42,6 +42,8 @@ export interface ClientConnectionIssue {
   title: string;
   description: string;
   resource?: string;
+  resourceKey?: string;
+  clusterName?: string;
   clientId?: string;
   evidence: string[];
   recommendation: string;
@@ -49,6 +51,7 @@ export interface ClientConnectionIssue {
 
 export interface ClientResourceSummary {
   id: string;
+  clusterName: string;
   type: string;
   resource: string;
   connectionCount: number;
@@ -86,6 +89,7 @@ export interface ClientConnectionDiagnostics {
 }
 
 type ConnectionGroup = {
+  clusterName: string;
   type: string;
   resource: string;
   connections: ClientConnection[];
@@ -139,6 +143,8 @@ const issue = (
   recommendation: string,
   options: {
     resource?: string;
+    resourceKey?: string;
+    clusterName?: string;
     clientId?: string;
     evidence?: string[];
     id?: string;
@@ -146,14 +152,20 @@ const issue = (
 ): ClientConnectionIssue => ({
   id:
     options.id ??
-    [options.resource, options.clientId, code, ...(options.evidence ?? [])]
-      .filter(Boolean)
-      .join(':'),
+    JSON.stringify([
+      options.clusterName,
+      options.resourceKey ?? options.resource,
+      options.clientId,
+      code,
+      ...(options.evidence ?? []),
+    ]),
   code,
   severity,
   title,
   description,
   resource: options.resource,
+  resourceKey: options.resourceKey,
+  clusterName: options.clusterName,
   clientId: options.clientId,
   evidence: options.evidence ?? [],
   recommendation,
@@ -161,26 +173,38 @@ const issue = (
 
 const connectionIdentity = (connection: ClientConnection): string =>
   JSON.stringify([
+    normalizeText(connection.clusterName),
     normalizeText(connection.type),
     normalizeText(connection.clientId),
     normalizeText(connection.groupOrTopic),
     normalizeText(connection.address),
   ]);
 
-const resourceKey = (connection: ClientConnection): string =>
-  `${normalizeText(connection.type)}:${normalizeText(connection.groupOrTopic)}`;
+// Scope identities use tuples; display names never need to expose these keys.
+const resourceKey = (clusterName: string, type: string, resource: string): string =>
+  JSON.stringify([normalizeText(clusterName), normalizeText(type), normalizeText(resource)]);
+
+const connectionResourceKey = (connection: ClientConnection): string =>
+  resourceKey(connection.clusterName, connection.type, connection.groupOrTopic);
+
+const clientKey = (connection: ClientConnection): string =>
+  JSON.stringify([normalizeText(connection.clusterName), normalizeText(connection.clientId)]);
+
+const addressKey = (connection: ClientConnection): string =>
+  JSON.stringify([normalizeText(connection.clusterName), normalizeText(connection.address)]);
 
 const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] => {
   const groups = new Map<string, ConnectionGroup>();
 
   connections.forEach((connection) => {
-    const key = resourceKey(connection);
+    const key = connectionResourceKey(connection);
     const group = groups.get(key);
     if (group) {
       group.connections.push(connection);
       return;
     }
     groups.set(key, {
+      clusterName: normalizeText(connection.clusterName),
       type: normalizeText(connection.type),
       resource: normalizeText(connection.groupOrTopic),
       connections: [connection],
@@ -189,7 +213,9 @@ const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] =>
 
   return [...groups.values()].sort(
     (left, right) =>
-      left.type.localeCompare(right.type) || left.resource.localeCompare(right.resource),
+      left.clusterName.localeCompare(right.clusterName) ||
+      left.type.localeCompare(right.type) ||
+      left.resource.localeCompare(right.resource),
   );
 };
 
@@ -240,16 +266,18 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
   const identityCounts = new Map<string, number>();
 
   connections.forEach((connection) => {
-    const clientId = normalizeText(connection.clientId);
-    const existing = connectionsByClient.get(clientId) ?? [];
+    const key = clientKey(connection);
+    const existing = connectionsByClient.get(key) ?? [];
     existing.push(connection);
-    connectionsByClient.set(clientId, existing);
+    connectionsByClient.set(key, existing);
 
     const identity = connectionIdentity(connection);
     identityCounts.set(identity, (identityCounts.get(identity) ?? 0) + 1);
   });
 
-  connectionsByClient.forEach((clientConnections, clientId) => {
+  connectionsByClient.forEach((clientConnections) => {
+    const clientId = normalizeText(clientConnections[0].clientId);
+    const clusterName = normalizeText(clientConnections[0].clusterName);
     const addresses = uniqueSorted(clientConnections.map((connection) => connection.address));
     if (addresses.length > 1) {
       issues.push(
@@ -261,6 +289,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
           '检查客户端 instanceName/clientId 配置，确保同一进程实例使用唯一标识。',
           {
             clientId,
+            clusterName,
             evidence: addresses,
           },
         ),
@@ -270,7 +299,7 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   identityCounts.forEach((count, identity) => {
     if (count <= 1) return;
-    const [, clientId, resource, address]: string[] = JSON.parse(identity);
+    const [clusterName, type, clientId, resource, address]: string[] = JSON.parse(identity);
     issues.push(
       issue(
         'EXACT_DUPLICATE_CONNECTION',
@@ -281,6 +310,8 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
         {
           clientId,
           resource,
+          resourceKey: resourceKey(clusterName, type, resource),
+          clusterName,
           evidence: [`address=${address}`, `count=${count}`],
           id: `${identity}:EXACT_DUPLICATE_CONNECTION`,
         },
@@ -296,6 +327,8 @@ const addUnknownFieldIssues = (
   connections.forEach((connection, index) => {
     const clientId = normalizeText(connection.clientId);
     const resource = normalizeText(connection.groupOrTopic);
+    const scopedResource = connectionResourceKey(connection);
+    const clusterName = normalizeText(connection.clusterName);
     const protocol = normalizeText(connection.protocol);
     const language = normalizeText(connection.language);
     const version = normalizeText(connection.version);
@@ -316,6 +349,8 @@ const addUnknownFieldIssues = (
           {
             clientId,
             resource,
+            resourceKey: scopedResource,
+            clusterName,
             evidence: [`protocol=${protocol}`],
             id: `${index}:UNKNOWN_PROTOCOL`,
           },
@@ -334,6 +369,8 @@ const addUnknownFieldIssues = (
           {
             clientId,
             resource,
+            resourceKey: scopedResource,
+            clusterName,
             evidence: [`language=${language}`],
             id: `${index}:UNKNOWN_LANGUAGE`,
           },
@@ -352,6 +389,8 @@ const addUnknownFieldIssues = (
           {
             clientId,
             resource,
+            resourceKey: scopedResource,
+            clusterName,
             evidence: [`version=${version}`],
             id: `${index}:UNKNOWN_VERSION`,
           },
@@ -370,6 +409,8 @@ const addUnknownFieldIssues = (
           {
             clientId,
             resource,
+            resourceKey: scopedResource,
+            clusterName,
             evidence: [connection.connectedAt],
             id: `${index}:INVALID_CONNECTION_TIME`,
           },
@@ -391,6 +432,7 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
     const clients = uniqueSorted(group.connections.map((connection) => connection.clientId));
     const addresses = uniqueSorted(group.connections.map((connection) => connection.address));
     const resource = `${group.type}:${group.resource}`;
+    const scopedResource = resourceKey(group.clusterName, group.type, group.resource);
 
     if (protocols.length > 1) {
       issues.push(
@@ -402,6 +444,8 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '确认该资源是否处于协议迁移期，并分别检查 Proxy 与 Broker 侧连接状态。',
           {
             resource,
+            resourceKey: scopedResource,
+            clusterName: group.clusterName,
             evidence: protocols,
           },
         ),
@@ -418,6 +462,8 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '按资源维度收敛客户端 SDK 版本，升级后再次确认连接清单。',
           {
             resource,
+            resourceKey: scopedResource,
+            clusterName: group.clusterName,
             evidence: versions,
           },
         ),
@@ -439,6 +485,8 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '为关键 Consumer Group 保持至少两个实例在线，并确认负载均衡后队列分配正常。',
           {
             resource,
+            resourceKey: scopedResource,
+            clusterName: group.clusterName,
             evidence: [`address=${addresses[0]}`],
           },
         ),
@@ -455,8 +503,10 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
           '记录各语言 SDK 的目标版本矩阵，避免只按单一语言判断升级完成度。',
           {
             resource,
+            resourceKey: scopedResource,
+            clusterName: group.clusterName,
             evidence: [...languages, ...versions],
-            id: `${resource}:MIXED_LANGUAGE_VERSION_RESOURCE`,
+            id: `${scopedResource}:MIXED_LANGUAGE_VERSION_RESOURCE`,
           },
         ),
       );
@@ -468,31 +518,39 @@ const addAddressConcentrationIssues = (
   connections: ClientConnection[],
   issues: ClientConnectionIssue[],
 ) => {
-  if (connections.length < 4) return;
-
-  const addressCounts = countBy(connections.map((connection) => connection.address));
-  const threshold = Math.max(4, Math.ceil(connections.length * 0.5));
-
-  addressCounts.forEach((count, address) => {
-    if (count < threshold) return;
-    issues.push(
-      issue(
-        'ADDRESS_CONCENTRATION',
-        'warning',
-        '连接集中在单一地址',
-        '较多客户端连接集中在同一个地址，主机或网关故障会影响多个生产或消费链路。',
-        '检查该地址上的客户端部署密度，必要时拆分实例或调整负载分布。',
-        {
-          evidence: [`${address}: ${count}/${connections.length}`],
-          id: `${address}:ADDRESS_CONCENTRATION`,
-        },
-      ),
-    );
+  const clusters = new Map<string, ClientConnection[]>();
+  connections.forEach((connection) => {
+    const clusterName = normalizeText(connection.clusterName);
+    const rows = clusters.get(clusterName) ?? [];
+    rows.push(connection);
+    clusters.set(clusterName, rows);
+  });
+  clusters.forEach((rows, clusterName) => {
+    if (rows.length < 4) return;
+    const addressCounts = countBy(rows.map((connection) => connection.address));
+    const threshold = Math.max(4, Math.ceil(rows.length * 0.5));
+    addressCounts.forEach((count, address) => {
+      if (count < threshold) return;
+      issues.push(
+        issue(
+          'ADDRESS_CONCENTRATION',
+          'warning',
+          '连接集中在单一地址',
+          '较多客户端连接集中在同一个地址，主机或网关故障会影响多个生产或消费链路。',
+          '检查该地址上的客户端部署密度，必要时拆分实例或调整负载分布。',
+          {
+            clusterName,
+            evidence: [`${address}: ${count}/${rows.length}`],
+            id: JSON.stringify([clusterName, address, 'ADDRESS_CONCENTRATION']),
+          },
+        ),
+      );
+    });
   });
 };
 
 const issuesForResource = (issues: ClientConnectionIssue[], resource: string) =>
-  issues.filter((issue) => issue.resource === resource);
+  issues.filter((issue) => issue.resourceKey === resource);
 
 const buildResourceSummaries = (
   groups: ConnectionGroup[],
@@ -500,10 +558,11 @@ const buildResourceSummaries = (
 ): ClientResourceSummary[] =>
   groups
     .map((group) => {
-      const resource = `${group.type}:${group.resource}`;
-      const resourceIssues = issuesForResource(issues, resource);
+      const scopedResource = resourceKey(group.clusterName, group.type, group.resource);
+      const resourceIssues = issuesForResource(issues, scopedResource);
       return {
-        id: resource,
+        id: scopedResource,
+        clusterName: group.clusterName,
         type: group.type,
         resource: group.resource,
         connectionCount: group.connections.length,
@@ -528,6 +587,7 @@ const buildResourceSummaries = (
       return (
         statusOrder[left.status] - statusOrder[right.status] ||
         right.issueCount - left.issueCount ||
+        left.clusterName.localeCompare(right.clusterName) ||
         left.resource.localeCompare(right.resource)
       );
     });
@@ -540,8 +600,8 @@ const buildSummary = (
   const addressConcentrationIssues = issues.filter((item) => item.code === 'ADDRESS_CONCENTRATION');
   return {
     totalConnections: connections.length,
-    uniqueClientCount: uniqueSorted(connections.map((connection) => connection.clientId)).length,
-    uniqueAddressCount: uniqueSorted(connections.map((connection) => connection.address)).length,
+    uniqueClientCount: new Set(connections.map(clientKey)).size,
+    uniqueAddressCount: new Set(connections.map(addressKey)).size,
     resourceCount: resources.length,
     partialConnectionCount: connections.filter((connection) => connection.partial).length,
     mixedProtocolResourceCount: resources.filter(
@@ -600,6 +660,7 @@ export const analyzeClientConnections = (
   // from a present-but-unrecognized value; every other consumer normalizes at point of use.
   const normalizedConnections = connections.map((connection) => ({
     ...connection,
+    clusterName: normalizeText(connection.clusterName),
     clientId: normalizeText(connection.clientId),
     type: normalizeText(connection.type),
     groupOrTopic: normalizeText(connection.groupOrTopic),

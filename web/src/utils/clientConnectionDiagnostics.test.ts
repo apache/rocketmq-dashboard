@@ -340,3 +340,144 @@ it.each([null, undefined, '', '   ', '-', 'unknown'])(
     });
   },
 );
+describe('physical cluster scope', () => {
+  const producer = (overrides: Partial<ClientConnection> = {}): ClientConnection =>
+    connection({
+      clientId: 'producer',
+      type: 'Producer',
+      groupOrTopic: 'DefaultProducer',
+      protocol: 'Remoting',
+      address: '10.0.0.1:40000',
+      language: 'Java',
+      version: 'V5_0_0',
+      clusterName: 'cluster-a',
+      ...overrides,
+    });
+
+  it('does not combine same-named producer resources from independent clusters Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer(),
+      producer({
+        clientId: 'producer-b',
+        clusterName: 'cluster-b',
+        address: '10.0.0.2:40000',
+        version: 'V5_1_0',
+      }),
+    ]);
+    expect(diagnostics.summary.resourceCount).toBe(2);
+    expect(diagnostics.summary.mixedVersionResourceCount).toBe(0);
+    expect(diagnostics.issues).toEqual([]);
+    expect(diagnostics.resources.map((resource) => resource.clusterName)).toEqual([
+      'cluster-a',
+      'cluster-b',
+    ]);
+    expect(new Set(diagnostics.resources.map((resource) => resource.id)).size).toBe(2);
+  });
+
+  it('does not collide same client IDs from independent clusters Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer(),
+      producer({ clusterName: 'cluster-b', address: '10.0.0.2:40000' }),
+    ]);
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('CLIENT_ID_COLLISION');
+    expect(diagnostics.summary.uniqueClientCount).toBe(2);
+  });
+
+  it('does not merge duplicate identities or distinct counts across clusters Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer(),
+      producer(),
+      producer({ clusterName: 'cluster-b' }),
+    ]);
+    expect(diagnostics.summary).toMatchObject({
+      totalConnections: 3,
+      resourceCount: 2,
+      uniqueClientCount: 2,
+      uniqueAddressCount: 2,
+    });
+    const duplicates = diagnostics.issues.filter(
+      (issue) => issue.code === 'EXACT_DUPLICATE_CONNECTION',
+    );
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]).toMatchObject({
+      clusterName: 'cluster-a',
+      evidence: ['address=10.0.0.1:40000', 'count=2'],
+    });
+    expect(
+      diagnostics.resources.find((resource) => resource.clusterName === 'cluster-a'),
+    ).toMatchObject({ status: 'healthy', issueCount: 1 });
+    expect(
+      diagnostics.resources.find((resource) => resource.clusterName === 'cluster-b'),
+    ).toMatchObject({ status: 'healthy', issueCount: 0 });
+  });
+
+  it('retains same-cluster version and ID collision evidence Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer(),
+      producer({ address: '10.0.0.2:40000', version: 'V5_1_0' }),
+    ]);
+    expect(diagnostics.summary.resourceCount).toBe(1);
+    expect(diagnostics.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(['MIXED_VERSION_RESOURCE', 'CLIENT_ID_COLLISION']),
+    );
+  });
+
+  it('assigns per-row metadata issues to their own cluster resource Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer({ protocol: null }),
+      producer({ clusterName: 'cluster-b' }),
+    ]);
+    expect(
+      diagnostics.resources.find((resource) => resource.clusterName === 'cluster-a'),
+    ).toMatchObject({ status: 'warning', issueCount: 1 });
+    expect(
+      diagnostics.resources.find((resource) => resource.clusterName === 'cluster-b'),
+    ).toMatchObject({ status: 'healthy', issueCount: 0 });
+  });
+
+  it('keeps missing cluster values in a consistent fallback scope Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer({ clusterName: '' }),
+      producer({ clusterName: '   ', clientId: 'producer-b', address: '10.0.0.2:40000' }),
+    ]);
+    expect(diagnostics.summary.resourceCount).toBe(1);
+    expect(diagnostics.resources[0].clusterName).toBe('unknown');
+  });
+
+  it('preserves tuple field boundaries when cluster or resource names contain delimiters Test', () => {
+    const diagnostics = analyzeClientConnections([
+      producer({ clusterName: 'a|b', groupOrTopic: 'c' }),
+      producer({ clusterName: 'a', groupOrTopic: 'b|c' }),
+    ]);
+    expect(diagnostics.summary.resourceCount).toBe(2);
+    expect(new Set(diagnostics.resources.map((resource) => resource.id)).size).toBe(2);
+    expect(diagnostics.issues).toEqual([]);
+  });
+
+  it('does not infer address concentration by pooling independent cluster samples Test', () => {
+    const diagnostics = analyzeClientConnections(
+      ['cluster-a', 'cluster-b'].flatMap((clusterName) =>
+        Array.from({ length: 2 }, (_, index) =>
+          producer({ clusterName, clientId: `${clusterName}-${index}` }),
+        ),
+      ),
+    );
+    expect(diagnostics.issues.map((issue) => issue.code)).not.toContain('ADDRESS_CONCENTRATION');
+  });
+
+  it('keeps concentration evidence and issue identities distinct for each cluster Test', () => {
+    const diagnostics = analyzeClientConnections(
+      ['cluster-a', 'cluster-b'].flatMap((clusterName) =>
+        Array.from({ length: 4 }, (_, index) =>
+          producer({ clusterName, clientId: `${clusterName}-${index}` }),
+        ),
+      ),
+    );
+    const issues = diagnostics.issues.filter((issue) => issue.code === 'ADDRESS_CONCENTRATION');
+    expect(issues).toHaveLength(2);
+    expect(new Set(issues.map((issue) => issue.id)).size).toBe(2);
+    expect(issues.map((issue) => issue.clusterName)).toEqual(['cluster-a', 'cluster-b']);
+    expect(issues[0].evidence).toEqual(['10.0.0.1:40000: 4/4']);
+    expect(diagnostics.summary.concentratedAddressCount).toBe(2);
+  });
+});

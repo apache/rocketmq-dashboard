@@ -297,7 +297,7 @@ const ClientsPage = () => {
     const instances = Array.from(
       new Map(
         clusterConnections.map((connection) => [
-          `${connection.type}:${connection.clientId ?? connection.address ?? connection.groupOrTopic}`,
+          JSON.stringify([connection.clusterName, connection.type, connection.clientId ?? connection.address ?? connection.groupOrTopic]),
           connection,
         ]),
       ).values(),
@@ -574,6 +574,13 @@ const ClientsPage = () => {
       ),
     },
     {
+      title: t('clients.cluster'),
+      dataIndex: 'clusterName',
+      key: 'clusterName',
+      width: 160,
+      ellipsis: true,
+    },
+    {
       title: t('clients.diagnosticClients'),
       key: 'clients',
       width: 170,
@@ -687,7 +694,22 @@ const ClientsPage = () => {
       key: 'resource',
       width: 160,
       ellipsis: true,
-      render: (resource?: string) => resource || '-',
+      render: (resource: string | undefined, record) => (
+        <div style={{ minWidth: 0 }}>
+          <Text style={diagnosticCellLine} title={resource || '-'}>
+            {resource || '-'}
+          </Text>
+          {record.clusterName && (
+            <Text
+              type="secondary"
+              style={diagnosticCellLine}
+              title={`${t('clients.cluster')}: ${record.clusterName}`}
+            >
+              {t('clients.cluster')}: {record.clusterName}
+            </Text>
+          )}
+        </div>
+      ),
     },
     {
       title: t('clients.diagnosticEvidence'),
