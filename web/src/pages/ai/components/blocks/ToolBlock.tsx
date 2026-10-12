@@ -97,7 +97,8 @@ function resolveCatalogTool(
   catalog: readonly McpTool[] | undefined,
   tool: string,
 ): McpTool | undefined {
-  if (!catalog || catalog.length === 0) return undefined;
+  if (typeof tool !== 'string' || !tool.trim() || !catalog || catalog.length === 0)
+    return undefined;
   const exact = catalog.find((entry) => entry.name === tool);
   if (exact) return exact;
   const display = toolDisplayName(tool);
@@ -112,7 +113,7 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
   const catalogTool = resolveCatalogTool(toolCatalog, block.tool);
   const running = block.status === 'running';
   const failed = block.status === 'done' && block.success === false;
-  const displayName = toolDisplayName(block.tool);
+  const displayName = toolDisplayName(block.tool) || t('ai.tool.unknownName');
 
   const inputText =
     block.input === null || block.input === undefined
