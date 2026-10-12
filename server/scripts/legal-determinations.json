@@ -488,9 +488,10 @@
    "basis": "POM <licenses>（reactive-streams-1.0.4.pom）"
   },
   "reflections": {
-   "license": "WTFPL",
+   "license": "WTFPL（上游另有 New BSD 可选）",
    "text": "reflections.txt",
-   "basis": "POM <licenses>（reflections-0.9.11.pom）"
+   "basis": "POM <licenses> 双许可 WTFPL / The New BSD License；tag 0.9.11 只发布了 WTFPL 全文，故收录它",
+   "review": "本件由 org.apache.rocketmq:rocketmq-tools:5.5.0 传递引入，我方代码不直接调用。双许可里 New BSD 的全文在 0.9.11 tag 上并不存在（0.10 起改发 Apache-2.0），只有 WTFPL 是上游逐字发布过的，因此收录 WTFPL；WTFPL 未在 ASF 的许可分类表里点名，3.0.0 GA 前请 PMC/法务确认，或改为排除该传递依赖。"
   },
   "webjars-locator-lite": {
    "license": "MIT",

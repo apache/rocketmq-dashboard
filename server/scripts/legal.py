@@ -152,6 +152,11 @@ def add_component(files, components, errors, name, payload, texts, notice, sourc
                 component["license"] = determination["license"]
                 component["basis"] = determination.get("basis", "")
                 component["textSource"] = f"server/{COLLECTED}/{determination['text']}"
+                # Any determination may carry an open question. Surfacing it on every build beats
+                # burying it in a JSON file nobody re-reads.
+                if determination.get("review") and determination["kind"] != "categoryB" and warnings is not None:
+                    warnings.append(f"{name}: {determination['license']} — {determination['review']}")
+                    component["review"] = determination["review"]
                 if determination["kind"] == "categoryB":
                     review = determination.get("review")
                     if not review:
