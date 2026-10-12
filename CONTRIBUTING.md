@@ -37,8 +37,10 @@ Recommended background reading:
   docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-Studio is then available at <http://127.0.0.1:6789> (frontend) and <http://127.0.0.1:8888>
-(backend). See [`deploy/README.md`](deploy/README.md) for the configuration options.
+Studio is then available at <http://127.0.0.1:6789> (frontend, which also proxies `/api` to the
+backend). The backend container listens on 8888 but is only reachable inside the compose network,
+so that URL answers only when you run the backend directly (see below). See
+[`deploy/README.md`](deploy/README.md) for the configuration options.
 
 ### Run the backend only
 

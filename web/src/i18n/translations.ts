@@ -105,6 +105,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'dashboard.clusterHealth': { zh: '集群健康概览', en: 'Cluster Health' },
   'dashboard.clusterName': { zh: '集群名称', en: 'Cluster Name' },
   'dashboard.allInstances': { zh: '全部已配置实例', en: 'All configured instances' },
+  'dashboard.loadFailed': { zh: '仪表盘加载失败', en: 'Failed to load dashboard' },
+  'dashboard.loadFailedDescription': {
+    zh: '无法获取集群概览，请检查网络连接后重试。',
+    en: 'Could not load the cluster overview. Check the connection and retry.',
+  },
   'dashboard.instanceFilter': { zh: '实例筛选', en: 'Instance filter' },
   'dashboard.broker': { zh: 'Broker', en: 'Broker' },
   'dashboard.proxy': { zh: 'Proxy', en: 'Proxy' },
@@ -210,6 +215,10 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'cluster.k8sNamespace': { zh: 'K8s Namespace', en: 'K8s Namespace' },
   'cluster.k8sId': { zh: 'k8s ID', en: 'k8s ID' },
+  'clients.partialScan': {
+    zh: '客户端连接列表不完整：部分查询失败。',
+    en: 'Client connections are incomplete: some queries failed.',
+  },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
   'clients.selectNameserverPlaceholder': { zh: '选择 NameServer', en: 'Select NameServer' },
   'cluster.k8sIdExtra': {
@@ -1344,6 +1353,14 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── System Alerts ───
   'sysAlerts.title': { zh: '系统告警', en: 'System Alerts' },
   'sysAlerts.clearAcked': { zh: '清除已确认', en: 'Clear Acknowledged' },
+  'sysAlerts.clearAckedConfirm': {
+    zh: '清除所有已确认告警？',
+    en: 'Clear every acknowledged alert?',
+  },
+  'sysAlerts.clearAckedConfirmDesc': {
+    zh: '会永久删除全部已确认的系统告警及其通知投递记录，无法撤销。',
+    en: 'Permanently deletes every acknowledged system alert and its notification delivery records. This cannot be undone.',
+  },
   'sysAlerts.acknowledge': { zh: '确认', en: 'Acknowledge' },
   'sysAlerts.severe': { zh: '严重', en: 'Critical' },
   'sysAlerts.warning': { zh: '警告', en: 'Warning' },
@@ -1352,8 +1369,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.acknowledged': { zh: '告警已确认', en: 'Alert Acknowledged' },
   'sysAlerts.cleared': { zh: '已清除所有已确认告警', en: 'Cleared all acknowledged alerts' },
   'sysAlerts.subtitle': {
-    zh: '集群运行告警监控，当前 {n} 条未确认',
-    en: 'Cluster alert monitoring, {n} unacknowledged',
+    zh: '集群运行告警监控，本页 {n} 条未确认',
+    en: 'Cluster alert monitoring, {n} unacknowledged on this page',
   },
   'sysAlerts.firing': { zh: '触发中', en: 'Firing' },
   'sysAlerts.resolved': { zh: '已恢复', en: 'Resolved' },
@@ -1538,6 +1555,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.TOGGLE_ALERT_RULE': { zh: '启停告警规则', en: 'Toggle Alert Rule' },
   'audit.op.DELETE_ALERT_RULE': { zh: '删除告警规则', en: 'Delete Alert Rule' },
   'audit.op.ACKNOWLEDGE_SYSTEM_ALERT': { zh: '确认系统告警', en: 'Acknowledge System Alert' },
+  'audit.op.CREATE_ALERT_SILENCE': { zh: '创建告警静默', en: 'Create Alert Silence' },
+  'audit.op.DELETE_ALERT_SILENCE': { zh: '删除告警静默', en: 'Delete Alert Silence' },
+  'audit.op.IMPORT_CLOUD_INSTANCES': { zh: '导入云端实例', en: 'Import Cloud Instances' },
+  'audit.op.UPDATE_GROUP_SETTINGS': { zh: '更新消费组设置', en: 'Update Group Settings' },
   'audit.op.CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS': {
     zh: '清除已确认告警',
     en: 'Clear Acknowledged Alerts',
@@ -1562,6 +1583,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.res.SETTINGS': { zh: '设置', en: 'Settings' },
   'audit.res.METRICS_DATA_SOURCE': { zh: '指标数据源', en: 'Metrics Data Source' },
   'audit.res.CLOUD_CREDENTIAL': { zh: '云凭据', en: 'Cloud Credential' },
+  'audit.res.ALERT_SILENCE': { zh: '告警静默', en: 'Alert Silence' },
   'audit.res.ALERT_RULE': { zh: '告警规则', en: 'Alert Rule' },
   'audit.res.SYSTEM_ALERT': { zh: '系统告警', en: 'System Alert' },
   'audit.res.K8S_CERTIFICATE': { zh: 'K8s 证书', en: 'K8s Certificate' },
@@ -1689,6 +1711,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.list.search': { zh: '搜索会话标题', en: 'Search conversation titles' },
   'ai.list.empty': { zh: '暂无会话', en: 'No conversations' },
   'ai.list.loadFailed': { zh: '会话列表加载失败', en: 'Failed to load conversations' },
+  'ai.timeline.loadFailed': { zh: '会话记录加载失败', en: 'Failed to load conversation history' },
   'ai.list.columnTitle': { zh: '会话', en: 'Conversation' },
   'ai.list.columnEngine': { zh: '引擎', en: 'Engine' },
   'ai.list.columnModel': { zh: '模型', en: 'Model' },
@@ -1709,7 +1732,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2235,6 +2261,24 @@ const translations: Record<string, Record<Lang, string>> = {
   'topicCompare.export': { zh: '导出结果', en: 'Export results' },
 
   // ─── Consumer Page ───
+  'consumer.pageSubtitle': {
+    zh: '管理消费者组订阅关系与消费进度，共 {count} 个 Group',
+    en: 'Manage consumer-group subscriptions and progress, {count} groups in total',
+  },
+  'consumer.totalGroups': { zh: '共 {count} 个 Group', en: '{count} groups in total' },
+  'consumer.importDone': { zh: '已导入 {created} 个 Group', en: 'Imported {created} groups' },
+  'consumer.importDoneSkipped': {
+    zh: '已导入 {created} 个 Group，{invalid} 行无效已跳过',
+    en: 'Imported {created} groups; {invalid} invalid rows were skipped',
+  },
+  'consumer.importDoneFailed': {
+    zh: '已导入 {created} 个 Group，{failed} 个失败',
+    en: 'Imported {created} groups; {failed} failed',
+  },
+  'consumer.importFailed': {
+    zh: '{failed} 个 Group 导入失败',
+    en: 'Failed to import {failed} groups',
+  },
   'consumer.name': { zh: 'Group 名称', en: 'Group Name' },
   'consumer.subType': { zh: '订阅组类型', en: 'Sub Type' },
   'consumer.subMode': { zh: '订阅模式', en: 'Sub Mode' },
@@ -2270,6 +2314,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.filterAll': { zh: '全量', en: 'Full' },
   'consumer.filterTag': { zh: 'Tag 过滤', en: 'Tag Filter' },
   'consumer.filterSql92': { zh: 'SQL92 过滤', en: 'SQL92 Filter' },
+  'consumer.filterClassFilter': { zh: 'Class 过滤', en: 'Class Filter' },
   'consumer.expression': { zh: '订阅表达式', en: 'Expression' },
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },
@@ -3510,6 +3555,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.ttlRemaining': { zh: 'TTL 剩余', en: 'TTL Remaining' },
   'liteTopic.totalMessages': { zh: '总消息数', en: 'Total Messages' },
   'liteTopic.consumedMessages': { zh: '已消费消息', en: 'Consumed Messages' },
+  'liteTopic.consumedTruncated.title': {
+    zh: '已消费量与总消息数只覆盖部分 lite topic',
+    en: 'Consumed and total counts cover only part of the session',
+  },
+  'liteTopic.consumedTruncated.description': {
+    zh: '该会话的 lite topic 数量超过单次统计上限，已消费量与总消息数只统计了其中一部分（显示为下界），待消费量是完整的；消费进度因此不显示。',
+    en: 'This session has more lite topics than one scan covers, so the consumed and total message counts cover only part of them and are shown as lower bounds; the pending count is complete. The consumption progress is hidden for that reason.',
+  },
   'liteTopic.pendingMessages': { zh: '待消费消息', en: 'Pending Messages' },
   'liteTopic.consumptionRate': { zh: '消费速率', en: 'Consumption Rate' },
   'liteTopic.active': { zh: '活跃', en: 'Active' },
@@ -3547,7 +3600,12 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Enter new TTL value (ms)',
   },
   'liteTopic.extendTtlModalTitle': { zh: '延长 TTL', en: 'Extend TTL' },
-  'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
+  'liteTopic.instance': { zh: '所属实例', en: 'Owning Instance' },
+  'liteTopic.instancePlaceholder': { zh: '选择所属实例', en: 'Select the owning instance' },
+  'liteTopic.instanceRequired': {
+    zh: '请选择 Topic 所属的实例',
+    en: 'Select the instance that owns the topic',
+  },
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
   'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
