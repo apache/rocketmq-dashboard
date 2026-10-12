@@ -221,6 +221,23 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void listLiteTopicsShouldReportUnknownBacklogWhenGroupLagReturnsNoBodyTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(PARENT, 30, 2, GROUP));
+        when(admin.getParentTopicInfo(BROKER_A, PARENT)).thenReturn(parentTopicInfo(PARENT, 30, 2));
+        // An empty response body is the other half of the unknown contract: the read "succeeded"
+        // but carries no lag, which must not be aggregated as a measured 0.
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(null);
+        when(admin.examineConsumerConnectionInfo(GROUP)).thenReturn(new ConsumerConnection());
+
+        List<LiteTopicSummary> summaries = provider.listLiteTopics(null, null);
+
+        assertThat(summaries).singleElement().satisfies(summary -> assertThat(summary.getTotalBacklog())
+                .as("an empty group-lag body must surface as unknown, not as a measured 0")
+                .isNull());
+    }
+
+    @Test
     void listLiteTopicsShouldNotReportPartialBacklogWhenOneGroupFailsTest() throws Exception {
         String otherGroup = "lite-group-2";
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));

@@ -3533,6 +3533,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.topicCount': { zh: 'Topic 数', en: 'Topic Count' },
   'liteTopic.consumers': { zh: '消费者', en: 'Consumers' },
   'liteTopic.backlog': { zh: '积压', en: 'Backlog' },
+  'liteTopic.backlogUnknownTooltip': {
+    zh: '“-”表示积压无法读取（例如 Broker 查询失败），并不代表没有积压；未知积压的行排序时始终排在最后。',
+    en: 'A "-" means the backlog could not be read (e.g. the broker query failed) - it is not zero. Rows with an unknown backlog always sort last.',
+  },
   'liteTopic.avgTtl': { zh: '平均 TTL', en: 'Avg TTL' },
   'liteTopic.lastActive': { zh: '最后活跃', en: 'Last Active' },
   'liteTopic.status': { zh: '状态', en: 'Status' },

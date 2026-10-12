@@ -45,7 +45,10 @@ tools:
               consumerCount:
                 type: integer
               totalBacklog:
-                type: integer
+                type:
+                  - integer
+                  - 'null'
+                description: "null means the backlog could not be read, not zero."
               averageTTL:
                 type: integer
               ttlStatus:

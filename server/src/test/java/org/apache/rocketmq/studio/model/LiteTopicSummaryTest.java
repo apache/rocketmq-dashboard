@@ -48,8 +48,21 @@ class LiteTopicSummaryTest {
     void aggregationHelpersShouldHandleUnsetConsumerCount() {
         LiteTopicSummary summary = new LiteTopicSummary();
         summary.setTopicCount(5);
+        summary.setTotalBacklog(0L);
 
         assertThat(summary.getConsumerDensity()).isZero();
         assertThat(summary.isEmptyAggregation()).isTrue();
+    }
+
+    @Test
+    void emptyAggregationShouldNotTreatUnknownBacklogAsEmptyTest() {
+        LiteTopicSummary summary = new LiteTopicSummary();
+        summary.setTopicCount(5);
+        summary.setConsumerCount(0);
+        // totalBacklog left null: the broker backlog could not be read.
+
+        assertThat(summary.isEmptyAggregation())
+                .as("an unreadable backlog must not be classified as an empty aggregation")
+                .isFalse();
     }
 }

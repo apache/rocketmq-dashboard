@@ -22,6 +22,7 @@ import {
   Input,
   Select,
   Tag,
+  Tooltip,
   Modal,
   Drawer,
   Card,
@@ -94,7 +95,7 @@ const LITE_TOPIC_EXPORT_COLUMNS: CsvColumn<LiteTopicExportRow>[] = [
   { header: 'Topic Pattern', value: (item) => item.topicPattern },
   { header: 'Topic Count', value: (item) => item.topicCount },
   { header: 'Consumer Count', value: (item) => item.consumerCount },
-  { header: 'Total Backlog', value: (item) => item.totalBacklog },
+  { header: 'Total Backlog', value: (item) => item.totalBacklog ?? 'UNKNOWN' },
   { header: 'Average TTL', value: (item) => formatDuration(item.averageTTL) },
   { header: 'TTL Status', value: (item) => item.ttlStatusLabel },
   { header: 'Last Active Time', value: (item) => formatTime(item.lastActiveTime) },
@@ -434,7 +435,14 @@ const LiteTopicPage: React.FC = () => {
       sorter: (a, b) => (a.consumerCount || 0) - (b.consumerCount || 0),
     },
     {
-      title: t('liteTopic.backlog'),
+      title: (
+        <span>
+          {t('liteTopic.backlog')}
+          <Tooltip title={t('liteTopic.backlogUnknownTooltip')}>
+            <Info size={14} style={{ marginInlineStart: 4, color: '#9CA3AF', cursor: 'help' }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'totalBacklog',
       key: 'totalBacklog',
       render: (val?: number) => {
@@ -445,7 +453,19 @@ const LiteTopicPage: React.FC = () => {
         const color = val > 10000 ? '#ff4d4f' : val > 0 ? '#fa8c16' : '#52c41a';
         return <span style={{ color, fontWeight: 500 }}>{val.toLocaleString()}</span>;
       },
-      sorter: (a, b) => (a.totalBacklog || 0) - (b.totalBacklog || 0),
+      sorter: (a, b, order) => {
+        const left = a.totalBacklog;
+        const right = b.totalBacklog;
+        if (left == null && right == null) return 0;
+        // An unreadable backlog sorts last in both directions: it must neither hide among the
+        // quiet topics nor claim the top of the pile. antd negates the comparator when sorting
+        // descending, so flip the result here to keep unknown rows at the bottom either way.
+        if (left == null || right == null) {
+          const unknownRanksLast = left == null ? 1 : -1;
+          return order === 'descend' ? -unknownRanksLast : unknownRanksLast;
+        }
+        return left - right;
+      },
     },
     {
       title: t('liteTopic.avgTtl'),
