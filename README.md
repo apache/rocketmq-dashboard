@@ -120,6 +120,11 @@ therefore serves the hosted agent, a developer typing `rmqctl topic list`, and a
 pointed at the output of `rmqctl mcp config`. See
 [docs/ai-agent-architecture.md](docs/ai-agent-architecture.md) for the design and its trade-offs.
 
+Standalone CLI commands support `--output table`, `json`, and `yaml`. Table cells
+show ASCII control characters as visible escapes (`\t`, `\n`, `\r`, or `\xNN`)
+so a context name, header, or returned value cannot split a row or send terminal
+control sequences. Stored values and JSON/YAML output keep the original content.
+
 - **Conversations persist server-side** and are browsable from the history drawer. Reloading or
   reconnecting replays exactly what the live stream rendered, because both paths reduce to the same
   block model.
