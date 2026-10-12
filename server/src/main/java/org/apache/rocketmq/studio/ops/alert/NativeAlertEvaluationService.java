@@ -54,6 +54,13 @@ public class NativeAlertEvaluationService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void evaluate(AlertRuleVO rule, MetricSample sample) {
         MetricSample evaluatedSample = aggregate(rule, sample);
+        // Aggregation can block while management commits. A current locking read, rather than
+        // another snapshot read, also sees those commits under MySQL REPEATABLE READ.
+        Optional<AlertRuleVO> current = NativeAlertRulePolicy.lockMatchingRule(alertRepository, rule);
+        if (current.isEmpty()) {
+            return;
+        }
+        rule = current.get();
         AlertEvaluationResult evaluation = evaluator.evaluate(rule, evaluatedSample);
         if (!evaluation.matches()) {
             return;
