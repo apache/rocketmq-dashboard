@@ -54,6 +54,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -350,6 +352,119 @@ class RocketMQDLQProviderTest {
                     assertThat(exception.getMessage()).contains("different cluster");
                 });
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, MessageConst.PROPERTY_RETRY_TOPIC})
+    void rangeResendShouldRejectInferredForeignTargetsBeforeSendingAnyMessageTest(String originProperty)
+            throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageExt local = deadLetterWithOrigin("local-msg", dlqTopic, originProperty, "local-topic");
+        MessageExt foreign = deadLetterWithOrigin("foreign-msg", dlqTopic, originProperty, "foreign-topic");
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+        when(pullConsumer.searchOffset(eq(queue), anyLong())).thenReturn(0L, 2L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), anyInt()))
+                .thenReturn(new PullResult(PullStatus.FOUND, 2L, 0L, 2L, List.of(local, foreign)));
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("local-topic")).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("foreign-topic")).thenReturn(routeInCluster("cluster-b"));
+
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(409);
+                    assertThat(exception.getMessage()).contains("foreign-topic", "different cluster");
+                });
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verifyNoInteractions(dlqProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, MessageConst.PROPERTY_RETRY_TOPIC})
+    void selectedResendShouldRejectInferredForeignTargetsBeforeSendingAnyMessageTest(String originProperty)
+            throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(adminExt.viewMessage(dlqTopic, "local-msg"))
+                .thenReturn(deadLetterWithOrigin("local-msg", dlqTopic, originProperty, "local-topic"));
+        when(adminExt.viewMessage(dlqTopic, "foreign-msg"))
+                .thenReturn(deadLetterWithOrigin("foreign-msg", dlqTopic, originProperty, "foreign-topic"));
+        when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("local-topic")).thenReturn(routeInCluster("cluster-a"));
+        when(adminExt.examineTopicRouteInfo("foreign-topic")).thenReturn(routeInCluster("cluster-b"));
+
+        assertThatThrownBy(() -> provider.resendMessages(
+                "instance-a", "group-a", List.of("local-msg", "foreign-msg"), null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(409);
+                    assertThat(exception.getMessage()).contains("foreign-topic", "different cluster");
+                });
+        verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
+        verifyNoInteractions(dlqProducer);
+    }
+
+    @Test
+    void originalResendShouldAllowSameClusterTargetsAndPreserveMissingOriginFailuresTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(adminExt.viewMessage(dlqTopic, "origin-msg")).thenReturn(deadLetterWithOrigin(
+                "origin-msg", dlqTopic, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders"));
+        when(adminExt.viewMessage(dlqTopic, "retry-msg")).thenReturn(deadLetterWithOrigin(
+                "retry-msg", dlqTopic, MessageConst.PROPERTY_RETRY_TOPIC, "orders"));
+        when(adminExt.viewMessage(dlqTopic, "missing-origin-msg")).thenReturn(deadLetterWithOrigin(
+                "missing-origin-msg", dlqTopic, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, " "));
+        lenient().when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        lenient().when(adminExt.examineTopicRouteInfo("orders")).thenReturn(routeInCluster("cluster-a"));
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+        when(dlqProducer.send(any(Message.class))).thenReturn(sendResult);
+
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a",
+                List.of("origin-msg", "retry-msg", "missing-origin-msg"), null);
+
+        assertThat(result.getMatched()).isEqualTo(3);
+        assertThat(result.getResent()).isEqualTo(2);
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getOutcome()).isEqualTo("PARTIAL");
+        assertThat(result.getFailures()).singleElement().satisfies(failure -> {
+            assertThat(failure.getMsgId()).isEqualTo("missing-origin-msg");
+            assertThat(failure.getReason()).isEqualTo("No target topic could be resolved");
+        });
+        ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
+        verify(dlqProducer, times(2)).send(sent.capture());
+        assertThat(sent.getAllValues()).extracting(Message::getTopic).containsExactly("orders", "orders");
+        verify(adminExt).examineTopicRouteInfo("orders");
+    }
+
+    @Test
+    void originalResendShouldLeaveUnresolvableRoutesToTheExistingSendFailureTest() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        when(adminExt.viewMessage(dlqTopic, "origin-msg")).thenReturn(deadLetterWithOrigin(
+                "origin-msg", dlqTopic, MessageConst.PROPERTY_DLQ_ORIGIN_TOPIC, "orders"));
+        lenient().when(adminExt.examineTopicRouteInfo(dlqTopic)).thenReturn(routeInCluster("cluster-a"));
+        lenient().when(adminExt.examineTopicRouteInfo("orders"))
+                .thenThrow(new MQClientException("No topic route info for orders", null));
+        when(dlqProducer.send(any(Message.class)))
+                .thenThrow(new MQClientException("No topic route info for orders", null));
+
+        DLQResendResultVO result = provider.resendMessages(
+                "instance-a", "group-a", List.of("origin-msg"), null);
+
+        assertThat(result.getResent()).isZero();
+        assertThat(result.getFailed()).isEqualTo(1);
+        assertThat(result.getOutcome()).isEqualTo("FAILED");
+        assertThat(result.getFailures()).singleElement().satisfies(failure ->
+                assertThat(failure.getReason()).contains("No topic route info for orders"));
+        verify(dlqProducer).send(any(Message.class));
+    }
+
+    private static MessageExt deadLetterWithOrigin(String msgId, String dlqTopic,
+                                                  String originProperty, String originTopic) {
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic(dlqTopic);
+        message.setStoreTimestamp(150L);
+        message.setBody(new byte[] {1, 2, 3});
+        MessageAccessor.putProperty(message, originProperty, originTopic);
+        return message;
     }
 
     private static TopicRouteData routeInCluster(String cluster) {
