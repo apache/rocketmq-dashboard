@@ -1649,3 +1649,52 @@ describe('metrics history source restoration', () => {
     },
   );
 });
+
+describe('custom PromQL keyboard submission', () => {
+  it.each([
+    { name: 'native composition', isComposing: true, keyCode: 13 },
+    { name: 'WebKit composition confirmation', isComposing: false, keyCode: 229 },
+  ])('keepsImeConfirmationAsEditing ($name) Test', async ({ isComposing, keyCode }) => {
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const input = screen.getByRole('textbox', { name: '自定义查询' });
+    const promql = 'sum(rocketmq_messages_in_total{environment="生产"})';
+    fireEvent.change(input, { target: { value: promql } });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    fireEvent.compositionStart(input);
+    // WebKit can end composition before dispatching the confirming Enter.
+    if (!isComposing) fireEvent.compositionEnd(input);
+    const notCancelled = fireEvent.keyDown(input, {
+      key: 'Enter',
+      code: 'Enter',
+      isComposing,
+      keyCode,
+    });
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount);
+    expect(notCancelled).toBe(true);
+    expect(input).toHaveValue(promql);
+    if (isComposing) fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', isComposing: false, keyCode: 13 });
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 1));
+    expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: promql }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+  });
+
+  it('preservesNormalEnterShiftEnterAndRunButtonTest', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const input = screen.getByRole('textbox', { name: '自定义查询' });
+    fireEvent.change(input, { target: { value: 'sum(rocketmq_messages_in_total)' } });
+    const queryCount = vi.mocked(queryMetrics).mock.calls.length;
+    expect(fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })).toBe(true);
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount);
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+    expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 1);
+    fireEvent.change(input, { target: { value: 'sum(up)' } });
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 2));
+    expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'sum(up)' }));
+  });
+});
