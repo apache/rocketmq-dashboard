@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  parseAlertTimestamp,
 } from './format';
 
 describe('formatBytes', () => {
@@ -96,6 +97,33 @@ describe('formatBytes', () => {
     expect(formatRelativeTime(now - 5 * 60_000, 'en', en, now)).toBe('5 min ago');
     expect(formatRelativeTime(now - 2 * 60 * 60_000, 'zh', zh, now)).toBe('13:30');
     expect(formatTimeOfDay(now)).toBe('15:30');
+  });
+});
+
+describe('parseAlertTimestamp', () => {
+  it('parses an offset-less alert timestamp as UTC regardless of the browser zone', () => {
+    // Expressed against Date.parse with an explicit Z so the expectation cannot drift with TZ.
+    expect(parseAlertTimestamp('2026-08-23T10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23 10:35:38')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+  });
+
+  it('honors an explicit offset instead of assuming UTC', () => {
+    expect(parseAlertTimestamp('2026-08-23T10:35:38Z')).toBe(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp('2026-08-23T10:35:38+08:00')).toBe(
+      Date.parse('2026-08-23T10:35:38+08:00'),
+    );
+    expect(parseAlertTimestamp('2026-08-23T10:35:38-05:00')).toBe(
+      Date.parse('2026-08-23T10:35:38-05:00'),
+    );
+  });
+
+  it('passes Date objects through and reports unusable values as NaN', () => {
+    const date = new Date(Date.parse('2026-08-23T10:35:38Z'));
+    expect(parseAlertTimestamp(date)).toBe(date.getTime());
+    expect(parseAlertTimestamp('not a timestamp')).toBeNaN();
+    expect(parseAlertTimestamp('')).toBeNaN();
+    expect(parseAlertTimestamp(null)).toBeNaN();
+    expect(parseAlertTimestamp(undefined)).toBeNaN();
   });
 });
 
