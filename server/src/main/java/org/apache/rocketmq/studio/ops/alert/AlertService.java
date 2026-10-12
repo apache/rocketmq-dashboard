@@ -200,7 +200,7 @@ public class AlertService {
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
         String previousSemanticFingerprint = alertRepository.findRuleById(id)
-                .map(AlertRuleSemanticFingerprint::of)
+                .map(AlertRuleSemanticFingerprint::evaluationIdentity)
                 .orElse(null);
         NativeAlertRulePolicy.validate(rule);
         rejectDuplicateSemanticRule(rule, id);
@@ -209,7 +209,7 @@ public class AlertService {
         }
         // Disabled rules are excluded from evaluation/reconciliation; their runtime must be purged.
         if (!rule.isEnabled() || previousSemanticFingerprint == null
-                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.of(rule))) {
+                || !previousSemanticFingerprint.equals(AlertRuleSemanticFingerprint.evaluationIdentity(rule))) {
             alertStateRepository.deleteByRuleId(id);
         }
         auditRule("UPDATE_ALERT_RULE", rule, null);
