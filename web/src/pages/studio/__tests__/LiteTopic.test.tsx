@@ -129,7 +129,6 @@ describe('LiteTopic Page', () => {
       sessionId: 'session-1',
       totalMessages: 100,
       consumedMessages: 0,
-      popProgress: 96,
     });
     instanceApiMocks.listInstances.mockResolvedValue([]);
   });
@@ -203,7 +202,9 @@ describe('LiteTopic Page', () => {
     await screen.findByText('session-1');
 
     expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
-    expect(screen.queryByText('Pop 进度')).not.toBeInTheDocument();
+    // The percentage is the load-bearing half: the panel's title came from an i18n key this change
+    // deletes, so asserting on its text would pass with or without the panel. `96%` only ever came
+    // from the panel's Progress, so a re-added panel turns this red.
     expect(screen.queryByText('96%')).not.toBeInTheDocument();
   });
 
@@ -229,6 +230,9 @@ describe('LiteTopic Page', () => {
     expect(screen.getByText('≥ 1500')).toBeInTheDocument();
     expect(screen.getByText('≥ 1000')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
+    // The ratio is the part that has to disappear: 1000/1500 would render as 67%, and swapping the
+    // `consumedTruncated ? InfoBanner : Progress` branch back leaves every assertion above green.
+    expect(screen.queryByText('67%')).not.toBeInTheDocument();
   });
 
   it('allows viewing every session linked to the same LiteTopic row', async () => {

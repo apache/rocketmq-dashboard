@@ -78,6 +78,25 @@ class LiteTopicSessionToolHandlerTest {
     }
 
     @Test
+    void carriesATruncatedConsumedScanIntoTheToolOutputTest() {
+        when(liteTopicService.getSession("sess-3")).thenReturn(LiteTopicSessionVO.builder()
+                .sessionId("sess-3")
+                .totalMessages(1500L)
+                .consumedMessages(1000L)
+                .pendingMessages(500L)
+                .consumedScanTruncated(true)
+                .build());
+
+        LiteTopicSessionOutput output = handler.execute(new LiteTopicSessionInput("sess-3"), context());
+
+        // The full-record assertion above cannot catch a mapping that hardcodes false or inverts the
+        // flag: its VO never sets the field, so `false` is correct there either way.
+        assertThat(output.consumedScanTruncated()).isTrue();
+        assertThat(output.totalMessages()).isEqualTo(1500L);
+        assertThat(output.consumedMessages()).isEqualTo(1000L);
+    }
+
+    @Test
     void keepsSparseSessionsPartialInsteadOfInventingFieldsTest() {
         when(liteTopicService.getSession("sess-2")).thenReturn(LiteTopicSessionVO.builder()
                 .sessionId("sess-2")
