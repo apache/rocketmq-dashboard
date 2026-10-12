@@ -131,6 +131,32 @@ describe('client connection diagnostics', () => {
     );
   });
 
+  it('keeps distinct identities containing pipe characters separate', () => {
+    const diagnostics = analyzeClientConnections([
+      connection({ clientId: 'client|partition', groupOrTopic: 'orders' }),
+      connection({ clientId: 'client', groupOrTopic: 'partition|orders' }),
+    ]);
+
+    expect(diagnostics.issues.filter((item) => item.code === 'EXACT_DUPLICATE_CONNECTION')).toEqual(
+      [],
+    );
+  });
+
+  it('preserves complete identity fields in duplicate evidence', () => {
+    const original = connection({ clientId: 'client|partition', groupOrTopic: 'orders|events' });
+    const diagnostics = analyzeClientConnections([original, { ...original }]);
+    const duplicates = diagnostics.issues.filter(
+      (item) => item.code === 'EXACT_DUPLICATE_CONNECTION',
+    );
+
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]).toMatchObject({
+      clientId: 'client|partition',
+      resource: 'orders|events',
+      evidence: ['address=10.0.1.10:49152', 'count=2'],
+    });
+  });
+
   it('flags mixed protocols, mixed versions, and single consumer instances per resource', () => {
     const diagnostics = analyzeClientConnections([
       connection({
