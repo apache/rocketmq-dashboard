@@ -585,6 +585,14 @@ public class AlertService {
     }
 
 
+    /**
+     * Marking the alert acknowledged and transitioning its active state to ACKED are one logical
+     * change: a failure between the two writes would leave the alert row acknowledged while its
+     * state stays FIRING, so the processor keeps sending reminders for an alert the user already
+     * confirmed. Both statements therefore run in one transaction, the same guarantee
+     * {@link #clearAcknowledged} gives its own delete-and-audit pair.
+     */
+    @Transactional
     public SystemAlertVO acknowledgeAlert(Long id) {
         log.info("Acknowledging system alert id={}", id);
         if (id == null) {
