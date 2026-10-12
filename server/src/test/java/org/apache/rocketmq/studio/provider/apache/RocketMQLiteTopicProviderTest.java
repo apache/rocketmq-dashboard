@@ -258,6 +258,44 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void getSessionShouldReportATruncatedConsumedScanTest() throws Exception {
+        // MAX_SESSION_LITE_TOPIC_SCAN bounds the per-lite-topic offset lookups, so a session with
+        // more lite topics than that gets a consumed count that is a lower bound. The session has to
+        // say so, or the console and the AI tool report it as a measured total.
+        String[] lmqNames = new String[RocketMQLiteTopicProvider.MAX_SESSION_LITE_TOPIC_SCAN + 1];
+        for (int i = 0; i < lmqNames.length; i++) {
+            String name = String.format("lite-%03d", i);
+            lmqNames[i] = LiteUtil.toLmqName(PARENT, name);
+            when(admin.getLiteGroupInfo(BROKER_A, GROUP, name, 1)).thenReturn(consumed(10, 10));
+        }
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(lmqNames.length, System.currentTimeMillis(), lmqNames));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(5));
+
+        LiteTopicSession session = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+
+        assertThat(session.isConsumedScanTruncated()).isTrue();
+        // Exactly the first MAX_SESSION_LITE_TOPIC_SCAN lite topics were read, 10 consumed each.
+        assertThat(session.getConsumedMessages()).isEqualTo(10L * RocketMQLiteTopicProvider.MAX_SESSION_LITE_TOPIC_SCAN);
+    }
+
+    @Test
+    void getSessionShouldNotReportTruncationWhenEveryLiteTopicWasScannedTest() throws Exception {
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
+        when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
+                .thenReturn(clientInfo(1, System.currentTimeMillis(), LiteUtil.toLmqName(PARENT, "bob")));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, null, 1)).thenReturn(lag(5));
+        when(admin.getLiteGroupInfo(BROKER_A, GROUP, "bob", 1)).thenReturn(consumed(10, 10));
+
+        LiteTopicSession session = provider.getSession(
+                RocketMQLiteTopicProvider.encodeSessionId(PARENT, GROUP, "c1"));
+
+        assertThat(session.isConsumedScanTruncated()).isFalse();
+    }
+
+    @Test
     void getSessionShouldSurfaceBacklogReadFailureTest() throws Exception {
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
         when(admin.getLiteClientInfo(BROKER_A, PARENT, GROUP, "c1"))
