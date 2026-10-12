@@ -88,12 +88,13 @@ public class CloudRocketMqBusinessMetricsCollector implements BusinessMetricsCol
         try {
             List<QueueProgressVO> progress = provider.getGroupProgress(instance.getName(), group.getName());
             double totalLag = progress.stream().mapToDouble(row -> Math.max(0L, row.getDiffTotal())).sum();
-            double maxQueueLag = progress.stream().mapToDouble(row -> Math.max(0L, row.getDiffTotal())).max()
-                    .orElse(0D);
             List<MetricSample> samples = new ArrayList<>();
             samples.add(available(CONSUMER_LAG_TOTAL, instance, group.getClusterId(), labels, totalLag, collectedAt));
-            samples.add(available(CONSUMER_LAG_MAX_QUEUE, instance, group.getClusterId(), labels, maxQueueLag,
-                    collectedAt));
+            // Aliyun and Tencent expose topic/group aggregates, not individual queues.
+            // Keep a non-numeric sample so an existing queue alert is not falsely cleared.
+            samples.add(new MetricSample(CONSUMER_LAG_MAX_QUEUE, AlertDomain.BUSINESS, instance.getName(),
+                    group.getClusterId(), labels, null, MetricAvailability.UNSUPPORTED, collectedAt,
+                    "CLOUD_QUEUE_LAG_UNSUPPORTED"));
             progress.stream().filter(row -> row.getTopic() != null && !row.getTopic().isBlank())
                     .collect(java.util.stream.Collectors.groupingBy(QueueProgressVO::getTopic,
                             java.util.stream.Collectors.summingLong(
