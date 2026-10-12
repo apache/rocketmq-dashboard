@@ -859,6 +859,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleAuthSubmit = (values: AuthFormValues) => {
     if (!pendingDataSource) return;
+    if (!availableDataSources.some((source) => source.key === pendingDataSource.key)) {
+      handleAuthCancel();
+      return;
+    }
     const authMode = getDataSourceAuthMode(pendingDataSource.auth);
     const credentials =
       authMode === 'basic'
@@ -877,7 +881,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     authForm.resetFields();
   };
 
-  const handleAuthCancel = () => {
+  const handleAuthCancel = useCallback(() => {
     const replay = pendingAuthReplayRef.current;
     pendingAuthReplayRef.current = null;
     if (replay) {
@@ -886,6 +890,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       // previous source's data and nothing ever queries them.
       setProfileId(replay.checkpoint.profileId);
       setRangeId(replay.checkpoint.rangeId);
+      rangeIdRef.current = replay.checkpoint.rangeId;
       setCustomPromql(replay.checkpoint.customPromql);
       if (replay.checkpoint.storedProfileId === null) {
         localStorage.removeItem(PROFILE_STORAGE_KEY);
@@ -895,7 +900,17 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     }
     setPendingDataSource(null);
     authForm.resetFields();
-  };
+  }, [authForm]);
+
+  useEffect(() => {
+    if (
+      pendingDataSource &&
+      !availableDataSources.some((source) => source.key === pendingDataSource.key)
+    ) {
+      // A pending source is separate from the activated key checked by the fallback below.
+      handleAuthCancel();
+    }
+  }, [availableDataSources, handleAuthCancel, pendingDataSource]);
 
   useEffect(() => {
     let cancelled = false;

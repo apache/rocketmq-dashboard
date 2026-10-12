@@ -17,7 +17,9 @@
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { message } from 'antd';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
 import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
@@ -128,6 +130,64 @@ function QueueBrowserResultsProbe() {
 describe('QueueBrowser request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('page lifetime', () => {
+    afterEach(() => vi.restoreAllMocks());
+    it.each([
+      { operation: 'load', abandoned: true },
+      { operation: 'pull', abandoned: true },
+      { operation: 'load', abandoned: false },
+      { operation: 'pull', abandoned: false },
+    ])(
+      'onlyReportsFailuresOwnedByTheMountedPageTest ($operation/$abandoned)',
+      async ({ operation, abandoned }) => {
+        const errorToast = vi
+          .spyOn(message, 'error')
+          .mockImplementation(() => (() => {}) as ReturnType<typeof message.error>);
+        let reject!: (error: Error) => void;
+        const pending = new Promise<never>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        });
+        vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+        vi.mocked(pullMessageAtOffset).mockResolvedValue(messageRecord('fresh-message'));
+        if (operation === 'load') vi.mocked(getQueueOffsets).mockReturnValueOnce(pending);
+        else vi.mocked(pullMessageAtOffset).mockReturnValueOnce(pending);
+        const user = userEvent.setup();
+        const view = render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        if (operation === 'pull') {
+          await waitFor(() =>
+            expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'),
+          );
+          await user.click(screen.getByRole('button', { name: 'pull' }));
+        }
+        if (abandoned) view.unmount();
+        await act(async () => {
+          reject(new Error('queue request failed'));
+        });
+        expect(errorToast).toHaveBeenCalledTimes(abandoned ? 0 : 1);
+        if (!abandoned) view.unmount();
+        render(
+          <StrictMode>
+            <QueueBrowserProbe />
+          </StrictMode>,
+        );
+        await user.click(screen.getByRole('button', { name: 'topic-a' }));
+        await user.click(screen.getByRole('button', { name: 'load' }));
+        await waitFor(() => expect(screen.getByLabelText('queues')).toHaveTextContent('broker-a'));
+        await user.click(screen.getByRole('button', { name: 'pull' }));
+        await waitFor(() =>
+          expect(screen.getByLabelText('entries')).toHaveTextContent('fresh-message'),
+        );
+        expect(screen.getByLabelText('pulling')).toHaveTextContent('false');
+      },
+    );
   });
 
   it('keeps the newest topic queue load when an older request resolves later', async () => {
