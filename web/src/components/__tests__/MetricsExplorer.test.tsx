@@ -16,7 +16,7 @@
  */
 
 import { App, ConfigProvider } from 'antd';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1217,6 +1217,79 @@ describe('MetricsExplorer', () => {
       within(detailsDialog).getByText('{"cluster":"prod","node_id":"broker-a"}'),
     ).toBeInTheDocument();
     expect(within(detailsDialog).getByText('42')).toBeInTheDocument();
+  });
+
+  it.each(['profile', 'custom'] as const)(
+    'doesNotRestoreClearedHistoryWhenAPending%sQueryCompletesTest',
+    async (kind) => {
+      const user = userEvent.setup();
+      renderWithProviders(<MetricsExplorer />);
+      await screen.findByRole('img', { name: 'Message In TPS time series' });
+      const pending = createDeferred<MetricData>();
+      vi.mocked(queryMetrics).mockReturnValueOnce(pending.promise);
+
+      if (kind === 'profile') {
+        await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      } else {
+        await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+        await user.click(screen.getByRole('button', { name: '查询' }));
+      }
+      await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+      await user.click(screen.getByRole('button', { name: '查询历史' }));
+      const drawer = (await screen.findByText('指标查询历史')).closest(
+        '[role="dialog"]',
+      ) as HTMLElement;
+      await user.click(within(drawer).getByRole('button', { name: '清空历史' }));
+      expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBeNull();
+
+      await act(async () => pending.resolve(metricData));
+      expect(
+        screen.getByRole('img', {
+          name: kind === 'profile' ? 'Message In TPS time series' : '自定义查询 time series',
+        }),
+      ).toBeInTheDocument();
+      expect(drawer.querySelectorAll('.ant-list-item')).toHaveLength(0);
+      expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBeNull();
+
+      // New queries after clearing remain eligible for history.
+      await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+      await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+      await waitFor(() => {
+        const stored = JSON.parse(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)!);
+        expect(stored).toHaveLength(kind === 'profile' ? 1 : 2);
+      });
+    },
+  );
+
+  it('keepsPostClearHistoryWhenAnOlderIndependentProfileQueryCompletesTest', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const pending = createDeferred<MetricData>();
+    vi.mocked(queryMetrics).mockReturnValueOnce(pending.promise);
+    await user.click(screen.getByRole('button', { name: '刷新全部面板' }));
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const drawer = (await screen.findByText('指标查询历史')).closest(
+      '[role="dialog"]',
+    ) as HTMLElement;
+    await user.click(within(drawer).getByRole('button', { name: '清空历史' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await screen.findByRole('img', { name: '自定义查询 time series' });
+    const stored = localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY);
+    expect(JSON.parse(stored!)).toHaveLength(1);
+
+    await act(async () => pending.resolve(metricData));
+    expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+    expect(localStorage.getItem(METRICS_QUERY_HISTORY_STORAGE_KEY)).toBe(stored);
+    await user.click(screen.getByRole('button', { name: '查询历史' }));
+    const reopened = (await screen.findByText('指标查询历史')).closest(
+      '[role="dialog"]',
+    ) as HTMLElement;
+    expect(reopened.querySelectorAll('.ant-list-item')).toHaveLength(1);
+    expect(reopened.querySelector('.ant-list-item')).toHaveTextContent('自定义查询');
   });
 
   it('restores profile, range, and source from query history', async () => {
