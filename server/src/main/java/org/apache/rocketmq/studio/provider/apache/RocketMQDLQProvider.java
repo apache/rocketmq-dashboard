@@ -497,6 +497,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                                     queue, dlqTopic, offset);
                             continue;
                         }
+                        if (pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
+                            // The broker can skip removed messages even for a wildcard pull.
+                            // An advancing empty batch is not the end of the queue.
+                            consecutiveIllegalOffsets = 0;
+                            continue;
+                        }
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
