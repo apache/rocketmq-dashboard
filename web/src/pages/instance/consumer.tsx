@@ -1587,6 +1587,7 @@ const ConsumerPageContent = ({
               icon={<SyncOutlined spin={autoRefresh} />}
               type={autoRefresh ? 'primary' : 'default'}
               ghost={autoRefresh}
+              aria-pressed={autoRefresh}
               disabled={!hasSelectedInstance}
               onClick={() => {
                 const next = !autoRefresh;

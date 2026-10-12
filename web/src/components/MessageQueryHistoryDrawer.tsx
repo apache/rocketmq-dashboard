@@ -218,6 +218,15 @@ const MessageQueryHistoryDrawer = ({
                   onSelectMessage
                     ? (record) => ({
                         onClick: () => onSelectMessage(record),
+                        // Rows are the only way to re-run a saved query, so they must be
+                        // reachable and activable without a mouse.
+                        tabIndex: 0,
+                        onKeyDown: (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            onSelectMessage(record);
+                          }
+                        },
                         style: { cursor: 'pointer' },
                       })
                     : undefined
@@ -239,6 +248,13 @@ const MessageQueryHistoryDrawer = ({
                   onSelectTrace
                     ? (record) => ({
                         onClick: () => onSelectTrace(record),
+                        tabIndex: 0,
+                        onKeyDown: (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            onSelectTrace(record);
+                          }
+                        },
                         style: { cursor: 'pointer' },
                       })
                     : undefined
