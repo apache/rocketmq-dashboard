@@ -1481,6 +1481,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
+                // Enter may confirm an IME candidate, including WebKit's post-composition key.
+                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (!event.shiftKey) {
                   event.preventDefault();
                   void runCustomQuery(customPromql, selectedRange);
