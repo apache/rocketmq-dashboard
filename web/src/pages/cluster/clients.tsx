@@ -256,7 +256,8 @@ const ClientsPage = () => {
       .catch((error) => {
         if (connectionRequestRef.current === requestId) {
           setConnections([]);
-          setClusterFilter('ALL');
+          // A failed read cannot change the scope the operator asked to inspect.
+          // Retain the filters so the existing Retry action repeats that same query.
           setSelectedConnection(null);
           setLoadError(describeThrownMessage(error) || DEFAULT_LOAD_ERROR);
         }
