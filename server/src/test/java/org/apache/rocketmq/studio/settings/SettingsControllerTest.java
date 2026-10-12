@@ -41,6 +41,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -66,6 +67,17 @@ class SettingsControllerTest extends WebMvcAuthTestSupport {
 
     @MockitoBean
     private NotificationOutboxService notificationOutboxService;
+
+    @Test
+    void scopedGeneralSaveShouldPassPreservationIntentTest() throws Exception {
+        mockMvc.perform(post("/api/settings/general/save").contentType(MediaType.APPLICATION_JSON).content("""
+                {"theme":"dark","compact":false,"desktopNotify":false,"notifySound":false,
+                 "sessionTimeout":60,"requireLogin":false,"llmProvider":"openai","model":"old-model",
+                 "baseUrl":"https://api.openai.com/v1","preserveLlmConfig":true}
+                """))
+                .andExpect(status().isOk());
+        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class), eq(true));
+    }
 
     @Test
     void getGeneralSettingsShouldReturnSettingsTest() throws Exception {

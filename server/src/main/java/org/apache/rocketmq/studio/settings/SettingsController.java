@@ -45,7 +45,11 @@ public class SettingsController {
 
     @PostMapping("/general/save")
     public Result<Void> saveGeneralSettings(@Valid @RequestBody GeneralSettingsUpdateDTO request) {
-        settingsService.saveGeneralSettings(request.toSettings());
+        if (request.isPreserveLlmConfig()) {
+            settingsService.saveGeneralSettings(request.toSettings(), true);
+        } else {
+            settingsService.saveGeneralSettings(request.toSettings());
+        }
         return Result.ok();
     }
 
