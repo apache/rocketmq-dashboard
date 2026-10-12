@@ -253,6 +253,14 @@ public final class AgentEventProjector {
      * missing block in every replayed conversation.
      */
     public Optional<LiveEvent> replay(TimelineEvent event) {
+        return replay(event, null);
+    }
+
+    /**
+     * Replays with the run row's duration, which is not stored on a timeline terminal event.
+     * A missing duration stays unknown; other event types retain their own timing fields.
+     */
+    public Optional<LiveEvent> replay(TimelineEvent event, Long runDurationMs) {
         if (event == null) {
             return Optional.empty();
         }
@@ -269,7 +277,7 @@ public final class AgentEventProjector {
             case TimelineEvent.Notice notice -> new LiveEvent.Notice(notice.level(), notice.message());
             case TimelineEvent.Error error -> new LiveEvent.Error(error.code(), error.message(), error.hint());
             case TimelineEvent.RunStatus terminal ->
-                    new LiveEvent.RunFinished(runId, terminal.status(), null);
+                    new LiveEvent.RunFinished(runId, terminal.status(), runDurationMs);
         };
         return Optional.ofNullable(live);
     }
