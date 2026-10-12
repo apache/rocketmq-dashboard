@@ -18,8 +18,12 @@ import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolRiskLevel;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.plan.ToolPlan;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -140,6 +144,47 @@ class GroupMutationPlanTest {
         // When absent, upsert takes the create path and never calls update.
         verify(metadataService).createConsumerGroup(any());
         verify(metadataService, never()).updateConsumerGroup(any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"omitted, 16", "null, 16", "0, 0", "8, 8"})
+    void upsertCreateShouldPreviewAndApplyTheSameRetryLimitTest(String retryValue, int expected) {
+        MetadataService metadataService = mock(MetadataService.class);
+        when(metadataService.findConsumerGroup("cluster-a", "new-group")).thenReturn(Optional.empty());
+        when(metadataService.createConsumerGroup(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Map<String, Object> arguments = new HashMap<>(Map.of("instanceId", "cluster-a", "groupName", "new-group"));
+        if (!"omitted".equals(retryValue)) {
+            arguments.put("retryMaxTimes", "null".equals(retryValue) ? null : Integer.valueOf(retryValue));
+        }
+        ToolExecutionContext ctx = context("rmq.group.update", arguments);
+        var input = ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class);
+        ConsumerGroupUpdateToolHandler handler = new ConsumerGroupUpdateToolHandler(metadataService);
+
+        assertThat(handler.preview(input, ctx).after()).containsEntry("retryMaxTimes", expected);
+        assertThat(handler.execute(input, ctx).retryMaxTimes()).isEqualTo(expected);
+
+        ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
+        verify(metadataService).createConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(expected);
+        verify(metadataService, never()).updateConsumerGroup(any());
+    }
+
+    @Test
+    void upsertUpdateShouldKeepAnExistingRetryLimitWhenOmittedTest() {
+        MetadataService metadataService = mock(MetadataService.class);
+        ConsumerGroupVO current = new ConsumerGroupVO();
+        current.setName("orders-group");
+        current.setInstanceId("cluster-a");
+        current.setRetryMaxTimes(0);
+        when(metadataService.findConsumerGroup("cluster-a", "orders-group")).thenReturn(Optional.of(current));
+        when(metadataService.updateConsumerGroup(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        ToolExecutionContext ctx = context("rmq.group.update", Map.of("groupName", "orders-group"));
+        var input = ctx.convertInput(org.apache.rocketmq.studio.ops.ai.tool.contract.group.GroupInput.class);
+        ConsumerGroupUpdateToolHandler handler = new ConsumerGroupUpdateToolHandler(metadataService);
+
+        assertThat(handler.preview(input, ctx).after()).containsEntry("retryMaxTimes", 0);
+        assertThat(handler.execute(input, ctx).retryMaxTimes()).isZero();
+        verify(metadataService, never()).createConsumerGroup(any());
     }
 
     @Test

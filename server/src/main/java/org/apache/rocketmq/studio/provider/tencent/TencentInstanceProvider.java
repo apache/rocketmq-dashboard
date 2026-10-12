@@ -118,7 +118,6 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int DEFAULT_QUEUE_NUM = 8;
     static final int MIN_QUEUE_NUM = 3;
     static final int MAX_QUEUE_NUM = 16;
-    static final int DEFAULT_MAX_RETRY_TIMES = 16;
     static final int MESSAGE_LIMIT = 100;
     static final int MESSAGE_QUERY_HARD_LIMIT = 2_000;
     private static final DateTimeFormatter TENCENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[,SSS][,SS]");
@@ -506,12 +505,11 @@ public class TencentInstanceProvider implements InstanceProvider {
         CreateConsumerGroupRequest request = new CreateConsumerGroupRequest();
         request.setInstanceId(context.cloudInstanceId());
         request.setConsumerGroup(group.getName());
-        request.setMaxRetryTimes((long) retryMaxTimes(group));
+        request.setMaxRetryTimes((long) group.getRetryMaxTimes());
         request.setConsumeEnable(true);
         request.setConsumeMessageOrderly(isOrderly(group));
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateConsumerGroup(request));
         group.setInstanceId(instanceId);
-        group.setRetryMaxTimes(retryMaxTimes(group));
         group.setSubscribedTopics(java.util.List.of());
         group.setGmtCreate(LocalDateTime.now());
         group.setGmtModified(LocalDateTime.now());
@@ -1088,10 +1086,6 @@ public class TencentInstanceProvider implements InstanceProvider {
         if (!StringUtils.hasText(groupName)) {
             throw new BusinessException(400, "Consumer group name is required");
         }
-    }
-
-    private static int retryMaxTimes(ConsumerGroupVO group) {
-        return group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
     }
 
     private static boolean isOrderly(ConsumerGroupVO group) {
