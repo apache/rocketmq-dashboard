@@ -149,11 +149,21 @@ const DashboardPage = () => {
     />
   );
 
+  // Overview reads and Prometheus queries are independent. Preserve the editor across
+  // overview loading/error states, but keep the existing cleanup on instance changes.
+  const metricsExplorer = (
+    <MetricsExplorer
+      key={selectedInstanceId === undefined ? 'unscoped' : `instance:${selectedInstanceId}`}
+      instanceId={selectedInstanceId}
+    />
+  );
+
   if (loading && !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
         <Skeleton active paragraph={{ rows: 8 }} />
+        {metricsExplorer}
       </div>
     );
   }
@@ -173,6 +183,7 @@ const DashboardPage = () => {
             </Button>
           }
         />
+        {metricsExplorer}
       </div>
     );
   }
@@ -405,7 +416,7 @@ const DashboardPage = () => {
         />
       </Card>
 
-      <MetricsExplorer instanceId={selectedInstanceId} />
+      {metricsExplorer}
     </div>
   );
 };
