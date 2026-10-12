@@ -116,6 +116,12 @@ const uniqueSorted = (values: Array<string | null | undefined>): string[] =>
     a.localeCompare(b),
   );
 
+// Missing metadata remains visible in inventories but is not an observed dimension.
+const isReportedDimension = (value: string): boolean => value !== 'unknown' && value !== '-';
+
+const reportedDimensions = (values: Array<string | null | undefined>): string[] =>
+  uniqueSorted(values).filter(isReportedDimension);
+
 const countBy = (values: Array<string | null | undefined>): Map<string, number> => {
   const counts = new Map<string, number>();
   values.forEach((value) => {
@@ -221,7 +227,7 @@ const addInventoryIssues = (connections: ClientConnection[], issues: ClientConne
         'PARTIAL_CONNECTION_SCAN',
         'warning',
         '客户端扫描结果不完整',
-        '部分 Producer 连接来自受限 Topic 扫描，当前列表可能不是完整客户端清单。',
+        'clients.partialScanDescription',
         '缩小 Topic 或集群范围后重新查询，并在排障时避免把当前列表视为全集。',
         { evidence: [`partial=${partialCount}`] },
       ),
@@ -375,9 +381,13 @@ const addUnknownFieldIssues = (
 
 const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIssue[]) => {
   groups.forEach((group) => {
-    const protocols = uniqueSorted(group.connections.map((connection) => connection.protocol));
-    const versions = uniqueSorted(group.connections.map((connection) => connection.version));
-    const languages = uniqueSorted(group.connections.map((connection) => connection.language));
+    const protocols = reportedDimensions(
+      group.connections.map((connection) => connection.protocol),
+    );
+    const versions = reportedDimensions(group.connections.map((connection) => connection.version));
+    const languages = reportedDimensions(
+      group.connections.map((connection) => connection.language),
+    );
     const clients = uniqueSorted(group.connections.map((connection) => connection.clientId));
     const addresses = uniqueSorted(group.connections.map((connection) => connection.address));
     const resource = `${group.type}:${group.resource}`;
@@ -414,7 +424,12 @@ const addResourceIssues = (groups: ConnectionGroup[], issues: ClientConnectionIs
       );
     }
 
-    if (group.type === 'Consumer' && clients.length === 1 && addresses.length === 1) {
+    if (
+      group.type === 'Consumer' &&
+      !group.connections.some((connection) => connection.partial) &&
+      clients.length === 1 &&
+      addresses.length === 1
+    ) {
       issues.push(
         issue(
           'SINGLE_CONSUMER_INSTANCE',
@@ -529,9 +544,12 @@ const buildSummary = (
     uniqueAddressCount: uniqueSorted(connections.map((connection) => connection.address)).length,
     resourceCount: resources.length,
     partialConnectionCount: connections.filter((connection) => connection.partial).length,
-    mixedProtocolResourceCount: resources.filter((resource) => resource.protocols.length > 1)
-      .length,
-    mixedVersionResourceCount: resources.filter((resource) => resource.versions.length > 1).length,
+    mixedProtocolResourceCount: resources.filter(
+      (resource) => resource.protocols.filter(isReportedDimension).length > 1,
+    ).length,
+    mixedVersionResourceCount: resources.filter(
+      (resource) => resource.versions.filter(isReportedDimension).length > 1,
+    ).length,
     singleConsumerGroupCount: issues.filter((item) => item.code === 'SINGLE_CONSUMER_INSTANCE')
       .length,
     concentratedAddressCount: addressConcentrationIssues.length,

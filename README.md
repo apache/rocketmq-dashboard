@@ -103,7 +103,7 @@ the cluster at `nameserver:9876` over the shared network (the backend default).
 | **ACL** | ACL rules and user management, v1 / v2 dual version support |
 | **Messages** | Query by Topic / MsgId / Key / time range, message trace visualization |
 | **Dead Letter Queue** | DLQ message viewing and batch resend |
-| **Clients** | Producer / Consumer online connection list, protocol and language version stats |
+| **Clients** | Producer / Consumer online connection list, protocol and language version stats; diagnostics distinguish reported metadata from unknown fields and do not infer a single online consumer from an incomplete scan |
 | **Alert Rules** | Multi-dimensional alert rules (disk / lag / TPS / node offline), DingTalk / email / SMS notifications |
 | **System Alerts** | System-level alert viewing, acknowledgment, and cleanup |
 | **Audit Logs** | Operation audit log query, filter by type / time / result, history cleanup |

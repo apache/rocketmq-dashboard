@@ -260,3 +260,83 @@ describe('client connection diagnostics', () => {
     );
   });
 });
+
+const row = (overrides: Partial<ClientConnection>): ClientConnection => ({
+  clientId: 'direct',
+  type: 'Consumer',
+  groupOrTopic: 'group-a',
+  protocol: 'Remoting',
+  address: '10.0.0.1:40000',
+  language: 'Java',
+  version: 'V5_0_0',
+  clusterName: 'cluster-a',
+  ...overrides,
+});
+const codes = (rows: ClientConnection[]) =>
+  analyzeClientConnections(rows).issues.map((x) => x.code);
+describe('observed connection evidence', () => {
+  it('does not infer a mixed protocol or version from the proxy fields intentionally absent on the wire', () => {
+    const d = analyzeClientConnections([
+      row({}),
+      row({ clientId: 'proxy', address: '10.0.0.3:40000', protocol: null, version: null }),
+    ]);
+    expect(d.issues.map((x) => x.code)).not.toContain('MIXED_PROTOCOL_RESOURCE');
+    expect(d.issues.map((x) => x.code)).not.toContain('MIXED_VERSION_RESOURCE');
+    expect(d.summary.mixedProtocolResourceCount).toBe(0);
+    expect(d.summary.mixedVersionResourceCount).toBe(0);
+    expect(d.resources[0].protocols).toContain('unknown');
+    expect(d.issues.map((x) => x.code)).toContain('UNKNOWN_PROTOCOL');
+    expect(d.issues.map((x) => x.code)).toContain('UNKNOWN_VERSION');
+  });
+  it('does not diagnose multi-language multi-version from missing metadata', () => {
+    const d = analyzeClientConnections([
+      row({}),
+      row({ clientId: 'proxy', address: '10.0.0.3:40000', language: null, version: null }),
+    ]);
+    expect(d.issues.filter((x) => x.code === 'MIXED_VERSION_RESOURCE')).toEqual([]);
+    expect(d.issues.map((x) => x.code)).toContain('UNKNOWN_LANGUAGE');
+  });
+  it('does not assert a single online consumer from an incomplete scan', () => {
+    const d = analyzeClientConnections([row({ partial: true })]);
+    expect(d.issues.map((x) => x.code)).not.toContain('SINGLE_CONSUMER_INSTANCE');
+    expect(d.summary.singleConsumerGroupCount).toBe(0);
+    expect(d.issues.map((x) => x.code)).toContain('PARTIAL_CONNECTION_SCAN');
+  });
+  it('still reports genuinely observed mixed protocol/version clients', () => {
+    expect(
+      codes([
+        row({}),
+        row({ clientId: 'grpc', address: '10.0.0.3:40000', protocol: 'gRPC', version: 'V5_1_0' }),
+      ]),
+    ).toEqual(expect.arrayContaining(['MIXED_PROTOCOL_RESOURCE', 'MIXED_VERSION_RESOURCE']));
+  });
+  it('still warns about a confirmed complete single consumer', () => {
+    expect(codes([row({})])).toContain('SINGLE_CONSUMER_INSTANCE');
+  });
+});
+
+it.each([null, undefined, '', '   ', '-', 'unknown'])(
+  'keeps unreported metadata out of mixed dimensions (%s) Test',
+  (missing) => {
+    const diagnostics = analyzeClientConnections([
+      row({}),
+      row({
+        clientId: 'proxy',
+        address: '10.0.0.3:40000',
+        protocol: missing,
+        language: missing,
+        version: missing,
+      }),
+    ]);
+    expect(
+      diagnostics.issues.filter(
+        (issue) =>
+          issue.code === 'MIXED_PROTOCOL_RESOURCE' || issue.code === 'MIXED_VERSION_RESOURCE',
+      ),
+    ).toEqual([]);
+    expect(diagnostics.summary).toMatchObject({
+      mixedProtocolResourceCount: 0,
+      mixedVersionResourceCount: 0,
+    });
+  },
+);

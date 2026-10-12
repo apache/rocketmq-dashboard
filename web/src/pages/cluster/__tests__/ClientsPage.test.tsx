@@ -168,6 +168,73 @@ async function expectInteractive(element: Element) {
 }
 
 describe('Clients page', () => {
+  it('does not label absent Proxy metadata as a mixed resource in the live clients page', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        type: 'Consumer',
+        groupOrTopic: 'group-a',
+        clientId: 'direct',
+        protocol: 'Remoting',
+        version: 'V5_0_0',
+      },
+      {
+        ...connection,
+        type: 'Consumer',
+        groupOrTopic: 'group-a',
+        clientId: 'proxy',
+        address: '10.0.0.3:40000',
+        protocol: null,
+        version: null,
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+    await screen.findAllByText('10.0.0.3:40000');
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(within(diagnostics).queryByText('同一资源存在多协议连接')).not.toBeInTheDocument();
+    expect(within(diagnostics).queryByText('同一资源存在多版本客户端')).not.toBeInTheDocument();
+    expect(within(diagnostics).getByText('协议类型未知')).toBeInTheDocument();
+  });
+  it('does not claim single consumer availability from a partial live clients result', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      { ...connection, type: 'Consumer', groupOrTopic: 'group-a', partial: true },
+    ]);
+    renderWithProviders(<ClientsPage />);
+    await screen.findAllByText(connection.address!);
+    const diagnostics = screen.getByTestId('client-connection-diagnostics');
+    expect(
+      within(diagnostics).queryByText('Consumer Group 只有单实例在线'),
+    ).not.toBeInTheDocument();
+    expect(within(diagnostics).getByText('客户端扫描结果不完整')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['zh', '客户端连接扫描不完整：部分查询失败或达到扫描上限。'],
+    [
+      'en',
+      'Client connection scans are incomplete: some queries failed or reached the scan limit.',
+    ],
+  ])(
+    'describes incomplete consumer scans without a Producer-only assumption (%s) Test',
+    async (lang, description) => {
+      localStorage.setItem('rocketmq-studio-language', lang);
+      try {
+        vi.mocked(connectionsService.listConnections).mockResolvedValue([
+          { ...connection, type: 'Consumer', partial: true },
+        ]);
+        renderWithProviders(<ClientsPage />);
+        await screen.findAllByText(connection.address!);
+        const diagnostics = screen.getByTestId('client-connection-diagnostics');
+        fireEvent.click(within(diagnostics).getByText('客户端扫描结果不完整'));
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByText(description)).toBeInTheDocument();
+        expect(within(dialog).queryByText('clients.partialScanDescription')).not.toBeInTheDocument();
+      } finally {
+        localStorage.removeItem('rocketmq-studio-language');
+      }
+    },
+  );
+
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
       ...connection,
