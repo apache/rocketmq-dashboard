@@ -67,6 +67,39 @@ describe('audit presentation helpers', () => {
     });
   });
 
+  it('presents credential reveals as their own localized operations', () => {
+    expect(getAuditOperationPresentation('REVEAL_ACL_USER_CREDENTIALS')).toEqual({
+      labelKey: 'audit.op.REVEAL_ACL_USER_CREDENTIALS',
+      label: 'Reveal ACL User Credentials',
+      color: 'gold',
+      category: 'security',
+    });
+    expect(getAuditOperationPresentation('REVEAL_CLOUD_CREDENTIAL')).toEqual({
+      labelKey: 'audit.op.REVEAL_CLOUD_CREDENTIAL',
+      label: 'Reveal Cloud Credential',
+      color: 'gold',
+      category: 'settings',
+    });
+  });
+
+  it('presents the alert-silence, group-settings and cloud-import audit operations', () => {
+    const ops = [
+      'CREATE_ALERT_SILENCE',
+      'DELETE_ALERT_SILENCE',
+      'UPDATE_GROUP_SETTINGS',
+      'IMPORT_CLOUD_INSTANCES',
+    ] as const;
+    for (const op of ops) {
+      const presentation = getAuditOperationPresentation(op);
+      expect(presentation.category, op).not.toBe('other');
+      expect(presentation.labelKey, op).toBe(`audit.op.${op}`);
+    }
+    const silence = getAuditResourcePresentation('ALERT_SILENCE');
+    expect(silence.labelKey).toBe('audit.res.ALERT_SILENCE');
+    // The metadata category also makes the operation count as control-plane.
+    expect(isControlPlaneAuditRecord({ operationType: 'UPDATE_GROUP_SETTINGS' })).toBe(true);
+  });
+
   it('falls back to title-cased labels for new operation codes', () => {
     expect(getAuditOperationPresentation('UPSERT_NEW_RESOURCE')).toEqual({
       label: 'Upsert New Resource',

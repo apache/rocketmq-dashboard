@@ -552,4 +552,87 @@ class DLQControllerTest extends WebMvcAuthTestSupport {
 
         verifyNoInteractions(dlqService);
     }
+
+    @Test
+    void exportDLQExcelShouldRejectBracketedSelectionTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds[]", "msg-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldRejectIndexedSelectionTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds[0]", "msg-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldRejectDottedSelectionTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds.0", "msg-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldRejectMixedSelectionParametersTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds", "msg-1")
+                        .param("msgIds[]", "msg-2"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldRejectPresentButEmptySelectionTest() throws Exception {
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds", ""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void exportDLQExcelShouldKeepRepeatedSelectionParametersTest() throws Exception {
+        when(dlqService.exportExcel(eq("instance-1"), eq("test-group"), isNull(), isNull(),
+                eq(List.of("msg-1", "msg-2"))))
+                .thenReturn(DLQExcelExportResultVO.builder()
+                        .data(new byte[] {1})
+                        .truncated(false)
+                        .failedQueueCount(0)
+                        .limit(5000)
+                        .build());
+
+        mockMvc.perform(get("/api/dlq/export-excel")
+                        .param("instanceId", "instance-1")
+                        .param("groupName", "test-group")
+                        .param("msgIds", "msg-1", "msg-2"))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(new byte[] {1}));
+
+        verify(dlqService).exportExcel("instance-1", "test-group", null, null,
+                List.of("msg-1", "msg-2"));
+    }
 }

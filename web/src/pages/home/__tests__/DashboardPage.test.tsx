@@ -10,9 +10,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as dashboardService from '../../../services/dashboardService';
 import * as instanceService from '../../../services/instanceService';
 import DashboardPage from '../dashboard';
@@ -158,6 +159,12 @@ beforeEach(() => {
       gmtModified: '',
     },
   ]);
+});
+
+afterEach(() => {
+  // The English-locale case below writes the language preference; without this the rest of the file
+  // (and anything appended later) silently depends on test order.
+  localStorage.removeItem(LANGUAGE_STORAGE_KEY);
 });
 
 describe('DashboardPage', () => {
@@ -322,5 +329,17 @@ describe('DashboardPage', () => {
     expect(
       screen.queryByText('cloud-instance', { selector: '.ant-select-item-option-content' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('localizes the load-error alert for English users', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(dashboardService.getDashboard).mockRejectedValue(new Error('boom'));
+    vi.mocked(instanceService.listInstances).mockResolvedValue([]);
+
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByText('Failed to load dashboard')).toBeInTheDocument();
+    expect(screen.queryByText('仪表盘加载失败')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 });

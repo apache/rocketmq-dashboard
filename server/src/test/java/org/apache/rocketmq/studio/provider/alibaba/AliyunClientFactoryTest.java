@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -114,6 +115,60 @@ class AliyunClientFactoryTest {
 
         Mockito.verify(first).close();
         assertThat(factory.client(CREDENTIAL_ID, REGION)).isSameAs(second);
+    }
+
+    @Test
+    void invalidateCredentialShouldEvictClientCreatedDuringRotationTest() throws Exception {
+        AsyncClient oldClient = Mockito.mock(AsyncClient.class);
+        AsyncClient replacement = Mockito.mock(AsyncClient.class);
+        CountDownLatch creationStarted = new CountDownLatch(1);
+        CountDownLatch allowCreation = new CountDownLatch(1);
+        AtomicInteger creations = new AtomicInteger();
+        factory = new AliyunClientFactory(credentialRepository) {
+            @Override
+            protected AsyncClient createClient(Long credentialId, String region) {
+                if (creations.incrementAndGet() == 1) {
+                    creationStarted.countDown();
+                    try {
+                        if (!allowCreation.await(5, TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Timed out waiting to create client");
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Client creation interrupted", exception);
+                    }
+                    return oldClient;
+                }
+                return replacement;
+            }
+        };
+
+        FutureTask<AsyncClient> creation = new FutureTask<>(() -> factory.client(CREDENTIAL_ID, REGION));
+        Thread creationThread = new Thread(creation, "aliyun-client-creation-test");
+        creationThread.start();
+        try {
+            assertThat(creationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            FutureTask<Void> invalidation = new FutureTask<>(() -> {
+                factory.invalidateCredential(CREDENTIAL_ID);
+                return null;
+            });
+            Thread invalidationThread = new Thread(invalidation, "aliyun-client-invalidation-test");
+            invalidationThread.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!invalidation.isDone() && invalidationThread.getState() != Thread.State.BLOCKED
+                    && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertThat(invalidation.isDone() || invalidationThread.getState() == Thread.State.BLOCKED).isTrue();
+
+            allowCreation.countDown();
+            assertThat(creation.get(5, TimeUnit.SECONDS)).isSameAs(oldClient);
+            invalidation.get(5, TimeUnit.SECONDS);
+            assertThat(factory.client(CREDENTIAL_ID, REGION)).isSameAs(replacement);
+            Mockito.verify(oldClient).close();
+        } finally {
+            allowCreation.countDown();
+        }
     }
 
     @Test
