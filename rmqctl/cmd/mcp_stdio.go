@@ -88,12 +88,27 @@ type jsonRPCErrorData struct {
 // stdin is exhausted and all in-flight calls drain. The session starts lazily
 // when its first message is sent; the proxy owns closing it.
 func runStdioProxy(ctx context.Context, in io.Reader, out io.Writer, errOut io.Writer, session mcpSession) error {
-	defer func() { _ = session.Close() }()
-
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	proxy := newStdioProxy(in, out, errOut, session)
-	err := proxy.run(ctx)
+	err := proxy.run(callCtx)
+	// Stop producers before waiting: an output failure can leave calls in flight.
+	cancel()
 	close(proxy.done)
+	_ = session.Close()
+	waitReader := proxy.inputDone
+	if !proxy.inputDone {
+		// A pipe can still be blocked in Read after stdout fails. Close interruptible
+		// input on early exit; arbitrary io.Readers cannot be interrupted safely.
+		if input, ok := in.(io.Closer); ok {
+			_ = input.Close()
+			waitReader = true
+		}
+	}
 	proxy.calls.Wait()
+	if waitReader {
+		<-proxy.readerDone
+	}
 	return err
 }
 
@@ -105,11 +120,12 @@ type stdioProxy struct {
 	errOut  io.Writer
 	session mcpSession
 
-	events    chan stdinEvent
-	results   chan callResult
-	done      chan struct{}
-	callSlots chan struct{}
-	calls     sync.WaitGroup
+	events     chan stdinEvent
+	results    chan callResult
+	done       chan struct{}
+	readerDone chan struct{}
+	callSlots  chan struct{}
+	calls      sync.WaitGroup
 
 	inputDone   bool
 	activeCalls int
@@ -121,19 +137,20 @@ type stdioProxy struct {
 
 func newStdioProxy(in io.Reader, out io.Writer, errOut io.Writer, session mcpSession) *stdioProxy {
 	return &stdioProxy{
-		in:        in,
-		out:       out,
-		errOut:    errOut,
-		session:   session,
-		events:    make(chan stdinEvent, 1),
-		results:   make(chan callResult, maxConcurrentCalls),
-		done:      make(chan struct{}),
-		callSlots: make(chan struct{}, maxConcurrentCalls),
+		in:         in,
+		out:        out,
+		errOut:     errOut,
+		session:    session,
+		events:     make(chan stdinEvent, 1),
+		results:    make(chan callResult, maxConcurrentCalls),
+		done:       make(chan struct{}),
+		readerDone: make(chan struct{}),
+		callSlots:  make(chan struct{}, maxConcurrentCalls),
 	}
 }
 
 // run drives the select loop until stdin is exhausted and all in-flight calls
-// have drained. It returns the scanner error from readInput (nil on clean EOF).
+// have drained. It returns a scanner or output error (nil on clean EOF).
 //
 // When ctx is cancelled, run returns nil immediately rather than propagating
 // inputErr. This is intentional: a cancelled context signals an external
@@ -141,7 +158,10 @@ func newStdioProxy(in io.Reader, out io.Writer, errOut io.Writer, session mcpSes
 // misleading. The caller (runStdioProxy) already closes the session and
 // drains in-flight calls regardless of the return value.
 func (p *stdioProxy) run(ctx context.Context) error {
-	go readInput(p.in, p.events, p.done)
+	go func() {
+		defer close(p.readerDone)
+		readInput(p.in, p.events, p.done)
+	}()
 	for !p.inputDone || p.activeCalls > 0 {
 		events := p.events
 		// Preserve stdin order through the first initialize/initialized exchange.
@@ -155,11 +175,15 @@ func (p *stdioProxy) run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case message := <-p.session.Notifications():
-			p.handleNotification(message)
+			if err := p.handleNotification(message); err != nil {
+				return err
+			}
 		case event := <-events:
 			p.handleEvent(ctx, event)
 		case result := <-p.results:
-			p.handleResult(result)
+			if err := p.handleResult(result); err != nil {
+				return err
+			}
 		}
 	}
 	// A call can queue notifications before its result, but select may consume
@@ -172,15 +196,17 @@ func (p *stdioProxy) run(ctx context.Context) error {
 			if !ok {
 				return p.inputErr
 			}
-			p.handleNotification(message)
+			if err := p.handleNotification(message); err != nil {
+				return err
+			}
 		default:
 			return p.inputErr
 		}
 	}
 }
 
-func (p *stdioProxy) handleNotification(message json.RawMessage) {
-	fmt.Fprintln(p.out, string(message))
+func (p *stdioProxy) handleNotification(message json.RawMessage) error {
+	return writeStdioFrame(p.out, message)
 }
 
 func (p *stdioProxy) handleEvent(ctx context.Context, event stdinEvent) {
@@ -206,16 +232,16 @@ func (p *stdioProxy) handleEvent(ctx context.Context, event stdinEvent) {
 	}
 }
 
-func (p *stdioProxy) handleResult(result callResult) {
+func (p *stdioProxy) handleResult(result callResult) error {
 	p.activeCalls--
 	p.recordInitialization(result)
 	if result.err != nil {
-		writeStdioError(p.out, p.errOut, result.line, result.err)
-		return
+		return writeStdioError(p.out, p.errOut, result.line, result.err)
 	}
 	if result.ok {
-		fmt.Fprintln(p.out, string(result.response))
+		return writeStdioFrame(p.out, result.response)
 	}
+	return nil
 }
 
 func (p *stdioProxy) recordInitialization(result callResult) {
@@ -274,11 +300,11 @@ func sendMessage(
 	}
 }
 
-func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callErr error) {
+func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callErr error) error {
 	requestID := extractRequestID([]byte(requestLine))
 	fmt.Fprintln(errOut, "mcp stdio proxy call failed:", safeStdioDiagnostic(callErr.Error()))
 	if requestID == nil {
-		return
+		return nil
 	}
 	rpcError := jsonRPCError{
 		Code:    jsonrpcInternalErrorCode,
@@ -337,9 +363,21 @@ func writeStdioError(out io.Writer, errOut io.Writer, requestLine string, callEr
 	}
 	payload, err := json.Marshal(errorPayload)
 	if err != nil {
-		return
+		return fmt.Errorf("encode MCP stdio error frame: %w", err)
 	}
-	fmt.Fprintln(out, string(payload))
+	return writeStdioFrame(out, payload)
+}
+
+func writeStdioFrame(out io.Writer, payload json.RawMessage) error {
+	frame := string(payload) + "\n"
+	n, err := io.WriteString(out, frame)
+	if err == nil && n != len(frame) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		return fmt.Errorf("write MCP stdio frame: %w", err)
+	}
+	return nil
 }
 
 func safeStdioDiagnostic(message string) string {
