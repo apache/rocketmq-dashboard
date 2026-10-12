@@ -394,7 +394,6 @@ public class AiRunService {
             // the orphan sweep gets around to it.
             log.warn("run {} is non-terminal with no owner in this process; stopping it directly", run.getId());
             runExecutor.terminate(detachedContext(current), RunStatus.STOPPED, StopReason.USER_STOP, null, null);
-            return runRepository.findById(runId).orElse(current);
         }
         return runRepository.findById(runId).orElse(run);
     }
