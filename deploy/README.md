@@ -30,10 +30,13 @@ MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
 
 ## 本地 Docker Compose
 
-复制示例配置后启动：
+`docker-compose.yml` 中的 `mysql` 与 `rocketmq-server` 加入共享网络 `rocketmq_net`（声明为
+`external`），因此首次启动前需要先创建该网络，否则 Compose 会以
+`network rocketmq_net declared as external, but could not be found` 终止：
 
 ```bash
 cp deploy/.env.example deploy/.env
+docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 cd deploy && docker compose up -d --build
 ```
 
