@@ -107,44 +107,33 @@ public class LlmConfigService {
     }
 
     public synchronized void saveConfig(LlmConfigVO config) {
-        LlmConfigVO normalized = normalizeWithStoredApiKey(config);
-        LlmOperationResultVO validation = validate(normalized);
-        if (validation.getStatus() != 0) {
-            throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
-        }
-        GeneralSettingsVO current = settingsService.getGeneralSettings();
-        // The env-injected token is authoritative at runtime but must never be persisted.
-        String persistedApiKey = !StringUtils.hasText(envToken())
-                ? normalized.getApiKey()
-                : defaultString(current.getApiKey(), "");
-        GeneralSettingsVO updated = GeneralSettingsVO.builder()
-                .theme(current.getTheme())
-                .compact(current.isCompact())
-                .desktopNotify(current.isDesktopNotify())
-                .notifySound(current.isNotifySound())
-                .sessionTimeout(current.getSessionTimeout())
-                .requireLogin(current.isRequireLogin())
-                // The LLM form never edits notification channels; keep the stored values
-                // instead of persisting nulls over them.
-                .dingtalkWebhook(current.getDingtalkWebhook())
-                .smsWebhook(current.getSmsWebhook())
-                .emailRecipients(current.getEmailRecipients())
-                .llmProvider(normalized.getProvider())
-                .llmEngine(normalized.getEngine())
-                .apiKey(persistedApiKey)
-                // Carry the clear intent into the persisted settings: without it a blank key plus
-                // clearApiKey=false means "keep the stored key" to SettingsService's merge, so the
-                // secret the operator just removed would be written straight back.
-                .clearApiKey(normalized.isClearApiKey())
-                .model(normalized.getModel())
-                .baseUrl(normalized.getApiBase())
-                .deploymentName(normalized.getDeploymentName())
-                .apiVersion(normalized.getApiVersion())
-                .awsRegion(normalized.getAwsRegion())
-                .maxTokens(normalized.getMaxTokens())
-                .temperature(normalized.getTemperature())
-                .build();
-        settingsService.saveGeneralSettings(updated);
+        settingsService.updateGeneralSettings(current -> {
+            LlmConfigVO normalized = normalizeWithStoredApiKey(config, current);
+            LlmOperationResultVO validation = validate(normalized);
+            if (validation.getStatus() != 0) {
+                throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
+            }
+            // The env-injected token is authoritative at runtime but must never be persisted.
+            String persistedApiKey = !StringUtils.hasText(envToken())
+                    ? normalized.getApiKey()
+                    : defaultString(current.getApiKey(), "");
+            return current.toBuilder()
+                    .llmProvider(normalized.getProvider())
+                    .llmEngine(normalized.getEngine())
+                    .apiKey(persistedApiKey)
+                    // Carry the clear intent into the persisted settings: without it a blank key plus
+                    // clearApiKey=false means "keep the stored key" to SettingsService's merge, so the
+                    // secret the operator just removed would be written straight back.
+                    .clearApiKey(normalized.isClearApiKey())
+                    .model(normalized.getModel())
+                    .baseUrl(normalized.getApiBase())
+                    .deploymentName(normalized.getDeploymentName())
+                    .apiVersion(normalized.getApiVersion())
+                    .awsRegion(normalized.getAwsRegion())
+                    .maxTokens(normalized.getMaxTokens())
+                    .temperature(normalized.getTemperature())
+                    .build();
+        });
     }
 
     public LlmOperationResultVO testConfig(LlmConfigVO config) {
@@ -307,6 +296,10 @@ public class LlmConfigService {
     }
 
     private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config) {
+        return normalizeWithStoredApiKey(config, null);
+    }
+
+    private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config, GeneralSettingsVO current) {
         LlmConfigVO normalized = normalize(config);
         if (normalized.isClearApiKey()) {
             normalized.setApiKey("");
@@ -321,7 +314,7 @@ public class LlmConfigService {
             // otherwise fall back to the key stored in settings.
             String effectiveKey = envToken();
             if (!StringUtils.hasText(effectiveKey)) {
-                effectiveKey = settingsService.getGeneralSettings().getApiKey();
+                effectiveKey = current == null ? settingsService.getGeneralSettings().getApiKey() : current.getApiKey();
             }
             normalized.setApiKey(defaultString(effectiveKey, ""));
         }
