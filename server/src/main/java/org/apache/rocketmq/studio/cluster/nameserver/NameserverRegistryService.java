@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
@@ -32,6 +33,7 @@ import java.util.List;
 public class NameserverRegistryService {
 
     private final RmqNameserverMapper nameserverMapper;
+    private final OperationAuditService operationAuditService;
 
     public List<NameserverRegistryVO> list() {
         return nameserverMapper.selectList(new QueryWrapper<RmqNameserver>().orderByAsc("id")).stream()
@@ -72,6 +74,7 @@ public class NameserverRegistryService {
         if (stored == null) {
             throw concurrentlyDeleted(entity.getId());
         }
+        recordRegistryAudit("CREATE_NAMESERVER_REGISTRY", stored.getName(), registryDetail(stored));
         return toVO(stored);
     }
 
@@ -107,6 +110,7 @@ public class NameserverRegistryService {
             // The row vanished between the update and the reload; do not convert null to a VO.
             throw concurrentlyDeleted(command.getId());
         }
+        recordRegistryAudit("UPDATE_NAMESERVER_REGISTRY", stored.getName(), registryDetail(stored));
         return toVO(stored);
     }
 
@@ -127,13 +131,30 @@ public class NameserverRegistryService {
     }
 
     public void delete(Long id) {
-        if (nameserverMapper.selectById(id) == null) {
+        RmqNameserver existing = nameserverMapper.selectById(id);
+        if (existing == null) {
             throw new BusinessException(404, "NameServer registry entry not found: " + id);
         }
         if (nameserverMapper.deleteById(id) == 0) {
             // A concurrent delete already removed the row; report it instead of a false success.
             throw concurrentlyDeleted(id);
         }
+        recordRegistryAudit("DELETE_NAMESERVER_REGISTRY", String.valueOf(id), registryDetail(existing));
+    }
+
+    /**
+     * The registry decides which NameServer endpoints the console may target, and the changes made
+     * here lose the endpoint's provenance once applied. Recorded like the other operator-visible
+     * resource writes (ACL rules and users, proxy addresses, certificates); {@code resourceName}
+     * follows the delete convention of those callers, where the removed row is identified by id and
+     * the name travels in the detail.
+     */
+    private void recordRegistryAudit(String operation, String resourceName, String detail) {
+        operationAuditService.record(operation, "NAMESERVER_REGISTRY", resourceName, null, detail, "SUCCESS", null);
+    }
+
+    private static String registryDetail(RmqNameserver entity) {
+        return "name=" + entity.getName() + ", namesrvAddr=" + entity.getNamesrvAddr();
     }
 
     private static BusinessException concurrentlyDeleted(Long id) {
