@@ -48,6 +48,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -355,6 +356,24 @@ class AclControllerTest extends WebMvcAuthTestSupport {
         mockMvc.perform(get("/api/acl/users/1/credentials"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+    }
+
+    @Test
+    void exportUsersShouldStreamCsvAttachmentWithTheKeywordFilter() throws Exception {
+        when(aclService.exportUsersCsv(isNull(), eq("orders"))).thenReturn(
+                "\uFEFFuserId,username,accessKey,admin,clusters,permRead,permWrite,"
+                        + "whiteRemoteAddress,gmtCreate\r\n"
+                        + "\"1\",\"orders\",\"acce****3456\",\"false\",\"cluster-a\",\"\",\"\","
+                        + "\"\",\"2026-09-01T10:00\"\r\n");
+
+        mockMvc.perform(get("/api/acl/users/export").param("keyword", "orders"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"acl-users.csv\""))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("\uFEFFuserId")));
+
+        verify(aclService).exportUsersCsv(isNull(), eq("orders"));
     }
 
     @Test

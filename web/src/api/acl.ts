@@ -88,6 +88,11 @@ export async function pageAclUsers(params: AclUserQuery & { page: number; pageSi
   return res.data.data;
 }
 
+export async function exportAclUsers(params?: AclUserQuery) {
+  const res = await client.get<Blob>('/acl/users/export', { params, responseType: 'blob' });
+  return res.data;
+}
+
 export async function getAclUserCredentials(id: AclEntityId, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
     `/acl/users/${encodeURIComponent(String(id))}/credentials`,

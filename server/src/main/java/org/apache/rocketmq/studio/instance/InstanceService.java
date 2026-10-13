@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.RegionNames;
 import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
@@ -94,6 +95,9 @@ public class InstanceService {
     static final int MAX_CLOUD_IMPORT_FAILURE_DETAILS = 100;
     /** Caps one cloud-import failure detail; counted in code points, not UTF-16 chars. */
     static final int MAX_CLOUD_IMPORT_FAILURE_MESSAGE_LENGTH = 500;
+    private static final int MAX_EXPORT_INSTANCES = 10_000;
+    private static final String EXPORT_INSTANCES_CSV_HEADER = "name,type,vendor,endpoint,regionId,"
+            + "regionName,remark,topicCount,consumerGroupCount,resourceCountsAvailable,gmtCreate,gmtModified\r\n";
 
     private final InstanceResourceCountRunner countRunner = new InstanceResourceCountRunner(
             COUNT_PARALLELISM, COUNT_QUEUE_CAPACITY, COUNT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -127,6 +131,36 @@ public class InstanceService {
                 .thenComparing(instance -> instance.getRegionId() == null ? "" : instance.getRegionId())
                 .thenComparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER));
         return sorted;
+    }
+
+    /**
+     * Exports the filtered instance inventory as CSV with a UTF-8 BOM, honouring the same type
+     * and search filters as the list endpoint. Internal credential references are not part of
+     * the export — the columns mirror what the inventory page shows an authenticated operator.
+     */
+    public String exportInstancesCsv(InstanceType type, String search) {
+        List<InstanceVO> instances = listInstances(type, search);
+        if (instances.size() > MAX_EXPORT_INSTANCES) {
+            throw new BusinessException(400, "Instance export exceeds the maximum of "
+                    + MAX_EXPORT_INSTANCES + " records; narrow the filters");
+        }
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_INSTANCES_CSV_HEADER);
+        for (InstanceVO instance : instances) {
+            CsvUtil.appendRow(csv,
+                    instance.getName(),
+                    instance.getType(),
+                    instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor(),
+                    instance.getEndpoint(),
+                    instance.getRegionId(),
+                    instance.getRegionName(),
+                    instance.getRemark(),
+                    instance.getTopicCount(),
+                    instance.getConsumerGroupCount(),
+                    instance.isResourceCountsAvailable(),
+                    instance.getGmtCreate(),
+                    instance.getGmtModified());
+        }
+        return csv.toString();
     }
 
     /**

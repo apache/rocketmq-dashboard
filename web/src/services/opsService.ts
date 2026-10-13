@@ -451,6 +451,17 @@ export async function listAlertDeliveriesPage(
   return opsApi.listAlertDeliveriesPage(params);
 }
 
+export async function exportAlertDeliveries(
+  params: Omit<NotificationDeliveryQuery, 'page' | 'pageSize'>,
+): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'deliveryId,alertId,alertTitle,alertDomain,transition,instanceId,channel,status,attemptCount,createdAt,deliveredAt,nextRetryAt,lastError\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return opsApi.exportAlertDeliveries(params);
+}
+
 export async function listAlertSilences(): Promise<AlertSilence[]> {
   if (isMockMode()) return alertSilencesState.map((silence) => ({ ...silence }));
   return opsApi.listAlertSilences();
@@ -467,6 +478,15 @@ export async function listAlertSilencesPage(
     .slice(start, start + pageSize)
     .map((silence) => ({ ...silence }));
   return { items, total: alertSilencesState.length, page, size: pageSize };
+}
+
+export async function exportAlertSilences(): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'silenceId,domain,ruleId,instanceId,labels,startsAtUtc,endsAtUtc,recurrence,timeZone,recurrenceDays,recurrenceUntilUtc,reason,createdBy\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return opsApi.exportAlertSilences();
 }
 
 export async function createAlertSilence(data: CreateAlertSilence): Promise<AlertSilence> {

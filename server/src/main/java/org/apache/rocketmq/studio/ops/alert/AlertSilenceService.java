@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.springframework.stereotype.Service;
 
 import java.time.DateTimeException;
@@ -38,6 +39,9 @@ import java.util.TreeSet;
 @RequiredArgsConstructor
 public class AlertSilenceService {
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_EXPORT_SILENCES = 10_000;
+    private static final String EXPORT_CSV_HEADER = "silenceId,domain,ruleId,instanceId,labels,"
+            + "startsAtUtc,endsAtUtc,recurrence,timeZone,recurrenceDays,recurrenceUntilUtc,reason,createdBy\r\n";
 
     private final AlertSilenceRepository repository;
     private final OperationAuditService operationAuditService;
@@ -49,6 +53,58 @@ public class AlertSilenceService {
     public PageResult<AlertSilenceVO> listPage(int page, int pageSize) {
         validatePagination(page, pageSize);
         return repository.findPage(page, pageSize);
+    }
+
+    /**
+     * Exports the full maintenance-window inventory as CSV with a UTF-8 BOM. Timestamps are the
+     * stored UTC values, and the columns are labelled accordingly; recurring windows also carry
+     * their time zone and the weekdays the window repeats on.
+     */
+    public String exportSilences() {
+        PageResult<AlertSilenceVO> result = repository.findPage(1, MAX_EXPORT_SILENCES);
+        if (result.getTotal() > MAX_EXPORT_SILENCES) {
+            throw new BusinessException(400,
+                    "Alert silence export exceeds the maximum of " + MAX_EXPORT_SILENCES + " records");
+        }
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_CSV_HEADER);
+        for (AlertSilenceVO silence : result.getItems()) {
+            CsvUtil.appendRow(csv,
+                    silence.getId(),
+                    silence.getDomain(),
+                    silence.getRuleId(),
+                    silence.getInstanceId(),
+                    serializeLabels(silence.getLabels()),
+                    silence.getStartsAt(),
+                    silence.getEndsAt(),
+                    silence.getRecurrence(),
+                    silence.getTimeZone(),
+                    serializeRecurrenceDays(silence.getRecurrenceDays()),
+                    silence.getRecurrenceUntil(),
+                    silence.getReason(),
+                    silence.getCreatedBy());
+        }
+        return csv.toString();
+    }
+
+    private static String serializeLabels(Map<String, String> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return "";
+        }
+        StringBuilder joined = new StringBuilder();
+        new TreeSet<>(labels.keySet()).forEach(key -> {
+            if (joined.length() > 0) {
+                joined.append(';');
+            }
+            joined.append(key).append('=').append(labels.get(key));
+        });
+        return joined.toString();
+    }
+
+    private static String serializeRecurrenceDays(Set<Integer> days) {
+        if (days == null || days.isEmpty()) {
+            return "";
+        }
+        return String.join(",", new TreeSet<>(days).stream().map(String::valueOf).toList());
     }
 
     public AlertSilenceVO create(CreateAlertSilenceDTO request) {

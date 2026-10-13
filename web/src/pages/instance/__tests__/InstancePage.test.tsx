@@ -28,6 +28,7 @@ import type { Instance, InstanceType, InstanceVendor } from '../../../api/instan
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import * as instanceService from '../../../services/instanceService';
+import { downloadBlob } from '../../../utils/download';
 import InstancePage from '../index';
 
 vi.mock('../../../api/aliyunCatalog', () => ({
@@ -48,10 +49,17 @@ vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
   deleteInstance: vi.fn(),
   deleteInstancesBatch: vi.fn(),
+  exportInstances: vi.fn(),
   importCloudInstances: vi.fn(),
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
 }));
+
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadBlob: vi.fn() };
+});
 
 const cloudCredentialPage = (items: CloudCredential[]): CloudCredentialPage => ({
   items,
@@ -127,6 +135,21 @@ describe('InstancePage', () => {
       instance(1, 'production-proxy'),
       instance(2, 'development-direct', 'DIRECT'),
     ]);
+  });
+
+  it('exports the filtered instance inventory through the toolbar button', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const blob = new Blob(['\uFEFFname,type\r\n'], { type: 'text/csv;charset=utf-8' });
+    vi.mocked(instanceService.exportInstances).mockResolvedValue(blob);
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出实例' }));
+
+    await waitFor(() => {
+      expect(instanceService.exportInstances).toHaveBeenCalledWith({});
+      expect(downloadBlob).toHaveBeenCalledWith(blob, 'instances.csv');
+    });
   });
 
   it('loads server-filtered results when the search or type changes', async () => {

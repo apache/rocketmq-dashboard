@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CsvUtil;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
@@ -50,6 +51,9 @@ public class AclService {
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_EXPORT_USERS = 10_000;
+    private static final String EXPORT_USERS_CSV_HEADER = "userId,username,accessKey,admin,clusters,"
+            + "permRead,permWrite,whiteRemoteAddress,gmtCreate\r\n";
 
     /**
      * Minimum broker version that supports ACL 2.0 (the RocketMQ {@code auth} module with
@@ -208,6 +212,53 @@ public class AclService {
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
         return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
+    }
+
+    /**
+     * Exports the ACL account inventory behind the users page as CSV with a UTF-8 BOM, honouring
+     * the same keyword filter the page uses. The access key is masked exactly like the list view
+     * ({@link CredentialUtils#mask}) and the secret key has no column at all — the plaintext
+     * stays behind the explicit per-user credentials endpoint.
+     */
+    public String exportUsersCsv(String instanceId, String keyword) {
+        List<AclUserVO> users;
+        if (isTencentInstance(instanceId)) {
+            String query = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+            users = tencentAclService.listUsers(instanceId).stream()
+                    .filter(user -> query.isEmpty()
+                            || containsIgnoreCase(user.getUsername(), query)
+                            || containsIgnoreCase(user.getAccessKey(), query))
+                    .sorted(Comparator.comparing(AclUserVO::getGmtCreate, Comparator.nullsLast(Comparator.reverseOrder()))
+                            .thenComparing(AclUserVO::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                    .toList();
+            if (users.size() > MAX_EXPORT_USERS) {
+                throw new BusinessException(400, "ACL user export exceeds the maximum of "
+                        + MAX_EXPORT_USERS + " records; narrow the keyword");
+            }
+        } else {
+            PageResult<AclUserVO> result = aclRepository.findUserPage(
+                    StringUtils.hasText(keyword) ? keyword.trim() : null, 1, MAX_EXPORT_USERS);
+            if (result.getTotal() > MAX_EXPORT_USERS) {
+                throw new BusinessException(400, "ACL user export exceeds the maximum of "
+                        + MAX_EXPORT_USERS + " records; narrow the keyword");
+            }
+            users = result.getItems();
+        }
+        StringBuilder csv = new StringBuilder("\uFEFF").append(EXPORT_USERS_CSV_HEADER);
+        for (AclUserVO user : users) {
+            AclUserVO masked = maskCredentials(user);
+            CsvUtil.appendRow(csv,
+                    masked.getId(),
+                    masked.getUsername(),
+                    masked.getAccessKey(),
+                    masked.isAdmin(),
+                    masked.getClusters() == null ? "" : String.join(";", masked.getClusters()),
+                    masked.getPermRead(),
+                    masked.getPermWrite(),
+                    masked.getWhiteRemoteAddress(),
+                    masked.getGmtCreate());
+        }
+        return csv.toString();
     }
 
 

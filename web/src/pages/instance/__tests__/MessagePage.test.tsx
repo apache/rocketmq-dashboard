@@ -654,6 +654,69 @@ describe('Message page query history', () => {
     expect(await screen.findByText('cg-billing')).toBeInTheDocument();
   });
 
+  it('exports the loaded trace as JSON from the trace tab', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const download = vi.spyOn(downloadUtils, 'downloadBlob').mockImplementation(() => {});
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-TRACE-EXPORT')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+        {
+          title: 'Consumer 消费',
+          timestamp: '2026-07-31T00:00:02.100Z',
+          costTime: 6200,
+          status: 'error',
+          description: 'consumer returned failure',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'failed',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 2,
+        },
+      ],
+    });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-TRACE-EXPORT');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-TRACE-EXPORT')).toBeInTheDocument();
+    const row = await screen.findByRole('row', { name: /MID-TRACE-EXPORT/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    // The row's trace button opens the modal on the trace tab and auto-loads the trace;
+    // the export button becomes enabled once that trace arrives. The download icon
+    // contributes to the accessible name, so match on the text part.
+    const exportButton = await screen.findByRole('button', { name: /导出轨迹/ });
+    await waitFor(() => expect(exportButton).toBeEnabled());
+    await user.click(exportButton);
+
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+    const [blob, filename] = download.mock.calls[0];
+    expect(filename).toBe('trace-MID-TRACE-EXPORT.json');
+    expect(blob.type).toBe('application/json');
+    const payload = JSON.parse(await (blob as Blob).text());
+    expect(payload.mode).toBe('msgid');
+    expect(payload.query).toBe('MID-TRACE-EXPORT');
+    expect(payload.topic).toBe('topic-MID-TRACE-EXPORT');
+    expect(payload.nodes).toHaveLength(2);
+    expect(payload.nodes[1]).toMatchObject({ title: 'Consumer 消费', status: 'error' });
+    expect(payload.consumerStatus[0]).toMatchObject({ group: 'cg-billing', retryCount: 2 });
+    expect(typeof payload.exportedAt).toBe('string');
+  });
+
   it('renders placeholders on the detail panel when the storage location is unknown', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([

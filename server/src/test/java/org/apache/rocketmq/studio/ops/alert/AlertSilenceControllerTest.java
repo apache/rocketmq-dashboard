@@ -36,6 +36,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -108,5 +109,23 @@ class AlertSilenceControllerTest extends WebMvcAuthTestSupport {
                 request.getRecurrence() == AlertSilenceRecurrence.WEEKLY
                         && request.getRecurrenceDays().equals(Set.of(1, 3, 5))
                         && "Asia/Shanghai".equals(request.getTimeZone())));
+    }
+
+    @Test
+    void exportShouldStreamCsvAttachmentTest() throws Exception {
+        when(silenceService.exportSilences()).thenReturn(
+                "\uFEFFsilenceId,domain,ruleId,instanceId,labels,startsAtUtc,endsAtUtc,recurrence,"
+                        + "timeZone,recurrenceDays,recurrenceUntilUtc,reason,createdBy\r\n"
+                        + "\"12\",\"CLUSTER\",\"\",\"\",\"\",\"2026-08-22T09:00\",\"2026-08-22T10:00\","
+                        + "\"\",\"\",\"\",\"\",\"\",\"admin\"\r\n");
+
+        mockMvc.perform(get("/api/alert-silences/export"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"alert-silences.csv\""))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("\uFEFFsilenceId")));
+
+        verify(silenceService).exportSilences();
     }
 }

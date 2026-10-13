@@ -22,6 +22,8 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -45,6 +48,16 @@ public class InstanceController {
             @RequestParam(required = false) InstanceType type,
             @RequestParam(required = false) String search) {
         return Result.ok(instanceService.listInstances(type, search));
+    }
+
+    @GetMapping(value = "/export", produces = "text/csv;charset=UTF-8")
+    public ResponseEntity<byte[]> exportInstances(
+            @RequestParam(required = false) InstanceType type,
+            @RequestParam(required = false) String search) {
+        byte[] csv = instanceService.exportInstancesCsv(type, search).getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"instances.csv\"")
+                .body(csv);
     }
 
     @GetMapping("/{instanceId}/capabilities")

@@ -25,6 +25,7 @@ import type { AclRule, AclUser } from '../../../api/acl';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as aclService from '../../../services/aclService';
 import * as instanceService from '../../../services/instanceService';
+import { downloadBlob } from '../../../utils/download';
 import AclPage from '../acl';
 
 vi.mock('../../../services/aclService', () => ({
@@ -33,6 +34,7 @@ vi.mock('../../../services/aclService', () => ({
   createAndUpdatePlainAccessConfig: vi.fn(),
   deleteAclRule: vi.fn(),
   deleteAclUser: vi.fn(),
+  exportAclUsers: vi.fn(),
   getAclUserCredentials: vi.fn(),
   examineBrokerClusterAclConfig: vi.fn(),
   listAclRules: vi.fn(),
@@ -44,6 +46,11 @@ vi.mock('../../../services/aclService', () => ({
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
+vi.mock('../../../utils/download', async () => {
+  const actual =
+    await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
+  return { ...actual, downloadBlob: vi.fn() };
+});
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -200,6 +207,21 @@ describe('ACL page', () => {
 
     expect(within(accessKeyCell).getByText('-')).toBeInTheDocument();
     expect(within(accessKeyCell).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('exports the ACL user inventory from the users tab', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const blob = new Blob(['\uFEFFuserId,username\r\n'], { type: 'text/csv;charset=utf-8' });
+    vi.mocked(aclService.exportAclUsers).mockResolvedValue(blob);
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    await user.click(screen.getByRole('button', { name: '导出用户' }));
+
+    await waitFor(() => {
+      expect(aclService.exportAclUsers).toHaveBeenCalledWith({});
+      expect(downloadBlob).toHaveBeenCalledWith(blob, 'acl-users.csv');
+    });
   });
 
   it('clamps rules back to a valid page when the current page becomes empty', async () => {

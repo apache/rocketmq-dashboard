@@ -34,7 +34,7 @@ import {
   message,
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
-import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
+import { Plus, MagnifyingGlass, DownloadSimple } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
@@ -48,12 +48,14 @@ import {
 } from '../../api/aliyunCatalog';
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { describeApiError } from '../../utils/apiError';
+import { downloadBlob } from '../../utils/download';
 import { formatDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   createInstance,
   deleteInstance,
   deleteInstancesBatch,
+  exportInstances,
   importCloudInstances,
   listInstances,
   updateInstance,
@@ -142,6 +144,7 @@ const InstancePage = () => {
   const editInstanceType = Form.useWatch<Instance['type'] | undefined>('type', editForm);
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
@@ -187,6 +190,20 @@ const InstancePage = () => {
       requestIdRef.current += 1;
     };
   }, [debouncedSearch, loadInstances, typeFilter]);
+
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const blob = await exportInstances(listQueryRef.current);
+      downloadBlob(blob, 'instances.csv');
+      message.success(t('instance.exportSuccess'));
+    } catch {
+      message.error(t('instance.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -734,6 +751,13 @@ const InstancePage = () => {
           />
         </Space>
         <Space size={12}>
+          <Button
+            icon={<DownloadSimple size={14} />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            {t('instance.exportInstances')}
+          </Button>
           <Button
             danger
             icon={<DeleteOutlined />}

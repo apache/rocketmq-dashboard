@@ -49,6 +49,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -83,6 +85,26 @@ class InstanceControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
                 .andExpect(jsonPath("$.data[0].type").value("PROXY_CLUSTER"))
                 .andExpect(jsonPath("$.data[0].endpoint").value("10.0.1.1:8080"));
+    }
+
+    @Test
+    void exportInstancesShouldStreamCsvAttachmentWithTheFilters() throws Exception {
+        when(instanceService.exportInstancesCsv(eq(InstanceType.CLOUD), eq("prod"))).thenReturn(
+                "\uFEFFname,type,vendor,endpoint,regionId,regionName,remark,"
+                        + "topicCount,consumerGroupCount,resourceCountsAvailable,gmtCreate,gmtModified\r\n"
+                        + "\"aliyun-prod\",\"CLOUD\",\"ALIYUN\",\"\",\"cn-hangzhou\",\"Hangzhou (CN)\","
+                        + "\"\",\"12\",\"7\",\"true\",\"2026-09-01T08:00\",\"2026-09-02T08:00\"\r\n");
+
+        mockMvc.perform(get("/api/instances/export")
+                        .param("type", "CLOUD")
+                        .param("search", "prod"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"instances.csv\""))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("\uFEFFname,")));
+
+        verify(instanceService).exportInstancesCsv(eq(InstanceType.CLOUD), eq("prod"));
     }
 
     @Test

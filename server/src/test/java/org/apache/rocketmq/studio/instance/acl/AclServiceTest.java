@@ -220,6 +220,78 @@ class AclServiceTest {
     }
 
     @Test
+    void exportUsersCsvShouldMaskAccessKeyAndOmitSecretKeyTest() {
+        AclUserVO user = AclUserVO.builder()
+                .id(1L)
+                .username("orders")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
+                .admin(false)
+                .clusters(List.of("cluster-a", "cluster-b"))
+                .whiteRemoteAddress("10.0.0.*")
+                .gmtCreate(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .build();
+        when(aclRepository.findUserPage("orders", 1, 10_000))
+                .thenReturn(PageResult.of(List.of(user), 1, 1, 10_000));
+
+        String csv = aclService.exportUsersCsv(null, " orders ");
+
+        assertThat(csv).startsWith("\uFEFFuserId,username,accessKey,admin,clusters,"
+                + "permRead,permWrite,whiteRemoteAddress,gmtCreate\r\n");
+        assertThat(csv).contains("\"1\",\"orders\",\"acce****3456\",\"false\",\"cluster-a;cluster-b\","
+                + "\"\",\"\",\"10.0.0.*\",\"2026-09-01T10:00\"");
+        assertThat(csv).doesNotContain("secret-key-987654");
+        verify(aclRepository).findUserPage("orders", 1, 10_000);
+        verifyNoInteractions(instanceResolver, tencentAclService);
+    }
+
+    @Test
+    void exportUsersCsvShouldRejectBeyondTheCapTest() {
+        when(aclRepository.findUserPage(null, 1, 10_000))
+                .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(() -> aclService.exportUsersCsv(null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user export exceeds the maximum of 10000 records; narrow the keyword");
+    }
+
+    @Test
+    void exportUsersCsvShouldFilterTencentUsersByKeywordTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        AclUserVO matching = AclUserVO.builder()
+                .id(2L)
+                .username("role-a")
+                .accessKey("access-key-abcdef")
+                .secretKey("secret-key-abcdef")
+                .admin(false)
+                .permRead(true)
+                .permWrite(false)
+                .gmtCreate(LocalDateTime.of(2026, 9, 2, 8, 0))
+                .build();
+        AclUserVO other = AclUserVO.builder()
+                .id(3L)
+                .username("role-b")
+                .accessKey("access-key-uvwxyz")
+                .secretKey("secret-key-uvwxyz")
+                .admin(false)
+                .gmtCreate(LocalDateTime.of(2026, 9, 3, 8, 0))
+                .build();
+        when(tencentAclService.listUsers("tencent-instance")).thenReturn(List.of(matching, other));
+
+        String csv = aclService.exportUsersCsv("tencent-instance", "role-a");
+
+        assertThat(csv).contains("\"2\",\"role-a\",\"acce****cdef\",\"false\",\"\",\"true\",\"false\","
+                + "\"\",\"2026-09-02T08:00\"");
+        assertThat(csv).doesNotContain("role-b");
+        assertThat(csv).doesNotContain("secret-key-abcdef");
+    }
+
+    @Test
     void listRulesShouldReturnEmptyPageWhenTencentPageOffsetExceedsIntegerRange() {
         InstanceVO instance = InstanceVO.builder()
                 .name("tencent-instance")

@@ -111,6 +111,18 @@ export async function pageAclUsers(params: {
   return aclApi.pageAclUsers(params);
 }
 
+export async function exportAclUsers(params: {
+  keyword?: string;
+  instanceId?: string;
+}): Promise<Blob> {
+  if (isMockMode()) {
+    const header =
+      'userId,username,accessKey,admin,clusters,permRead,permWrite,whiteRemoteAddress,gmtCreate\r\n';
+    return new Blob(['\uFEFF' + header], { type: 'text/csv;charset=utf-8' });
+  }
+  return aclApi.exportAclUsers(params);
+}
+
 export async function getAclUserCredentials(
   id: AclEntityId,
   instanceId?: string,

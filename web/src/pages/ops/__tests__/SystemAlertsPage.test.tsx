@@ -12,7 +12,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
-import { downloadCsv } from '../../../utils/download';
+import { downloadBlob, downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
@@ -21,6 +21,7 @@ import {
   listRelatedSystemAlerts,
   retryAlertDelivery,
   deleteAlertSilence,
+  exportAlertSilences,
   listAlertSilences,
   listAlertSilencesPage,
   listSystemAlertsPage,
@@ -39,12 +40,13 @@ vi.mock('../../../services/opsService', () => ({
   listAlertSilencesPage: vi.fn(),
   createAlertSilence: vi.fn(),
   deleteAlertSilence: vi.fn(),
+  exportAlertSilences: vi.fn(),
 }));
 
 vi.mock('../../../utils/download', async () => {
   const actual =
     await vi.importActual<typeof import('../../../utils/download')>('../../../utils/download');
-  return { ...actual, downloadCsv: vi.fn() };
+  return { ...actual, downloadCsv: vi.fn(), downloadBlob: vi.fn() };
 });
 
 beforeAll(() => {
@@ -609,6 +611,21 @@ describe('SystemAlertsPage', () => {
         }),
       );
       expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
+    });
+  });
+
+  it('exports the maintenance window inventory from the dialog', async () => {
+    const blob = new Blob(['\uFEFFsilenceId,domain\r\n'], { type: 'text/csv;charset=utf-8' });
+    vi.mocked(exportAlertSilences).mockResolvedValue(blob);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    await user.click(await screen.findByRole('button', { name: '导出维护窗口' }));
+
+    await waitFor(() => {
+      expect(exportAlertSilences).toHaveBeenCalledTimes(1);
+      expect(downloadBlob).toHaveBeenCalledWith(blob, 'alert-silences.csv');
     });
   });
 
