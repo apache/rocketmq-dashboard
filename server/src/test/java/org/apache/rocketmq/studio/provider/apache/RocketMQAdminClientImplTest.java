@@ -67,6 +67,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -325,6 +326,29 @@ class RocketMQAdminClientImplTest {
 
         assertThat(group.getTotalLag()).isEqualTo(40);
         assertThat(group.getDelaySeconds()).isBetween(4, 30);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"100,100,3600000,0", "100,99,3600000,3600", "99,100,3600000,3600", "100,100,0,0"})
+    void getConsumerGroupDoesNotTreatCaughtUpIdleQueuesAsDelayedTest(
+            long brokerOffset, long consumerOffset, long ageMillis, int minimumDelay) throws Exception {
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = offsetWrapper(brokerOffset, consumerOffset);
+        wrapper.setLastTimestamp(ageMillis == 0 ? 0 : System.currentTimeMillis() - ageMillis);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-a", 0), wrapper);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-b", 1), offsetWrapper(50, 50));
+        when(adminExt.examineConsumeStats("orders")).thenReturn(stats);
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
+
+        assertThat(group.isConsumeStatsAvailable()).isTrue();
+        assertThat(group.isConsumptionTimestampAvailable()).isEqualTo(ageMillis > 0);
+        assertThat(group.getTotalLag()).isEqualTo(brokerOffset - consumerOffset);
+        if (minimumDelay == 0) {
+            assertThat(group.getDelaySeconds()).isZero();
+        } else {
+            assertThat(group.getDelaySeconds()).isBetween(minimumDelay, minimumDelay + 30);
+        }
     }
 
     @Test
