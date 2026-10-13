@@ -41,6 +41,19 @@ class AlertRuleEvaluatorTest {
     }
 
     @Test
+    void negativeZeroThresholdEqualsMeasuredZeroTest() {
+        // Native == and != must use numeric equality: -0.0 and 0.0 are the same measurement,
+        // and thresholds can arrive as -0.0 through JSON. Double.compare separates them.
+        AlertRuleVO equal = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator("==").threshold(-0.0).enabled(true).build();
+        assertThat(evaluator.evaluate(equal, sample(MetricAvailability.AVAILABLE, 0.0)).conditionMet()).isTrue();
+
+        AlertRuleVO notEqual = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
+                .operator("!=").threshold(-0.0).enabled(true).build();
+        assertThat(evaluator.evaluate(notEqual, sample(MetricAvailability.AVAILABLE, 0.0)).conditionMet()).isFalse();
+    }
+
+    @Test
     void evaluatesPercentageThresholdsForNativeRatioMetricsTest() {
         AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.CLUSTER).metric("broker.disk.usage_ratio")
                 .operator(">=").threshold(85).thresholdUnit("%").enabled(true).build();

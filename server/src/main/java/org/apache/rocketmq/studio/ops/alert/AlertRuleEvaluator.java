@@ -50,13 +50,16 @@ public class AlertRuleEvaluator {
         if (operator == null) {
             return false;
         }
+        // == and != use primitive equality: -0.0 and 0.0 are the same measurement, which the
+        // total-order Double.compare separates (and AlertRuleSemanticFingerprint already treats
+        // either zero as one identity). NaN keeps its usual never-equal reading.
         return switch (operator.trim()) {
             case ">" -> value > threshold;
             case ">=" -> value >= threshold;
             case "<" -> value < threshold;
             case "<=" -> value <= threshold;
-            case "==" -> Double.compare(value, threshold) == 0;
-            case "!=" -> Double.compare(value, threshold) != 0;
+            case "==" -> value == threshold;
+            case "!=" -> value != threshold;
             default -> false;
         };
     }
