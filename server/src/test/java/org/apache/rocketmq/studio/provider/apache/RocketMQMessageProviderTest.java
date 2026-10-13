@@ -66,6 +66,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -915,6 +917,61 @@ class RocketMQMessageProviderTest {
         assertThat(record.getBodyEncoding()).isEqualTo("UTF-8");
         assertThat(record.getBody()).isEqualTo("x".repeat(64 * 1024 - 1));
         assertThat(record.isBodyTruncated()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"13,true,false", "13,false,false", "14,true,false", "14,false,false",
+                "15,true,false", "15,false,false", "13,true,true", "13,false,true",
+                "14,true,true", "14,false,true", "15,true,true", "15,false,true"})
+    void getMessageTraceShouldMatchSdkProducerTraceLayoutsTest(int fieldCount, boolean success,
+                                                               boolean emptyOptionalFields) throws Exception {
+        List<String> fields = new ArrayList<>(List.of("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "key1", "broker:10911", "15", "50", "0"));
+        if (fieldCount >= 14) {
+            fields.add(fieldCount == 14 && emptyOptionalFields ? "" : "offset-1");
+        }
+        fields.add(Boolean.toString(success));
+        if (fieldCount == 15) {
+            fields.add(emptyOptionalFields ? "" : "producer-host:1000");
+        }
+        String context = traceContext(fields.toArray(String[]::new));
+        if (fieldCount == 13 && emptyOptionalFields) {
+            context += TraceConstants.CONTENT_SPLITOR;
+        }
+        String body = traceBody(context);
+        assertThat(TraceDataEncoder.decoderFromTraceDataString(body).getFirst().isSuccess()).isEqualTo(success);
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(body.getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
+
+        assertThat(record.getNodes()).hasSize(1);
+        TraceNodeVO produce = record.getNodes().getFirst();
+        assertThat(produce.getTitle()).isEqualTo("produce");
+        assertThat(produce.getStatus()).isEqualTo(success ? "finish" : "failed");
+        assertThat(produce.getTimestamp()).isEqualTo(1000L);
+        assertThat(produce.getCostTime()).isEqualTo(50L);
+        assertThat(produce.getDescription()).isEqualTo("producer=prod-group, storeHost=broker:10911");
+    }
+
+    @Test
+    void getMessageTraceByKeyShouldPreserveLegacyProducerSuccessAndFilterOtherKeysTest() throws Exception {
+        String matching = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "shared-key", "broker:10911", "15", "50", "0", "true");
+        String unrelated = traceContext("Pub", "2000", "cn", "other-group", "TopicA", "msg-other",
+                "tag1", "other-key", "broker:10911", "15", "50", "0", "true");
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(traceBody(matching, unrelated).getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of(traceMessage)));
+
+        TraceRecordVO record = provider.getMessageTraceByKey("instance-a", "shared-key", "orders", null);
+
+        assertThat(record.getNodes()).hasSize(1);
+        assertThat(record.getNodes().getFirst().getStatus()).isEqualTo("finish");
+        assertThat(record.getNodes().getFirst().getDescription()).contains("prod-group");
     }
 
     void getMessageTraceParsesBatchedPubAndSubAfterContexts() throws Exception {
