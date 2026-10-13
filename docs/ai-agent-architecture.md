@@ -185,6 +185,9 @@ drain 写 `SHUTDOWN` 而不是把一次重新部署误标成用户取消。停�
   `NODE_EXTRA_CA_CERTS`/代理变量都已在白名单里。不加 `RMQCTL_CONFIG`——我们显式传 `--config`。
 - 内置工具（`Bash`/`Read`/`Write`/`Edit`/`Glob`/`Grep`/`Task`/`WebFetch`/`WebSearch`/`TodoWrite`/
   `NotebookEdit`）**继续全部禁用**。放行的只有 MCP 工具。Agent 不该在服务端容器里跑 shell 或读文件系统。
+- 独立 CLI 的 L2/L3 交互确认必须成功写出警告和目标提示，才能读取确认答案；
+  stderr 写入失败会在发送任何预览或执行请求之前以非零状态退出。显式 `--yes`
+  和 `--dry-run` 保持原有的免提示行为。
 - L2/L3 变更走工具协议自身的两步：dry-run 返回 `confirm_token`，apply 消费它。服务端由
   `ToolMutationFilter` + `ToolTokenService` + `studio.ai.allow-l3-tools`（默认 false）强制。
   **因此托管 Agent 默认无法执行 L3 工具**，除非部署方显式打开开关；系统提示词已交代它必须先预览、

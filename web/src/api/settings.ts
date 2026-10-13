@@ -48,6 +48,7 @@ export type GeneralSettingsUpdate = Omit<
 > & {
   apiKey?: string;
   clearApiKey?: boolean;
+  preserveLlmConfig?: boolean;
   clearDingtalkSigningSecret?: boolean;
 };
 

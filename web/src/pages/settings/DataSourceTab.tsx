@@ -134,6 +134,7 @@ export const DataSourceTab = () => {
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
+  const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -156,7 +157,7 @@ export const DataSourceTab = () => {
           pageSize,
         });
         if (requestId !== requestSeqRef.current) return;
-        if (result.items.length === 0 && result.total > 0 && page > 1) {
+        if (result.items.length === 0 && page > 1) {
           const lastPage = Math.max(1, Math.ceil(result.total / result.size));
           if (page > lastPage) {
             setPage(lastPage);
@@ -181,7 +182,7 @@ export const DataSourceTab = () => {
 
   useEffect(() => {
     void loadDataSources();
-  }, [loadDataSources]);
+  }, [loadDataSources, deleteRefreshVersion]);
 
   useEffect(
     () => () => {
@@ -277,11 +278,9 @@ export const DataSourceTab = () => {
   const handleDelete = async (dataSource: DataSource) => {
     try {
       await deleteDataSource(dataSource.key);
-      if (dataSources.length === 1 && page > 1) {
-        setPage(page - 1);
-      } else {
-        await loadDataSources();
-      }
+      // Refresh through the effect so a completed deletion uses the current filters/page,
+      // not the query captured when the operator confirmed it. The latest total clamps pages.
+      setDeleteRefreshVersion((version) => version + 1);
       message.success(t('settings.dataSourceDeleted'));
     } catch {
       message.error(t('settings.dataSourceDeleteFailed'));
