@@ -1250,4 +1250,53 @@ class AliyunInstanceProviderTest {
         verify(asyncClient).listMessages(any());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3})
+    void queryMessagesShouldKeepEarlierRowsWhenLaterPageIsIncompleteTest(int laterRows) {
+        stubInstance();
+        stubCallThrough();
+        int firstRows = AliyunConverters.MESSAGE_PAGE_SIZE;
+        long total = firstRows + laterRows + 1L;
+        when(asyncClient.listMessages(any())).thenReturn(
+                CompletableFuture.completedFuture(messagesResponse(total, 1, firstRows, "tagA")),
+                CompletableFuture.completedFuture(messagesResponse(total, 2, laterRows, "tagA")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, null, null, null, null);
+
+        assertThat(result.messages()).extracting(MessageRecordVO::getMsgId)
+                .containsExactlyElementsOf(IntStream.range(0, firstRows + laterRows)
+                        .mapToObj(index -> index < firstRows ? "msg-1-" + index : "msg-2-" + (index - firstRows))
+                        .toList());
+        assertThat(result.mayBeTruncated()).isTrue();
+        ArgumentCaptor<ListMessagesRequest> captor = ArgumentCaptor.forClass(ListMessagesRequest.class);
+        verify(asyncClient, times(2)).listMessages(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListMessagesRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"0, 1", "3, 0", "3, 1"})
+    void laterPageCompletenessUsesCumulativeRowsBeforeLocalTagFilteringTest(int laterRows, int missingRows) {
+        stubInstance();
+        stubCallThrough();
+        int firstRows = AliyunConverters.MESSAGE_PAGE_SIZE;
+        long total = (long) firstRows + laterRows + missingRows;
+        when(asyncClient.listMessages(any())).thenReturn(
+                CompletableFuture.completedFuture(messagesResponse(total, 1, firstRows, "other-tag")),
+                CompletableFuture.completedFuture(messagesResponse(total, 2, laterRows, "wanted-tag")));
+
+        MessageQueryResult result = provider.queryMessagesDetailed(
+                STUDIO_INSTANCE_ID, "topic-a", null, "wanted-tag", null, null, null);
+
+        assertThat(result.messages()).extracting(MessageRecordVO::getMsgId)
+                .containsExactlyElementsOf(IntStream.range(0, laterRows)
+                        .mapToObj(index -> "msg-2-" + index).toList());
+        assertThat(result.mayBeTruncated()).isEqualTo(missingRows > 0);
+        ArgumentCaptor<ListMessagesRequest> captor = ArgumentCaptor.forClass(ListMessagesRequest.class);
+        verify(asyncClient, times(2)).listMessages(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListMessagesRequest::getPageNumber)
+                .containsExactly(1, 2);
+    }
+
 }

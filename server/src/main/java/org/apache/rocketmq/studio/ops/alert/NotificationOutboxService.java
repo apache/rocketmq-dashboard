@@ -50,6 +50,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -196,7 +197,12 @@ public class NotificationOutboxService {
             row.setStatus(NotificationOutboxStatus.PENDING.name());
             row.setAttemptCount(0);
             row.setMessageContent(AlertNotificationTemplate.render(rule.getNotificationTemplate(), alert, rule));
-            row.setNextAttemptAt(silenceEndsAt == null ? utcNow() : silenceEndsAt);
+            LocalDateTime now = utcNow();
+            row.setNextAttemptAt(silenceEndsAt == null ? now : silenceEndsAt);
+            // The retention cutoff is computed in UTC; leaving these to the database defaults would
+            // stamp them with the session clock (Asia/Shanghai in the compose deploy) instead.
+            row.setGmtCreate(now);
+            row.setGmtModified(now);
             mapper.insert(row);
         }
     }
@@ -250,7 +256,8 @@ public class NotificationOutboxService {
         int updated = mapper.update(null, new UpdateWrapper<RmqAlertNotificationOutbox>()
                 .set("status", NotificationOutboxStatus.PENDING.name()).set("attempt_count", 0)
                 .set("next_attempt_at", now).set("sending_started_at", null).set("claim_token", null)
-                .set("last_error", null).eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
+                .set("last_error", null).set("gmt_modified", now)
+                .eq("id", deliveryId).eq("status", NotificationOutboxStatus.FAILED.name()));
         if (updated != 1) {
             throw new org.apache.rocketmq.studio.common.exception.BusinessException(400,
                     "Only failed notification deliveries can be retried");
@@ -421,7 +428,9 @@ public class NotificationOutboxService {
             throw new IllegalStateException("No configured " + channel + " webhook");
         }
         UrlHostGuard.check(webhook, false);
-        ResponseEntity<String> response = restTemplate.postForEntity(dingTalkWebhook(webhook, settings, channel),
+        // The URL already contains escaped query values, including the DingTalk signature.
+        // The String overload would treat it as a URI template and encode those escapes again.
+        ResponseEntity<String> response = restTemplate.postForEntity(URI.create(dingTalkWebhook(webhook, settings, channel)),
                 payload(alert, channel, content), String.class);
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException("Webhook returned " + response.getStatusCode());
@@ -564,6 +573,10 @@ public class NotificationOutboxService {
 
     private boolean updateClaimed(RmqAlertNotificationOutbox row, String claimToken,
             UpdateWrapper<RmqAlertNotificationOutbox> updates) {
+        // Every claimed state change stamps gmt_modified from the same UTC clock as the retention
+        // cutoff. Without this the ON UPDATE CURRENT_TIMESTAMP default rewrites it in the database
+        // session's timezone and the purge compares two clocks.
+        updates.set("gmt_modified", utcNow());
         return mapper.update(null, updates.eq("id", row.getId()).eq("status", NotificationOutboxStatus.SENDING.name())
                 .eq("claim_token", claimToken)) == 1;
     }
