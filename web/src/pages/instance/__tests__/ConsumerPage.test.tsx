@@ -514,6 +514,63 @@ describe('Consumer page', () => {
     confirmSpy.mockRestore();
   });
 
+  it('reports a failed consumer group deletion instead of swallowing it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    vi.mocked(consumerService.deleteConsumerGroup).mockRejectedValue(new Error('delete failed'));
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(consumerService.deleteConsumerGroup).toHaveBeenCalledWith('remote-cg', 'instance-1'),
+    );
+    // The delete request failed: the operator has to be told, and the row must stay.
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('操作失败'));
+    expect(screen.getByText('remote-cg')).toBeInTheDocument();
+
+    errorSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
+
+  it('reports a failed batch deletion instead of swallowing it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    const groups = ['cg-01', 'cg-02'].map((name) => ({ ...group, name }));
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage(groups));
+    vi.mocked(consumerService.batchDeleteConsumerGroups).mockRejectedValue(
+      new Error('delete failed'),
+    );
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('cg-01')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(2\)$/ }));
+
+    await waitFor(() =>
+      expect(consumerService.batchDeleteConsumerGroups).toHaveBeenCalledWith(
+        ['cg-01', 'cg-02'],
+        'instance-1',
+      ),
+    );
+    // A request-level failure is not a partial result: report it and keep the selection.
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith('操作失败'));
+    expect(screen.getByRole('button', { name: /删除 \(2\)$/ })).toBeInTheDocument();
+
+    errorSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
+
   it('submits the canonical global delivery order type', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
