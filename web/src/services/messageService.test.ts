@@ -20,6 +20,7 @@ import {
   consumeMessageDirectly,
   getMessageTrace,
   listDLQGroups,
+  listDLQMessages,
   queryMessagePage,
   queryMessages,
 } from './messageService';
@@ -116,5 +117,43 @@ describe('message service mock data', () => {
     const all = await listDLQGroups('instance-1', undefined, 1, 1);
     expect(all.items).toHaveLength(1);
     expect(all.total).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('DLQ mock pagination contract', () => {
+  it('rejects page 0 like the backend', async () => {
+    await expect(listDLQGroups('instance-1', undefined, 0, 20)).rejects.toThrow(
+      'Invalid page or pageSize',
+    );
+  });
+
+  it('rejects negative pages that would slice from the end', async () => {
+    await expect(listDLQGroups('instance-1', undefined, -1, 1)).rejects.toThrow(
+      'Invalid page or pageSize',
+    );
+  });
+
+  it('rejects pageSize above the backend cap of 100', async () => {
+    await expect(listDLQGroups('instance-1', undefined, 1, 101)).rejects.toThrow(
+      'Invalid page or pageSize',
+    );
+    await expect(
+      listDLQMessages({ instanceId: 'instance-1', groupName: 'g', page: 1, pageSize: 101 }),
+    ).rejects.toThrow('Invalid page or pageSize');
+  });
+
+  it('rejects pageSize 0 for both listing functions', async () => {
+    await expect(listDLQGroups('instance-1', undefined, 1, 0)).rejects.toThrow(
+      'Invalid page or pageSize',
+    );
+    await expect(
+      listDLQMessages({ instanceId: 'instance-1', groupName: 'g', page: 1, pageSize: 0 }),
+    ).rejects.toThrow('Invalid page or pageSize');
+  });
+
+  it('rejects page 0 for message listing', async () => {
+    await expect(
+      listDLQMessages({ instanceId: 'instance-1', groupName: 'g', page: 0, pageSize: 20 }),
+    ).rejects.toThrow('Invalid page or pageSize');
   });
 });
