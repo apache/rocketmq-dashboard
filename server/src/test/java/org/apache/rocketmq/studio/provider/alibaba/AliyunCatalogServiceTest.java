@@ -22,10 +22,13 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListRegionsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListRegionsResponseBody;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,13 +38,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,11 +59,59 @@ class AliyunCatalogServiceTest {
     @Mock
     private AliyunClientFactory clientFactory;
 
+    @Mock
+    private CloudCredentialRepository credentialRepository;
+
     private AliyunCatalogService service;
 
     @BeforeEach
     void setUp() {
-        service = new AliyunCatalogService(clientFactory);
+        service = new AliyunCatalogService(clientFactory, credentialRepository);
+        lenient().when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.ALIYUN)));
+    }
+
+    private static CloudCredentialVO credential(Long id, InstanceVendor vendor) {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId(id);
+        credential.setVendor(vendor);
+        return credential;
+    }
+
+    @Test
+    void listRegionsShouldRejectAnUnknownCredentialTest() {
+        when(credentialRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.listRegions(99L))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(404);
+                    assertThat(exception.getMessage()).contains("Cloud credential not found", "99");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void listRegionsShouldRejectACredentialOfTheOtherVendorTest() {
+        when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.TENCENT)));
+
+        assertThatThrownBy(() -> service.listRegions(CREDENTIAL_ID))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("does not match", "ALIYUN");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void listCloudInstancesShouldRejectACredentialOfTheOtherVendorTest() {
+        when(credentialRepository.findById(CREDENTIAL_ID))
+                .thenReturn(Optional.of(credential(CREDENTIAL_ID, InstanceVendor.TENCENT)));
+
+        assertThatThrownBy(() -> service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(400));
+        verifyNoInteractions(clientFactory);
     }
 
     @Test

@@ -31,6 +31,8 @@ import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
@@ -52,6 +54,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     static final String DEFAULT_REGION = "cn-hangzhou";
 
     private final AliyunClientFactory clientFactory;
+    private final CloudCredentialRepository credentialRepository;
 
     @Override
     public InstanceVendor vendor() {
@@ -60,7 +63,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
 
     @Override
     public List<CloudRegionVO> listRegions(Long credentialId) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         ListRegionsResponse response = clientFactory.call(credentialId, DEFAULT_REGION,
                 client -> client.listRegions(ListRegionsRequest.builder().build()));
         ListRegionsResponseBody body = response == null ? null : response.getBody();
@@ -81,7 +84,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
 
     @Override
     public List<CloudInstanceOptionVO> listCloudInstances(Long credentialId, String regionId, String search) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         requireNonBlank(regionId, "regionId");
         String normalizedRegionId = regionId.strip();
         String normalizedSearch = search == null ? null : search.strip();
@@ -101,7 +104,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
 
     @Override
     public CloudInstanceDetailVO getCloudInstance(Long credentialId, String regionId, String cloudInstanceId) {
-        requireId(credentialId, "credentialId");
+        requireCredential(credentialId);
         requireNonBlank(regionId, "regionId");
         requireNonBlank(cloudInstanceId, "cloudInstanceId");
         String normalizedRegionId = regionId.strip();
@@ -164,9 +167,23 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         }
     }
 
-    private static void requireId(Long value, String name) {
-        if (value == null) {
-            throw new BusinessException(400, name + " is required");
+    /**
+     * Resolves the credential the catalog request is scoped to before any cloud call. The
+     * endpoints take a credential id verbatim, so without this an id that no longer exists (a
+     * deleted credential, a stale wizard) relied on the SDK client factory's own 404, and a
+     * credential of the other vendor only surfaced as the cloud SDK's "Cloud credential is
+     * invalid" on the next call. Matches the checks {@code InstanceService.importCloudInstances}
+     * performs.
+     */
+    private void requireCredential(Long credentialId) {
+        if (credentialId == null) {
+            throw new BusinessException(400, "credentialId is required");
+        }
+        CloudCredentialVO credential = credentialRepository.findById(credentialId)
+                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
+        if (credential.getVendor() != InstanceVendor.ALIYUN) {
+            throw new BusinessException(400,
+                    "Cloud credential vendor does not match " + InstanceVendor.ALIYUN);
         }
     }
 }
