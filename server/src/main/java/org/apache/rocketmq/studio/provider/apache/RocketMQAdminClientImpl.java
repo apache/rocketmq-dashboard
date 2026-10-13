@@ -24,8 +24,10 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -494,6 +496,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        return sendMessage(request, null);
+    }
+
+    @Override
+    public SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return sendMessage(request, sourceTopic);
+    }
+
+    private SendMessageVO sendMessage(SendMessageDTO request, String sourceTopic) {
         if (request == null) {
             throw new BusinessException(400, "Send message request is required");
         }
@@ -512,11 +523,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 ApacheWriteTargetResolver.requireTopicRoute(admin, target, request.getTopic());
                 return null;
             });
-            return sendOwnedMessage(request);
+            return sendOwnedMessage(request, sourceTopic);
         });
     }
 
-    private SendMessageVO sendOwnedMessage(SendMessageDTO request) {
+    private SendMessageVO sendOwnedMessage(SendMessageDTO request, String sourceTopic) {
         String topic = request.getTopic();
         String tag = request.getTag() != null ? request.getTag() : "";
         String key = request.getKey() != null ? request.getKey() : "";
@@ -543,6 +554,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     }
                     msg.putUserProperty(entry.getKey(), entry.getValue());
                 }
+            }
+
+            // Push consumers restore the business topic from this broker property before invoking
+            // the listener. Only the internal redelivery path supplies a checked source topic.
+            if (StringUtils.hasText(sourceTopic) && topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_RETRY_TOPIC, sourceTopic);
             }
 
             // Timer delivery is a system property; it must be set through the typed API,
