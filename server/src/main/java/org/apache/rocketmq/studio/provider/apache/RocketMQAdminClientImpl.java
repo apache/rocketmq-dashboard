@@ -392,22 +392,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(500, "No broker available to update topic");
                 }
 
-                TopicConfig topicConfig = new TopicConfig();
-                topicConfig.setTopicName(topicName);
-                topicConfig.setWriteQueueNums(writeQueues);
-                topicConfig.setReadQueueNums(readQueues);
-                topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
-
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateTopicConfig(addr, topicConfig);
+                int perm = toRocketMQPerm(effectivePerm);
+                Map<String, TopicConfig> pending = new LinkedHashMap<>();
+                // Preflight every broker before any write so a failed read cannot erase its
+                // configuration or leave earlier brokers updated. Each broker keeps its flags.
+                for (String addr : brokerAddrs.stream().sorted().toList()) {
+                    TopicConfig topicConfig = topicConfigForUpdate(admin, addr, topicName);
+                    topicConfig.setWriteQueueNums(writeQueues);
+                    topicConfig.setReadQueueNums(readQueues);
+                    topicConfig.setPerm(perm);
+                    // Broker attributes are merged separately and writes require delta keys.
+                    topicConfig.setAttributes(Map.of());
+                    applyTopicType(topicConfig, topic.getType());
+                    pending.put(addr, topicConfig);
+                }
+                for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
+                    admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
                 }
 
                 // Update DB record
                 if (existing != null) {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
-                    existing.setPerm(topicConfig.getPerm());
+                    existing.setPerm(perm);
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
@@ -448,6 +455,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw classifyBrokerFailure(e, "update topic");
             }
         });
+    }
+
+    private TopicConfig topicConfigForUpdate(MQAdminExt admin, String brokerAddr, String topicName)
+            throws Exception {
+        TopicConfig current;
+        try {
+            current = admin.examineTopicConfig(brokerAddr, topicName);
+        } catch (Exception failure) {
+            if (!MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                throw failure;
+            }
+            current = null;
+        }
+        // A newly added master may not hold the topic yet. Preserve update's provisioning behavior.
+        return current == null ? new TopicConfig(topicName) : new TopicConfig(current);
     }
 
     private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {

@@ -25,6 +25,7 @@ import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.MessageQueueSelector;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -1052,6 +1053,127 @@ class RocketMQAdminClientImplTest {
         assertThat(existing.getReadQueueNums()).isEqualTo(12);
         assertThat(updated.getWriteQueues()).isEqualTo(16);
         assertThat(updated.getReadQueues()).isEqualTo(12);
+    }
+
+    @Test
+    void updateTopicPreservesEachBrokersUneditedConfigurationTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        existing.setTopicType(TopicType.NORMAL.name());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        Map<String, TopicConfig> physicalConfigs = new HashMap<>();
+        for (int i = 1; i <= 2; i++) {
+            String address = "10.0.0." + i + ":10911";
+            TopicConfig config = new TopicConfig("orders", 8, 8, 6);
+            config.setTopicSysFlag(i);
+            config.setOrder(i == 1);
+            config.setTopicFilterType(i == 1 ? TopicFilterType.MULTI_TAG : TopicFilterType.SINGLE_TAG);
+            config.setAttributes(Map.of("message.type", "NORMAL"));
+            physicalConfigs.put(address, config);
+            lenient().when(adminExt.examineTopicConfig(address, "orders")).thenReturn(config);
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+        topic.setRemark("updated remark");
+
+        TopicVO updated = adminClient.updateTopic(topic);
+
+        ArgumentCaptor<String> addresses = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(addresses.capture(), configs.capture());
+        assertThat(addresses.getAllValues()).containsExactlyInAnyOrderElementsOf(physicalConfigs.keySet());
+        for (int i = 0; i < addresses.getAllValues().size(); i++) {
+            TopicConfig original = physicalConfigs.get(addresses.getAllValues().get(i));
+            TopicConfig sent = configs.getAllValues().get(i);
+            assertThat(sent.getTopicSysFlag()).isEqualTo(original.getTopicSysFlag());
+            assertThat(sent.isOrder()).isEqualTo(original.isOrder());
+            assertThat(sent.getTopicFilterType()).isEqualTo(original.getTopicFilterType());
+            assertThat(sent.getWriteQueueNums()).isEqualTo(16);
+            assertThat(sent.getReadQueueNums()).isEqualTo(12);
+            assertThat(sent.getPerm()).isEqualTo(6);
+            assertThat(sent.getAttributes()).doesNotContainKey("message.type");
+            assertThat(original.getWriteQueueNums()).isEqualTo(8);
+        }
+        assertThat(updated.getRemark()).isEqualTo("updated remark");
+        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
+        assertThat(existing.getReadQueueNums()).isEqualTo(12);
+        verify(topicMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTopicReadsAllConfigurationsBeforeWritingTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        TopicConfig config = new TopicConfig("orders", 8, 8, 6);
+        config.setTopicSysFlag(1);
+        lenient().when(adminExt.examineTopicConfig(anyString(), eq("orders")))
+                .thenReturn(config).thenThrow(new IllegalStateException("broker unavailable"));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+
+        assertThatThrownBy(() -> adminClient.updateTopic(topic)).isInstanceOf(BusinessException.class);
+
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any());
+        verify(topicMapper, never()).updateById(any(RmqTopic.class));
+        assertThat(existing.getWriteQueueNums()).isEqualTo(8);
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), any(), anyString(), eq("SUCCESS"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void updateTopicStillCreatesConfigurationOnMissingMastersTest(boolean absentException) throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        RmqTopic existing = new RmqTopic();
+        existing.setId(7L);
+        existing.setName("orders");
+        existing.setWriteQueueNums(8);
+        existing.setReadQueueNums(8);
+        existing.setPerm(6);
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        var reads = lenient().when(adminExt.examineTopicConfig(anyString(), eq("orders")));
+        if (absentException) {
+            reads.thenThrow(new MQBrokerException(ResponseCode.TOPIC_NOT_EXIST, "topic absent"));
+        } else {
+            reads.thenReturn(null);
+        }
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setWriteQueues(16);
+        topic.setReadQueues(12);
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> configs = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), configs.capture());
+        assertThat(configs.getAllValues()).allSatisfy(config -> {
+            assertThat(config.getTopicName()).isEqualTo("orders");
+            assertThat(config.getReadQueueNums()).isEqualTo(12);
+            assertThat(config.getWriteQueueNums()).isEqualTo(16);
+            assertThat(config.getTopicSysFlag()).isZero();
+            assertThat(config.getTopicFilterType()).isEqualTo(TopicFilterType.SINGLE_TAG);
+            assertThat(config.isOrder()).isFalse();
+        });
+        verify(topicMapper).updateById(existing);
     }
 
     @Test
