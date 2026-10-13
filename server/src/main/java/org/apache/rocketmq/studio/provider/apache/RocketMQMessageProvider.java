@@ -637,7 +637,13 @@ public class RocketMQMessageProvider implements MessageProvider {
         long now = System.currentTimeMillis();
         long begin;
         long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId, topic);
+        MessageExt original = resolveTraceMessage(adminExt, msgId, topic);
+        long messageStoreTimestamp = original == null ? 0L : original.getStoreTimestamp();
+        // SDK traces are indexed by the producer's logical ID, not the physical offset ID.
+        // Reuse the already located message for both the trace index and context filtering.
+        String uniqueId = original == null ? null
+                : original.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        String traceMsgId = StringUtils.hasText(uniqueId) ? uniqueId : msgId;
         if (messageStoreTimestamp > 0) {
             // Derive the trace query window from the message's own store timestamp
             // instead of a hardcoded 1-hour lookback. This ensures traces for messages
@@ -658,10 +664,10 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         try {
             QueryResult traceResult =
-                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), msgId, TRACE_QUERY_MAX, begin, end);
+                    adminExt.queryMessage(effectiveTraceTopic(traceTopic), traceMsgId, TRACE_QUERY_MAX, begin, end);
             if (traceResult != null && traceResult.getMessageList() != null) {
                 for (MessageExt traceMessage : traceResult.getMessageList()) {
-                    parseTraceBody(traceMessage.getBody(), msgId, null, nodes, consumerStatus, true);
+                    parseTraceBody(traceMessage.getBody(), traceMsgId, null, nodes, consumerStatus, true);
                 }
             }
         } catch (BusinessException e) {
@@ -735,11 +741,11 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Attempts to resolve the store timestamp of the original message so the trace
-     * query window can be derived from the message's own timeline rather than the
-     * current time. Returns 0 if the message cannot be located.
+     * Locates the original message for its trace identity and store timestamp. Physical offset
+     * IDs are accepted by message lookup, but SDK trace records use the UNIQ_KEY property.
+     * Returns null when the original cannot be located, retaining the supplied trace ID and window.
      */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+    private MessageExt resolveTraceMessage(DefaultMQAdminExt adminExt, String msgId, String topic) {
         if (StringUtils.hasText(topic)) {
             try {
                 MessageExt messageExt = null;
@@ -747,7 +753,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     messageExt = adminExt.viewMessage(topic, msgId);
                 }
                 if (messageExt != null) {
-                    return messageExt.getStoreTimestamp();
+                    return messageExt;
                 }
             } catch (Exception e) {
                 log.debug("Could not view message {} in topic {} for trace timestamp: {}",
@@ -757,12 +763,12 @@ public class RocketMQMessageProvider implements MessageProvider {
         try {
             MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
             if (messageExt != null) {
-                return messageExt.getStoreTimestamp();
+                return messageExt;
             }
         } catch (Exception e) {
             log.debug("Could not view message {} for trace timestamp: {}", msgId, e.getMessage());
         }
-        return 0L;
+        return null;
     }
 
     /**
