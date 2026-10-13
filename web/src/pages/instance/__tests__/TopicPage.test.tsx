@@ -629,6 +629,53 @@ describe('TopicPage', () => {
     expect(await screen.findByText('消费者加载失败，请重试')).toBeInTheDocument();
   });
 
+  it('clamps back to the first page when the out-of-range page is also the last one', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 1,
+        name: 'instance-a',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 45,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    let emptied = false;
+    topicServiceMocks.listTopicsPage.mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        // The whole list was deleted server-side: page 2 is out of range and total is 0 too.
+        emptied = true;
+        return { items: [], total: 0, page: 2, size: 20 };
+      }
+      return emptied
+        ? { items: [], total: 0, page: 1, size: 20 }
+        : {
+            items: buildTopics(20).map((t) => ({ ...t, instanceId: 'instance-a' })),
+            total: 40,
+            page: 1,
+            size: 20,
+          };
+    });
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // page 2 > lastPage 1, so the table falls back to page 1 even though the fresh total is 0.
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+  });
+
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([

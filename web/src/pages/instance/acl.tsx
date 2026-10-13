@@ -209,8 +209,14 @@ const AclPageContent = ({
         if (!mounted) return;
         setRules(nextRules.items.map(normalizeRule));
         setRuleTotal(nextRules.total);
-        if (nextRules.items.length === 0 && nextRules.total > 0 && rulePage > 1) {
-          setRulePage(Math.max(1, Math.ceil(nextRules.total / rulePageSize)));
+        // A page beyond the fresh total has to fall back to the last valid one, including when the
+        // list emptied out entirely and the last valid page is 1. Gating this on `total > 0` left
+        // the table on an out-of-range page with no way back.
+        if (nextRules.items.length === 0 && rulePage > 1) {
+          const lastRulePage = Math.max(1, Math.ceil(nextRules.total / nextRules.size));
+          if (rulePage > lastRulePage) {
+            setRulePage(lastRulePage);
+          }
         }
       })
       .catch(() => {
@@ -230,8 +236,11 @@ const AclPageContent = ({
         if (mounted) {
           setUsers(result.items.map(normalizeUser));
           setUserTotal(result.total);
-          if (result.items.length === 0 && result.total > 0 && userPage > 1) {
-            setUserPage(Math.max(1, Math.ceil(result.total / userPageSize)));
+          if (result.items.length === 0 && userPage > 1) {
+            const lastUserPage = Math.max(1, Math.ceil(result.total / result.size));
+            if (userPage > lastUserPage) {
+              setUserPage(lastUserPage);
+            }
           }
         }
       })

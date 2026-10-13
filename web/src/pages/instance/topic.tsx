@@ -465,8 +465,14 @@ const TopicPageContent = ({
         if (requestId === topicRequestIdRef.current) {
           setTopics(result.items);
           setTotalTopics(result.total);
-          if (result.items.length === 0 && result.total > 0 && pageToLoad > 1) {
-            setTablePage(Math.max(1, Math.ceil(result.total / pageSizeToLoad)));
+          // A page beyond the fresh total falls back to the last valid one, including when the
+          // list emptied out entirely and the last valid page is 1; gating this on `total > 0`
+          // left the table on an out-of-range page.
+          if (result.items.length === 0 && pageToLoad > 1) {
+            const lastPage = Math.max(1, Math.ceil(result.total / result.size));
+            if (pageToLoad > lastPage) {
+              setTablePage(lastPage);
+            }
           }
         }
         return requestId === topicRequestIdRef.current ? result : undefined;

@@ -367,6 +367,34 @@ describe('Consumer page', () => {
     // 静态提示由全局清理卸载，避免冷调用 destroy 再创建异步 root。
   });
 
+  it('clamps back to the first page when the out-of-range page is also the last one', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    let emptied = false;
+    vi.mocked(consumerService.listConsumerGroupPage).mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        // The whole list was deleted server-side: page 2 is out of range and total is 0 too.
+        emptied = true;
+        return groupPage([], { total: 0, page: 2 });
+      }
+      return emptied
+        ? groupPage([], { total: 0, page: 1 })
+        : groupPage(buildGroups(20), { total: 40, size: 20 });
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('remote-cg-01')).toBeInTheDocument();
+
+    const secondPage = await findInteractivePageItem('.ant-pagination-item-2');
+    await user.click(secondPage);
+
+    // page 2 > lastPage 1, so the list falls back to page 1 even though the fresh total is 0.
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+  });
+
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     let call = 0;
