@@ -47,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -434,6 +435,63 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldNarrowTheTopologyToTheClusterConfiguredForTheInstanceTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.configuredClusterName("instance-local")).thenReturn("cluster-a");
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        when(adminExt.getAllTopicConfig(anyString(), anyLong())).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-a");
+            assertThat(cluster.getBrokers()).isEqualTo(1);
+        });
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(1);
+        verify(adminExt, never()).fetchBrokerRuntimeStats("10.0.0.12:10911");
+        verify(adminExt, never()).getAllTopicConfig(eq("10.0.0.12:10911"), anyLong());
+        verify(adminExt, never()).getAllSubscriptionGroup(eq("10.0.0.12:10911"), anyLong());
+    }
+
+    @Test
+    void dashboardShouldExposeEveryClusterForAnInstanceWithoutAConfiguredClusterTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId(1L);
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        when(adminExt.getAllTopicConfig(anyString(), anyLong())).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).extracting(cluster -> cluster.getName())
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(2);
+        assertThat(dashboard.getStats().getTotalBrokers()).isEqualTo(2);
+        verify(adminExt).fetchBrokerRuntimeStats("10.0.0.12:10911");
+    }
+
+    @Test
     void dashboardShouldReportUnconfiguredLegacyTopologyAsUnavailable() {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr(" ");
@@ -716,6 +774,24 @@ class RocketMQDashboardProviderTest {
         HashMap<Long, String> addresses = new HashMap<>();
         addresses.put(0L, address);
         return new BrokerData("DefaultCluster", name, addresses);
+    }
+
+    private ClusterInfo clusterInfoWithTwoClusters() {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> firstAddresses = new HashMap<>();
+        firstAddresses.put(0L, "10.0.0.11:10911");
+        HashMap<Long, String> secondAddresses = new HashMap<>();
+        secondAddresses.put(0L, "10.0.0.12:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("cluster-a", "broker-a", firstAddresses));
+        brokerAddrTable.put("broker-b", new BrokerData("cluster-b", "broker-b", secondAddresses));
+        info.setBrokerAddrTable(brokerAddrTable);
+
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-a", Set.of("broker-a"));
+        clusterAddrTable.put("cluster-b", Set.of("broker-b"));
+        info.setClusterAddrTable(clusterAddrTable);
+        return info;
     }
 
     private TopicList topicList() {
