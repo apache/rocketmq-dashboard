@@ -239,6 +239,40 @@ class AclServiceTest {
     }
 
     @Test
+    void listRulesShouldPageTencentRulesWithStableOrderingTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .type(InstanceType.CLOUD)
+                .build();
+        when(instanceResolver.findByIdentifier("tencent-instance")).thenReturn(Optional.of(instance));
+        // The remote role API does not guarantee a stable order between calls, so let each
+        // page request see a different permutation of the same three rules.
+        when(tencentAclService.listRules("tencent-instance", null))
+                .thenReturn(List.of(
+                        AclRuleVO.builder().principal("role-a").resource("topic-a").build(),
+                        AclRuleVO.builder().principal("role-b").resource("topic-b").build(),
+                        AclRuleVO.builder().principal("role-c").resource("topic-c").build()))
+                .thenReturn(List.of(
+                        AclRuleVO.builder().principal("role-c").resource("topic-c").build(),
+                        AclRuleVO.builder().principal("role-a").resource("topic-a").build(),
+                        AclRuleVO.builder().principal("role-b").resource("topic-b").build()));
+
+        PageResult<AclRuleVO> pageOne = aclService.listRules(null, null, null, null,
+                "tencent-instance", 1, 2);
+        PageResult<AclRuleVO> pageTwo = aclService.listRules(null, null, null, null,
+                "tencent-instance", 2, 2);
+
+        // Paging must not duplicate or drop rules when the remote order changes between calls,
+        // mirroring the deterministic ordering the Apache path gets from the database and the
+        // in-memory sort the Tencent pageUsers path already applies.
+        assertThat(pageOne.getItems()).extracting(AclRuleVO::getPrincipal)
+                .containsExactly("role-a", "role-b");
+        assertThat(pageTwo.getItems()).extracting(AclRuleVO::getPrincipal)
+                .containsExactly("role-c");
+    }
+
+    @Test
     void createRuleShouldSetIdAndTimestamp() {
         AclRuleVO input = AclRuleVO.builder()
                 .principal("user1")
