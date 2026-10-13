@@ -73,13 +73,13 @@ RULES = [
      'rate(rocketmq_broker_exception_count[5m]) > 0', "5m", "critical", "broker",
      "Broker exceptions", "Broker runtime exceptions have been observed."),
     ("rocketmq-dlq-resend-high", "RocketMQDLQResendHigh", "rocketmq-errors.rules",
-     'rate(rocketmq_dlq_resend_count[5m]) > 10', "5m", "warning", "consumer",
+     'increase(rocketmq_dlq_resend_count[5m]) > 10', "5m", "warning", "consumer",
      "DLQ resends high", "More than 10 dead-letter queue resends occurred in 5 minutes."),
     ("rocketmq-threadpool-reject", "RocketMQThreadPoolReject", "rocketmq-broker.rules",
      'increase(rocketmq_threadpool_reject_count[5m]) > 0', "5m", "critical", "broker",
      "Thread pool rejections", "The broker thread pool rejected tasks, indicating saturation."),
     ("rocketmq-jvm-gc-cpu-high", "RocketMQJVMCpuHigh", "rocketmq-broker.rules",
-     'rate(jvm_gc_pause_seconds_count[5m]) * avg(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3', "5m", "warning", "broker",
+     'sum by (cluster, broker) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.3', "5m", "warning", "broker",
      "JVM GC CPU high", "The broker spends more than 30% of CPU time in GC pauses."),
 ]
 

@@ -48,17 +48,35 @@ func TestBinaryLicensePackagingTest(t *testing.T) {
 			if output, err := generate.CombinedOutput(); err != nil {
 				t.Fatalf("license generation failed: %v\n%s", err, output)
 			}
-			pack := func(osName, material string, success bool) {
+			// package-release.sh fails closed when the completion scripts are absent, so the
+			// fixture has to supply them; `make completion` is what produces the real four.
+			completion := filepath.Join(dir, "completion")
+			completionScripts := []string{"rmqctl.bash", "_rmqctl", "rmqctl.fish", "rmqctl.ps1"}
+			if err := os.MkdirAll(completion, 0755); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range completionScripts {
+				if err := os.WriteFile(filepath.Join(completion, name), []byte("# "+name+" fixture\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pack := func(osName, material, completionDir, wantOutput string, success bool) {
 				t.Helper()
 				cmd := exec.Command("bash", filepath.Join(root, "rmqctl/scripts/package-release.sh"),
 					binary, osName, "amd64", "fixture", material, filepath.Join(dir, "packages"))
-				cmd.Env = append(os.Environ(), "GO="+goCommand)
+				cmd.Env = append(os.Environ(), "GO="+goCommand, "COMPLETION_DIR="+completionDir)
 				output, err := cmd.CombinedOutput()
 				if (err == nil) != success {
 					t.Fatalf("packaging gate returned the wrong result success=%v err=%v\n%s", success, err, output)
 				}
+				// A missing completion directory has to fail with the guard's own diagnostic: dropping
+				// the guard still exits non-zero (the cp below it fails), so the status alone does not
+				// pin it and the operator would be left with a cryptic cp error instead.
+				if wantOutput != "" && !strings.Contains(string(output), wantOutput) {
+					t.Fatalf("packaging gate did not report %q:\n%s", wantOutput, output)
+				}
 			}
-			pack(target, legal, true)
+			pack(target, legal, completion, "", true)
 			contents := map[string]string{}
 			archive := filepath.Join(dir, "packages", "rmqctl-"+target+"-amd64-fixture")
 			if target == "windows" {
@@ -118,12 +136,18 @@ func TestBinaryLicensePackagingTest(t *testing.T) {
 			if target == "windows" && !strings.Contains(contents["LICENSE"], "mousetrap") {
 				t.Fatal("the Windows package is missing a platform-specific dependency license")
 			}
-			pack("darwin", legal, false)
-			pack(target, "", false)
+			for _, name := range completionScripts {
+				if !strings.Contains(contents["completion/"+name], name+" fixture") {
+					t.Fatalf("the package is missing completion/%s", name)
+				}
+			}
+			pack("darwin", legal, completion, "", false)
+			pack(target, "", completion, "", false)
+			pack(target, legal, filepath.Join(dir, "completion-not-generated"), "Missing completion scripts", false)
 			if err := os.WriteFile(filepath.Join(legal, "NOTICE"), []byte("tampered"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			pack(target, legal, false)
+			pack(target, legal, completion, "", false)
 		})
 	}
 }

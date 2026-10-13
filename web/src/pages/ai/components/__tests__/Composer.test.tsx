@@ -167,6 +167,56 @@ describe('Composer', () => {
     expect(props.onSend).not.toHaveBeenCalled();
   });
 
+  it('keepsTheDraftWhenEnterArrivesWhileTheStopIsStillInFlightTest', () => {
+    const { props } = renderComposer({
+      value: '检查集群状态',
+      isStreaming: true,
+      stopRequested: true,
+    });
+
+    // The run stays in flight until the terminal frames land, so a send started now would be
+    // refused by the stream guard while the composer had already cleared the box. Enter must not
+    // be a hidden second way to submit when the button next to it is disabled.
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+
+    expect(props.onSend).not.toHaveBeenCalled();
+    expect(props.onChange).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue('检查集群状态');
+  });
+
+  it.each([
+    { key: 'Enter', isStreaming: false },
+    { key: 'Escape', isStreaming: true },
+  ])('ignoresImeProcessKeysAfterCompositionEndTest ($key)', ({ key, isStreaming }) => {
+    const draft = '检查消费延迟';
+    const { props } = renderComposer({ value: draft, isStreaming });
+    fireEvent.compositionStart(textarea());
+    fireEvent.compositionEnd(textarea(), { data: '迟' });
+    const imeKey = new KeyboardEvent('keydown', {
+      key,
+      keyCode: 229,
+      isComposing: false,
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(textarea(), imeKey);
+    expect(imeKey.defaultPrevented).toBe(false);
+    expect(props.onSend).not.toHaveBeenCalled();
+    expect(props.onStop).not.toHaveBeenCalled();
+    expect(props.onChange).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue(draft);
+
+    // The next ordinary keypress must work immediately, without a timer or a swallowed key.
+    fireEvent.keyDown(textarea(), { key, keyCode: key === 'Enter' ? 13 : 27, isComposing: false });
+    if (key === 'Enter') {
+      expect(props.onSend).toHaveBeenCalledExactlyOnceWith(draft);
+      expect(props.onChange).toHaveBeenCalledExactlyOnceWith('');
+    } else {
+      expect(props.onStop).toHaveBeenCalledTimes(1);
+      expect(props.onChange).not.toHaveBeenCalled();
+    }
+  });
+
   it('sendsOnEnterAndClearsTheDraftTest', () => {
     const { props } = renderComposer({ value: '检查集群状态' });
 
@@ -299,5 +349,20 @@ describe('Composer', () => {
     expect(props.onOpenTools).toHaveBeenCalledTimes(1);
     expect(props.onOpenPromptTemplates).toHaveBeenCalledTimes(1);
     expect(props.onEnhanceChange).toHaveBeenCalledWith(true);
+  });
+
+  // The 14px minimum is a project-wide review rule; the context-usage percent label regressed to
+  // 13px once (#4941). The bar only renders once usage reaches 1% of the window, so the fixture
+  // pushes the conversation past that threshold to make the label inspectable.
+  it('rendersTheContextPercentLabelAtThe14pxMinimumTest', () => {
+    const { container } = renderComposer({ contextTokens: 64000 });
+
+    expect(screen.getByTestId('ai-context-bar')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+
+    const tooSmall = Array.from(container.querySelectorAll<HTMLElement>('[style]')).filter(
+      (element) => element.style.fontSize === '13px',
+    );
+    expect(tooSmall).toHaveLength(0);
   });
 });

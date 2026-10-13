@@ -49,7 +49,7 @@ default deployment. Import `upgrade-demo-instance.sql` first and then `upgrade-d
 target the current numeric-ID schema and are idempotent. They are sample-data loaders, not upgrade migrations,
 and should never be imported into a production database.
 
-**Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
+**Studio ports:** Frontend 6789 (Nginx, also proxies `/api`), Backend 8888 (Spring Boot, container-internal — published only when the backend runs outside compose)
 
 To enable login protection for a shared environment, copy `deploy/.env.example` to
 `deploy/.env`, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and configure
