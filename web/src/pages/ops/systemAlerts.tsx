@@ -21,7 +21,6 @@ import {
   Tag,
   Flex,
   Typography,
-  Badge,
   Button,
   message,
   Pagination,
@@ -521,17 +520,6 @@ const SystemAlertsPage = () => {
             }}
           >
             {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-            {level !== 'all' && (
-              <Badge
-                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
-                style={{
-                  marginLeft: 4,
-                  backgroundColor:
-                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
-                }}
-                size="small"
-              />
-            )}
           </Button>
         ))}
         <Select

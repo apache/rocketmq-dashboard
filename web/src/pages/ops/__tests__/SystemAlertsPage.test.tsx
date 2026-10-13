@@ -322,7 +322,7 @@ describe('SystemAlertsPage', () => {
     renderPage();
     await screen.findByText('Mixed-case error');
 
-    await user.click(screen.getByRole('button', { name: /严重/ }));
+    await user.click(screen.getByRole('button', { name: /严\s*重/ }));
 
     await waitFor(() => {
       expect(screen.getByText('Mixed-case error')).toBeInTheDocument();
