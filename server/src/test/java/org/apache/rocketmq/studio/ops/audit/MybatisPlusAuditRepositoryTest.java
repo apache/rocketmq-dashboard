@@ -352,4 +352,19 @@ class MybatisPlusAuditRepositoryTest {
         return result;
     }
 
+    @Test
+    void findPageShouldEscapeLikeWildcardsInTheSearchTest() {
+        when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqOperationAudit>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findPage("100%_done", null, null, null, null, false, null, null, null, 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(auditMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        String sqlSegment = queryCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("LIKE", "ESCAPE CHAR(92)");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsOnly("%100\\%\\_done%");
+    }
 }

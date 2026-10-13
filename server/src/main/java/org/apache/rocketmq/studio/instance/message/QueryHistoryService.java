@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -184,17 +185,17 @@ public class QueryHistoryService {
 
     public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
                                                                  String search, int page, int pageSize) {
-        String pattern = escapeLike(search);
+        String pattern = SqlLikeUtils.contains(search);
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqMessageQuery> query = new QueryWrapper<RmqMessageQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .eq("queried_by", queriedBy)
                 .eq(StringUtils.hasText(queryType), "query_type", queryType)
                 .and(StringUtils.hasText(search), nested -> nested
-                        .like("topic", pattern)
-                        .or().like("msg_id", pattern)
-                        .or().like("message_key", pattern)
-                        .or().like("queried_by", pattern))
+                        .apply(SqlLikeUtils.likePredicate("topic"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("msg_id"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("message_key"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("queried_by"), pattern))
                 .orderByDesc("gmt_create", "id");
         Page<RmqMessageQuery> result = messageQueryMapper.selectPage(new Page<>(page, pageSize), query);
         List<MessageQueryHistoryVO> items = result.getRecords().stream()
@@ -204,16 +205,16 @@ public class QueryHistoryService {
 
     public PageResult<TraceQueryHistoryVO> listTraceQueries(String clusterId, String search,
                                                              int page, int pageSize) {
-        String pattern = escapeLike(search);
+        String pattern = SqlLikeUtils.contains(search);
         String queriedBy = AuthenticatedUserContext.currentUsernameOrSystem();
         QueryWrapper<RmqTraceQuery> query = new QueryWrapper<RmqTraceQuery>()
                 .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .eq("queried_by", queriedBy)
                 .and(StringUtils.hasText(search), nested -> nested
-                        .like("topic", pattern)
-                        .or().like("msg_id", pattern)
-                        .or().like("trace_topic", pattern)
-                        .or().like("queried_by", pattern))
+                        .apply(SqlLikeUtils.likePredicate("topic"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("msg_id"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("trace_topic"), pattern)
+                        .or().apply(SqlLikeUtils.likePredicate("queried_by"), pattern))
                 .orderByDesc("gmt_create", "id");
         Page<RmqTraceQuery> result = traceQueryMapper.selectPage(new Page<>(page, pageSize), query);
         List<TraceQueryHistoryVO> items = result.getRecords().stream()
@@ -344,17 +345,6 @@ public class QueryHistoryService {
                 .consumerCount(query.getConsumerCount() == null ? 0 : query.getConsumerCount())
                 .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
                 .queriedAt(query.getGmtCreate()).build();
-    }
-
-    /**
-     * Escapes LIKE wildcards so user-supplied search terms match literally instead of being
-     * interpreted as {@code %}/{@code _} patterns.
-     */
-    private static String escapeLike(String search) {
-        if (!StringUtils.hasText(search)) {
-            return search;
-        }
-        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static String normalizeOptional(String value) {

@@ -21,6 +21,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAiConversation;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAiConversationMapper;
 import org.springframework.stereotype.Repository;
@@ -67,7 +68,8 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
         QueryWrapper<RmqAiConversation> query = new QueryWrapper<RmqAiConversation>()
                 .eq("owner", owner)
                 .eq(archived != null, "archived", archived)
-                .like(StringUtils.hasText(search), "title", escapeLike(search))
+                .apply(StringUtils.hasText(search), SqlLikeUtils.likePredicate("title"),
+                        SqlLikeUtils.contains(search))
                 // gmt_modified, not the project-wide gmt_create: a conversation resumed today
                 // must float to the top. idx_ai_conversation_owner is built for this ordering.
                 .orderByDesc("gmt_modified", "id");
@@ -117,16 +119,5 @@ public class MybatisPlusAiConversationRepository implements AiConversationReposi
             return 0;
         }
         return conversationMapper.deleteByIds(ids);
-    }
-
-    /**
-     * Escapes LIKE wildcards so user-supplied search terms match literally. Mirrors
-     * QueryHistoryService.escapeLike; a shared util is tracked separately upstream.
-     */
-    private static String escapeLike(String search) {
-        if (!StringUtils.hasText(search)) {
-            return search;
-        }
-        return search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

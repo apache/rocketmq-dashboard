@@ -22,6 +22,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.SqlLikeUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -65,9 +66,9 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     public List<InstanceVO> search(String keyword) {
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.apply(SqlLikeUtils.likePredicate("name"), SqlLikeUtils.contains(keyword))
+                                .or().apply(SqlLikeUtils.likePredicate("endpoint"), SqlLikeUtils.contains(keyword))
+                                .or().apply(SqlLikeUtils.likePredicate("remark"), SqlLikeUtils.contains(keyword)))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -78,9 +79,9 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
                         .eq("type", type.name())
-                        .and(w -> w.like("name", keyword)
-                                .or().like("endpoint", keyword)
-                                .or().like("remark", keyword))
+                        .and(w -> w.apply(SqlLikeUtils.likePredicate("name"), SqlLikeUtils.contains(keyword))
+                                .or().apply(SqlLikeUtils.likePredicate("endpoint"), SqlLikeUtils.contains(keyword))
+                                .or().apply(SqlLikeUtils.likePredicate("remark"), SqlLikeUtils.contains(keyword)))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();

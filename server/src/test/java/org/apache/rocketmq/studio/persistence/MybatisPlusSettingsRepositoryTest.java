@@ -27,6 +27,11 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import java.util.List;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 class MybatisPlusSettingsRepositoryTest {
 
@@ -185,5 +190,37 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(stored.getJson()).contains("sk-roundtrip-token");
         assertThat(repository.loadGeneralSettings().getApiKey()).isEqualTo("sk-roundtrip-token");
+    }
+
+    @Test
+    void findDataSourcesShouldEscapeLikeWildcardsInTheSearchTest() {
+        when(dataSourceMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources("100%_done", null, 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // MyBatis-Plus binds the values lazily, while it renders the SQL segment.
+        String sqlSegment = queryCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("LIKE", "ESCAPE CHAR(92)");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .contains("%100\\%\\_done%");
+    }
+
+    @Test
+    void findDataSourcesShouldEscapeLikeWildcardsInTheTypeFilterTest() {
+        when(dataSourceMapper.selectPage(any(IPage.class), any(Wrapper.class)))
+                .thenReturn(new Page<RmqDataSource>(1, 20).setRecords(List.of()).setTotal(0));
+
+        repository.findDataSources(null, "my%sql_type", 1, 20);
+
+        ArgumentCaptor<QueryWrapper<RmqDataSource>> queryCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(dataSourceMapper).selectPage(any(IPage.class), queryCaptor.capture());
+        // The type filter reaches the same LIKE through CONCAT, so it needs the same clause.
+        String sqlSegment = queryCaptor.getValue().getSqlSegment();
+        assertThat(sqlSegment).contains("LOWER(json) LIKE CONCAT", "ESCAPE CHAR(92)");
+        assertThat(queryCaptor.getValue().getParamNameValuePairs().values())
+                .containsOnly("my\\%sql\\_type");
     }
 }
