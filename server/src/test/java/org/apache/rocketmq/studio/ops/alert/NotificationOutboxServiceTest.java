@@ -331,8 +331,10 @@ class NotificationOutboxServiceTest {
         server.verify();
         // A char-based cut would keep the high surrogate on its own, so the audit entry - and the
         // last_error the delivery page renders - would show a replacement character instead.
+        // The audit result vocabulary is SUCCESS/FAILED/PARTIAL: a retry-wait attempt is a failed
+        // attempt whose retry is carried by the operation name, not by a fourth result word.
         verify(audit).record("RETRY_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
-                "alertId=9, channel=dingtalk", "RETRYING",
+                "alertId=9, channel=dingtalk", "FAILED",
                 prefix + "x".repeat(999 - prefix.length()) + "\uD83D\uDE00");
     }
 
@@ -367,7 +369,7 @@ class NotificationOutboxServiceTest {
 
         server.verify();
         verify(audit).record("RETRY_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
-                "alertId=9, channel=dingtalk", "RETRYING",
+                "alertId=9, channel=dingtalk", "FAILED",
                 "DingTalk rejected webhook: keywords not in content");
     }
 
@@ -427,7 +429,7 @@ class NotificationOutboxServiceTest {
 
         verify(mapper).update(any(), argThat(wrapper -> wrapper != null));
         verify(audit).record("RETRY_ALERT_NOTIFICATION", "ALERT_NOTIFICATION", "8", null,
-                "alertId=9, channel=dingtalk", "RETRYING", "No configured dingtalk webhook");
+                "alertId=9, channel=dingtalk", "FAILED", "No configured dingtalk webhook");
     }
 
     @Test
