@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAuthSession,
   persistAuthSession,
@@ -36,6 +36,32 @@ describe('auth session storage', () => {
     expect(readAuthSession()).toEqual({ user: 'studio-admin', userId: 7, admin: true });
     expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBe('7');
     expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('rolls back every session key when a later storage write fails', () => {
+    const originalSetItem = Storage.prototype.setItem;
+    let writeCount = 0;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      writeCount += 1;
+      if (writeCount === 2) {
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+      }
+      originalSetItem.call(this, key, value);
+    });
+
+    try {
+      persistAuthSession('studio-admin', 7, true);
+    } finally {
+      setItem.mockRestore();
+    }
+
+    expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_ID_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBeNull();
   });
 
   it('restores display identity independently from the HttpOnly session cookie', () => {
