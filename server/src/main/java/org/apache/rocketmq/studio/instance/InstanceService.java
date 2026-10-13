@@ -703,7 +703,7 @@ public class InstanceService {
         if (!instanceRepository.deleteById(id)) {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
-        removeDataSourceBindings(existing.getName());
+        removeDataSourceBindings(existing);
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
                 instanceAuditDetail(existing), "SUCCESS");
         completeInstanceDeletionAfterCommit(existing);
@@ -778,18 +778,32 @@ public class InstanceService {
         return TextBounds.truncate(message, MAX_BATCH_FAILURE_MESSAGE_LENGTH);
     }
 
-    private void removeDataSourceBindings(String instanceId) {
+    /**
+     * Data sources may address an instance by either accepted identifier form — the globally
+     * unique name or the legacy numeric primary key ({@link #resolveInstanceId(String)} accepts
+     * both, and data source bindings are persisted as supplied). A retired instance must release
+     * every form, otherwise a binding recorded as the numeric id dangles forever and keeps the
+     * data source bound to a deleted instance.
+     */
+    private void removeDataSourceBindings(InstanceVO existing) {
+        Set<String> retiredIdentifiers = new HashSet<>();
+        if (StringUtils.hasText(existing.getName())) {
+            retiredIdentifiers.add(existing.getName());
+        }
+        if (existing.getId() != null) {
+            retiredIdentifiers.add(String.valueOf(existing.getId()));
+        }
         for (DataSourceVO dataSource : settingsRepository.findAllDataSources()) {
             List<String> instanceIds = dataSource.getInstanceIds();
-            if (instanceIds == null || !instanceIds.contains(instanceId)) {
+            if (instanceIds == null || instanceIds.stream().noneMatch(retiredIdentifiers::contains)) {
                 continue;
             }
             dataSource.setInstanceIds(instanceIds.stream()
-                    .filter(candidate -> !instanceId.equals(candidate))
+                    .filter(candidate -> !retiredIdentifiers.contains(candidate))
                     .toList());
             if (!settingsRepository.replaceDataSource(dataSource)) {
                 log.warn("Metrics data source {} disappeared while removing instance binding {}",
-                        dataSource.getKey(), instanceId);
+                        dataSource.getKey(), existing.getName());
             }
         }
     }
