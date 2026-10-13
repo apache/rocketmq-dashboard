@@ -178,6 +178,18 @@ const healthStatusTagColor = (status: ConsumerGroupHealthStatus) => {
   return 'green';
 };
 
+const healthStatusColor = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return '#ff4d4f';
+  if (status === 'warning') return '#faad14';
+  return '#52c41a';
+};
+
+const healthProgressStatus = (status: ConsumerGroupHealthStatus) => {
+  if (status === 'critical') return 'exception' as const;
+  if (status === 'warning') return 'active' as const;
+  return 'success' as const;
+};
+
 const issueSeverityTagColor = (severity: ConsumerGroupHealthIssue['severity']) => {
   if (severity === 'critical') return 'red';
   if (severity === 'warning') return 'orange';
@@ -1682,7 +1694,7 @@ const ConsumerPageContent = ({
           originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
-        width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
+        width={detailTab === 'progress' ? 1080 : 800}
         destroyOnHidden
         footer={null}
       >
@@ -1970,85 +1982,83 @@ const ConsumerPageContent = ({
                       />
                     )}
 
-                    <Row gutter={16}>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="健康分"
-                            value={selectedGroupHealth.summary.healthScore}
-                            suffix="/ 100"
-                            valueStyle={{
-                              color:
-                                selectedGroupHealth.status === 'critical'
-                                  ? '#ff4d4f'
-                                  : selectedGroupHealth.status === 'warning'
-                                    ? '#faad14'
-                                    : '#52c41a',
-                            }}
-                          />
-                          <Progress
-                            percent={selectedGroupHealth.summary.healthScore}
-                            showInfo={false}
-                            status={
-                              selectedGroupHealth.status === 'critical'
-                                ? 'exception'
-                                : selectedGroupHealth.status === 'warning'
-                                  ? 'active'
-                                  : 'success'
-                            }
-                          />
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="已知堆积"
-                            value={selectedGroupHealth.summary.totalKnownLag}
-                            valueStyle={{
-                              color: lagColor(selectedGroupHealth.summary.totalKnownLag),
-                            }}
-                          />
-                          <Text type="secondary">
-                            报告堆积：
+                    <Card
+                      size="small"
+                      style={{
+                        background: '#fafafa',
+                        borderRadius: 8,
+                      }}
+                      styles={{ body: { padding: '8px 16px' } }}
+                    >
+                      <Space size={24} wrap>
+                        <Space size={4}>
+                          <Text type="secondary">健康分:</Text>
+                          <Text
+                            strong
+                            style={{ color: healthStatusColor(selectedGroupHealth.status) }}
+                          >
+                            {selectedGroupHealth.summary.healthScore} / 100
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">已知堆积:</Text>
+                          <Text
+                            strong
+                            style={{ color: lagColor(selectedGroupHealth.summary.totalKnownLag) }}
+                          >
+                            {selectedGroupHealth.summary.totalKnownLag.toLocaleString()}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">报告堆积:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.reportedLag === null
                               ? UNAVAILABLE_LAG_LABEL
                               : selectedGroupHealth.summary.reportedLag.toLocaleString()}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="Queue 覆盖"
-                            value={selectedGroupHealth.summary.queueCount}
-                            suffix={`/${selectedGroupHealth.summary.subscribedTopicCount} Topic`}
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">Queue 覆盖:</Text>
+                          <Text strong>
+                            {selectedGroupHealth.summary.queueCount} /{' '}
+                            {selectedGroupHealth.summary.subscribedTopicCount} Topic
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">Queue 堆积:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.unknownQueueCount > 0
-                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个 Queue 堆积不可用`
-                              : 'Queue 堆积均可计算'}
+                              ? `${selectedGroupHealth.summary.unknownQueueCount} 个不可用`
+                              : '均可计算'}
                           </Text>
-                        </Card>
-                      </Col>
-                      <Col span={6}>
-                        <Card size="small" style={{ borderRadius: 8 }}>
-                          <Statistic
-                            title="客户端"
-                            value={selectedGroupHealth.summary.onlineInstances}
-                            formatter={(value) =>
-                              formatOnlineInstances(Number(value), UNAVAILABLE_LAG_LABEL)
-                            }
-                          />
-                          <Text type="secondary">
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">客户端:</Text>
+                          <Text strong>
+                            {formatOnlineInstances(
+                              selectedGroupHealth.summary.onlineInstances,
+                              UNAVAILABLE_LAG_LABEL,
+                            )}
+                          </Text>
+                        </Space>
+                        <Space size={4}>
+                          <Text type="secondary">心跳:</Text>
+                          <Text strong>
                             {selectedGroupHealth.summary.onlineInstances < 0
-                              ? '客户端连接信息不可用'
+                              ? '连接信息不可用'
                               : selectedGroupHealth.summary.staleClientCount > 0
-                                ? `${selectedGroupHealth.summary.staleClientCount} 个心跳过期`
-                                : '心跳状态正常'}
+                                ? `${selectedGroupHealth.summary.staleClientCount} 个过期`
+                                : '正常'}
                           </Text>
-                        </Card>
-                      </Col>
-                    </Row>
+                        </Space>
+                      </Space>
+                      <Progress
+                        percent={selectedGroupHealth.summary.healthScore}
+                        showInfo={false}
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                        status={healthProgressStatus(selectedGroupHealth.status)}
+                      />
+                    </Card>
 
                     {selectedGroupHealth.issues.length > 0 ? (
                       <Table
@@ -2190,41 +2200,57 @@ const ConsumerPageContent = ({
                 disabled: isCloudInstance,
                 children: (
                   <Spin spinning={settingsLoading}>
-                    <Form form={settingsForm} layout="vertical" style={{ maxWidth: 480 }}>
-                      <Form.Item label="Group 名称">
-                        <Text strong>{selectedGroup.name}</Text>
-                      </Form.Item>
-                      <Form.Item
-                        label="重试队列数"
-                        name="retryQueueNums"
-                        rules={[{ required: true, message: '请输入重试队列数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item
-                        label="最大重试次数"
-                        name="retryMaxTimes"
-                        rules={[{ required: true, message: '请输入最大重试次数' }]}
-                      >
-                        <InputNumber min={1} max={128} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="顺序消费"
-                        name="consumeMessageOrderly"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
-                      <Form.Item
-                        label="广播消费"
-                        name="consumeBroadcastEnable"
-                        valuePropName="checked"
-                      >
-                        <Switch />
-                      </Form.Item>
+                    <Form form={settingsForm} layout="vertical">
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="Group 名称">
+                            <Text strong>{selectedGroup.name}</Text>
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="重试队列数"
+                            name="retryQueueNums"
+                            rules={[{ required: true, message: '请输入重试队列数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="最大重试次数"
+                            name="retryMaxTimes"
+                            rules={[{ required: true, message: '请输入最大重试次数' }]}
+                          >
+                            <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col span={8}>
+                          <Form.Item label="启用消费" name="consumeEnable" valuePropName="checked">
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="顺序消费"
+                            name="consumeMessageOrderly"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                          <Form.Item
+                            label="广播消费"
+                            name="consumeBroadcastEnable"
+                            valuePropName="checked"
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Col>
+                      </Row>
                       <Form.Item style={{ marginBottom: 0 }}>
                         <Button
                           type="primary"

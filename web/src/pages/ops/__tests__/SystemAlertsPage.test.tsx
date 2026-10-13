@@ -322,7 +322,12 @@ describe('SystemAlertsPage', () => {
     renderPage();
     await screen.findByText('Mixed-case error');
 
-    await user.click(screen.getByRole('button', { name: /严重/ }));
+    // 级别筛选是 Segmented：里面的 radio input 带 pointer-events: none，user.click 点不动，
+    // 要点它外层的 .ant-segmented-item label。不能用 getByText('严重')——告警卡片里也渲染同一个词。
+    const severeFilter = screen
+      .getByRole('radio', { name: /严重/ })
+      .closest('.ant-segmented-item') as HTMLElement;
+    await user.click(severeFilter);
 
     await waitFor(() => {
       expect(screen.getByText('Mixed-case error')).toBeInTheDocument();

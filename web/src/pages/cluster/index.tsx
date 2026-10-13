@@ -52,6 +52,7 @@ import {
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import { countClusterComponents } from './clusterStats';
@@ -945,15 +946,17 @@ const ClusterPage = () => {
         dataIndex: 'values',
         key: 'values',
         render: (values: NameServerConfigDifference['values']) => (
-          <Space size={[0, 4]} wrap>
-            {values.map((value) => (
-              <Tag key={value.address} color={value.configured ? 'blue' : 'default'}>
-                {`${value.address}: ${
-                  value.configured ? (value.value ?? '-') : t('cluster.nsConfigDiffUnconfigured')
-                }`}
-              </Tag>
-            ))}
-          </Space>
+          <TagList
+            items={values.map((value) => ({
+              key: value.address,
+              label: `${value.address}: ${
+                value.configured ? (value.value ?? '-') : t('cluster.nsConfigDiffUnconfigured')
+              }`,
+              color: value.configured ? 'blue' : 'default',
+            }))}
+            max={3}
+            tagMaxWidth={200}
+          />
         ),
       },
     ];
@@ -1092,20 +1095,17 @@ const ClusterPage = () => {
         dataIndex: 'values',
         key: 'values',
         render: (values: BrokerConfigDifference['values']) => (
-          <Space size={[0, 4]} wrap>
-            {values.map((value) => (
-              <Tag
-                key={`${value.address}-${value.value ?? 'missing'}`}
-                color={value.configured ? 'blue' : 'default'}
-              >
-                {`${value.brokerName || value.address}: ${
-                  value.configured
-                    ? (value.value ?? '-')
-                    : t('cluster.brokerConfigDiffUnconfigured')
-                }`}
-              </Tag>
-            ))}
-          </Space>
+          <TagList
+            items={values.map((value) => ({
+              key: `${value.address}-${value.value ?? 'missing'}`,
+              label: `${value.brokerName || value.address}: ${
+                value.configured ? (value.value ?? '-') : t('cluster.brokerConfigDiffUnconfigured')
+              }`,
+              color: value.configured ? 'blue' : 'default',
+            }))}
+            max={3}
+            tagMaxWidth={200}
+          />
         ),
       },
     ];

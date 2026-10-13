@@ -50,6 +50,7 @@ import {
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
@@ -625,15 +626,16 @@ const AclPageContent = ({
       title: t('acl.permissions'),
       dataIndex: 'actions',
       key: 'actions',
-      width: 180,
+      // 规则表单里 PUB / SUB / ALL 是三个独立 Checkbox、可以同时勾上；三个标签并排实测需 252px
+      width: 260,
       render: (actions: AclRule['actions']) => (
-        <Space size={4} wrap>
-          {actions.map((action) => (
-            <Tag key={action} color={actionTagColor[action]} style={{ fontSize: 14 }}>
-              {actionLabel[action] ?? action}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={actions.map((action) => ({
+            key: action,
+            label: actionLabel[action] ?? action,
+            color: actionTagColor[action],
+          }))}
+        />
       ),
     },
     {
@@ -810,13 +812,11 @@ const AclPageContent = ({
       width: 280,
       sorter: (a, b) => a.clusters.length - b.clusters.length,
       render: (clusters: string[]) => (
-        <Space size={4} wrap>
-          {clusters.map((c) => (
-            <Tag key={c} color="processing" style={{ fontSize: 14 }}>
-              {c}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={clusters.map((c) => ({ key: c, label: c, color: 'processing' }))}
+          max={2}
+          tagMaxWidth={110}
+        />
       ),
     },
     {
@@ -928,13 +928,11 @@ const AclPageContent = ({
       key: 'topicPerms',
       width: 220,
       render: (perms: string[]) => (
-        <Space size={4} wrap>
-          {(perms ?? []).map((p) => (
-            <Tag key={p} color="blue" style={{ fontSize: 14 }}>
-              {p}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(perms ?? []).map((p) => ({ key: p, label: p, color: 'blue' }))}
+          max={2}
+          tagMaxWidth={80}
+        />
       ),
     },
     {
@@ -943,13 +941,11 @@ const AclPageContent = ({
       key: 'groupPerms',
       width: 200,
       render: (perms: string[]) => (
-        <Space size={4} wrap>
-          {(perms ?? []).map((p) => (
-            <Tag key={p} color="green" style={{ fontSize: 14 }}>
-              {p}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={(perms ?? []).map((p) => ({ key: p, label: p, color: 'green' }))}
+          max={2}
+          tagMaxWidth={70}
+        />
       ),
     },
     {
