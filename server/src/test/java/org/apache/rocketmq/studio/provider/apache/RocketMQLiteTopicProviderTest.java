@@ -179,6 +179,29 @@ class RocketMQLiteTopicProviderTest {
     }
 
     @Test
+    void quotaSkipsAMasterWhoseBrokerConfigReadFailsInsteadOfMixingMasterSets() throws Exception {
+        String failingMaster = "127.0.0.1:10912";
+        when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A, failingMaster));
+        when(admin.getBrokerLiteInfo(BROKER_A)).thenReturn(brokerLiteInfo(3, 40, 3));
+        when(admin.getBrokerLiteInfo(failingMaster)).thenReturn(brokerLiteInfo(5, 60, 4));
+        Properties reachableConfig = new Properties();
+        reachableConfig.setProperty("maxLiteSubscriptionCount", "100000");
+        when(admin.getBrokerConfig(BROKER_A)).thenReturn(reachableConfig);
+        when(admin.getBrokerConfig(failingMaster))
+                .thenThrow(new IllegalStateException("config port down"));
+
+        LiteTopicQuota quota = provider.getQuota(null);
+
+        // The failing master's session cap is unknown, so the whole master is excluded from
+        // the quota report, mirroring the lite-info failure above; counting its sessions
+        // against the reachable masters' caps would build the ratio out of two master sets.
+        assertThat(quota.getCurrentTopicCount()).isEqualTo(3);
+        assertThat(quota.getMaxTopicCount()).isEqualTo(40);
+        assertThat(quota.getCurrentSessionCount()).isEqualTo(3);
+        assertThat(quota.getMaxSessionCount()).isEqualTo(100_000);
+    }
+
+    @Test
     void listLiteTopicsAggregatesParentTopicTtlBacklogAndSessions() throws Exception {
         long lastAccess = System.currentTimeMillis() - 1_000;
         when(admin.examineBrokerClusterInfo()).thenReturn(cluster(BROKER_A));
