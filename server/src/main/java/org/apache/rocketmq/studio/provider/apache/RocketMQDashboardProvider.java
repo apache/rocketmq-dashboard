@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -59,6 +60,8 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @Primary
 public class RocketMQDashboardProvider implements DashboardProvider {
+
+    private static final BigDecimal MAX_TPS = BigDecimal.valueOf(Long.MAX_VALUE);
 
     private static final Set<String> SYSTEM_TOPIC_PREFIXES = Set.of(
             "rmq_sys_", "SCHEDULE_TOPIC_", "RMQ_SYS_", "broker_", "%RETRY%", "%DLQ%",
@@ -197,8 +200,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         int totalBrokers = 0;
         int totalTopics = 0;
         int totalGroups = 0;
-        double tpsIn = 0;
-        double tpsOut = 0;
+        BigDecimal tpsIn = BigDecimal.ZERO;
+        BigDecimal tpsOut = BigDecimal.ZERO;
         long messagesToday = 0;
         List<ClusterOverviewVO> clusters = new ArrayList<>();
         Map<String, KVTable> runtimeStatsByBroker = new HashMap<>();
@@ -342,8 +345,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     runtimeStatsByBroker.put(brokerAddr, runtimeInfo);
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
-                        tpsIn += parseTps(table.get("putTps"));
-                        tpsOut += parseTps(BrokerRuntimeStats.outboundTps(table));
+                        tpsIn = tpsIn.add(parseTps(table.get("putTps")));
+                        tpsOut = tpsOut.add(parseTps(BrokerRuntimeStats.outboundTps(table)));
 
                         messagesToday += BrokerRuntimeStats.dailyCounterDelta(table,
                                 "msgPutTotalTodayMorning", "msgPutTotalTodayNow");
@@ -360,8 +363,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 String clusterName = clusterEntry.getKey();
                 Set<String> brokerNames = clusterEntry.getValue() == null ? Set.of() : clusterEntry.getValue();
                 int clusterBrokers = 0;
-                double clusterTpsIn = 0;
-                double clusterTpsOut = 0;
+                BigDecimal clusterTpsIn = BigDecimal.ZERO;
+                BigDecimal clusterTpsOut = BigDecimal.ZERO;
                 String version = "unknown";
                 boolean runtimeMetricsUnavailable = topologyUnavailableClusters.contains(clusterName)
                         || topicCountsUnavailableClusters.contains(clusterName)
@@ -375,8 +378,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         if (masterAddr != null) {
                             KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
                             if (runtimeInfo != null && runtimeInfo.getTable() != null) {
-                                clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
-                                clusterTpsOut += parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable()));
+                                clusterTpsIn = clusterTpsIn.add(parseTps(runtimeInfo.getTable().get("putTps")));
+                                clusterTpsOut = clusterTpsOut.add(parseTps(BrokerRuntimeStats.outboundTps(runtimeInfo.getTable())));
                                 String value = runtimeInfo.getTable().get("brokerVersionDesc");
                                 if (value != null && "unknown".equals(version)) {
                                     String brokerVersion = value.trim();
@@ -400,8 +403,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .proxies(clusterType == ClusterType.V4_DIRECT ? 0 : null)
                         .topics(topicsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .groups(groupsByCluster.getOrDefault(clusterName, Set.of()).size())
-                        .tpsIn((long) clusterTpsIn)
-                        .tpsOut((long) clusterTpsOut)
+                        .tpsIn(publishTps(clusterTpsIn))
+                        .tpsOut(publishTps(clusterTpsOut))
                         .version(version)
                         .throughput(List.of())
                         .build());
@@ -415,9 +418,9 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             throw new BusinessException(502, "Failed to collect dashboard data: " + e.getMessage());
         }
 
-        // Keep the integer response contract, but round once after every broker contributes.
-        long measuredTpsIn = (long) tpsIn;
-        long measuredTpsOut = (long) tpsOut;
+        // Sum decimal broker samples exactly, then truncate once at the integer response boundary.
+        long measuredTpsIn = publishTps(tpsIn);
+        long measuredTpsOut = publishTps(tpsOut);
         long messagesPerSecond = saturatedSum(measuredTpsIn, measuredTpsOut);
 
         int healthyClusters = Math.toIntExact(clusters.stream()
@@ -487,9 +490,9 @@ public class RocketMQDashboardProvider implements DashboardProvider {
      * Parse TPS value from RocketMQ runtime stats format: "10minAvg 1minAvg 10secAvg"
      * Keeps the fractional 1-minute average (second value) until the aggregate is published.
      */
-    private double parseTps(String tpsStr) {
+    private BigDecimal parseTps(String tpsStr) {
         if (tpsStr == null || tpsStr.isBlank()) {
-            return 0;
+            return BigDecimal.ZERO;
         }
         try {
             String[] parts = tpsStr.trim().split("\\s+");
@@ -501,15 +504,20 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         } catch (NumberFormatException e) {
             log.debug("Failed to parse TPS value: {}", tpsStr);
         }
-        return 0;
+        return BigDecimal.ZERO;
     }
 
-    private double parseTpsValue(String value) {
+    private BigDecimal parseTpsValue(String value) {
         double parsed = Double.parseDouble(value);
         if (!Double.isFinite(parsed) || parsed < 0 || parsed > Long.MAX_VALUE) {
-            return 0;
+            return BigDecimal.ZERO;
         }
-        return parsed;
+        // Preserve the runtime parser's range and underflow behavior before decimal accumulation.
+        return BigDecimal.valueOf(parsed);
+    }
+
+    private static long publishTps(BigDecimal value) {
+        return value.min(MAX_TPS).longValue();
     }
 
     private static long saturatedSum(long left, long right) {
