@@ -177,3 +177,24 @@ jobs:
 
       - name: Build rmqctl for all supported platforms
         run: make build-all
+
+  rmqctl-config-platform-test:
+    name: rmqctl Config Lock (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: rmqctl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: rmqctl/go.mod
+          cache-dependency-path: rmqctl/go.sum
+      - name: Test config store and transaction lifecycle
+        run: go test -race -count=1 ./internal/config
+      - name: Test command mutations in independent processes
+        run: go test -race -count=1 ./cmd -run Config
