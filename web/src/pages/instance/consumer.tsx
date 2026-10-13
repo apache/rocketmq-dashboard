@@ -289,6 +289,13 @@ const ConsumerPageContent = ({
   const [stackError, setStackError] = useState<string | null>(null);
   const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
@@ -558,7 +565,9 @@ const ConsumerPageContent = ({
 
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
+    const requestId = settingsRequestIdRef.current;
     const values = await settingsForm.validateFields();
+    if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
     if (original && values.consumeEnable === false && original.consumeEnable !== false) {
@@ -583,7 +592,7 @@ const ConsumerPageContent = ({
           onCancel: () => resolve(false),
         });
       });
-      if (!confirmed) return;
+      if (!confirmed || requestId !== settingsRequestIdRef.current) return;
     }
     setSettingsSubmitting(true);
     try {
@@ -592,6 +601,13 @@ const ConsumerPageContent = ({
         name: settingsGroup.name,
         ...values,
       });
+      if (requestId !== settingsRequestIdRef.current) return;
+      // Subsequent edits must be compared with the settings the broker just accepted,
+      // not the snapshot from when this modal was first opened.
+      originalSettingsRef.current = {
+        consumeEnable: values.consumeEnable,
+        consumeMessageOrderly: values.consumeMessageOrderly,
+      };
       setGroups((current) =>
         current.map((group) =>
           group.name === settingsGroup.name
@@ -606,9 +622,11 @@ const ConsumerPageContent = ({
       );
       message.success('消费组配置已保存');
     } catch {
-      message.error('保存消费组配置失败，请稍后重试');
+      if (requestId === settingsRequestIdRef.current) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
     } finally {
-      setSettingsSubmitting(false);
+      if (requestId === settingsRequestIdRef.current) setSettingsSubmitting(false);
     }
   };
 
@@ -785,19 +803,25 @@ const ConsumerPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -1654,6 +1678,8 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
           setSettingsGroup(null);
           setSettingsLoading(false);
+          setSettingsSubmitting(false);
+          originalSettingsRef.current = null;
           settingsForm.resetFields();
         }}
         width={detailTab === 'progress' || detailTab === 'health' ? 1080 : 800}
@@ -2467,7 +2493,10 @@ const ConsumerPageContent = ({
         title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportConsumerGroups()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}

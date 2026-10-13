@@ -164,6 +164,7 @@ const SystemAlertsPage = () => {
   const [exporting, setExporting] = useState(false);
   const [deliveries, setDeliveries] = useState<Record<number, NotificationDelivery[]>>({});
   const [loadingDeliveries, setLoadingDeliveries] = useState<Set<number>>(() => new Set());
+  const deliveryRequestIds = useRef<Record<number, number>>({});
   const [retryingDeliveryIds, setRetryingDeliveryIds] = useState<Set<number>>(() => new Set());
   const [relatedAlerts, setRelatedAlerts] = useState<Record<number, SystemAlert[]>>({});
   const [loadingRelatedIds, setLoadingRelatedIds] = useState<Set<number>>(() => new Set());
@@ -311,19 +312,27 @@ const SystemAlertsPage = () => {
   };
 
   const loadDeliveries = async (alertId: number, force = false) => {
-    if ((!force && deliveries[alertId]) || loadingDeliveries.has(alertId)) return;
+    if (!force && (deliveries[alertId] || loadingDeliveries.has(alertId))) return;
+    const requestId = (deliveryRequestIds.current[alertId] ?? 0) + 1;
+    deliveryRequestIds.current[alertId] = requestId;
     setLoadingDeliveries((current) => new Set(current).add(alertId));
     try {
       const result = await listAlertDeliveries(alertId);
-      setDeliveries((current) => ({ ...current, [alertId]: result }));
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        setDeliveries((current) => ({ ...current, [alertId]: result }));
+      }
     } catch {
-      message.error(t('sysAlerts.deliveryLoadFailed'));
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        message.error(t('sysAlerts.deliveryLoadFailed'));
+      }
     } finally {
-      setLoadingDeliveries((current) => {
-        const next = new Set(current);
-        next.delete(alertId);
-        return next;
-      });
+      if (deliveryRequestIds.current[alertId] === requestId) {
+        setLoadingDeliveries((current) => {
+          const next = new Set(current);
+          next.delete(alertId);
+          return next;
+        });
+      }
     }
   };
 

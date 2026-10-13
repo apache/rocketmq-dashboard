@@ -117,6 +117,7 @@ describe('GeneralSettingsTab', () => {
     await waitFor(() =>
       expect(saveGeneralSettings).toHaveBeenCalledWith(
         expect.objectContaining({
+          preserveLlmConfig: true,
           theme: 'system',
           compact: false,
           desktopNotify: false,
