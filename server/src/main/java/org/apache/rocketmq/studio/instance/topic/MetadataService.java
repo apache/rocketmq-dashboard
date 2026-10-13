@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
+import org.apache.rocketmq.studio.common.util.MessagePropertyDisplay;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.instance.group.CreateConsumerGroupDTO;
 import org.apache.rocketmq.studio.instance.group.ImportConsumerGroupsResultVO;
@@ -323,6 +324,7 @@ public class MetadataService {
         if (original == null) {
             throw new BusinessException(400, "Message to redeliver must not be null");
         }
+        requireExactSourceMessage(original);
         String destination = StringUtils.hasText(targetTopic)
                 ? targetTopic.trim()
                 : MixAll.getRetryTopic(group);
@@ -339,6 +341,71 @@ public class MetadataService {
                 ownershipGuard.topicResource(original.getTopic()), ownershipGuard.topicResource(destination));
         resources.forEach(resource -> ownershipGuard.check(instance, resource, true));
         return ownershipGuard.withOwned(instance, resources, () -> sendMessage(request));
+    }
+
+    /**
+     * A source loaded by {@link #findMessageForRedelivery} is the message explorer's display
+     * projection, not the stored record: the body stops at {@code MAX_BODY_DISPLAY_BYTES}, a binary
+     * body is replaced by Base64 text, and the property map is capped. Publishing that projection
+     * stores different bytes and silently drops properties, so a lossy source is refused instead.
+     * <p>The property check fires on the two loss modes the projection can prove. Reaching
+     * {@link MessagePropertyDisplay#MAX_PROPERTIES} entries means whole entries were dropped: the
+     * projection cannot say which ones, but the cap itself is the proof, and since
+     * {@code limitProperties} sorts by key the lowercase user keys are exactly what is lost. An
+     * abbreviated value on a visible user key is the other mode. System-reserved keys alone are
+     * never enough — {@link #redeliveryProperties} discards them before the send, so a map that
+     * stayed under the cap with intact values republishes the same user properties.
+     * <p>Refuses display projections whose body or user properties cannot be republished exactly.
+     */
+    public void requireExactSourceMessage(MessageRecordVO original) {
+        if (original.isBodyTruncated()) {
+            throw new BusinessException(409,
+                    "Source message body is truncated for display and cannot be redelivered exactly");
+        }
+        if ("BASE64".equalsIgnoreCase(original.getBodyEncoding())) {
+            throw new BusinessException(409,
+                    "Source message body is binary and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated() && isPropertyDisplayCapReached(original.getProperties())) {
+            throw new BusinessException(409,
+                    "Source message properties reached the display cap, so whole entries were dropped "
+                            + "and cannot be redelivered exactly");
+        }
+        if (original.isPropertiesTruncated() && hasAbbreviatedUserProperty(original.getProperties())) {
+            throw new BusinessException(409,
+                    "Source message properties are truncated for display and cannot be redelivered exactly");
+        }
+    }
+
+    /**
+     * True when the projection kept {@link MessagePropertyDisplay#MAX_PROPERTIES} entries, which
+     * happens only if the raw map held more and the overflow was dropped whole.
+     */
+    private static boolean isPropertyDisplayCapReached(Map<String, String> properties) {
+        return properties != null && properties.size() >= MessagePropertyDisplay.MAX_PROPERTIES;
+    }
+
+    /**
+     * True when a <em>user</em> property visible in the display projection carries an abbreviated
+     * value: republishing it would store a cut value. System-reserved keys are excluded —
+     * {@link #redeliveryProperties} drops them before the send, abbreviated or not.
+     */
+    private static boolean hasAbbreviatedUserProperty(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return false;
+        }
+        return properties.entrySet().stream()
+                .anyMatch(entry -> !isSystemProperty(entry.getKey())
+                        && isAbbreviatedValue(entry.getValue()));
+    }
+
+    /**
+     * Mirrors the display projection's abbreviation: any value whose rendered form ends in the
+     * {@code ABBREVIATION_SUFFIX} marker was cut, whether it sits on a user or a system key.
+     */
+    private static boolean isAbbreviatedValue(String value) {
+        return value != null && value.length() >= MessagePropertyDisplay.ABBREVIATION_SUFFIX.length()
+                && value.endsWith(MessagePropertyDisplay.ABBREVIATION_SUFFIX);
     }
 
     /** Drops the system-reserved keys {@code Message.putUserProperty} would reject (§15.5.1 KEYS defect). */
@@ -365,7 +432,13 @@ public class MetadataService {
                 || key.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX);
     }
 
-    /** Loads the exact source message used by redelivery without exposing or publishing its body. */
+    /**
+     * Loads the message-explorer record used as the redelivery source without exposing or
+     * publishing its body. This is the explorer's <em>display projection</em>, not the stored
+     * record: the body is capped and binary bodies are Base64-text, so
+     * {@link #redeliverMessage(String, String, MessageRecordVO, String)} refuses lossy sources
+     * instead of republishing them.
+     */
     public MessageRecordVO findMessageForRedelivery(String instanceId, String sourceTopic, String msgId) {
         String messageId = requireName(msgId, "message id");
         List<MessageRecordVO> matches = messageService.queryMessages(
@@ -552,10 +625,11 @@ public class MetadataService {
 
     public ResetConsumerOffsetPreviewVO previewResetOffset(String instanceId, String name,
                                                            long timestamp, String topic) {
-        instanceId = normalizeInstanceId(instanceId);
         String groupName = requireName(name, "consumer group name");
         String topicName = requireName(topic, "topic name");
-        return resolve(instanceId).previewResetOffset(instanceId, groupName, timestamp, topicName);
+        String target = requireWriteInstance(instanceId, new Resource(Kind.GROUP, groupName), true);
+        requireWriteInstance(target, ownershipGuard.topicResource(topicName), true);
+        return resolve(target).previewResetOffset(target, groupName, timestamp, topicName);
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {

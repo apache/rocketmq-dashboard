@@ -268,6 +268,9 @@ export function useAgentRun(
       // instead of flashing an empty transcript. It is also what makes a run that died mid-stream
       // render correctly after a reload: whatever reached the database comes back.
       await persistRunSpeed();
+      // Reporting can outlive navigation or a newer send. Re-check before invoking the
+      // current page's callback, which may now belong to a different conversation.
+      if (requestId !== streamRequestIdRef.current) return;
       try {
         await optionsRef.current.refetchTimeline();
       } catch (refetchError) {
