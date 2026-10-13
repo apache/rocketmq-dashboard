@@ -156,4 +156,46 @@ class MybatisPlusAlertSilenceRepositoryTest {
         assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
         assertThat(restored.get(1).getRecurrenceDays()).isEmpty();
     }
+
+    @Test
+    void findAllShouldKeepUnknownStoredDomainAndRecurrenceFromBreakingTheInventoryTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        RmqAlertSilence entity = new RmqAlertSilence();
+        entity.setId(30L);
+        entity.setDomain("SOME_FUTURE_DOMAIN");
+        entity.setRecurrence("LEGACY_RECURRENCE");
+        RmqAlertSilence healthy = new RmqAlertSilence();
+        healthy.setId(31L);
+        healthy.setDomain(AlertDomain.BUSINESS.name());
+        healthy.setRecurrence(AlertSilenceRecurrence.DAILY.name());
+        when(mapper.selectList(any())).thenReturn(List.of(entity, healthy));
+
+        List<AlertSilenceVO> restored = repository.findAll();
+
+        assertThat(restored).hasSize(2);
+        assertThat(restored.get(0).getDomain()).isEqualTo(AlertDomain.BUSINESS);
+        assertThat(restored.get(0).getRecurrence()).isEqualTo(AlertSilenceRecurrence.ONCE);
+        assertThat(restored.get(1).getDomain()).isEqualTo(AlertDomain.BUSINESS);
+        assertThat(restored.get(1).getRecurrence()).isEqualTo(AlertSilenceRecurrence.DAILY);
+    }
+
+    @Test
+    void findActiveCandidatesShouldNotFailOnAnUnknownStoredDomainTest() {
+        MybatisPlusAlertSilenceRepository repository = new MybatisPlusAlertSilenceRepository(
+                mapper, new ObjectMapper());
+        RmqAlertSilence entity = new RmqAlertSilence();
+        entity.setId(30L);
+        entity.setDomain("SOME_FUTURE_DOMAIN");
+        entity.setRecurrence(AlertSilenceRecurrence.ONCE.name());
+        entity.setStartsAt(LocalDateTime.of(2026, 10, 1, 0, 0));
+        entity.setEndsAt(LocalDateTime.of(2026, 10, 2, 0, 0));
+        when(mapper.selectList(any())).thenReturn(List.of(entity));
+
+        List<AlertSilenceVO> candidates = repository.findActiveCandidates(AlertDomain.BUSINESS, null, null,
+                LocalDateTime.of(2026, 10, 1, 12, 0));
+
+        assertThat(candidates).hasSize(1);
+        assertThat(candidates.get(0).getDomain()).isEqualTo(AlertDomain.BUSINESS);
+    }
 }
