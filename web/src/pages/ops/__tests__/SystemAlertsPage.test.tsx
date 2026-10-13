@@ -72,6 +72,11 @@ const renderPage = () =>
     </App>,
   );
 
+// The level filter renders as an antd Segmented: each option exposes role="radio" inside
+// its .ant-segmented-item wrapper, so the chip's own text has to be read from that wrapper.
+const levelFilterItem = (label: RegExp): HTMLElement =>
+  screen.getByRole('radio', { name: label }).closest('.ant-segmented-item') as HTMLElement;
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -902,5 +907,39 @@ describe('SystemAlertsPage', () => {
 
     expect(screen.getByText(/BUSINESS.*page-three/)).toBeInTheDocument();
     expect(screen.queryByText(/page-two/)).not.toBeInTheDocument();
+  });
+
+  it('reports a failed alert read instead of an empty backlog', async () => {
+    vi.mocked(listSystemAlertsPage).mockRejectedValueOnce(new Error('alert store offline'));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A store that was never reached must not be reported as a page with nothing left to acknowledge.
+    expect(screen.queryByText(/本页 0 条未确认/)).not.toBeInTheDocument();
+    expect(screen.getByText(/本页 - 条未确认/)).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+    expect(screen.getByText(/本页 2 条未确认/)).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).toMatch(/1/);
+  });
+
+  it('drops the per-level counters when a later read fails', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+
+    vi.mocked(listSystemAlertsPage).mockRejectedValueOnce(new Error('alert store offline'));
+    await user.click(levelFilterItem(/警告/));
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // The last page stays readable, but numbers derived from the failed read must not look current.
+    expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
   });
 });
