@@ -543,6 +543,21 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void updateTopicShouldRejectAPermissionTheVendorCannotApplyTest() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setPerm(TopicPerm.RO);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("read-write");
+                });
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void getTopicConsumersShouldMapSubscriptionsTest() throws Exception {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setConsumerGroup("GID_orders");
