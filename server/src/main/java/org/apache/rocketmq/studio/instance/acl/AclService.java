@@ -152,6 +152,14 @@ public class AclService {
         if (rule.getId() == null) {
             throw new BusinessException(400, "ACL rule id is required");
         }
+        // Same required-field contract as createRule: an update that blanks the principal or
+        // resource would otherwise persist an unusable rule (an empty principal matches nothing).
+        if (!StringUtils.hasText(rule.getPrincipal())) {
+            throw new BusinessException(400, "ACL principal is required");
+        }
+        if (!StringUtils.hasText(rule.getResource())) {
+            throw new BusinessException(400, "ACL resource is required");
+        }
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
         AclRuleVO saved = aclRepository.replaceRule(rule)
                 .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + rule.getId()));

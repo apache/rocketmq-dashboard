@@ -1139,4 +1139,34 @@ class AclServiceTest {
                 Arguments.of("", null),
                 Arguments.of("unknown", null));
     }
+
+    @Test
+    void updateRuleShouldRejectBlankPrincipalLikeCreateRule() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal("   ")
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL principal is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).replaceRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void updateRuleShouldRejectBlankResourceLikeCreateRule() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal("user1")
+                .resource("")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL resource is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).replaceRule(any(AclRuleVO.class));
+    }
 }
