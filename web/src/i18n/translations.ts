@@ -18,6 +18,27 @@
 export type Lang = 'zh' | 'en';
 
 const translations: Record<string, Record<Lang, string>> = {
+  'topicPage.routeCoverageNote': {
+    zh: '覆盖数量依据权限、队列数和地址；不代表网络可达。队列总数仍为配置元数据。',
+    en: 'Coverage counts use permissions, queue counts and addresses; they do not verify network reachability. Queue totals remain configuration metadata.',
+  },
+  'topicPage.routeNoWriteCoverageDescription': {
+    zh: '所有 Broker 都缺少写权限、写队列或 Master 地址，当前路由不能定位写入目标。',
+    en: 'Every broker lacks write permission, write queues or a master address. The current route cannot locate a write target.',
+  },
+  'topicPage.routeNoReadCoverageDescription': {
+    zh: '所有 Broker 都缺少读权限、读队列或 Broker 地址，当前路由不能定位读取目标。',
+    en: 'Every broker lacks read permission, read queues or a broker address. The current route cannot locate a read target.',
+  },
+  'topicPage.routeWriteCoverageRecommendation': {
+    zh: '检查 Topic 写权限、写队列与 Master 地址，并确认生产者能访问目标 Broker。',
+    en: 'Check topic write permission, write queues and the master address, then verify that the producer can reach the target broker.',
+  },
+  'topicPage.routeReadCoverageRecommendation': {
+    zh: '检查 Topic 读权限、读队列与 Broker 地址，并确认消费者能访问目标 Broker。',
+    en: 'Check topic read permission, read queues and broker addresses, then verify that the consumer can reach the target broker.',
+  },
+
   // ─── Navigation ───
   'nav.home': { zh: '首页', en: 'Home' },
   'nav.dashboard': { zh: '监控面板', en: 'Dashboard' },

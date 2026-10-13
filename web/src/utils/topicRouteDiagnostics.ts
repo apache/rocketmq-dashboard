@@ -151,13 +151,28 @@ const routeBrokerIds = (route: BrokerRoute): string[] => {
   return [];
 };
 
-const routeAddresses = (route: BrokerRoute): string[] =>
-  Object.values(route.brokerAddrs ?? {}).filter((addr) => addr.trim().length > 0);
+const address = (value: string | undefined): string => value?.trim() ?? '';
 
-const preferredBrokerAddr = (route: BrokerRoute): string => {
-  if (route.brokerAddr) return route.brokerAddr;
-  if (route.masterAddr) return route.masterAddr;
-  return routeAddresses(route)[0] ?? '';
+const masterAddress = (route: BrokerRoute): string =>
+  address(route.masterAddr) || address(route.brokerAddrs?.['0']);
+
+const routeAddresses = (route: BrokerRoute): string[] =>
+  Object.values(route.brokerAddrs ?? {})
+    .map(address)
+    .filter(Boolean);
+
+const preferredBrokerAddr = (route: BrokerRoute): string =>
+  address(route.brokerAddr) || masterAddress(route) || routeAddresses(route)[0] || '';
+
+const hasWriteAddress = (route: BrokerRoute): boolean => {
+  if (masterAddress(route)) return true;
+  // Older API payloads expose only brokerAddr. Once topology is supplied, a
+  // selected slave address must not substitute for the missing master.
+  const hasTopology =
+    route.masterAddr !== undefined ||
+    route.brokerAddrs !== undefined ||
+    route.brokerIds !== undefined;
+  return !hasTopology && Boolean(address(route.brokerAddr));
 };
 
 const routeReplicaCount = (route: BrokerRoute, brokerIds: string[]): number => {
@@ -216,7 +231,7 @@ const distributionIssues = (
   const readable = inferReadable(route);
   const writable = inferWritable(route);
   const brokerAddr = preferredBrokerAddr(route);
-  const masterAddr = route.masterAddr ?? route.brokerAddrs?.['0'] ?? '';
+  const masterAddr = masterAddress(route);
   const issues: RouteDiagnosticIssue[] = [];
 
   if (!brokerAddr) {
@@ -329,10 +344,10 @@ const buildRecommendations = (issues: RouteDiagnosticIssue[]): string[] => {
     actions.push('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。');
   }
   if (codes.has('NO_WRITABLE_ROUTE') || codes.has('PERMISSION_NOT_WRITABLE')) {
-    actions.push('确认 Topic 权限包含写权限，避免生产者发送失败。');
+    actions.push('topicPage.routeWriteCoverageRecommendation');
   }
   if (codes.has('NO_READABLE_ROUTE') || codes.has('PERMISSION_NOT_READABLE')) {
-    actions.push('确认 Topic 权限包含读权限，避免消费者订阅后无可读队列。');
+    actions.push('topicPage.routeReadCoverageRecommendation');
   }
   if (
     codes.has('WRITE_QUEUE_UNAVAILABLE') ||
@@ -401,7 +416,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       key: `${route.brokerName || 'broker'}-${index}`,
       brokerName: route.brokerName || '-',
       brokerAddr: preferredBrokerAddr(route) || '-',
-      masterAddr: route.masterAddr ?? route.brokerAddrs?.['0'] ?? '',
+      masterAddr: masterAddress(route),
       brokerIds,
       replicaCount: routeReplicaCount(route, brokerIds),
       writeQueues: queueCount(route.writeQueues),
@@ -438,11 +453,14 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
       ),
     );
   }
-  const writableBrokerCount = distributions.filter(
-    (distribution) => distribution.writable && distribution.writeQueues > 0,
+  const writableBrokerCount = routes.filter(
+    (route) => inferWritable(route) && queueCount(route.writeQueues) > 0 && hasWriteAddress(route),
   ).length;
-  const readableBrokerCount = distributions.filter(
-    (distribution) => distribution.readable && distribution.readQueues > 0,
+  const readableBrokerCount = routes.filter(
+    (route) =>
+      inferReadable(route) &&
+      queueCount(route.readQueues) > 0 &&
+      Boolean(preferredBrokerAddr(route)),
   ).length;
 
   if (writableBrokerCount === 0) {
@@ -451,7 +469,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
         'NO_WRITABLE_ROUTE',
         'critical',
         '没有可写路由',
-        '所有 Broker 都缺少写权限或写队列，生产者无法向该 Topic 发送消息。',
+        'topicPage.routeNoWriteCoverageDescription',
       ),
     );
   }
@@ -462,7 +480,7 @@ export const analyzeTopicRoutes = (routes: BrokerRoute[]): TopicRouteDiagnostics
         'NO_READABLE_ROUTE',
         'critical',
         '没有可读路由',
-        '所有 Broker 都缺少读权限或读队列，消费者无法从该 Topic 拉取消息。',
+        'topicPage.routeNoReadCoverageDescription',
       ),
     );
   }

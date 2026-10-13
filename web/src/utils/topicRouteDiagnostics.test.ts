@@ -204,3 +204,85 @@ describe('topic route diagnostics', () => {
     );
   });
 });
+
+describe('topic route address coverage', () => {
+  const slave = () =>
+    route({
+      brokerAddr: '10.0.0.2:10911',
+      masterAddr: '',
+      brokerAddrs: { '1': '10.0.0.2:10911' },
+      brokerIds: [1],
+    });
+
+  it('does not count a slave-only broker as write coverage while preserving read coverage', () => {
+    const result = analyzeTopicRoutes([slave()]);
+    expect(result.summary.writableBrokerCount).toBe(0);
+    expect(result.summary.readableBrokerCount).toBe(1);
+    expect(result.status).toBe('critical');
+    expect(result.issues.map((item) => item.code)).toContain('NO_WRITABLE_ROUTE');
+    expect(result.summary.totalWriteQueues).toBe(8);
+    expect(result.distributions[0].writable).toBe(true);
+  });
+
+  it('does not count address-less queue metadata as read or write coverage', () => {
+    const result = analyzeTopicRoutes([
+      route({ brokerAddr: '', masterAddr: '', brokerAddrs: {}, brokerIds: [] }),
+    ]);
+    expect(result.summary.writableBrokerCount).toBe(0);
+    expect(result.summary.readableBrokerCount).toBe(0);
+    expect(result.issues.map((item) => item.code)).toEqual(
+      expect.arrayContaining(['NO_WRITABLE_ROUTE', 'NO_READABLE_ROUTE']),
+    );
+  });
+
+  it('counts only the master-backed broker in mixed topology', () => {
+    const result = analyzeTopicRoutes([route({}), { ...slave(), brokerName: 'broker-b' }]);
+    expect(result.summary.writableBrokerCount).toBe(1);
+    expect(result.summary.readableBrokerCount).toBe(2);
+    expect(result.issues.map((item) => item.code)).not.toContain('NO_WRITABLE_ROUTE');
+  });
+
+  it('falls back to the master address map when the separate field is blank', () => {
+    const result = analyzeTopicRoutes([route({ brokerAddr: '', masterAddr: '  ' })]);
+    expect(result.summary.writableBrokerCount).toBe(1);
+    expect(result.summary.readableBrokerCount).toBe(1);
+  });
+
+  it('does not treat whitespace addresses as coverage', () => {
+    const result = analyzeTopicRoutes([
+      route({ brokerAddr: ' ', masterAddr: ' ', brokerAddrs: { '0': ' ', '1': ' ' } }),
+    ]);
+    expect(result.summary.writableBrokerCount).toBe(0);
+    expect(result.summary.readableBrokerCount).toBe(0);
+  });
+
+  it('preserves address-backed legacy payloads without detailed topology', () => {
+    const legacy = {
+      brokerName: 'legacy',
+      brokerAddr: '10.0.0.1:10911',
+      writeQueues: 8,
+      readQueues: 8,
+      perm: 'RW',
+    } as const;
+    const result = analyzeTopicRoutes([legacy]);
+    expect(result.summary.writableBrokerCount).toBe(1);
+    expect(result.summary.readableBrokerCount).toBe(1);
+    expect(analyzeTopicRoutes([{ ...legacy, brokerAddr: '' }]).summary.writableBrokerCount).toBe(0);
+  });
+
+  it('does not use the legacy fallback when an explicit empty topology is present', () => {
+    const result = analyzeTopicRoutes([
+      route({ masterAddr: undefined, brokerAddrs: {}, brokerIds: [] }),
+    ]);
+    expect(result.summary.writableBrokerCount).toBe(0);
+  });
+
+  it('still requires matching permission and a positive queue count', () => {
+    const result = analyzeTopicRoutes([
+      route({ writable: false, readable: false }),
+      route({ brokerName: 'no-queues', writeQueues: 0, readQueues: 0 }),
+    ]);
+    expect(result.summary.writableBrokerCount).toBe(0);
+    expect(result.summary.readableBrokerCount).toBe(0);
+  });
+});

@@ -1091,7 +1091,7 @@ const TopicPageContent = ({
                   {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
                 </Text>
                 <Text type="secondary" style={{ display: 'block' }}>
-                  {item.description}
+                  {t(item.description)}
                 </Text>
               </div>
             </Flex>
@@ -1110,7 +1110,7 @@ const TopicPageContent = ({
           <Space direction="vertical" size={2}>
             {recommendations.map((item) => (
               <Text key={item} style={{ fontSize: 14 }}>
-                {item}
+                {t(item)}
               </Text>
             ))}
           </Space>
@@ -1184,6 +1184,7 @@ const TopicPageContent = ({
                   : '队列均衡',
               )}
             </Row>
+            <InfoBanner description={t('topicPage.routeCoverageNote')} />
             {renderRouteIssues(diagnostics.issues)}
             {renderRouteRecommendations(diagnostics.recommendations)}
           </Space>
@@ -1427,7 +1428,7 @@ const TopicPageContent = ({
             <div style={{ minWidth: 0 }}>
               <Text strong>{item.title}</Text>
               <Text type="secondary" style={{ display: 'block' }}>
-                {item.description}
+                {t(item.description)}
               </Text>
             </div>
           </Flex>

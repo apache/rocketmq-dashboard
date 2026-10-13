@@ -1538,4 +1538,38 @@ describe('TopicPage', () => {
       await screen.findByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由/),
     ).toBeInTheDocument();
   });
+  it('shows zero writable coverage for a slave-only topic without changing queue metadata', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([
+      {
+        brokerName: 'slave-only',
+        brokerAddr: '10.0.0.2:10911',
+        masterAddr: '',
+        brokerAddrs: { '1': '10.0.0.2:10911' },
+        brokerIds: [1],
+        replicaCount: 1,
+        writeQueues: 8,
+        readQueues: 8,
+        perm: 'RW',
+        readable: true,
+        writable: true,
+      },
+    ]);
+    renderWithProviders();
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('路由诊断：不可用')).toBeInTheDocument();
+    const metric = screen.getByText('可写 Broker').closest('.ant-col');
+    expect(metric).not.toBeNull();
+    expect(within(metric as HTMLElement).getByText('0')).toBeInTheDocument();
+    expect(screen.getByText('8 个写队列')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '所有 Broker 都缺少写权限、写队列或 Master 地址，当前路由不能定位写入目标。',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('覆盖数量依据权限、队列数和地址；不代表网络可达。队列总数仍为配置元数据。'),
+    ).toBeInTheDocument();
+  });
 });

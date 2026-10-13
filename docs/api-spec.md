@@ -1019,9 +1019,14 @@ GET /api/topics/:name/routes
 |------|------|------|
 | `brokerName` | `string` | Broker 名称 |
 | `brokerAddr` | `string` | Broker 地址 |
+| `masterAddr` | `string` | Master 地址，缺少 Master 时为空 |
+| `brokerAddrs` | `object` | Broker ID 到地址的映射，ID `0` 表示 Master |
+| `brokerIds` | `number[]` | 返回的 Broker ID |
 | `writeQueues` | `number` | 写队列数 |
 | `readQueues` | `number` | 读队列数 |
 | `perm` | `string` | 权限 |
+
+路由诊断保留原始权限和队列数。可写覆盖需要写权限、正数写队列和 Master 地址；可读覆盖需要读权限、正数读队列和至少一个 Broker 地址。空白地址不计入覆盖。旧版响应未提供拓扑字段时，保留使用 `brokerAddr` 的兼容行为。覆盖数量不验证网络可达性，也不替代客户端针对静态或有序 Topic 的路由逻辑。
 
 ### 5.7 获取 Topic 消费者列表
 
