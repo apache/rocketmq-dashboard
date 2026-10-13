@@ -54,6 +54,45 @@ func TestYAMLRestoresJSONNumbersTest(t *testing.T) {
 	}
 }
 
+func TestYAMLPreservesNumericLiteralsBeyondMachineTypesTest(t *testing.T) {
+	// Literals past int64/float64 precision (or out of float64 range entirely) must keep their
+	// exact digits as bare numeric scalars - not be bent through a machine float, and not be
+	// quoted into strings.
+	payload := map[string]any{
+		"huge":    json.Number("18446744073709551615"),
+		"precise": json.Number("0.1234567890123456789"),
+		"exp":     json.Number("1e100"),
+		"negative": []any{map[string]any{
+			"v": json.Number("-9223372036854775809"),
+		}},
+	}
+	buf := &bytes.Buffer{}
+	if err := YAML(buf, payload); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	// Below-int64-range integers keep their exact digits too; yaml.v3 may render the explicit
+	// !!int tag for the one value it cannot resolve back into a Go int, which is still a bare
+	// numeric scalar carrying the literal and the numeric type.
+	for _, want := range []string{
+		"huge: 18446744073709551615",
+		"precise: 0.1234567890123456789",
+		"-9223372036854775809",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("YAML output missing %q:\n%s", want, out)
+		}
+	}
+	for _, quoted := range []string{
+		"huge: \"18446744073709551615\"",
+		"v: \"-9223372036854775809\"",
+	} {
+		if strings.Contains(out, quoted) {
+			t.Fatalf("numeric literal was quoted: %s", out)
+		}
+	}
+}
+
 func TestToolCallSummary(t *testing.T) {
 	buf := &bytes.Buffer{}
 	result := map[string]any{

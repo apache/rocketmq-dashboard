@@ -17,6 +17,7 @@
 package output
 
 import (
+	"regexp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,16 +64,25 @@ func YAML(w io.Writer, value any) error {
 // would emit it quoted, so `size: 3` came out as `size: "3"` and the YAML no longer round-tripped
 // to the payload the server sent. The JSON path needs no such step because encoding/json marshals
 // json.Number as a bare literal.
+var integerLiteral = regexp.MustCompile(`^-?[0-9]+$`)
+
+// numericNode wraps a JSON numeric literal in a yaml scalar node with the numeric tag the
+// literal implies, so the emitted YAML keeps the exact digits and the numeric type.
+func numericNode(literal string) *yaml.Node {
+	tag := "!!float"
+	if integerLiteral.MatchString(literal) {
+		tag = "!!int"
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: literal}
+}
+
 func restoreNumbers(value any) any {
 	switch typed := value.(type) {
 	case json.Number:
-		if i, err := typed.Int64(); err == nil {
-			return i
-		}
-		if f, err := typed.Float64(); err == nil {
-			return f
-		}
-		return typed.String()
+		// Keep the literal exactly as the wire carried it: converting through int64/float64
+		// loses digits past 2^53 or float64 precision, and an out-of-range literal degraded to a
+		// quoted string. A tagged yaml.Node emits the original literal as a bare numeric scalar.
+		return numericNode(typed.String())
 	case map[string]any:
 		restored := make(map[string]any, len(typed))
 		for key, entry := range typed {
