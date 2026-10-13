@@ -177,6 +177,12 @@ export async function importAlertRulesTransfer(
   domain: AlertRuleDomain = 'CLUSTER',
 ): Promise<AlertRule[]> {
   if (!isMockMode()) return opsApi.importAlertRulesTransfer(data, domain);
+  if (data == null) throw new Error('Alert rule import document is required');
+  if (data.version !== 1) throw new Error('Unsupported alert rule import version');
+  if (data.domain !== domain) throw new Error('Alert rule import domain does not match this page');
+  if (!Array.isArray(data.rules) || data.rules.length < 1 || data.rules.length > 200) {
+    throw new Error('Alert rule import must contain between 1 and 200 rules');
+  }
   const startId = Date.now();
   const imported = data.rules.map((rule, index) => ({
     ...copyAlertRule(rule as AlertRule),

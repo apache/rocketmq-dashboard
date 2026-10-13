@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AuditRecord } from '../api/ops';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AlertRuleTransfer, AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
@@ -34,7 +34,8 @@ import {
   updateAlertRule,
 } from './opsService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const dataMode = vi.hoisted(() => ({ mock: true }));
+vi.mock('./dataMode', () => ({ isMockMode: () => dataMode.mock }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
@@ -336,5 +337,86 @@ describe('ops service mock data', () => {
       '"2026-08-01 10:00:00","\'=admin","DELETE","TOPIC","csv-export-target",' +
         '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
+  });
+});
+
+describe('alert import envelope', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    dataMode.mock = true;
+  });
+
+  afterEach(() => {
+    dataMode.mock = true;
+    vi.restoreAllMocks();
+  });
+
+  const rule = (index: number) => ({
+    name: `import-boundary-${index}`,
+    metric: 'rocketmq_tps',
+    operator: '>',
+    threshold: 100,
+    duration: '5m',
+    channels: ['email'],
+    enabled: true,
+    description: '',
+  });
+
+  it.each([
+    ['null document', null, 'document is required'],
+    ['unsupported version', { version: 2, domain: 'CLUSTER', rules: [rule(0)] }, 'Unsupported'],
+    ['wrong domain', { version: 1, domain: 'BUSINESS', rules: [rule(0)] }, 'domain does not match'],
+    ['null rules', { version: 1, domain: 'CLUSTER', rules: null }, 'between 1 and 200'],
+    ['non-array rules', { version: 1, domain: 'CLUSTER', rules: {} }, 'between 1 and 200'],
+    ['empty rules', { version: 1, domain: 'CLUSTER', rules: [] }, 'between 1 and 200'],
+    [
+      '201 rules',
+      { version: 1, domain: 'CLUSTER', rules: Array.from({ length: 201 }, (_, i) => rule(i)) },
+      'between 1 and 200',
+    ],
+  ])('rejects %s before changing either domain', async (_label, document, message) => {
+    const service = await import('./opsService');
+    const cluster = await service.listAlertRules('CLUSTER');
+    const business = await service.listAlertRules('BUSINESS');
+    await expect(
+      service.importAlertRulesTransfer(document as AlertRuleTransfer, 'CLUSTER'),
+    ).rejects.toThrow(message as string);
+    expect(await service.listAlertRules('CLUSTER')).toEqual(cluster);
+    expect(await service.listAlertRules('BUSINESS')).toEqual(business);
+  });
+
+  it.each(['CLUSTER', 'BUSINESS'] as const)('accepts 1 and 200 rules in %s', async (domain) => {
+    for (const count of [1, 200]) {
+      vi.resetModules();
+      const service = await import('./opsService');
+      const before = await service.listAlertRules(domain);
+      const otherDomain = domain === 'CLUSTER' ? 'BUSINESS' : 'CLUSTER';
+      const other = await service.listAlertRules(otherDomain);
+      const document = {
+        version: 1,
+        domain,
+        rules: Array.from({ length: count }, (_, i) => rule(i)),
+      };
+      const imported = await service.importAlertRulesTransfer(document, domain);
+      expect(imported).toHaveLength(count);
+      expect(await service.listAlertRules(domain)).toHaveLength(before.length + count);
+      expect(await service.listAlertRules(otherDomain)).toEqual(other);
+      imported[0].channels.push('sms');
+      document.rules[0].channels.push('dingtalk');
+      expect(
+        (await service.listAlertRules(domain)).find((row) => row.id === imported[0].id)?.channels,
+      ).toEqual(['email']);
+    }
+  });
+
+  it('delegates real imports to the API without mock envelope validation', async () => {
+    dataMode.mock = false;
+    const api = await import('../api/ops');
+    const imported = [{ ...rule(0), id: 42 }];
+    const request = { version: 1, domain: 'BUSINESS' as const, rules: [] };
+    const spy = vi.spyOn(api, 'importAlertRulesTransfer').mockResolvedValue(imported);
+    const service = await import('./opsService');
+    expect(await service.importAlertRulesTransfer(request, 'BUSINESS')).toBe(imported);
+    expect(spy).toHaveBeenCalledExactlyOnceWith(request, 'BUSINESS');
   });
 });

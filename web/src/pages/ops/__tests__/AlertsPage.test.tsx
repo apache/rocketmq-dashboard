@@ -1141,4 +1141,48 @@ describe('AlertsPage', () => {
       ),
     );
   });
+  it.each([0, 201])(
+    'rejects a file containing %i rules through the demo import service',
+    async (count) => {
+      const mode = await import('../../../services/dataMode');
+      const modeSpy = vi.spyOn(mode, 'isMockMode').mockReturnValue(true);
+      const actual = await vi.importActual<typeof import('../../../services/opsService')>(
+        '../../../services/opsService',
+      );
+      vi.mocked(importAlertRulesTransfer).mockImplementation(actual.importAlertRulesTransfer);
+      const before = await actual.listAlertRules('CLUSTER');
+      try {
+        const { container } = renderPage();
+        await screen.findByText('Broker disk usage');
+        const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+        expect(input).not.toBeNull();
+        const content = JSON.stringify({
+          version: 1,
+          domain: 'CLUSTER',
+          rules: Array.from({ length: count }, (_, index) => ({
+            name: `invalid-file-${index}`,
+            metric: 'rocketmq_tps',
+            operator: '>',
+            threshold: 100,
+            duration: '5m',
+            channels: ['email'],
+            enabled: true,
+            description: '',
+          })),
+        });
+        const file = new File([content], 'cluster-alert-rules.json', { type: 'application/json' });
+        Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) });
+        await userEvent.setup().upload(input!, file);
+        await waitFor(() => expect(importAlertRulesTransfer).toHaveBeenCalled());
+        expect(
+          await screen.findByText('导入失败，请选择当前页面导出的规则文件'),
+        ).toBeInTheDocument();
+        expect(await actual.listAlertRules('CLUSTER')).toEqual(before);
+        expect(listAlertRulesPage).toHaveBeenCalledTimes(1);
+      } finally {
+        modeSpy.mockRestore();
+        vi.mocked(importAlertRulesTransfer).mockReset();
+      }
+    },
+  );
 });
