@@ -16,12 +16,13 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource, DataSourcePage } from '../../../api/settings';
 import {
   createDataSource,
+  deleteDataSource,
   listAllDataSources,
   listDataSourcesPage,
   testDataSource,
@@ -109,6 +110,135 @@ describe('DataSourceTab', () => {
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     vi.mocked(listDataSourcesPage).mockResolvedValue(sourcePage);
     vi.mocked(listAllDataSources).mockResolvedValue(sources);
+  });
+
+  it.each([false, true])(
+    'refreshes the current data-source query when a deletion completes after search changes (failed=%s)',
+    async (failed) => {
+      const pendingDelete = deferred<void>();
+      const remaining = { ...sources[0], key: 'prom-stage', name: 'Prometheus stage' };
+      let deleted = false;
+      vi.mocked(deleteDataSource).mockReturnValueOnce(pendingDelete.promise);
+      vi.mocked(listDataSourcesPage).mockImplementation(async (params) => {
+        const items =
+          params?.search === 'stage'
+            ? [remaining]
+            : deleted
+              ? [sources[1], remaining]
+              : [...sources, remaining];
+        return { ...sourcePage, items, total: items.length };
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <App>
+          <LangProvider>
+            <DataSourceTab />
+          </LangProvider>
+        </App>,
+      );
+      const initialRow = await screen.findByRole('row', { name: /Prometheus prod/ });
+      await user.click(within(initialRow).getByRole('button', { name: /删除/ }));
+      await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+      await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('prom-prod'));
+      fireEvent.change(screen.getByPlaceholderText('搜索数据源名称'), {
+        target: { value: 'stage' },
+      });
+      await waitFor(() =>
+        expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+          expect.objectContaining({ search: 'stage' }),
+        ),
+      );
+      await waitFor(() => expect(screen.queryByText('Thanos DR')).not.toBeInTheDocument());
+      deleted = !failed;
+      await act(async () => {
+        if (failed) pendingDelete.reject(new Error('delete unavailable'));
+        else pendingDelete.resolve();
+      });
+      await waitFor(() => expect(listDataSourcesPage).toHaveBeenCalledTimes(failed ? 2 : 3));
+      expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'stage' }),
+      );
+      expect(screen.getByText('Prometheus stage')).toBeInTheDocument();
+      expect(screen.queryByText('Thanos DR')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    { navigated: false, remaining: 40 },
+    { navigated: true, remaining: 40 },
+    { navigated: false, remaining: 0 },
+  ])(
+    'refreshes the current page after deleting its last data source (scenario=%j)',
+    async ({ navigated, remaining }) => {
+      const pendingDelete = deferred<void>();
+      const all = Array.from({ length: 41 }, (_, index) => ({
+        ...sources[0],
+        key: `source-${index + 1}`,
+        name: `Source ${index + 1}`,
+      }));
+      let deleted = false;
+      vi.mocked(deleteDataSource).mockReturnValueOnce(pendingDelete.promise);
+      vi.mocked(listDataSourcesPage).mockImplementation(async (params) => {
+        const page = params?.page ?? 1;
+        const size = params?.pageSize ?? 20;
+        const rows = deleted ? all.slice(0, remaining) : all;
+        return {
+          items: rows.slice((page - 1) * size, page * size),
+          total: rows.length,
+          page,
+          size,
+        };
+      });
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      render(
+        <App>
+          <LangProvider>
+            <DataSourceTab />
+          </LangProvider>
+        </App>,
+      );
+      await screen.findByText('Source 1');
+      fireEvent.click(document.querySelector('.ant-pagination-item-3')!);
+      const lastRow = await screen.findByRole('row', { name: /Source 41/ });
+      await user.click(within(lastRow).getByRole('button', { name: /删除/ }));
+      await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+      await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('source-41'));
+      if (navigated) {
+        fireEvent.click(document.querySelector('.ant-pagination-item-1')!);
+        await screen.findByText('Source 1');
+      }
+      deleted = true;
+      await act(async () => pendingDelete.resolve());
+      const expectedPage = navigated || remaining === 0 ? 1 : 2;
+      await waitFor(() =>
+        expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+          expect.objectContaining({ page: expectedPage }),
+        ),
+      );
+      if (remaining > 0)
+        expect(await screen.findByText(navigated ? 'Source 1' : 'Source 21')).toBeInTheDocument();
+      else expect(screen.queryByText('Source 41')).not.toBeInTheDocument();
+    },
+  );
+
+  it('does not fetch data sources after a pending deletion finishes on an unmounted tab', async () => {
+    const pendingDelete = deferred<void>();
+    vi.mocked(deleteDataSource).mockReturnValueOnce(pendingDelete.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { unmount } = render(
+      <App>
+        <LangProvider>
+          <DataSourceTab />
+        </LangProvider>
+      </App>,
+    );
+    const row = await screen.findByRole('row', { name: /Prometheus prod/ });
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    await user.click(await screen.findByRole('button', { name: /确\s*定/ }));
+    await waitFor(() => expect(deleteDataSource).toHaveBeenCalledWith('prom-prod'));
+    unmount();
+    await act(async () => pendingDelete.resolve());
+    expect(listDataSourcesPage).toHaveBeenCalledTimes(1);
   });
 
   it('keeps data source creation disabled until the initial list is ready', async () => {

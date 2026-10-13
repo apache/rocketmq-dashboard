@@ -267,7 +267,15 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setWhiteRemoteAddress(normalizeWhiteRemoteAddress(config.getWhiteRemoteAddress()));
         entity.setGmtModified(LocalDateTime.now());
         if (existing != null) {
-            userMapper.updateById(entity);
+            try {
+                userMapper.updateById(entity);
+            } catch (DuplicateKeyException exception) {
+                // The update rewrites username to the accessKey, so a row that was renamed through
+                // the users form (or created with that name concurrently) hits uk_username here -
+                // the same collision the sibling write paths already translate, and without this the
+                // caller saw a generic 500 "Internal Server Error" for a client mistake.
+                throw aclUserConflict(config.getAccessKey());
+            }
             if (entity.getWhiteRemoteAddress() == null) {
                 // Clearing the whitelist must persist as a null column; updateById skips null fields.
                 clearColumn(userMapper, entity.getId(), "white_remote_address");

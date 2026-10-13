@@ -59,8 +59,9 @@ export interface LiteTopicSession {
   status?: string;
   totalMessages?: number;
   consumedMessages?: number;
+  /** True when the scan cap makes the consumed and total counts lower bounds. */
+  consumedScanTruncated?: boolean;
   pendingMessages?: number;
-  popProgress?: number;
   liteTopicCreationCount?: number;
   liteTopics?: { topicName: string; status: string; ttlRemaining?: number }[];
 }

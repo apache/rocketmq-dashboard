@@ -399,6 +399,13 @@ const TopicPageContent = ({
     MessagePropertyInput[] | undefined;
   const { modal } = App.useApp();
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<Topic>>[]>([]);
@@ -1291,19 +1298,25 @@ const TopicPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateTopicCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -1928,7 +1941,10 @@ const TopicPageContent = ({
         title={`导入 Topic${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportTopics()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}

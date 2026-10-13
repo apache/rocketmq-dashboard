@@ -503,6 +503,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                                     queue, dlqTopic, offset);
                             continue;
                         }
+                        if (pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
+                            // The broker can skip removed messages even for a wildcard pull.
+                            // An advancing empty batch is not the end of the queue.
+                            consecutiveIllegalOffsets = 0;
+                            continue;
+                        }
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
@@ -591,6 +597,15 @@ public class RocketMQDLQProvider implements DLQProvider {
         ResendBatch batch = new ResendBatch();
         if (deadLetters.isEmpty()) {
             return batch;
+        }
+        if (!StringUtils.hasText(targetTopic)) {
+            Set<String> destinations = deadLetters.stream()
+                    .map(deadLetter -> resolveTargetTopic(deadLetter, targetTopic))
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            for (String destination : destinations) {
+                requireSameClusterAsDlqTopic(instanceId, MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName, destination);
+            }
         }
         try {
             runtimeAdminClientResolver.executeProducer(instanceId, producer -> {
