@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
@@ -45,6 +46,7 @@ public class LiteTopicService {
 
     private final LiteTopicProvider liteTopicProvider;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final OperationAuditService operationAuditService;
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
         return liteTopicProvider.listLiteTopics(pattern, namespace).stream()
@@ -70,14 +72,35 @@ public class LiteTopicService {
         var instance = ownershipGuard.requireInstance(identifier);
         var resource = ownershipGuard.topicResource(topicPattern);
         // Ownership guard applies to open-source Apache instances only; cloud calls are isolated by their own instance id.
+        ResourceOwnershipGuard.Ownership ownership = null;
         if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            ownershipGuard.check(instance, resource, true);
+            ownership = ownershipGuard.check(instance, resource, true);
             ownershipGuard.requireSupportedProvider(instance);
         }
         if (resource.kind() != ResourceOwnershipGuard.Kind.TOPIC) {
             throw new BusinessException(409, "TTL can only be updated on a registered Lite parent topic");
         }
-        liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
+        String detail = "instance=" + instance.getName() + ", newTTLMillis=" + newTTL;
+        String clusterId = ownership == null ? null : ownership.clusterId();
+        try {
+            liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
+        } catch (RuntimeException failure) {
+            recordAudit(resource.name(), clusterId, detail, "FAILED", failure.getMessage());
+            throw failure;
+        }
+        recordAudit(resource.name(), clusterId, detail, "SUCCESS", null);
+    }
+
+    /**
+     * Extending the TTL rewrites a live parent topic's broker-side expiration, which is the same class
+     * of change as the topic updates {@code MetadataService} audits; the console had no record of it.
+     * The cluster comes from the ownership row the request was validated against, so the audit targets
+     * the same scope as the write, and a failed attempt is recorded as well.
+     */
+    private void recordAudit(String resourceName, String clusterId, String detail,
+                             String result, String errorMessage) {
+        operationAuditService.record("UPDATE_LITE_TOPIC_TTL", "TOPIC", resourceName, clusterId, detail, result,
+                errorMessage);
     }
 
     public LiteTopicQuotaVO getQuota(String namespace) {

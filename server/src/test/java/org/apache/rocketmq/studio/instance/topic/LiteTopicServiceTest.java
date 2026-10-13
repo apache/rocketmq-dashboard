@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.LiteTopicSession;
 import org.apache.rocketmq.studio.model.LiteTopicSummary;
 import org.apache.rocketmq.studio.provider.LiteTopicProvider;
@@ -43,9 +44,10 @@ class LiteTopicServiceTest {
 
     /** No NameServer configured: the provider reports the feature as unavailable. */
     private final ResourceOwnershipGuard guard = mock(ResourceOwnershipGuard.class);
+    private final OperationAuditService auditService = mock(OperationAuditService.class);
     private final LiteTopicService unavailableService = new LiteTopicService(
             new RocketMQLiteTopicProvider(new MqAdminExtFactory(), new RocketMQProperties(),
-                    mock(RuntimeAdminClientResolver.class), guard), guard);
+                    mock(RuntimeAdminClientResolver.class), guard), guard, auditService);
 
     @Test
     void listLiteTopicsShouldReportUnsupportedWhenProviderIsUnavailable() {
@@ -87,9 +89,47 @@ class LiteTopicServiceTest {
     }
 
     @Test
+    void extendTTLRecordsTheBrokerSideChangeTest() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        LiteTopicService service = new LiteTopicService(provider, guard, auditService);
+        InstanceVO instance = InstanceVO.builder().name("instance-a").build();
+        var resource = new ResourceOwnershipGuard.Resource(ResourceOwnershipGuard.Kind.TOPIC, "chat");
+        when(guard.requireInstance("instance-a")).thenReturn(instance);
+        when(guard.topicResource("chat")).thenReturn(resource);
+        when(guard.check(instance, resource, true))
+                .thenReturn(new ResourceOwnershipGuard.Ownership(7L, "chat", "instance-a", "cluster-a", "LITE"));
+
+        service.extendTTL("instance-a", "chat", 600_000L);
+
+        org.mockito.Mockito.verify(provider).extendTTL("instance-a", "chat", 600_000L);
+        org.mockito.Mockito.verify(auditService).record("UPDATE_LITE_TOPIC_TTL", "TOPIC", "chat", "cluster-a",
+                "instance=instance-a, newTTLMillis=600000", "SUCCESS", null);
+    }
+
+    @Test
+    void extendTTLRecordsAFailedAttemptTest() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        LiteTopicService service = new LiteTopicService(provider, guard, auditService);
+        InstanceVO instance = InstanceVO.builder().name("instance-a").build();
+        var resource = new ResourceOwnershipGuard.Resource(ResourceOwnershipGuard.Kind.TOPIC, "chat");
+        when(guard.requireInstance("instance-a")).thenReturn(instance);
+        when(guard.topicResource("chat")).thenReturn(resource);
+        when(guard.check(instance, resource, true))
+                .thenReturn(new ResourceOwnershipGuard.Ownership(7L, "chat", "instance-a", "cluster-a", "LITE"));
+        org.mockito.Mockito.doThrow(new BusinessException(502, "broker refused"))
+                .when(provider).extendTTL("instance-a", "chat", 600_000L);
+
+        assertThatThrownBy(() -> service.extendTTL("instance-a", "chat", 600_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(502));
+
+        org.mockito.Mockito.verify(auditService).record("UPDATE_LITE_TOPIC_TTL", "TOPIC", "chat", "cluster-a",
+                "instance=instance-a, newTTLMillis=600000", "FAILED", "broker refused");
+    }
+
+    @Test
     void extendTTLRequiresInstanceAndOwnershipTest() {
         LiteTopicProvider provider = mock(LiteTopicProvider.class);
-        LiteTopicService service = new LiteTopicService(provider, guard);
+        LiteTopicService service = new LiteTopicService(provider, guard, auditService);
         assertThatThrownBy(() -> service.extendTTL(null, "chat", 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
         InstanceVO instance = InstanceVO.builder().name("instance-a").build();
@@ -129,7 +169,7 @@ class LiteTopicServiceTest {
         when(provider.listLiteTopics("chat", "DEFAULT")).thenReturn(List.of(summary));
         when(provider.isSupported()).thenReturn(true);
 
-        LiteTopicService service = new LiteTopicService(provider, guard);
+        LiteTopicService service = new LiteTopicService(provider, guard, auditService);
         List<LiteTopicItemVO> items = service.listLiteTopics("chat", "DEFAULT");
 
         assertThat(items).singleElement().satisfies(item -> {
@@ -166,7 +206,7 @@ class LiteTopicServiceTest {
         session.setLiteTopics(new LinkedHashSet<>(List.of("bob", "alice")));
         when(provider.getSession("chat~g~c1")).thenReturn(session);
 
-        LiteTopicSessionVO vo = new LiteTopicService(provider, guard).getSession("chat~g~c1");
+        LiteTopicSessionVO vo = new LiteTopicService(provider, guard, auditService).getSession("chat~g~c1");
 
         assertThat(vo.getSessionId()).isEqualTo("chat~g~c1");
         assertThat(vo.getClientAddress()).isEqualTo("10.0.0.9:1234");
@@ -199,7 +239,7 @@ class LiteTopicServiceTest {
         quota.setMaxCreationRate(0.0);
         when(provider.getQuota("DEFAULT")).thenReturn(quota);
 
-        LiteTopicQuotaVO vo = new LiteTopicService(provider, guard).getQuota("DEFAULT");
+        LiteTopicQuotaVO vo = new LiteTopicService(provider, guard, auditService).getQuota("DEFAULT");
 
         assertThat(vo.getCurrentTopicCount()).isEqualTo(10);
         assertThat(vo.getMaxTopicCount()).isEqualTo(40);
