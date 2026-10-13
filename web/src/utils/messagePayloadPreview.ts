@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import nativePropertyContract from './nativeMessagePropertyContract.json';
 import { parseMessageProperties } from './messageProperties';
 
 export type MessagePropertyMode = 'form' | 'text';
@@ -24,6 +25,7 @@ export type MessageBodyFormat =
   'empty' | 'json-object' | 'json-array' | 'json-scalar' | 'plain-text';
 
 export type MessagePayloadIssueCode =
+  | 'PROPERTY_WIRE_SEPARATOR'
   | 'EMPTY_BODY'
   | 'BODY_SIZE_LIMIT'
   | 'INVALID_PROPERTY_FORMAT'
@@ -63,6 +65,8 @@ export interface MessagePayloadPreviewInput {
 }
 
 export interface MessagePayloadPreviewOptions {
+  /** Match the Apache adapter wire policy; cloud providers do not opt in. */
+  nativePropertyWire?: boolean;
   maxBodyBytes?: number;
   maxProperties?: number;
   maxPropertyBytes?: number;
@@ -105,18 +109,11 @@ export const DEFAULT_MAX_MESSAGE_BODY_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_MESSAGE_PROPERTIES = 32;
 export const DEFAULT_MAX_MESSAGE_PROPERTY_BYTES = 16 * 1024;
 
-const RESERVED_PROPERTY_NAMES = new Set([
-  'TAGS',
-  'KEYS',
-  'UNIQ_KEY',
-  'WAIT',
-  'DELAY',
-  'RETRY_TOPIC',
-  'REAL_TOPIC',
-  'REAL_QID',
-  'TRAN_MSG',
-  'PGROUP',
-]);
+const RESERVED_PROPERTY_NAMES = new Set(nativePropertyContract.reservedPropertyNames);
+
+const nativeReservedProperties = new Set(nativePropertyContract.reservedProperties);
+const isNativeSystemProperty = (key: string) =>
+  nativeReservedProperties.has(key) || key.startsWith('%RETRY%') || key.startsWith('%DLQ%');
 
 const textBytes = (value?: string): number => new TextEncoder().encode(value ?? '').length;
 
@@ -316,6 +313,34 @@ export const analyzeMessagePayloadPreview = (
       ? buildMessagePropertiesFromText(input.propsText ?? '')
       : buildMessagePropertiesFromRows(input.properties);
   issues.push(...propertyResult.issues);
+
+  if (options.nativePropertyWire) {
+    const { nameValueSeparator, propertySeparator } = nativePropertyContract;
+    const wireIssue = (field: MessagePayloadIssue['field'], description: string) =>
+      issue(
+        'PROPERTY_WIRE_SEPARATOR',
+        'error',
+        'topicPage.propertySeparatorTitle',
+        description,
+        field,
+      );
+    if (tag.includes(propertySeparator)) {
+      issues.push(wireIssue('tag', 'topicPage.tagSeparatorDescription'));
+    }
+    if (key.includes(propertySeparator)) {
+      issues.push(wireIssue('key', 'topicPage.keySeparatorDescription'));
+    }
+    for (const entry of propertyResult.entries) {
+      // The native adapter drops these before validation and putUserProperty.
+      if (isNativeSystemProperty(entry.key)) continue;
+      if (entry.key.includes(nameValueSeparator) || entry.key.includes(propertySeparator)) {
+        issues.push(wireIssue('properties', 'topicPage.propertyNameSeparatorDescription'));
+      }
+      if (entry.value.includes(propertySeparator)) {
+        issues.push(wireIssue('properties', 'topicPage.propertyValueSeparatorDescription'));
+      }
+    }
+  }
 
   const reservedNames = propertyResult.entries
     .filter((entry) => entry.reserved)

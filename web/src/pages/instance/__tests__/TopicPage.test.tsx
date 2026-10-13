@@ -20,6 +20,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App, Modal } from 'antd';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { BrokerRoute, Topic } from '../../../api/metadata';
 import { parseMessageProperties } from '../../../utils/messageProperties';
@@ -1599,4 +1600,87 @@ describe('TopicPage', () => {
       await screen.findByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由/),
     ).toBeInTheDocument();
   });
+  it.each(['form', 'text'] as const)(
+    'blocks native wire properties on %s submission',
+    async (mode) => {
+      instanceServiceMocks.listInstances.mockResolvedValue([
+        { ...selectedInstance, vendor: 'APACHE' },
+      ]);
+      mockTopicsList([buildTopics(1)[0]]);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders();
+      await user.click(await screen.findByRole('button', { name: /发送/ }));
+      const dialog = await getSendDialog();
+      fireEvent.change(within(dialog).getByLabelText('消息体 Body'), { target: { value: '{}' } });
+      if (mode === 'text') {
+        await user.click(within(dialog).getByText('批量粘贴'));
+        fireEvent.change(await within(dialog).findByPlaceholderText(/TAGS=tagA/), {
+          target: { value: 'business=left\u0002right' },
+        });
+      } else {
+        await user.click(within(dialog).getByRole('button', { name: /添加属性/ }));
+        fireEvent.change(within(dialog).getByPlaceholderText('属性名'), {
+          target: { value: 'business' },
+        });
+        fireEvent.change(within(dialog).getByPlaceholderText('属性值'), {
+          target: { value: 'left\u0002right' },
+        });
+      }
+      await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+      expect(
+        await screen.findByText(/发送前预检未通过：消息属性含不支持的分隔符/),
+      ).toBeInTheDocument();
+      expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it('renders the native wire error in English', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    try {
+      instanceServiceMocks.listInstances.mockResolvedValue([
+        { ...selectedInstance, vendor: 'APACHE' },
+      ]);
+      mockTopicsList([buildTopics(1)[0]]);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders();
+      await user.click(await screen.findByRole('button', { name: /发送/ }));
+      const dialog = await getSendDialog();
+      fireEvent.change(within(dialog).getByLabelText('消息体 Body'), { target: { value: '{}' } });
+      fireEvent.change(within(dialog).getByLabelText('Tag'), {
+        target: { value: 'left\u0002right' },
+      });
+      await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+      expect(
+        await screen.findByText(
+          /发送前预检未通过：Message properties contain an unsupported separator/,
+        ),
+      ).toBeInTheDocument();
+      expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+    } finally {
+      localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    }
+  });
+
+  it.each(['ALIYUN', 'TENCENT'] as const)(
+    'leaves %s wire input to its provider',
+    async (vendor) => {
+      instanceServiceMocks.listInstances.mockResolvedValue([{ ...selectedInstance, vendor }]);
+      mockTopicsList([{ ...buildTopics(1)[0], type: 'NORMAL' }]);
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderWithProviders();
+      await user.click(await screen.findByRole('button', { name: /发送/ }));
+      const dialog = await getSendDialog();
+      fireEvent.change(within(dialog).getByLabelText('消息体 Body'), { target: { value: '{}' } });
+      fireEvent.change(within(dialog).getByLabelText('Tag'), {
+        target: { value: 'left\u0002right' },
+      });
+      expect(within(dialog).queryByText('消息属性含不支持的分隔符')).not.toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
+      await waitFor(() =>
+        expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ tag: 'left\u0002right' }),
+        ),
+      );
+    },
+  );
 });

@@ -18,6 +18,27 @@
 export type Lang = 'zh' | 'en';
 
 const translations: Record<string, Record<Lang, string>> = {
+  'topicPage.propertySeparatorTitle': {
+    zh: '消息属性含不支持的分隔符',
+    en: 'Message properties contain an unsupported separator',
+  },
+  'topicPage.tagSeparatorDescription': {
+    zh: 'Tag 含无法发送的不可见分隔符，请移除后重试。',
+    en: 'Tag contains an unsupported invisible separator. Remove it before sending.',
+  },
+  'topicPage.keySeparatorDescription': {
+    zh: 'Key 含无法发送的不可见分隔符，请移除后重试。',
+    en: 'Key contains an unsupported invisible separator. Remove it before sending.',
+  },
+  'topicPage.propertyNameSeparatorDescription': {
+    zh: '属性名含无法发送的不可见分隔符，请移除后重试。',
+    en: 'A property name contains an unsupported invisible separator. Remove it before sending.',
+  },
+  'topicPage.propertyValueSeparatorDescription': {
+    zh: '属性值含无法发送的不可见分隔符，请移除后重试。',
+    en: 'A property value contains an unsupported invisible separator. Remove it before sending.',
+  },
+
   // ─── Navigation ───
   'nav.home': { zh: '首页', en: 'Home' },
   'nav.dashboard': { zh: '监控面板', en: 'Dashboard' },

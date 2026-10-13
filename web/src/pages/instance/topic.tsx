@@ -296,6 +296,7 @@ const TopicPageContent = ({
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const canSendTestMessage = (topic: Topic) => !isCloudInstance || topic.type === 'NORMAL';
+  const nativePropertyWire = selectedInstance?.vendor === 'APACHE';
   const hasSelectedInstance = Boolean(selectedInstanceId);
 
   // ─── State ─────────────────────────────────────────────────────
@@ -1168,18 +1169,21 @@ const TopicPageContent = ({
       return;
     }
     try {
-      const payloadPreview = analyzeMessagePayloadPreview({
-        topic: values.topic,
-        tag: values.tag,
-        key: values.key,
-        body: values.body,
-        propsMode,
-        propsText: values.propsText,
-        properties: values.properties,
-      });
+      const payloadPreview = analyzeMessagePayloadPreview(
+        {
+          topic: values.topic,
+          tag: values.tag,
+          key: values.key,
+          body: values.body,
+          propsMode,
+          propsText: values.propsText,
+          properties: values.properties,
+        },
+        { nativePropertyWire },
+      );
       if (payloadPreview.blockingIssues.length > 0) {
         message.error(
-          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => item.title).join('；')}`,
+          `发送前预检未通过：${payloadPreview.blockingIssues.map((item) => t(item.title)).join('；')}`,
         );
         return;
       }

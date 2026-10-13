@@ -254,4 +254,113 @@ describe('messagePayloadPreview', () => {
       ]),
     );
   });
+  const nativeOptions = { nativePropertyWire: true };
+
+  it.each(['form', 'text'] as const)(
+    'blocks native separators in %s property names',
+    (propsMode) => {
+      for (const separator of ['\u0001', '\u0002']) {
+        const key = `business${separator}key`;
+        const preview = analyzeMessagePayloadPreview(
+          { body: '{}', propsMode, properties: [{ key, value: 'safe' }], propsText: `${key}=safe` },
+          nativeOptions,
+        );
+        expect(preview.blockingIssues.map((item) => item.code)).toContain(
+          'PROPERTY_WIRE_SEPARATOR',
+        );
+      }
+    },
+  );
+
+  it.each(['form', 'text'] as const)(
+    'blocks native property-value delimiters in %s mode',
+    (propsMode) => {
+      const value = 'left\u0002right';
+      const preview = analyzeMessagePayloadPreview(
+        {
+          body: '{}',
+          propsMode,
+          properties: [{ key: 'business', value }],
+          propsText: `business=${value}`,
+        },
+        nativeOptions,
+      );
+      expect(preview.blockingIssues.map((item) => item.code)).toContain('PROPERTY_WIRE_SEPARATOR');
+      expect(preview.properties.business).toBe(value);
+    },
+  );
+
+  it.each(['tag', 'key'] as const)('blocks a native property delimiter in %s', (field) => {
+    const preview = analyzeMessagePayloadPreview(
+      { body: '{}', propsMode: 'form', [field]: 'left\u0002right' },
+      nativeOptions,
+    );
+    expect(preview.blockingIssues).toEqual([
+      expect.objectContaining({ field, code: 'PROPERTY_WIRE_SEPARATOR' }),
+    ]);
+  });
+
+  it.each(['form', 'text'] as const)(
+    'preserves a native name/value separator inside a %s value',
+    (propsMode) => {
+      const value = 'left\u0001right,中文=ok';
+      const preview = analyzeMessagePayloadPreview(
+        {
+          body: '{}',
+          propsMode,
+          properties: [{ key: 'business', value }],
+          propsText: `business=${value}`,
+        },
+        nativeOptions,
+      );
+      expect(preview.blockingIssues).toEqual([]);
+      expect(preview.properties.business).toBe(value);
+    },
+  );
+
+  it('does not impose Apache wire restrictions when the native policy is disabled', () => {
+    const input = {
+      body: '{}',
+      propsMode: 'form' as const,
+      tag: 'left\u0002right',
+      properties: [{ key: 'left\u0001right', value: 'left\u0002right' }],
+    };
+    expect(analyzeMessagePayloadPreview(input).blockingIssues).toEqual([]);
+    expect(
+      analyzeMessagePayloadPreview(input, { nativePropertyWire: false }).blockingIssues,
+    ).toEqual([]);
+  });
+
+  it('keeps skipped native system properties nonblocking without skipping case-sensitive user keys', () => {
+    const preview = analyzeMessagePayloadPreview(
+      {
+        body: '{}',
+        propsMode: 'form',
+        properties: ['TAGS', 'MIN_OFFSET', '%RETRY%orders', '%DLQ%orders'].map((key) => ({
+          key,
+          value: 'left\u0002right',
+        })),
+      },
+      nativeOptions,
+    );
+    expect(preview.blockingIssues).toEqual([]);
+    expect(preview.issues.some((item) => item.code === 'RESERVED_PROPERTY_KEY')).toBe(true);
+    const userProperty = analyzeMessagePayloadPreview(
+      { body: '{}', propsMode: 'form', properties: [{ key: 'tags', value: 'left\u0002right' }] },
+      nativeOptions,
+    );
+    expect(userProperty.blockingIssues.map((item) => item.code)).toContain(
+      'PROPERTY_WIRE_SEPARATOR',
+    );
+  });
+  it('preserves a native name/value separator inside Tag and Key', () => {
+    const value = 'left\u0001right';
+    const preview = analyzeMessagePayloadPreview(
+      { body: '{}', propsMode: 'form', tag: value, key: value },
+      nativeOptions,
+    );
+    expect(preview.blockingIssues).toEqual([]);
+    expect(preview.normalized.tag).toBe(value);
+    expect(preview.normalized.key).toBe(value);
+  });
 });
