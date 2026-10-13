@@ -106,7 +106,14 @@ public final class UrlHostGuard {
         }
     }
 
-    static boolean areAllowed(InetAddress[] addresses, boolean allowLoopback) {
+    /**
+     * Whether every resolved address is allowed by the SSRF policy: any-local, link-local (which
+     * covers the IPv4 cloud-metadata range), multicast, IPv6 unique-local (fc00::/7) and loopback
+     * (unless {@code allowLoopback}) addresses are refused. Public so an endpoint that judges an
+     * already-resolved address list — the data-source test path — applies these categories instead
+     * of keeping a second copy of the policy.
+     */
+    public static boolean areAllowed(InetAddress[] addresses, boolean allowLoopback) {
         if (addresses == null || addresses.length == 0) {
             return false;
         }
