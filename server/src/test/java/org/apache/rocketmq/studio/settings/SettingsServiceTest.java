@@ -62,6 +62,7 @@ class SettingsServiceTest {
 
     private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
     private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_QUERY_URL = PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String VICTORIA_METRICS_QUERY_URL =
             PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
     private static final String MIMIR_QUERY_URL =
@@ -521,6 +522,36 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
+    }
+
+    @Test
+    void connectionShouldResolveVictoriaMetricsAliasesToItsOwnQueryPathTest() {
+        // The DTO accepts victoria_metrics / victoria-metrics / VictoriaMetrics spellings; the
+        // probe must reach VictoriaMetrics' own query path, not fall back to Prometheus'.
+        prometheusServer.expect(requestTo(VICTORIA_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("victoria_metrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+    }
+
+    @Test
+    void connectionShouldStillRejectUnknownDataSourceTypesTest() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(PROMETHEUS_BASE_URL)
+                .type("grafana-metrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("Unsupported data source type: grafana-metrics");
     }
 
     @Test
