@@ -298,7 +298,17 @@ public class AiRunService {
                 continue;
             }
             terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
+            projector.replay(event.get()).ifPresent(live -> {
+                // A stored run_status row carries no duration - the timeline event is written with a
+                // null one by design - but the loaded run row has the recorded provider duration, and
+                // the replayed run_finished must say what the live one said.
+                if (live instanceof LiveEvent.RunFinished finished
+                        && finished.durationMs() == null
+                        && run.getDurationMs() != null) {
+                    live = new LiveEvent.RunFinished(finished.runId(), finished.status(), run.getDurationMs());
+                }
+                session.sendReplayed(live);
+            });
         }
         boolean live = registry.attach(run.getId(), session);
         session.finishReplay();

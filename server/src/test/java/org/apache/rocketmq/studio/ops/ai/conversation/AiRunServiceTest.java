@@ -535,6 +535,25 @@ class AiRunServiceTest {
     }
 
     @Test
+    void aReplayedTerminalFrameCarriesTheRecordedRunDurationTest() {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, RunStatus.COMPLETED);
+        finished.setDurationMs(65000L);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(conversationService.requireOwned(CONVERSATION_ID, OWNER)).thenReturn(conversation);
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 0, 200)).thenReturn(List.of(
+                event(1, "user", "{\"type\":\"user\",\"text\":\"what is lagging\"}"),
+                event(2, "run_status", "{\"type\":\"run_status\",\"status\":\"COMPLETED\"}")));
+
+        service.attach(RUN_ID, 0);
+
+        // The stored run_status event is written with a null duration by design; the replayed
+        // run_finished must still carry the duration the run row recorded, or the reconnecting
+        // client loses the only timing display it is given.
+        String text = emitters.get(0).eventText();
+        assertThat(text).contains("\"type\":\"run_finished\"").contains("\"durationMs\":65000");
+    }
+
+    @Test
     void attachShouldHonourTheCursorAndSynthesiseATerminalFrameForAReapedRunTest() {
         // A run reaped at startup or by the orphan sweep has no run_status row at all — there was no sink
         // to write one — so the row is the only record of how it ended and the client must not wait
