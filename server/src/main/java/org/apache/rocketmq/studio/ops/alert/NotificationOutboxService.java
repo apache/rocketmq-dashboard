@@ -320,8 +320,9 @@ public class NotificationOutboxService {
             // each claim so a row cannot be born with an already-expired lease.
             LocalDateTime claimStartedAt = utcNow();
             LocalDateTime claimStaleBefore = claimStartedAt.minus(claimTimeout);
+            int attemptCount = row.getAttemptCount() == null ? 0 : row.getAttemptCount();
             if (mapper.claimForDispatch(row.getId(), claimStartedAt, claimStaleBefore, claimStartedAt,
-                    claimToken) != 1) {
+                    claimToken, attemptCount) != 1) {
                 continue;
             }
             send(row, claimToken);
