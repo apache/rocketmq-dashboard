@@ -92,4 +92,11 @@ describe('AuditSummaryCards', () => {
 
     expect(screen.getAllByText('No Data')).toHaveLength(2);
   });
+  it('renders an unread summary as unavailable instead of measured zeros', () => {
+    renderCards({ summary: null, failed: true });
+
+    expect(screen.getAllByText('-')).toHaveLength(4);
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 / 0')).not.toBeInTheDocument();
+  });
 });

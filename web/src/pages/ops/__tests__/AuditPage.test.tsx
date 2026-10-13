@@ -512,4 +512,22 @@ describe('Audit page', () => {
     resolveCleanup(3);
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
+
+  it('reports a failed audit read with a retry instead of a measured zero summary', async () => {
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(new Error('audit store offline'));
+    vi.mocked(opsService.getAuditSummary).mockRejectedValueOnce(new Error('audit store offline'));
+    const user = userEvent.setup();
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A store that was never reached must not be reported as 0 matched records / 0% success.
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    // The retry re-runs both reads and the page reports the records it reached.
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+  });
 });
