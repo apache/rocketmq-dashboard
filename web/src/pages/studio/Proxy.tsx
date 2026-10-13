@@ -115,7 +115,6 @@ const ProxyPage: React.FC = () => {
       // Overlay the live TCP health view (UP/PARTIAL/DOWN) when the backend exposes it.
       try {
         const topology = await getProxyTopology();
-        if (requestId !== loadRequestId.current) return false;
         const statusByAddr = new Map(topology.map((node) => [node.proxyAddr, node.status]));
         nodes = baseNodes.map((node) => {
           const probeStatus = statusByAddr.get(node.address);
@@ -132,6 +131,8 @@ const ProxyPage: React.FC = () => {
       } catch {
         // Health probing is best-effort; keep the unknown status when it is unavailable.
       }
+      // The probe can fail after a newer list (including a mutation result) has committed.
+      if (requestId !== loadRequestId.current) return false;
       setProxyNodes(nodes);
 
       setClusterStats({

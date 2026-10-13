@@ -22,6 +22,9 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: ${STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT:5000}
+      mail.smtp.timeout: ${STUDIO_ALERTING_SMTP_READ_TIMEOUT:10000}
+      mail.smtp.writetimeout: ${STUDIO_ALERTING_SMTP_WRITE_TIMEOUT:10000}
   ai:
     mcp:
       server:
@@ -91,8 +94,8 @@ studio:
     admin:
       credentials:
         rmq-test:
-          access-key: rocketmq2
-          secret-key: 12345678
+          access-key: ${STUDIO_CLUSTER_ADMIN_ACCESS_KEY:}
+          secret-key: ${STUDIO_CLUSTER_ADMIN_SECRET_KEY:}
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
