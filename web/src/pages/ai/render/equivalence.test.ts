@@ -214,6 +214,17 @@ function documentedPerEventLoss(live: RenderBlock[]): RenderBlock[] {
     .map((block) => (block.kind === 'tool' ? { ...block, input: null } : block));
 }
 
+describe('toolDisplayName', () => {
+  it('degrades to an empty label for an orphaned result without a tool name', () => {
+    // A Claude result frame carries only the call id; the tool name lives in the remembered
+    // start. Rendering an orphaned result must not throw on startsWith and take the
+    // transcript down.
+    expect(toolDisplayName(undefined as unknown as string)).toBe('');
+    expect(toolDisplayName('')).toBe('');
+    expect(toolDisplayName('rmq.topic.list')).toBe('topic.list');
+  });
+});
+
 describe('live and replay converge', () => {
   for (const scenario of SCENARIOS) {
     it(`${scenario.name}RendersIdenticallyLiveAndReplayedTest`, () => {

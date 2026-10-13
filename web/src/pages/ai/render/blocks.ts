@@ -121,6 +121,12 @@ const RMQ_NAMESPACE_PREFIX = 'rmq.';
  * `Bash` -> `Bash`.
  */
 export function toolDisplayName(tool: string): string {
+  if (!tool) {
+    // A result frame carries only the call id: the tool name lives in the remembered start, and
+    // an orphaned result has none. The observed output must still render, so the label degrades
+    // to empty instead of throwing on startsWith and taking the whole transcript down.
+    return "";
+  }
   const withoutMcp = tool.startsWith(MCP_TOOL_PREFIX) ? tool.slice(MCP_TOOL_PREFIX.length) : tool;
   return withoutMcp.startsWith(RMQ_NAMESPACE_PREFIX)
     ? withoutMcp.slice(RMQ_NAMESPACE_PREFIX.length)
