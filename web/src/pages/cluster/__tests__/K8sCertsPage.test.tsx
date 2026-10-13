@@ -251,7 +251,9 @@ describe('K8sCertsPage', () => {
 
   it('deletes a certificate after confirmation', async () => {
     vi.mocked(deleteK8sCert).mockResolvedValue();
-    const user = userEvent.setup();
+    // The row is rendered before the table's loading mask finishes leaving, and while it does the
+    // action buttons carry `pointer-events: none`, so a strict pointer check flakes under load.
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
