@@ -54,6 +54,9 @@ final class NativeAlertRulePolicy {
     }
 
     static void validate(AlertRuleVO rule) {
+        if (!Double.isFinite(rule.getThreshold())) {
+            throw new BusinessException(400, "threshold must be finite");
+        }
         validateChannels(rule);
         if (!StringUtils.hasText(rule.getMetric())) {
             return;

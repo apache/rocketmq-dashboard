@@ -1568,4 +1568,20 @@ class AlertServiceTest {
 
         assertThat(result).isZero();
     }
+    @Test
+    void rejectsNonFiniteThresholdsBeforeCreateOrUpdateSideEffectsTest() {
+        for (double threshold : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            AlertRuleVO input = AlertRuleVO.builder().name("Invalid").metric("rocketmq_tps")
+                    .threshold(threshold).build();
+            assertThatThrownBy(() -> alertService.createRule(input))
+                    .isInstanceOf(BusinessException.class).hasMessage("threshold must be finite");
+            input.setId(42L);
+            assertThatThrownBy(() -> alertService.updateRule(input))
+                    .isInstanceOf(BusinessException.class).hasMessage("threshold must be finite");
+        }
+        verify(alertRepository, never()).insertRule(any(AlertRuleVO.class));
+        verify(alertRepository, never()).replaceRule(any(AlertRuleVO.class));
+        org.mockito.Mockito.verifyNoInteractions(alertStateRepository, operationAuditService);
+    }
+
 }

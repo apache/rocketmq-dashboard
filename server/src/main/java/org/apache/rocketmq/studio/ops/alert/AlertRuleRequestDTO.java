@@ -16,6 +16,10 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
@@ -36,6 +40,7 @@ public class AlertRuleRequestDTO {
     private String metric;
     @Pattern(regexp = ">|>=|<|<=|==|!=|UNAVAILABLE", message = "operator is invalid")
     private String operator;
+    @JsonSetter(nulls = Nulls.FAIL)
     private double threshold;
     private String thresholdUnit;
     @Pattern(regexp = PROMETHEUS_DURATION_REGEXP, message = "duration is invalid")
@@ -64,6 +69,12 @@ public class AlertRuleRequestDTO {
     private String reminderInterval;
     @Size(max = 4000, message = "notificationTemplate must not exceed 4000 characters")
     private String notificationTemplate;
+
+    @JsonIgnore
+    @AssertTrue(message = "threshold must be finite")
+    public boolean isThresholdFinite() {
+        return Double.isFinite(threshold);
+    }
 
     public AlertRuleVO toAlertRuleVO() {
         String normalizedMetric = metric == null ? null : metric.trim();

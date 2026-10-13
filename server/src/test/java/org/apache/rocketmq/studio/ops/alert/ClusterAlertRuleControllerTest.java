@@ -159,4 +159,23 @@ class ClusterAlertRuleControllerTest extends WebMvcAuthTestSupport {
 
         verify(alertService).toggleRule(AlertDomain.CLUSTER, 7L, false);
     }
+    @Test
+    void rejectsInvalidThresholdsBeforeAnyRuleOperationTest() throws Exception {
+        for (String prefix : List.of("/api/cluster-alert-rules")) {
+            for (String threshold : List.of("1e309", "-1e309", "null")) {
+                String rule = "{\"id\":42,\"name\":\"Invalid\",\"metric\":\"rocketmq_tps\",\"threshold\":"
+                        + threshold + "}";
+                for (String operation : List.of("create", "update", "test")) {
+                    mockMvc.perform(post(prefix + "/" + operation).contentType(MediaType.APPLICATION_JSON)
+                                    .content(rule)).andExpect(status().isBadRequest());
+                }
+                mockMvc.perform(post(prefix + "/import").contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"version\":1,\"domain\":\"CLUSTER\",\"rules\":[" + rule + "]}"))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+        org.mockito.Mockito.verifyNoInteractions(alertService, nativeAlertRuleTestService,
+                metricCatalogService, transferService);
+    }
+
 }
