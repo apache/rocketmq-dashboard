@@ -642,6 +642,10 @@ public class TencentInstanceProvider implements InstanceProvider {
         // is not server-paginated (pagination=false), so page through the whole result set here.
         String taskRequestId = UUID.randomUUID().toString();
         List<MessageRecordVO> result = new ArrayList<>();
+        // Rows the API has already returned, which is what the next offset must be derived from:
+        // a page can carry entries the provider skips (the SDK maps a JSON null array element to a
+        // null element), so the number of collected records is not the number of consumed rows.
+        long fetchedRows = 0L;
         boolean mayBeTruncated = false;
         for (int page = 0; page < MAX_PAGES && result.size() < MESSAGE_QUERY_HARD_LIMIT; page++) {
             DescribeMessageListRequest request = new DescribeMessageListRequest();
@@ -658,7 +662,7 @@ public class TencentInstanceProvider implements InstanceProvider {
             if (StringUtils.hasText(tag)) {
                 request.setTag(tag);
             }
-            request.setOffset((long) result.size());
+            request.setOffset(fetchedRows);
             request.setLimit((long) MESSAGE_LIMIT);
             DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                     client -> client.DescribeMessageList(request));
@@ -682,8 +686,9 @@ public class TencentInstanceProvider implements InstanceProvider {
                 mayBeTruncated = true;
                 break;
             }
+            fetchedRows += returned;
             // Missing totals retain the existing short-page termination fallback.
-            if (isLastPage(returned, total, result.size())) {
+            if (isLastPage(returned, total, fetchedRows)) {
                 break;
             }
             if (result.size() >= MESSAGE_QUERY_HARD_LIMIT) {
@@ -899,12 +904,12 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
     }
 
-    private static boolean isLastPage(int returned, long total, int collected) {
+    private static boolean isLastPage(int returned, long total, long fetchedRows) {
         // The last page is one that returned no rows or fewer rows than requested. When the API
-        // reports a TotalCount, also stop once all expected results have been collected.
+        // reports a TotalCount, also stop once all expected rows have been fetched.
         boolean shortPage = returned == 0 || returned < MESSAGE_LIMIT;
-        boolean allCollected = total > 0 && collected >= total;
-        return shortPage || allCollected;
+        boolean allFetched = total > 0 && fetchedRows >= total;
+        return shortPage || allFetched;
     }
 
     private static long parseTraceTime(String value) {
