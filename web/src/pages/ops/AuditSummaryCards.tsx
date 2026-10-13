@@ -24,6 +24,11 @@ const { Text } = Typography;
 interface Props {
   summary: AuditSummary | null;
   loading: boolean;
+  /**
+   * The last load failed. A summary that was never read must not be painted as a measured zero:
+   * the cards render "-" instead, the idiom the session drawer already uses for an unread count.
+   */
+  failed?: boolean;
 }
 
 const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: number }) => {
@@ -51,7 +56,7 @@ const BucketList = ({ items, total }: { items: AuditSummaryBucket[]; total: numb
   );
 };
 
-const AuditSummaryCards = ({ summary, loading }: Props) => {
+const AuditSummaryCards = ({ summary, loading, failed = false }: Props) => {
   const { t } = useLang();
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
@@ -67,19 +72,20 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
     byResourceType: [],
   };
   const successRate = data.total ? Math.round((data.successful / data.total) * 100) : 0;
+  const measured = (value: number | string) => (failed ? '-' : value);
   return (
     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title={t('audit.summaryMatched')} value={data.total} />
+          <Statistic title={t('audit.summaryMatched')} value={measured(data.total)} />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
           <Statistic
             title={t('audit.summarySuccessRate')}
-            value={successRate}
-            suffix="%"
+            value={measured(successRate)}
+            suffix={failed ? undefined : '%'}
             valueStyle={{ color: '#52c41a' }}
           />
         </Card>
@@ -88,14 +94,14 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
         <Card size="small">
           <Statistic
             title={t('auditInsights.failPartial')}
-            value={`${data.failed} / ${data.partial}`}
+            value={failed ? '-' : `${data.failed} / ${data.partial}`}
             valueStyle={{ color: data.failed ? '#cf1322' : undefined }}
           />
         </Card>
       </Col>
       <Col xs={12} lg={6}>
         <Card size="small">
-          <Statistic title={t('audit.summaryOperators')} value={data.uniqueOperators} />
+          <Statistic title={t('audit.summaryOperators')} value={measured(data.uniqueOperators)} />
         </Card>
       </Col>
       <Col xs={24} lg={12}>
