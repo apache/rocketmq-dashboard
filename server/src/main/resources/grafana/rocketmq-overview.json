@@ -313,7 +313,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "count(rocketmq_messages_in_total{cluster=\"$cluster\"})",
+          "expr": "count(count by (broker) (rocketmq_messages_in_total{cluster=\"$cluster\"}))",
           "refId": "A"
         }
       ]

@@ -1,0 +1,521 @@
+{
+ "_readme": "打进 fat jar 但自身不带许可全文的依赖的许可认定表。绝大多数 Maven 制品的 jar 里根本没有 LICENSE 文件（实测 jtokkit / mcp / antlr4-runtime / protobuf-java / logback / dom4j 等法律文件数为 0），所以「jar 必须自带上游许可全文」这条口径不可满足。ASF 对二进制分发的要求是**条款随包**，由本表 + server/legal/licenses/ 下的全文共同满足：Apache-2.0 由发行包自带的 LICENSE 覆盖（ASF 不要求按组件重复 Apache 全文，但依赖自带的 NOTICE 仍会并进我方 NOTICE），其余许可取仓库内收集的全文并嵌进 jar。**表里没有的依赖仍然报错** —— 新增依赖必须显式做一次许可认定。",
+ "apacheBasis": "POM（或其父 POM）的 <licenses> 声明 Apache License 2.0；ASF 不要求二进制发行包按组件重复 Apache-2.0 全文，发行包自带的 META-INF/LICENSE 就是该文本。依赖 jar 内若带 NOTICE，仍由 legal.py 并入我方 NOTICE。",
+ "apache": {
+  "HikariCP": {
+   "basis": "POM <licenses>（HikariCP-7.0.2.pom）"
+  },
+  "SparseBitSet": {
+   "basis": "POM <licenses>（SparseBitSet-1.2.pom）"
+  },
+  "alibabacloud-rocketmq20220801": {
+   "basis": "POM <licenses>（alibabacloud-rocketmq20220801-5.0.8.pom）"
+  },
+  "aliyun-gateway-pop": {
+   "basis": "许可在父 POM com.aliyun:core-service:0.3.5-beta（<licenses> 明写 The Apache License, Version 2.0）"
+  },
+  "aliyun-http-apache": {
+   "basis": "同上，父 POM com.aliyun:core-service:0.3.5-beta"
+  },
+  "aliyun-java-auth": {
+   "basis": "同上，父 POM com.aliyun:core-service:0.3.5-beta"
+  },
+  "aliyun-java-core": {
+   "basis": "同上，父 POM com.aliyun:core-service:0.3.5-beta"
+  },
+  "annotations": {
+   "basis": "POM <licenses>（annotations-4.1.1.4.pom）"
+  },
+  "awaitility": {
+   "basis": "POM <licenses>（awaitility-4.3.0.pom）"
+  },
+  "cache-api": {
+   "basis": "POM <licenses>（cache-api-1.1.1.pom）"
+  },
+  "concurrentlinkedhashmap-lru": {
+   "basis": "POM <licenses>（concurrentlinkedhashmap-lru-1.4.2.pom）"
+  },
+  "darabonba-java-core": {
+   "basis": "同上，父 POM com.aliyun:core-service:0.3.5-beta"
+  },
+  "easyexcel": {
+   "basis": "POM <licenses>（easyexcel-3.3.4.pom）"
+  },
+  "easyexcel-core": {
+   "basis": "POM <licenses>（easyexcel-core-3.3.4.pom）"
+  },
+  "easyexcel-support": {
+   "basis": "POM <licenses>（easyexcel-support-3.3.4.pom）"
+  },
+  "ehcache": {
+   "basis": "POM <licenses>（ehcache-3.12.0.pom）"
+  },
+  "error_prone_annotations": {
+   "basis": "POM <licenses>（error_prone_annotations-2.49.0.pom）"
+  },
+  "failureaccess": {
+   "basis": "POM <licenses>（failureaccess-1.0.1.pom）"
+  },
+  "fastjson2": {
+   "basis": "POM <licenses>（fastjson2-2.0.59.pom）"
+  },
+  "grpc-api": {
+   "basis": "POM <licenses>（grpc-api-1.80.0.pom）"
+  },
+  "grpc-context": {
+   "basis": "POM <licenses>（grpc-context-1.80.0.pom）"
+  },
+  "grpc-core": {
+   "basis": "POM <licenses>（grpc-core-1.80.0.pom）"
+  },
+  "grpc-stub": {
+   "basis": "POM <licenses>（grpc-stub-1.80.0.pom）"
+  },
+  "grpc-util": {
+   "basis": "POM <licenses>（grpc-util-1.80.0.pom）"
+  },
+  "gson": {
+   "basis": "POM <licenses>（gson-2.13.2.pom）"
+  },
+  "itu": {
+   "basis": "POM <licenses>（itu-1.14.0.pom）"
+  },
+  "j2objc-annotations": {
+   "basis": "POM <licenses>（j2objc-annotations-2.8.pom）"
+  },
+  "jakarta.validation-api": {
+   "basis": "POM <licenses>（jakarta.validation-api-3.1.1.pom）"
+  },
+  "javassist": {
+   "basis": "POM 三许可 MPL-1.1 / LGPL-2.1 / Apache-2.0，选 Apache-2.0"
+  },
+  "jboss-logging": {
+   "basis": "POM <licenses>（jboss-logging-3.6.3.Final.pom）"
+  },
+  "jctools-core": {
+   "basis": "POM <licenses>（jctools-core-4.0.6.pom）"
+  },
+  "json-schema-validator": {
+   "basis": "POM <licenses>（json-schema-validator-3.0.0.pom）"
+  },
+  "jsonschema-generator": {
+   "basis": "POM <licenses>（jsonschema-generator-5.0.0.pom）"
+  },
+  "jsonschema-module-jackson": {
+   "basis": "POM <licenses>（jsonschema-module-jackson-5.0.0.pom）"
+  },
+  "jsonschema-module-swagger": {
+   "basis": "POM <licenses>（jsonschema-module-swagger-2-5.0.0.pom）"
+  },
+  "jspecify": {
+   "basis": "POM <licenses>（jspecify-1.0.0.pom）"
+  },
+  "jsqlparser": {
+   "basis": "POM <licenses>（jsqlparser-5.2.pom（双许可，选 Apache））"
+  },
+  "jsr305": {
+   "basis": "POM <licenses>（jsr305-3.0.2.pom）"
+  },
+  "kotlin-stdlib": {
+   "basis": "POM <licenses>（kotlin-stdlib-1.9.25.pom）"
+  },
+  "listenablefuture": {
+   "basis": "空占位 jar（0 个 class），随 com.google.guava:guava 的 Apache-2.0"
+  },
+  "logging-interceptor": {
+   "basis": "POM <licenses>（logging-interceptor-3.12.13.pom）"
+  },
+  "lz4-java": {
+   "basis": "POM <licenses>（lz4-java-1.10.3.pom）"
+  },
+  "mcp-spring-webmvc": {
+   "basis": "POM <licenses>（mcp-spring-webmvc-2.0.0.pom）"
+  },
+  "mybatis-plus": {
+   "basis": "POM <licenses>（mybatis-plus-3.5.17.pom）"
+  },
+  "mybatis-plus-annotation": {
+   "basis": "POM <licenses>（mybatis-plus-annotation-3.5.17.pom）"
+  },
+  "mybatis-plus-core": {
+   "basis": "POM <licenses>（mybatis-plus-core-3.5.17.pom）"
+  },
+  "mybatis-plus-extension": {
+   "basis": "POM <licenses>（mybatis-plus-extension-3.5.17.pom）"
+  },
+  "mybatis-plus-jsqlparser": {
+   "basis": "POM <licenses>（mybatis-plus-jsqlparser-3.5.17.pom）"
+  },
+  "mybatis-plus-jsqlparser-common": {
+   "basis": "POM <licenses>（mybatis-plus-jsqlparser-common-3.5.17.pom）"
+  },
+  "mybatis-plus-spring": {
+   "basis": "POM <licenses>（mybatis-plus-spring-3.5.17.pom）"
+  },
+  "mybatis-plus-spring-boot-autoconfigure": {
+   "basis": "POM <licenses>（mybatis-plus-spring-boot-autoconfigure-3.5.17.pom）"
+  },
+  "mybatis-plus-spring-boot-native-image": {
+   "basis": "POM <licenses>（mybatis-plus-spring-boot-native-image-3.5.17.pom）"
+  },
+  "mybatis-plus-spring-boot4-starter": {
+   "basis": "POM <licenses>（mybatis-plus-spring-boot4-starter-3.5.17.pom）"
+  },
+  "netty-all": {
+   "basis": "POM <licenses>（netty-all-4.2.15.Final.pom）"
+  },
+  "netty-buffer": {
+   "basis": "POM <licenses>（netty-buffer-4.2.15.Final.pom）"
+  },
+  "netty-codec": {
+   "basis": "POM <licenses>（netty-codec-4.2.15.Final.pom）"
+  },
+  "netty-codec-base": {
+   "basis": "POM <licenses>（netty-codec-base-4.2.15.Final.pom）"
+  },
+  "netty-codec-classes-quic": {
+   "basis": "POM <licenses>（netty-codec-classes-quic-4.2.15.Final.pom）"
+  },
+  "netty-codec-compression": {
+   "basis": "POM <licenses>（netty-codec-compression-4.2.15.Final.pom）"
+  },
+  "netty-codec-dns": {
+   "basis": "POM <licenses>（netty-codec-dns-4.2.15.Final.pom）"
+  },
+  "netty-codec-haproxy": {
+   "basis": "POM <licenses>（netty-codec-haproxy-4.2.15.Final.pom）"
+  },
+  "netty-codec-http": {
+   "basis": "POM <licenses>（netty-codec-http-4.2.15.Final.pom）"
+  },
+  "netty-codec-http2": {
+   "basis": "POM <licenses>（netty-codec-http2-4.2.15.Final.pom）"
+  },
+  "netty-codec-http3": {
+   "basis": "POM <licenses>（netty-codec-http3-4.2.15.Final.pom）"
+  },
+  "netty-codec-marshalling": {
+   "basis": "POM <licenses>（netty-codec-marshalling-4.2.15.Final.pom）"
+  },
+  "netty-codec-memcache": {
+   "basis": "POM <licenses>（netty-codec-memcache-4.2.15.Final.pom）"
+  },
+  "netty-codec-mqtt": {
+   "basis": "POM <licenses>（netty-codec-mqtt-4.2.15.Final.pom）"
+  },
+  "netty-codec-protobuf": {
+   "basis": "POM <licenses>（netty-codec-protobuf-4.2.15.Final.pom）"
+  },
+  "netty-codec-redis": {
+   "basis": "POM <licenses>（netty-codec-redis-4.2.15.Final.pom）"
+  },
+  "netty-codec-smtp": {
+   "basis": "POM <licenses>（netty-codec-smtp-4.2.15.Final.pom）"
+  },
+  "netty-codec-socks": {
+   "basis": "POM <licenses>（netty-codec-socks-4.2.15.Final.pom）"
+  },
+  "netty-codec-stomp": {
+   "basis": "POM <licenses>（netty-codec-stomp-4.2.15.Final.pom）"
+  },
+  "netty-codec-xml": {
+   "basis": "POM <licenses>（netty-codec-xml-4.2.15.Final.pom）"
+  },
+  "netty-common": {
+   "basis": "POM <licenses>（netty-common-4.2.15.Final.pom）"
+  },
+  "netty-handler": {
+   "basis": "POM <licenses>（netty-handler-4.2.15.Final.pom）"
+  },
+  "netty-handler-proxy": {
+   "basis": "POM <licenses>（netty-handler-proxy-4.2.15.Final.pom）"
+  },
+  "netty-handler-ssl-ocsp": {
+   "basis": "POM <licenses>（netty-handler-ssl-ocsp-4.2.15.Final.pom）"
+  },
+  "netty-resolver": {
+   "basis": "POM <licenses>（netty-resolver-4.2.15.Final.pom）"
+  },
+  "netty-resolver-dns": {
+   "basis": "POM <licenses>（netty-resolver-dns-4.2.15.Final.pom）"
+  },
+  "netty-resolver-dns-classes-macos": {
+   "basis": "POM <licenses>（netty-resolver-dns-classes-macos-4.2.15.Final.pom）"
+  },
+  "netty-resolver-dns-native-macos": {
+   "basis": "POM <licenses>（netty-resolver-dns-native-macos-4.2.15.Final.pom（剥 classifier））"
+  },
+  "netty-transport": {
+   "basis": "POM <licenses>（netty-transport-4.2.15.Final.pom）"
+  },
+  "netty-transport-classes-epoll": {
+   "basis": "POM <licenses>（netty-transport-classes-epoll-4.2.15.Final.pom）"
+  },
+  "netty-transport-classes-io_uring": {
+   "basis": "POM <licenses>（netty-transport-classes-io_uring-4.2.15.Final.pom）"
+  },
+  "netty-transport-classes-kqueue": {
+   "basis": "POM <licenses>（netty-transport-classes-kqueue-4.2.15.Final.pom）"
+  },
+  "netty-transport-native-epoll": {
+   "basis": "POM <licenses>（netty-transport-native-epoll-4.2.15.Final.pom（剥 classifier））"
+  },
+  "netty-transport-native-io_uring": {
+   "basis": "POM <licenses>（netty-transport-native-io_uring-4.2.15.Final.pom（剥 classifier））"
+  },
+  "netty-transport-native-kqueue": {
+   "basis": "POM <licenses>（netty-transport-native-kqueue-4.2.15.Final.pom（剥 classifier））"
+  },
+  "netty-transport-native-unix-common": {
+   "basis": "POM <licenses>（netty-transport-native-unix-common-4.2.15.Final.pom）"
+  },
+  "netty-transport-rxtx": {
+   "basis": "POM <licenses>（netty-transport-rxtx-4.2.15.Final.pom）"
+  },
+  "netty-transport-sctp": {
+   "basis": "POM <licenses>（netty-transport-sctp-4.2.15.Final.pom）"
+  },
+  "netty-transport-udt": {
+   "basis": "POM <licenses>（netty-transport-udt-4.2.15.Final.pom）"
+  },
+  "okhttp": {
+   "basis": "POM <licenses>（okhttp-3.12.13.pom）"
+  },
+  "okhttp-jvm": {
+   "basis": "POM <licenses>（okhttp-jvm-5.3.2.pom）"
+  },
+  "okio": {
+   "basis": "POM <licenses>（okio-1.15.0.pom）"
+  },
+  "okio-jvm": {
+   "basis": "POM <licenses>（okio-jvm-3.4.0.pom）"
+  },
+  "opentelemetry-api": {
+   "basis": "POM <licenses>（opentelemetry-api-1.62.0.pom）"
+  },
+  "opentelemetry-common": {
+   "basis": "POM <licenses>（opentelemetry-common-1.62.0.pom）"
+  },
+  "opentelemetry-context": {
+   "basis": "POM <licenses>（opentelemetry-context-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-common": {
+   "basis": "POM <licenses>（opentelemetry-exporter-common-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-logging": {
+   "basis": "POM <licenses>（opentelemetry-exporter-logging-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-logging-otlp": {
+   "basis": "POM <licenses>（opentelemetry-exporter-logging-otlp-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-otlp": {
+   "basis": "POM <licenses>（opentelemetry-exporter-otlp-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-otlp-common": {
+   "basis": "POM <licenses>（opentelemetry-exporter-otlp-common-1.62.0.pom）"
+  },
+  "opentelemetry-exporter-prometheus": {
+   "basis": "POM <licenses> 明写 The Apache License, Version 2.0"
+  },
+  "opentelemetry-exporter-sender-okhttp": {
+   "basis": "POM <licenses>（opentelemetry-exporter-sender-okhttp-1.62.0.pom）"
+  },
+  "opentelemetry-sdk": {
+   "basis": "POM <licenses>（opentelemetry-sdk-1.62.0.pom）"
+  },
+  "opentelemetry-sdk-common": {
+   "basis": "POM <licenses>（opentelemetry-sdk-common-1.62.0.pom）"
+  },
+  "opentelemetry-sdk-extension-autoconfigure-spi": {
+   "basis": "POM <licenses>（opentelemetry-sdk-extension-autoconfigure-spi-1.62.0.pom）"
+  },
+  "opentelemetry-sdk-logs": {
+   "basis": "POM <licenses>（opentelemetry-sdk-logs-1.62.0.pom）"
+  },
+  "opentelemetry-sdk-metrics": {
+   "basis": "POM <licenses>（opentelemetry-sdk-metrics-1.62.0.pom）"
+  },
+  "opentelemetry-sdk-trace": {
+   "basis": "POM <licenses>（opentelemetry-sdk-trace-1.62.0.pom）"
+  },
+  "perfmark-api": {
+   "basis": "POM <licenses>（perfmark-api-0.27.0.pom）"
+  },
+  "prometheus-metrics-config": {
+   "basis": "POM <licenses>（prometheus-metrics-config-1.5.1.pom）"
+  },
+  "prometheus-metrics-exporter-common": {
+   "basis": "POM <licenses>（prometheus-metrics-exporter-common-1.5.1.pom）"
+  },
+  "prometheus-metrics-exporter-httpserver": {
+   "basis": "POM <licenses>（prometheus-metrics-exporter-httpserver-1.5.1.pom）"
+  },
+  "prometheus-metrics-exposition-formats": {
+   "basis": "POM <licenses>（prometheus-metrics-exposition-formats-1.5.1.pom）"
+  },
+  "prometheus-metrics-exposition-textformats": {
+   "basis": "POM <licenses>（prometheus-metrics-exposition-textformats-1.5.1.pom）"
+  },
+  "prometheus-metrics-model": {
+   "basis": "POM <licenses>（prometheus-metrics-model-1.5.1.pom）"
+  },
+  "rocketmq-logback-classic": {
+   "basis": "POM <licenses>（rocketmq-logback-classic-1.0.1.pom）"
+  },
+  "rocketmq-proto": {
+   "basis": "POM <licenses>（rocketmq-proto-2.1.2.pom）"
+  },
+  "rocketmq-rocksdb": {
+   "basis": "POM <licenses>（rocketmq-rocksdb-1.0.6.pom（双许可，选 Apache））"
+  },
+  "rocketmq-slf4j-api": {
+   "basis": "POM <licenses>（rocketmq-slf4j-api-1.0.1.pom）"
+  },
+  "snakeyaml": {
+   "basis": "POM <licenses>（snakeyaml-2.6.pom）"
+  },
+  "snakeyaml-engine": {
+   "basis": "POM <licenses>（snakeyaml-engine-3.0.1.pom）"
+  },
+  "spring-ai-autoconfigure-mcp-server-common": {
+   "basis": "POM <licenses>（spring-ai-autoconfigure-mcp-server-common-2.0.0.pom）"
+  },
+  "spring-ai-autoconfigure-mcp-server-webmvc": {
+   "basis": "POM <licenses>（spring-ai-autoconfigure-mcp-server-webmvc-2.0.0.pom）"
+  },
+  "spring-ai-commons": {
+   "basis": "POM <licenses>（spring-ai-commons-2.0.0.pom）"
+  },
+  "spring-ai-mcp": {
+   "basis": "POM <licenses>（spring-ai-mcp-2.0.0.pom）"
+  },
+  "spring-ai-mcp-annotations": {
+   "basis": "POM <licenses>（spring-ai-mcp-annotations-2.0.0.pom）"
+  },
+  "spring-ai-model": {
+   "basis": "POM <licenses>（spring-ai-model-2.0.0.pom）"
+  },
+  "spring-ai-starter-mcp-server-webmvc": {
+   "basis": "POM <licenses>（spring-ai-starter-mcp-server-webmvc-2.0.0.pom）"
+  },
+  "spring-ai-template-st": {
+   "basis": "POM <licenses>（spring-ai-template-st-2.0.0.pom）"
+  },
+  "swagger-ui": {
+   "basis": "POM <licenses>（swagger-ui-5.32.2.pom）"
+  },
+  "tencentcloud-sdk-java-common": {
+   "basis": "POM <licenses>（tencentcloud-sdk-java-common-3.1.1498.pom）"
+  },
+  "tencentcloud-sdk-java-trocket": {
+   "basis": "POM <licenses>（tencentcloud-sdk-java-trocket-3.1.1498.pom）"
+  }
+ },
+ "collected": {
+  "ST4": {
+   "license": "The BSD License",
+   "text": "ST4.txt",
+   "basis": "POM <licenses>（ST4-4.3.4.pom）"
+  },
+  "animal-sniffer-annotations": {
+   "license": "MIT License",
+   "text": "animal-sniffer-annotations.txt",
+   "basis": "POM <licenses>（animal-sniffer-annotations-1.26.pom）"
+  },
+  "antlr-runtime": {
+   "license": "BSD licence",
+   "text": "antlr-runtime.txt",
+   "basis": "POM <licenses>（antlr-runtime-3.5.3.pom）"
+  },
+  "antlr4-runtime": {
+   "license": "BSD-3-Clause",
+   "text": "antlr4-runtime.txt",
+   "basis": "POM <licenses>（antlr4-runtime-4.13.1.pom）"
+  },
+  "bcprov-jdk18on": {
+   "license": "Bouncy Castle Licence",
+   "text": "bcprov-jdk18on.txt",
+   "basis": "POM <licenses>（bcprov-jdk18on-1.78.1.pom）"
+  },
+  "curvesapi": {
+   "license": "BSD License",
+   "text": "curvesapi.txt",
+   "basis": "POM <licenses>（curvesapi-1.06.pom）"
+  },
+  "dom4j": {
+   "license": "Plexus",
+   "text": "dom4j.txt",
+   "basis": "POM <licenses>（dom4j-2.1.4.pom）"
+  },
+  "istack-commons-runtime": {
+   "license": "Eclipse Distribution License - v 1.0",
+   "text": "istack-commons-runtime.txt",
+   "basis": "POM <licenses>（istack-commons-runtime-4.1.2.pom）"
+  },
+  "jtokkit": {
+   "license": "MIT License",
+   "text": "jtokkit.txt",
+   "basis": "POM <licenses>（jtokkit-1.1.0.pom）"
+  },
+  "mcp": {
+   "license": "MIT License",
+   "text": "mcp.txt",
+   "basis": "POM <licenses>（mcp-2.0.0.pom）"
+  },
+  "mcp-core": {
+   "license": "MIT License",
+   "text": "mcp.txt",
+   "basis": "POM <licenses>（mcp-core-2.0.0.pom）"
+  },
+  "mcp-json-jackson3": {
+   "license": "MIT License",
+   "text": "mcp.txt",
+   "basis": "POM <licenses>（mcp-json-jackson3-2.0.0.pom）"
+  },
+  "protobuf-java": {
+   "license": "BSD-3-Clause",
+   "text": "protobuf-java.txt",
+   "basis": "POM <licenses>（protobuf-java-4.34.2.pom）"
+  },
+  "protobuf-java-util": {
+   "license": "BSD-3-Clause",
+   "text": "protobuf-java.txt",
+   "basis": "POM <licenses>（protobuf-java-util-4.34.2.pom）"
+  },
+  "reactive-streams": {
+   "license": "MIT-0",
+   "text": "reactive-streams.txt",
+   "basis": "POM <licenses>（reactive-streams-1.0.4.pom）"
+  },
+  "reflections": {
+   "license": "WTFPL（上游另有 New BSD 可选）",
+   "text": "reflections.txt",
+   "basis": "POM <licenses> 双许可 WTFPL / The New BSD License；tag 0.9.11 只发布了 WTFPL 全文，故收录它",
+   "review": "本件由 org.apache.rocketmq:rocketmq-tools:5.5.0 传递引入，我方代码不直接调用。双许可里 New BSD 的全文在 0.9.11 tag 上并不存在（0.10 起改发 Apache-2.0），只有 WTFPL 是上游逐字发布过的，因此收录 WTFPL；WTFPL 未在 ASF 的许可分类表里点名，3.0.0 GA 前请 PMC/法务确认，或改为排除该传递依赖。"
+  },
+  "webjars-locator-lite": {
+   "license": "MIT",
+   "text": "webjars-locator-lite.txt",
+   "basis": "POM <licenses>（webjars-locator-lite-1.1.3.pom）"
+  },
+  "zstd-jni": {
+   "license": "BSD-2-Clause",
+   "text": "zstd-jni.txt",
+   "basis": "POM <licenses> 明写 BSD 2-Clause License"
+  }
+ },
+ "categoryB": {
+  "logback-classic": {
+   "license": "EPL-2.0",
+   "text": "logback.txt",
+   "review": "EPL-2.0（另有 LGPL-2.1 可选，选 EPL-2.0）。ASF Category B：文件级弱著佐权，对我方代码无链接传染，二进制分发在 ASF 第三方许可政策下可接受；因是 Spring Boot 默认日志实现而随包分发。3.0.0 GA 前需 PMC/法务确认这条记录。",
+   "basis": "POM <licenses>（logback-classic-1.5.34.pom）"
+  },
+  "logback-core": {
+   "license": "EPL-2.0",
+   "text": "logback.txt",
+   "review": "EPL-2.0（另有 LGPL-2.1 可选，选 EPL-2.0）。ASF Category B：文件级弱著佐权，对我方代码无链接传染，二进制分发在 ASF 第三方许可政策下可接受；因是 Spring Boot 默认日志实现而随包分发。3.0.0 GA 前需 PMC/法务确认这条记录。",
+   "basis": "POM <licenses>（logback-core-1.5.34.pom）"
+  }
+ }
+}
