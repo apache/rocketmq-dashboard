@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.springframework.transaction.annotation.Transactional;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -414,5 +415,46 @@ class MybatisPlusAlertRepositoryTest {
                 && queryWrapper.getParamNameValuePairs().containsValue(AlertDomain.BUSINESS.name())
                 && queryWrapper.getParamNameValuePairs().containsValue("%lag%")
                 && queryWrapper.getParamNameValuePairs().containsValue(true);
+    }
+
+    @Test
+    void deleteAcknowledgedAlertsShouldCleanBothTablesInOneTransactionTest() throws Exception {
+        when(alertMapper.delete(any(Wrapper.class))).thenReturn(3);
+
+        int deleted = repository.deleteAcknowledgedAlerts();
+
+        assertThat(deleted).isEqualTo(3);
+        verify(notificationOutboxMapper).deleteForAcknowledgedAlerts();
+        verify(alertMapper).delete(any(Wrapper.class));
+        // The outbox rows of acknowledged alerts are a derived resource of the alert rows; a
+        // failure between the two deletes must roll both back, so the method has to run in a
+        // Spring transaction like the other multi-write repository methods.
+        assertThat(MybatisPlusAlertRepository.class
+                .getMethod("deleteAcknowledgedAlerts")
+                .isAnnotationPresent(Transactional.class))
+                .as("deleteAcknowledgedAlerts writes two tables and must be @Transactional")
+                .isTrue();
+    }
+
+    @Test
+    void replaceRuleShouldApplyBothWritesInOneTransactionTest() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder().id(1L).name("Lag").metric("group_lag").build();
+        // No thresholdUnit/duration/channels/... on the request, so the second write that
+        // clears omitted optional columns always runs next to the main updateById.
+        when(ruleMapper.selectById(1L)).thenReturn(new RmqAlertRule());
+        when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(1);
+
+        boolean replaced = repository.replaceRule(rule);
+
+        assertThat(replaced).isTrue();
+        verify(ruleMapper).updateById(any(RmqAlertRule.class));
+        verify(ruleMapper).update(isNull(), any(Wrapper.class));
+        // The main update and the omitted-optional-column cleanup must be atomic, otherwise a
+        // failure between them leaves a half-updated rule.
+        assertThat(MybatisPlusAlertRepository.class
+                .getMethod("replaceRule", AlertRuleVO.class)
+                .isAnnotationPresent(Transactional.class))
+                .as("replaceRule writes the rule twice and must be @Transactional")
+                .isTrue();
     }
 }
