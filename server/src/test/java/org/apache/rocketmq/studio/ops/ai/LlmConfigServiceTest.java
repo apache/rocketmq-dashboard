@@ -608,6 +608,22 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void testConfigShouldRejectCredentialsEmbeddedInApiBaseTest() {
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("https://user:secret@api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.config.invalid_api_base");
+        verifyNoInteractions(llmClient);
+    }
+
+    @Test
     void configShouldRejectOutOfRangeMaxTokensTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
