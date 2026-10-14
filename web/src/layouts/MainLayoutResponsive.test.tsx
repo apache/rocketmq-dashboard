@@ -99,15 +99,25 @@ describe('MainLayout viewport shell', () => {
 
     expect(sider()).not.toHaveClass('ant-layout-sider-zero-width');
     expect(sider()!.style.width).toBe('220px');
+    const trigger = document.querySelector<HTMLElement>('.ant-layout-sider-trigger');
+    expect(trigger).not.toBeNull();
+    expect(document.querySelector('.ant-layout-sider-zero-width-trigger')).toBeNull();
+    fireEvent.click(trigger!);
+    expect(sider()!.style.width).toBe('64px');
+    expect(document.querySelector('.ant-layout-sider-zero-width-trigger')).toBeNull();
   });
 
   it('declares the header search control as shrinkable instead of fixed at 280px', () => {
     useViewport(true);
     renderShell();
 
-    // jsdom has no layout, so the one thing this can pin is that the control may shrink with the
-    // header instead of forcing its 280px onto a 375px viewport.
+    // jsdom has no layout; pin the controls' shrink behavior and verify actual widths in a browser.
     expect(searchControl().style.width).toBe('280px');
-    expect(searchControl().style.flex).toBe('0 1 280px');
+    expect(searchControl().style.flex).toBe('1 1 280px');
+    expect(searchControl().style.minWidth).toBe('0px');
+    const rightGroup = searchControl().parentElement;
+    expect(rightGroup?.style.minWidth).toBe('0px');
+    expect(rightGroup?.style.flex).toBe('1 1 auto');
+    expect(document.querySelector<HTMLElement>('.ant-breadcrumb')?.style.minWidth).toBe('0px');
   });
 });
