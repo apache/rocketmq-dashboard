@@ -38,6 +38,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { TableProps } from 'antd';
 
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
@@ -553,18 +554,21 @@ const ClientsPage = () => {
       width: 220,
       // Unbounded resource names (_INNER_TRACE_PRODUCER-…-CONSUME-1) must clip inside the
       // cell: the project-wide `.ant-table-cell { white-space: nowrap }` otherwise lets them
-      // spill over the neighbouring column. Each line ellipsises on its own with a native
-      // title tooltip, the ConversationListModal title-column idiom.
+      // spill over the neighbouring column.
       ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
-        <div style={{ minWidth: 0 }}>
-          <Text strong style={diagnosticCellLine} title={record.resource}>
-            {record.resource}
-          </Text>
-          <Text type="secondary" style={diagnosticCellLine}>
-            {record.type}
-          </Text>
-        </div>
+        <Text strong style={diagnosticCellLine} title={record.resource}>
+          {record.resource}
+        </Text>
+      ),
+    },
+    {
+      title: t('common.type'),
+      dataIndex: 'type',
+      key: 'resourceType',
+      width: 100,
+      render: (type: string) => (
+        <Text style={{ fontSize: 14 }}>{(typeConfig[type] ?? { label: type }).label}</Text>
       ),
     },
     {
@@ -586,15 +590,16 @@ const ClientsPage = () => {
       title: t('clients.protocol'),
       dataIndex: 'protocols',
       key: 'protocols',
+      // gRPC + Remoting 两个标签并排实测需 157px
       width: 160,
       render: (protocols: string[]) => (
-        <Space size={4} wrap>
-          {protocols.map((protocol) => (
-            <Tag key={protocol} color={protocolConfig[protocol]?.color ?? 'default'}>
-              {protocol}
-            </Tag>
-          ))}
-        </Space>
+        <TagList
+          items={protocols.map((protocol) => ({
+            key: protocol,
+            label: protocol,
+            color: protocolConfig[protocol]?.color ?? 'default',
+          }))}
+        />
       ),
     },
     {
@@ -602,18 +607,22 @@ const ClientsPage = () => {
       key: 'versions',
       width: 220,
       render: (_: unknown, record) => (
-        <Space size={4} wrap>
-          {record.languages.map((language) => (
-            <Tag key={language} color={languageConfig[language]?.color ?? 'default'}>
-              {languageConfig[language]?.label ?? language}
-            </Tag>
-          ))}
+        <Flex gap={4} wrap={false} align="center" style={{ minWidth: 0 }}>
+          <TagList
+            items={record.languages.map((language) => ({
+              key: language,
+              label: languageConfig[language]?.label ?? language,
+              color: languageConfig[language]?.color ?? 'default',
+            }))}
+            max={2}
+            tagMaxWidth={64}
+          />
           {record.versions.map((version) => (
             <Text key={version} code>
               {version}
             </Text>
           ))}
-        </Space>
+        </Flex>
       ),
     },
     {

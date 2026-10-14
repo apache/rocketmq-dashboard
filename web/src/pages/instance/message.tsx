@@ -1190,7 +1190,7 @@ const MessagePageContent = ({
                   />
                   <Input
                     placeholder={t('messagePage.inputKeyPlaceholder')}
-                    style={{ width: 240 }}
+                    style={{ width: 400 }}
                     value={keyInput}
                     onChange={(e) => setKeyInput(e.target.value)}
                   />

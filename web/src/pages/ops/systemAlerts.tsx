@@ -31,6 +31,7 @@ import {
   Form,
   Input,
   Popconfirm,
+  Segmented,
 } from 'antd';
 import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -509,35 +510,38 @@ const SystemAlertsPage = () => {
         }
       />
 
+      {/* 筛选条：全部控件统一默认尺寸（32px 高），宽度按内容分三档，不再混用 size="small"
+          —— 原来 4 个级别按钮 + 3 个 Select + 4 个 Input 高矮不一（datetime-local 在 small
+          下压不到 24px、实测 26px），宽度也是 132/150/190/124 各写各的。 */}
       <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
-        {['all', 'error', 'warning', 'info'].map((level) => (
-          <Button
-            key={level}
-            type={levelFilter === level ? 'primary' : 'default'}
-            size="small"
-            onClick={() => {
-              setLevelFilter(level);
-              setPage(1);
-            }}
-          >
-            {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-            {level !== 'all' && (
-              <Badge
-                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
-                style={{
-                  marginLeft: 4,
-                  backgroundColor:
-                    level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
-                }}
-                size="small"
-              />
-            )}
-          </Button>
-        ))}
+        <Segmented
+          value={levelFilter}
+          onChange={(value) => {
+            setLevelFilter(String(value));
+            setPage(1);
+          }}
+          options={['all', 'error', 'warning', 'info'].map((level) => ({
+            value: level,
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
+                {level !== 'all' && (
+                  <Badge
+                    count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
+                    style={{
+                      backgroundColor:
+                        level === 'error' ? '#ff4d4f' : level === 'warning' ? '#fa8c16' : '#1677ff',
+                    }}
+                    size="small"
+                  />
+                )}
+              </span>
+            ),
+          }))}
+        />
         <Select
           value={domainFilter}
-          size="small"
-          style={{ minWidth: 132 }}
+          style={{ minWidth: 140 }}
           onChange={(value) => {
             setDomainFilter(value);
             setPage(1);
@@ -550,9 +554,8 @@ const SystemAlertsPage = () => {
         />
         <Input
           aria-label={t('sysAlerts.instanceFilter')}
-          size="small"
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 150, flex: 'none' }}
+          style={{ width: 180, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -561,9 +564,8 @@ const SystemAlertsPage = () => {
         />
         <Input
           aria-label={t('sysAlerts.labelsFilter')}
-          size="small"
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 190, flex: 'none' }}
+          style={{ width: 180, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
@@ -573,8 +575,7 @@ const SystemAlertsPage = () => {
         <Input
           aria-label={t('sysAlerts.startTimeFilter')}
           type="datetime-local"
-          size="small"
-          style={{ width: 190, flex: 'none' }}
+          style={{ width: 210, height: 32, flex: 'none' }}
           value={fromFilter}
           onChange={(event) => {
             setFromFilter(event.target.value);
@@ -584,8 +585,7 @@ const SystemAlertsPage = () => {
         <Input
           aria-label={t('sysAlerts.endTimeFilter')}
           type="datetime-local"
-          size="small"
-          style={{ width: 190, flex: 'none' }}
+          style={{ width: 210, height: 32, flex: 'none' }}
           value={toFilter}
           onChange={(event) => {
             setToFilter(event.target.value);
@@ -594,8 +594,7 @@ const SystemAlertsPage = () => {
         />
         <Select
           value={transitionFilter}
-          size="small"
-          style={{ minWidth: 124 }}
+          style={{ minWidth: 140 }}
           onChange={(value) => {
             setTransitionFilter(value);
             setPage(1);
@@ -609,8 +608,7 @@ const SystemAlertsPage = () => {
         <Select
           aria-label={t('sysAlerts.suppressionFilter')}
           value={suppressionFilter}
-          size="small"
-          style={{ minWidth: 132 }}
+          style={{ minWidth: 160 }}
           onChange={(value) => {
             setSuppressionFilter(value);
             setPage(1);
@@ -622,7 +620,7 @@ const SystemAlertsPage = () => {
           ]}
         />
         {collectorStatus && (
-          <Tag color="success" style={{ marginInlineEnd: 0 }}>
+          <Tag color="success" style={{ marginInlineEnd: 0, fontSize: 14 }}>
             {t('sysAlerts.nativeCollectionEnabled')}
           </Tag>
         )}
