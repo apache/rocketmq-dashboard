@@ -37,6 +37,9 @@ import java.util.Locale;
  * When {@code allowLoopback} is set (LLM config, where a local {@code ollama} gateway is
  * a supported provider) loopback is admitted but link-local/metadata addresses are still
  * rejected.
+ *
+ * <p>The guard also rejects embedded URL user-info because these URLs can be persisted and
+ * returned by reader-visible APIs; credentials belong in the dedicated credential fields.
  */
 public final class UrlHostGuard {
 
@@ -49,8 +52,8 @@ public final class UrlHostGuard {
      * @param url            the caller-supplied URL
      * @param allowLoopback  whether loopback hosts ({@code localhost}, 127.x.x.x, ::1)
      *                       are acceptable — used for local LLM gateways such as ollama
-     * @throws IllegalArgumentException when the URL is missing, non-http(s), hostless or
-     *                                  points at a disallowed address
+     * @throws IllegalArgumentException when the URL is missing, non-http(s), hostless, embeds
+     *                                  credentials or points at a disallowed address
      */
     public static void check(String url, boolean allowLoopback) {
         if (url == null || url.isBlank()) {
