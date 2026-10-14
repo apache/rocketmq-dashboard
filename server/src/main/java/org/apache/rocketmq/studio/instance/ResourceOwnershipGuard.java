@@ -31,6 +31,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -195,14 +196,20 @@ public class ResourceOwnershipGuard {
                 Ownership existing = checkOwner(instance, resource,
                         read(domain, resource, target, true).stream().findFirst().orElse(null), !create);
                 if (existing == null) {
+                    // The reservation must stamp its own bookkeeping columns: leaving them to the
+                    // `DEFAULT CURRENT_TIMESTAMP` of the schema would store a creation time taken from the
+                    // database clock, while every later write (the create path included) stamps
+                    // gmt_modified from the JVM clock, so a row whose database and studio run in different
+                    // zones would report a creation time offset from its own update time.
+                    LocalDateTime stampedAt = LocalDateTime.now();
                     if (resource.kind() == Kind.TOPIC) {
-                        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, domain, status, topic_type)"
-                                        + " VALUES (?, ?, ?, ?, 'PENDING', ?)", resource.name(), instance.getName(), target,
-                                domain, topicType == null ? "NORMAL" : topicType);
+                        jdbc.update("INSERT INTO rmq_instance_topic (name, instance_id, cluster_id, domain, status, topic_type, gmt_create, gmt_modified)"
+                                        + " VALUES (?, ?, ?, ?, 'PENDING', ?, ?, ?)", resource.name(), instance.getName(), target,
+                                domain, topicType == null ? "NORMAL" : topicType, stampedAt, stampedAt);
                     } else {
-                        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, domain, status)"
-                                        + " VALUES (?, ?, ?, ?, 'PENDING')", resource.name(), instance.getName(), target,
-                                domain);
+                        jdbc.update("INSERT INTO rmq_instance_group (name, instance_id, cluster_id, domain, status, gmt_create, gmt_modified)"
+                                        + " VALUES (?, ?, ?, ?, 'PENDING', ?, ?)", resource.name(), instance.getName(), target,
+                                domain, stampedAt, stampedAt);
                     }
                 } else {
                     requireTopicType(existing, topicType);

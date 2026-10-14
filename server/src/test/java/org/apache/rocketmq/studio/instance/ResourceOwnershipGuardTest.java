@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.provider.apache.RocketMQLiteTopicProvider;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.JdbcRowValues;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource;
 import org.apache.rocketmq.studio.provider.apache.RocketMQDefaultClusterResolver;
@@ -60,6 +61,7 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -686,6 +688,61 @@ class ResourceOwnershipGuardTest {
                 "broker-b", new BrokerData("cluster-b", "broker-b",
                         new HashMap<>(Map.of(0L, "10.0.1.1:10911", 1L, "10.0.1.2:10911"))))));
         return info;
+    }
+
+    /**
+     * A reservation has to carry its own bookkeeping stamps. The shipped columns are declared
+     * {@code DEFAULT CURRENT_TIMESTAMP}, which the database evaluates on its own clock, while the create
+     * path stamps {@code gmt_modified} from the JVM clock — so a reservation that leans on the column
+     * default stores a creation time taken from a different clock than the modification time, and the
+     * two can disagree by the offset between the database and the studio (eight hours when the database
+     * runs in UTC and the studio in Asia/Shanghai). The two columns are recreated without their defaults
+     * here, so that "the reservation supplied the value" is what this test observes.
+     */
+    @Test
+    void topicReservationSuppliesItsOwnBookkeepingStampsTest() {
+        dropTimestampDefaults("topic");
+        LocalDateTime before = LocalDateTime.now();
+        guard.write(first, topic, "cluster", true, "NORMAL", () -> null);
+        LocalDateTime after = LocalDateTime.now();
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT gmt_create, gmt_modified FROM rmq_instance_topic WHERE name = ?", topic.name());
+        assertStampedByTheStudioClock(row, before, after);
+    }
+
+    @Test
+    void groupReservationSuppliesItsOwnBookkeepingStampsTest() {
+        dropTimestampDefaults("group");
+        Resource group = new Resource(Kind.GROUP, "orders-group");
+        LocalDateTime before = LocalDateTime.now();
+        guard.write(first, group, "cluster", true, null, () -> null);
+        LocalDateTime after = LocalDateTime.now();
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT gmt_create, gmt_modified FROM rmq_instance_group WHERE name = ?", group.name());
+        assertStampedByTheStudioClock(row, before, after);
+    }
+
+    /**
+     * Both columns have to carry the value the reservation supplied, not merely a non-null one. Equality
+     * locks the single {@code stampedAt} the two columns share, and the window proves the studio clock
+     * produced them — a database default would land outside it whenever the two clocks disagree, which is
+     * the hours-wide zone offset this fix removes. The one-second slack absorbs the second precision the
+     * DATETIME columns are stored with, which floors the stamped value.
+     */
+    private static void assertStampedByTheStudioClock(Map<String, Object> row, LocalDateTime before, LocalDateTime after) {
+        LocalDateTime created = JdbcRowValues.dateTimeValue(row, "gmt_create");
+        LocalDateTime modified = JdbcRowValues.dateTimeValue(row, "gmt_modified");
+        assertThat(created).as("gmt_create").isNotNull();
+        assertThat(modified).as("gmt_modified").isNotNull();
+        assertThat(created).as("gmt_create and gmt_modified come from one stampedAt").isEqualTo(modified);
+        assertThat(created).isAfterOrEqualTo(before.minusSeconds(1));
+        assertThat(modified).isBeforeOrEqualTo(after.plusSeconds(1));
+    }
+
+    /** Same table, but the two bookkeeping columns no longer fall back to the database clock. */
+    private void dropTimestampDefaults(String kind) {
+        jdbc.execute("ALTER TABLE rmq_instance_" + kind + " ALTER COLUMN gmt_create DROP DEFAULT");
+        jdbc.execute("ALTER TABLE rmq_instance_" + kind + " ALTER COLUMN gmt_modified DROP DEFAULT");
     }
 
     private void legacyIndexes() {
