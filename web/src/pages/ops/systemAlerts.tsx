@@ -597,6 +597,7 @@ const SystemAlertsPage = () => {
           }}
         />
         <RangePicker
+          allowEmpty={[true, true]}
           aria-label={t('sysAlerts.timeRangeFilter')}
           placeholder={[t('sysAlerts.startTime'), t('sysAlerts.endTime')]}
           showTime={{ format: 'HH:mm' }}
