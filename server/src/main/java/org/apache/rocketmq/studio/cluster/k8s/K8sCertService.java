@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,15 @@ import java.util.stream.Collectors;
 public class K8sCertService {
 
     private static final int EXPIRING_THRESHOLD_DAYS = 30;
+
+    /**
+     * Free-text fields of rmq_k8s_certificate, capped at the width of their column: k8s_id and
+     * cluster are VARCHAR(128), issuer is VARCHAR(256) (db/schema.sql). A longer value must be
+     * rejected here because MySQL would refuse the write and surface a 500 from the persistence
+     * layer instead of the validation error the blank-value checks already return.
+     */
+    static final int MAX_CERT_IDENTITY_LENGTH = 128;
+    static final int MAX_CERT_ISSUER_LENGTH = 256;
 
     private final K8sCertRepository k8sCertRepository;
     private final OperationAuditService operationAuditService;
@@ -81,12 +91,13 @@ public class K8sCertService {
         // The identity fields follow the same rules as updateCert: surrounding whitespace is trimmed
         // and a blank value is rejected, so a certificate cannot be created in a state that the
         // update API (and every later lookup by identity) refuses to produce.
-        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId");
-        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
+        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId", MAX_CERT_IDENTITY_LENGTH);
+        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster", MAX_CERT_IDENTITY_LENGTH);
         boolean certificateSupplied = command.getCertPem() != null && !command.getCertPem().isBlank();
         // A supplied certificate always wins over the submitted issuer, so only a create without one
         // validates the caller-provided value.
-        String issuer = certificateSupplied ? null : normalizeOptionalIdentity(command.getIssuer(), "issuer");
+        String issuer = certificateSupplied ? null
+                : normalizeOptionalIdentity(command.getIssuer(), "issuer", MAX_CERT_ISSUER_LENGTH);
         List<String> san = command.getSan();
         if (certificateSupplied) {
             X509Certificate parsed = parseCertificate(command.getCertPem());
@@ -128,9 +139,9 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
         K8sCertVO updated = copyOf(existing);
-        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId");
-        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
-        String issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer");
+        String k8sId = normalizeOptionalIdentity(command.getK8sId(), "k8sId", MAX_CERT_IDENTITY_LENGTH);
+        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster", MAX_CERT_IDENTITY_LENGTH);
+        String issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer", MAX_CERT_ISSUER_LENGTH);
         if (k8sId != null) {
             updated.setK8sId(k8sId);
         }
@@ -183,13 +194,19 @@ public class K8sCertService {
         }
     }
 
-    private String normalizeOptionalIdentity(String value, String field) {
+    private String normalizeOptionalIdentity(String value, String field, int maxLength) {
         if (value == null) {
             return null;
         }
         String normalized = value.trim();
         if (normalized.isEmpty()) {
             throw new BusinessException(400, "Certificate " + field + " cannot be blank");
+        }
+        // The width is counted in code points, the unit MySQL counts a varchar in, so a value
+        // made of supplementary characters is judged by the same unit as the column.
+        if (TextBounds.codePointCount(normalized) > maxLength) {
+            throw new BusinessException(400, "Certificate " + field + " must not exceed "
+                    + maxLength + " characters");
         }
         return normalized;
     }
