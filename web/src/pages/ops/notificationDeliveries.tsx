@@ -35,14 +35,12 @@ import {
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
-
-const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
-  PENDING: 'default',
-  SENDING: 'processing',
-  DELIVERED: 'success',
-  RETRY_WAIT: 'warning',
-  FAILED: 'error',
-};
+import {
+  deliveryChannels,
+  deliveryStatusColors,
+  formatDeliveryChannel,
+  formatDeliveryStatus,
+} from './alertDeliveryPresentation';
 
 const NotificationDeliveriesPage = () => {
   const { t } = useLang();
@@ -210,13 +208,18 @@ const NotificationDeliveriesPage = () => {
       width: 145,
       render: (value) => value ?? '-',
     },
-    { title: t('deliveries.channel'), dataIndex: 'channel', width: 105 },
+    {
+      title: t('deliveries.channel'),
+      dataIndex: 'channel',
+      width: 105,
+      render: (value: string) => formatDeliveryChannel(value, t),
+    },
     {
       title: t('common.status'),
       dataIndex: 'status',
       width: 120,
       render: (value: NotificationDeliveryRecord['status']) => (
-        <Tag color={statusColors[value]}>{value}</Tag>
+        <Tag color={deliveryStatusColors[value]}>{formatDeliveryStatus(value, t)}</Tag>
       ),
     },
     { title: t('deliveries.attempts'), dataIndex: 'attemptCount', width: 90, align: 'center' },
@@ -292,7 +295,10 @@ const NotificationDeliveriesPage = () => {
               placeholder={t('deliveries.allChannels')}
               value={channel}
               style={{ width: 220, flex: '1 1 220px' }}
-              options={['dingtalk', 'email', 'sms'].map((value) => ({ value, label: value }))}
+              options={deliveryChannels.map((value) => ({
+                value,
+                label: formatDeliveryChannel(value, t),
+              }))}
               onChange={(value) => resetPage(() => setChannel(value))}
             />
             <Select
@@ -300,7 +306,10 @@ const NotificationDeliveriesPage = () => {
               placeholder={t('deliveries.allStatuses')}
               value={status}
               style={{ width: 220, flex: '1 1 220px' }}
-              options={Object.keys(statusColors).map((value) => ({ value, label: value }))}
+              options={Object.keys(deliveryStatusColors).map((value) => ({
+                value,
+                label: formatDeliveryStatus(value, t),
+              }))}
               onChange={(value) => resetPage(() => setStatus(value))}
             />
             <Select
@@ -415,10 +424,12 @@ const NotificationDeliveriesPage = () => {
                 {selectedDelivery.instanceId ?? '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.channel')}>
-                {selectedDelivery.channel}
+                {formatDeliveryChannel(selectedDelivery.channel, t)}
               </Descriptions.Item>
               <Descriptions.Item label={t('common.status')}>
-                <Tag color={statusColors[selectedDelivery.status]}>{selectedDelivery.status}</Tag>
+                <Tag color={deliveryStatusColors[selectedDelivery.status]}>
+                  {formatDeliveryStatus(selectedDelivery.status, t)}
+                </Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t('deliveries.attempts')}>
                 {selectedDelivery.attemptCount}
