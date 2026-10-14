@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import ToolPlaygroundModal from '../components/ToolPlaygroundModal';
@@ -86,5 +86,40 @@ describe('ToolPlaygroundModal', () => {
     );
 
     await waitFor(() => expect(listTools).toHaveBeenCalledTimes(2));
+    // Let the rejected request settle. A callback-driven trigger would keep retrying
+    // while the modal is still open instead of waiting for another open transition.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(listTools).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a successful catalog for the next open without fetching again', async () => {
+    vi.mocked(listTools).mockResolvedValue([]);
+    const modal = renderModal(true);
+    await waitFor(() => expect(listTools).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    modal.rerender(
+      <App>
+        <LangProvider>
+          <ToolPlaygroundModal open={false} onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+    modal.rerender(
+      <App>
+        <LangProvider>
+          <ToolPlaygroundModal open={true} onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(listTools).toHaveBeenCalledTimes(1);
   });
 });
