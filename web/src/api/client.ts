@@ -98,6 +98,7 @@ export function sessionExpiryRedirectUrl(pathname: string, search: string): stri
 export function sanitizeLoginRedirect(target: string | null | undefined): string {
   if (!target || !target.startsWith('/')) return '/';
   if (target.startsWith('//') || target.includes('\\')) return '/';
+  if (/^\/login\/?(?:[?#]|$)/u.test(target)) return '/';
   return target;
 }
 

@@ -153,6 +153,7 @@ describe('LoginPage', () => {
     ['absolute external', 'https%3A%2F%2Fevil.example%2Fsteal'],
     ['relative path without a leading slash', 'ops%2Falerts'],
     ['backslash trick', '%2F%5C%5Cevil.example'],
+    ['login loop', '%2Flogin'],
   ])('falls back to home for a %s redirect target', async (_shape, redirect) => {
     loginApiMock.mockResolvedValue({ user: { username: 'alice', userId: 42, admin: true } });
     renderPage(`/login?redirect=${redirect}`);
