@@ -313,6 +313,31 @@ describe('AlertsPage', () => {
     expect(await screen.findByText(formatUtcDateTime(lastTriggered))).toBeInTheDocument();
   });
 
+  it('counts a rule triggered 20 hours ago UTC in the 24h statistic in a non-UTC zone', async () => {
+    // The wire value is a UTC wall clock without an offset (the column above parses it with
+    // formatUtcDateTime for exactly that reason). The statistic used to feed the same string
+    // to `new Date`, which reads it as browser-local - in a UTC+8 viewer every rule triggered
+    // 16-24 hours ago shifted out of the 24h window and the "本页 24h 触发" count undercounted.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      const triggeredAtUtc = new Date(Date.now() - 20 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 19);
+      vi.mocked(listAlertRulesPage).mockResolvedValue(
+        pageResult([{ ...cloneRule(alertRules[0]), lastTriggered: triggeredAtUtc }]),
+      );
+
+      renderPage();
+
+      const label = await screen.findByText('本页 24h 触发');
+      const value = label.parentElement?.querySelector('span + span');
+      if (!value) throw new Error('24h statistic value not found');
+      expect(value.textContent).toBe('1');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('allows the unavailable operator only for availability metrics', () => {
     expect(supportsUnavailableOperator('nameserver.availability')).toBe(true);
     expect(supportsUnavailableOperator('broker.availability')).toBe(true);

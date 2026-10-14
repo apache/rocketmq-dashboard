@@ -50,6 +50,19 @@ export function formatTimeMs(value: number | string | null | undefined): string 
 }
 
 /**
+ * Parse a UTC timestamp the same way formatUtcDateTime reads it: alert APIs serialize
+ * UTC LocalDateTime values without an offset, so a bare `new Date(value)` would treat them
+ * as browser-local. Returns null for empty or unparseable input instead of an Invalid Date.
+ */
+export function parseUtcDate(date: string | null | undefined): Date | null {
+  if (date === null || date === undefined || !date.trim()) return null;
+  const utcDate = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
+    ? new Date(date)
+    : new Date(`${date}Z`);
+  return Number.isNaN(utcDate.getTime()) ? null : utcDate;
+}
+
+/**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
