@@ -22,6 +22,7 @@ import {
   queryLiteTopicList,
   queryLiteTopicSession,
   extendLiteTopicTTL,
+  createLiteTopic,
   queryLiteTopicQuota,
   queryLiteTopicCapability,
   type LiteTopicItem,
@@ -122,6 +123,29 @@ describe('LiteTopic API', () => {
     });
 
     await extendLiteTopicTTL('apache-main', 'order-*', 7200);
+  });
+
+  it('creates a lite parent topic with the owning instance and TTL', async () => {
+    mock.onPost('/liteTopic').reply((config) => {
+      const body = JSON.parse(config.data);
+      // CreateLiteTopicDTO requires instanceId, topicPattern and a TTL in minutes.
+      expect(body.instanceId).toBe('apache-main');
+      expect(body.topicPattern).toBe('chat');
+      expect(body.ttlMinutes).toBe(1440);
+      expect(body.writeQueues).toBe(4);
+      expect(body.readQueues).toBe(8);
+      expect(body.remark).toBe('nightly chat parents');
+      return [200, { code: 200 }];
+    });
+
+    await createLiteTopic({
+      instanceId: 'apache-main',
+      topicPattern: 'chat',
+      ttlMinutes: 1440,
+      writeQueues: 4,
+      readQueues: 8,
+      remark: 'nightly chat parents',
+    });
   });
 
   it('queries lite topic quota without namespace', async () => {

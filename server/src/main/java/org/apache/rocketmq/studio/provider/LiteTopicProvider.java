@@ -40,6 +40,12 @@ public interface LiteTopicProvider {
 
     String UNSUPPORTED = "LiteTopic is not supported by this provider";
     int NOT_IMPLEMENTED = 501;
+    /**
+     * Upper bound of {@code lite.topic.expiration}: 30 days in minutes. Mirrors the protocol limit
+     * (the attribute is a {@code LongRangeAttribute} without a readable maximum). Must stay a
+     * compile-time constant: validation annotations reference it.
+     */
+    int MAX_TTL_MINUTES = 43_200;
 
     /**
      * Whether the active cluster exposes the LiteTopic admin surface. Detected by probing the
