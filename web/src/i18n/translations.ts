@@ -3621,6 +3621,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '每个 lite topic 在无新消息后保留的时长，1 到 43200 分钟（30 天）；创建时写入，未设置则子主题永不过期',
     en: 'How long each lite topic is kept after its last message, 1 to 43200 minutes (30 days). Written at creation: without it, child lite topics never expire.',
   },
+  'liteTopic.parentTopicName': { zh: '父主题名称', en: 'Parent Topic Name' },
   'liteTopic.createPatternPlaceholder': {
     zh: '父主题名称（不能包含 $）',
     en: 'Parent topic name (must not contain $)',

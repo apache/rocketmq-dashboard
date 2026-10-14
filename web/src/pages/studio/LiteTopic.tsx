@@ -1092,7 +1092,7 @@ const LiteTopicPage: React.FC = () => {
             />
           </Form.Item>
           <Form.Item
-            label={t('liteTopic.pattern')}
+            label={t('liteTopic.parentTopicName')}
             required
             validateStatus={createForm.topicPattern.trim() ? '' : 'error'}
             help={createForm.topicPattern.trim() ? undefined : t('liteTopic.patternRequired')}
