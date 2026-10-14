@@ -595,6 +595,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.deliveryStatusPending': { zh: '等待中', en: 'Pending' },
   'messagePage.traceStatusCritical': { zh: '异常', en: 'Critical' },
   'messagePage.traceDiagnostics': { zh: '轨迹诊断', en: 'Trace Diagnostics' },
+  'messagePage.keyTraceLatencyUnavailable': {
+    zh: 'Key 查询可能包含多条消息，不计算端到端和阶段间耗时；仍显示节点耗时与消费状态。',
+    en: 'A key lookup may include multiple messages. End-to-end and inter-stage latency are unavailable; node costs and delivery states remain visible.',
+  },
   'messagePage.healthScore': { zh: '健康分', en: 'Health Score' },
   'messagePage.traceStageCount': { zh: '轨迹阶段', en: 'Trace Stages' },
   'messagePage.endToEndLatency': { zh: '端到端耗时', en: 'End-to-End Latency' },
