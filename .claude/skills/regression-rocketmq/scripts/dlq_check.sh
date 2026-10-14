@@ -95,8 +95,17 @@ now = int(time.time() * 1000)
 body = session.post(f"{BASE}/api/dlq/resend", json={
     "instanceId": INSTANCE, "groupName": os.environ["GROUP"],
     "startTime": now - 3600_000, "endTime": now + 3600_000}, timeout=60).json()
-assert body.get("code") == 200, f"resend: {body}"
-print(f"  resend -> {body['data']}")
+result = body.get("data")
+if body.get("code") != 200 or not isinstance(result, dict) or (
+    result.get("outcome") != "SUCCESS"
+    or result.get("matched") != 3
+    or result.get("resent") != 3
+    or result.get("failed") != 0
+    or result.get("scanIncomplete") is not False
+    or result.get("failedQueueCount") != 0
+):
+    raise RuntimeError(f"DLQ resend did not complete all 3 messages: {body}")
+print(f"  resend -> {result}")
 PY
 sleep 15
 after=$($SSH "docker logs $CONTAINER 2>&1 | grep -c fail-consume" || true)
