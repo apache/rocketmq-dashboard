@@ -21,7 +21,7 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -66,8 +66,10 @@ public class DLQMessageExcelRow {
         row.setTopic(vo.getTopic());
         row.setQueueId(vo.getQueueId());
         row.setOffset(vo.getOffset());
+        // Zoneless datetimes are UTC across this app (alert events, silences, outbox,
+        // sessions, query history), so the export column must not shift with the JVM zone.
         row.setStoreTime(LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(vo.getStoreTime()), ZoneId.systemDefault()).format(STORE_TIME_FORMAT));
+                Instant.ofEpochMilli(vo.getStoreTime()), ZoneOffset.UTC).format(STORE_TIME_FORMAT));
         row.setReconsumeTimes(vo.getReconsumeTimes());
         row.setKeys(vo.getKeys());
         row.setBody(abbreviateBody(vo.getBody()));

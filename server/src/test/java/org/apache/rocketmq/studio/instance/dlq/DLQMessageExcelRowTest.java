@@ -21,9 +21,11 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,6 +80,39 @@ class DLQMessageExcelRowTest {
 
         assertThat(cell).hasSize(32_766).endsWith("...[truncated]");
         assertThat(cell.codePoints()).noneMatch(codePoint -> codePoint >= 0xD800 && codePoint <= 0xDFFF);
+    }
+
+    @Test
+    void shouldRenderStoreTimeAsUtcRegardlessOfJvmZoneTest() {
+        // 1_700_000_000_000L is 2023-11-14T22:13:20Z; the column must not shift with
+        // the JVM default zone (the app's zoneless-datetime contract is UTC).
+        DLQMessageVO message = DLQMessageVO.builder()
+                .msgId("msg-1")
+                .topic("%DLQ%group-1")
+                .queueId(7)
+                .offset(17L)
+                .storeTime(1_700_000_000_000L)
+                .reconsumeTimes(3)
+                .keys("order-1")
+                .body("payload")
+                .build();
+
+        ZoneId originalZone = ZoneId.systemDefault();
+        try {
+            ZoneId shanghai = ZoneId.of("Asia/Shanghai");
+            ZoneId losAngeles = ZoneId.of("America/Los_Angeles");
+            for (ZoneId zone : List.of(shanghai, losAngeles)) {
+                setDefaultZone(zone);
+                Map<String, String> cells = firstDataRowByColumnName(List.of(message));
+                assertThat(cells).containsEntry("Store Time", "2023-11-14 22:13:20");
+            }
+        } finally {
+            setDefaultZone(originalZone);
+        }
+    }
+
+    private static void setDefaultZone(ZoneId zone) {
+        TimeZone.setDefault(TimeZone.getTimeZone(zone));
     }
 
     private static Map<String, String> firstDataRowByColumnName(List<DLQMessageVO> messages) {
