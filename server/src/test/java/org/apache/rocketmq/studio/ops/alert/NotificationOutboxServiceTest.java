@@ -464,6 +464,70 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    void dispatchesEmailWithQuotedDisplayNameRecipientsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(18L);
+        row.setAlertId(9L);
+        row.setChannel("email");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .emailRecipients("\"Doe, John\" <john@example.com>, ops@example.com").build());
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts, audit,
+                new RestTemplate(), () -> mailSender).dispatch();
+
+        // A comma inside a quoted display name is not a separator: the
+        // delivery must reach both configured recipients, not fail parsing.
+        verify(mailSender).send(argThat((SimpleMailMessage message) -> message.getTo() != null
+                && Arrays.equals(message.getTo(), new String[] {"john@example.com", "ops@example.com"})));
+    }
+
+    @Test
+    void dispatchesEmailToSemicolonSeparatedRecipientsTest() {
+        RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
+        SettingsRepository settings = mock(SettingsRepository.class);
+        AlertRepository alerts = mock(AlertRepository.class);
+        OperationAuditService audit = mock(OperationAuditService.class);
+        JavaMailSender mailSender = mock(JavaMailSender.class);
+        RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
+        row.setId(19L);
+        row.setAlertId(9L);
+        row.setChannel("email");
+        row.setStatus("PENDING");
+        row.setAttemptCount(0);
+        when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
+                .thenReturn(List.of(row));
+        when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), anyString())).thenReturn(1);
+        when(mapper.update(any(), any())).thenReturn(1);
+        when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
+                .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
+        when(settings.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .emailRecipients("ops@example.com; \"Night; Shift\" <night@example.com>").build());
+
+        new NotificationOutboxService(mapper, settings, mock(AlertSilenceService.class), alerts, audit,
+                new RestTemplate(), () -> mailSender).dispatch();
+
+        // The legacy semicolon separator keeps working, including inside a
+        // quoted display name.
+        verify(mailSender).send(argThat((SimpleMailMessage message) -> message.getTo() != null
+                && Arrays.equals(message.getTo(), new String[] {"ops@example.com", "night@example.com"})));
+    }
+
+    @Test
     void reclaimsAStaleSendingDeliveryTest() {
         RmqAlertNotificationOutboxMapper mapper = mock(RmqAlertNotificationOutboxMapper.class);
         RmqAlertNotificationOutbox row = new RmqAlertNotificationOutbox();
