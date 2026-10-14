@@ -1334,7 +1334,13 @@ describe('Consumer page', () => {
       await user.click(await screen.findByRole('button', { name: /详情/ }));
       await user.click(await screen.findByRole('button', { name: /线程栈/ }));
 
-      expect(await screen.findByText('2026-07-23 08:00:00 GMT+8')).toBeInTheDocument();
+      // Scoped to the stack modal: the 最后心跳 column renders the same wall time, and only the
+      // capture time goes through the UTC-aware formatter.
+      const stackModal = (await screen.findByText('消费者线程栈')).closest<HTMLElement>(
+        '[role="dialog"]',
+      );
+      if (!stackModal) throw new Error('consumer stack modal not found');
+      expect(within(stackModal).getByText('2026-07-23 08:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }

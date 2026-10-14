@@ -320,7 +320,9 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     if (Double.isFinite(parsedRatio) && parsedRatio >= 0) {
                         // RocketMQ exposes commitLogDiskRatio as a fraction in [0, 1],
                         // while BrokerVO and the web progress bars use percentage points.
-                        builder.diskUsage(parsedRatio * 100D);
+                        // Scaled in whole tenths: 0.29 * 100 is 28.999999999999996 in binary
+                        // floating point, and the web renders that number verbatim.
+                        builder.diskUsage(Math.round(parsedRatio * 1000D) / 10D);
                     }
                 } catch (NumberFormatException ignored) {
                     // keep default

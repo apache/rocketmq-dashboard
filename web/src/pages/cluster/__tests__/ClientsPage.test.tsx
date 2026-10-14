@@ -284,6 +284,26 @@ describe('Clients page', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows a risk description only in the modal opened from the risk title', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      { ...connection, clientId: 'shared-client', address: '10.0.1.12:49152' },
+      { ...connection, clientId: 'shared-client', address: '10.0.1.13:49152' },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    const diagnostics = await screen.findByTestId('client-connection-diagnostics');
+    const description =
+      '同一个 Client ID 同时出现在多个远端地址，可能是实例 ID 配置冲突或旧连接未及时清理。';
+    expect(within(diagnostics).queryByText(description)).not.toBeInTheDocument();
+
+    await user.click(within(diagnostics).getByText('Client ID 连接到多个地址'));
+
+    const dialog = await screen.findByRole('dialog', { name: '风险项详情' });
+    expect(within(dialog).getByText(description)).toBeInTheDocument();
+    expect(within(dialog).getByText('10.0.1.12:49152')).toBeInTheDocument();
+  });
+
   it('updates statistics when the selected cluster filter changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(connectionsService.listConnections).mockImplementation((query) =>

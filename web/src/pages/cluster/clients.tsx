@@ -68,7 +68,7 @@ const typeConfig: Record<string, { color: string; label: string }> = {
 /**
  * One clipped line inside a diagnostics-table cell. The project-wide
  * `.ant-table-cell { white-space: nowrap }` keeps long values (trace-producer resource names,
- * client ids, risk descriptions) from wrapping, so without an explicit ellipsis they spill over
+ * client ids) from wrapping, so without an explicit ellipsis they spill over
  * the neighbouring column; each line clips itself and carries its full text in a `title`.
  */
 const diagnosticCellLine: CSSProperties = {
@@ -171,6 +171,7 @@ const ClientsPage = () => {
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<ClientConnectionIssue | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registryLoadKey, setRegistryLoadKey] = useState(0);
   const [connectionLoadKey, setConnectionLoadKey] = useState(0);
@@ -648,17 +649,19 @@ const ClientsPage = () => {
       title: t('clients.diagnosticIssue'),
       key: 'issue',
       width: 260,
-      // The description is a full sentence; clipped to one line with the full text on hover,
-      // never wrapped (project table rule) and never spilling into the Client ID column.
+      // The title is the row's identity and the only click target: it opens the detail modal that
+      // carries the description. The cell itself stays one clipped line so the row height matches
+      // the other diagnostics tables.
       ellipsis: { showTitle: false },
       render: (_: unknown, record) => (
         <div style={{ minWidth: 0 }}>
-          <Text strong style={diagnosticCellLine} title={record.title}>
+          <Typography.Link
+            style={diagnosticCellLine}
+            title={record.title}
+            onClick={() => setSelectedIssue(record)}
+          >
             {record.title}
-          </Text>
-          <Text type="secondary" style={diagnosticCellLine} title={record.description}>
-            {record.description}
-          </Text>
+          </Typography.Link>
         </div>
       ),
     },
@@ -1034,6 +1037,59 @@ const ClientsPage = () => {
             </Descriptions.Item>
             <Descriptions.Item label={t('cluster.heartbeat')}>
               {selectedConnection.connectedAt ?? '-'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+
+      <Modal
+        title={t('clients.issueDetailTitle')}
+        open={Boolean(selectedIssue)}
+        onCancel={() => setSelectedIssue(null)}
+        footer={<Button onClick={() => setSelectedIssue(null)}>{t('common.close')}</Button>}
+        width={640}
+        destroyOnHidden
+      >
+        {selectedIssue && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('clients.diagnosticSeverity')}>
+              <Tag color={issueSeverityColor[selectedIssue.severity]}>
+                {t(issueSeverityTextKey[selectedIssue.severity])}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.diagnosticIssue')}>
+              <Text strong>{selectedIssue.title}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.issueDescription')}>
+              <Text>{selectedIssue.description}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.diagnosticRecommendations')}>
+              <Text>{selectedIssue.recommendation}</Text>
+            </Descriptions.Item>
+            {selectedIssue.clientId ? (
+              <Descriptions.Item label={t('clients.clientId')}>
+                <Text copyable style={{ fontFamily: 'monospace' }}>
+                  {selectedIssue.clientId}
+                </Text>
+              </Descriptions.Item>
+            ) : null}
+            {selectedIssue.resource ? (
+              <Descriptions.Item label={t('clients.groupOrTopic')}>
+                <Text>{selectedIssue.resource}</Text>
+              </Descriptions.Item>
+            ) : null}
+            <Descriptions.Item label={t('clients.diagnosticEvidence')}>
+              <Space size={4} wrap>
+                {selectedIssue.evidence.length === 0 ? (
+                  <Text type="secondary">-</Text>
+                ) : (
+                  selectedIssue.evidence.map((item) => (
+                    <Text key={item} code>
+                      {item}
+                    </Text>
+                  ))
+                )}
+              </Space>
             </Descriptions.Item>
           </Descriptions>
         )}

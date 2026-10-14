@@ -349,12 +349,14 @@ describe('SystemAlertsPage', () => {
 
     await user.type(screen.getByLabelText('实例 ID 筛选'), 'local');
     await user.type(screen.getByLabelText('资源标签筛选'), 'brokerName=broker-a');
-    fireEvent.change(screen.getByLabelText('开始时间筛选'), {
-      target: { value: '2026-08-01T00:00' },
-    });
-    fireEvent.change(screen.getByLabelText('结束时间筛选'), {
-      target: { value: '2026-08-02T00:00' },
-    });
+    await user.click(screen.getByPlaceholderText('开始时间'));
+    await user.keyboard('2026-08-01 00:00');
+    await user.tab();
+    await user.keyboard('2026-08-02 00:00');
+    // showTime 的时间面板要点确定才提交；「清除已确认」按钮的名字里也带「确」，只能按类名取
+    const okButton = document.querySelector('.ant-picker-ok button');
+    if (!(okButton instanceof HTMLElement)) throw new Error('range picker ok button not found');
+    await user.click(okButton);
 
     await waitFor(() => {
       expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
