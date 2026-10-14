@@ -88,6 +88,7 @@ import {
 import { listInstances } from '../../services/instanceService';
 import { supportsApacheRuntime } from '../../api/instance';
 import { isMockMode } from '../../services/dataMode';
+import { roundPercent } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -1293,7 +1294,7 @@ const ClusterPage = () => {
         sorter: (a, b) => a.diskUsage - b.diskUsage,
         render: (v: number) => (
           <Progress
-            percent={v}
+            percent={roundPercent(v)}
             size="small"
             strokeColor={v > 85 ? '#ff4d4f' : v > 70 ? '#faad14' : '#1677ff'}
           />

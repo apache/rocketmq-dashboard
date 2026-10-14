@@ -305,12 +305,12 @@ describe('UserManagementPage', () => {
 
       await screen.findByText('operator');
       // 09:30 UTC is 17:30 in Asia/Shanghai; a browser-local misparse shows 09:30.
-      expect(screen.getByText('2026-08-22 17:30:00 GMT+8')).toBeInTheDocument();
+      expect(screen.getByText('2026-08-22 17:30:00')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: '会话' }));
       const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
-      expect(within(drawer).getByText('2026-08-22 17:45:00 GMT+8')).toBeInTheDocument();
-      expect(within(drawer).getByText('2026-08-22 18:00:00 GMT+8')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 17:45:00')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 18:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }

@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Card,
+  DatePicker,
   Tag,
   Flex,
   Typography,
@@ -32,7 +33,9 @@ import {
   Input,
   Popconfirm,
   Segmented,
+  theme,
 } from 'antd';
+import dayjs from 'dayjs';
 import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -62,6 +65,7 @@ import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
 
 const { Text } = Typography;
+const { RangePicker } = DatePicker;
 
 const ALERT_EXPORT_PAGE_SIZE = 100;
 const ALERT_EXPORT_MAX_PAGES = 10_000;
@@ -138,6 +142,7 @@ const SystemAlertsPage = () => {
   const userId = useAuthStore((state) => state.userId);
   const admin = useAuthStore((state) => state.admin);
   const canManageSilences = !userId || admin === true;
+  const { token } = theme.useToken();
 
   const alertLevelConfig: Record<string, { color: string; bg: string; label: string }> = {
     error: { color: '#ff4d4f', bg: '#fff2f0', label: t('sysAlerts.severe') },
@@ -481,7 +486,26 @@ const SystemAlertsPage = () => {
         title={t('sysAlerts.title')}
         subtitle={t('sysAlerts.subtitle', { n: unackCount })}
         extra={
-          <Flex gap={8}>
+          <Flex gap={8} align="center">
+            {collectorStatus && (
+              // 与筛选控件同高同边框的状态片：Tag 的 success 配色只有 22px 高、绿底绿字，
+              // 夹在一排 32px 白底控件里既矮又跳。放在页头而不是筛选条，是因为 1600 视口下
+              // 筛选条放下 8 个控件后只剩 40px，容不下它。
+              <Flex
+                align="center"
+                gap={6}
+                style={{
+                  height: 32,
+                  padding: '0 12px',
+                  border: `1px solid ${token.colorBorder}`,
+                  borderRadius: token.borderRadius,
+                  background: token.colorBgContainer,
+                }}
+              >
+                <CheckCircle size={14} color="#52c41a" weight="fill" />
+                <Text style={{ fontSize: 14 }}>{t('sysAlerts.nativeCollectionEnabled')}</Text>
+              </Flex>
+            )}
             <Button
               icon={<DownloadSimple size={14} />}
               onClick={() => void exportAlerts()}
@@ -510,9 +534,9 @@ const SystemAlertsPage = () => {
         }
       />
 
-      {/* 筛选条：全部控件统一默认尺寸（32px 高），宽度按内容分三档，不再混用 size="small"
-          —— 原来 4 个级别按钮 + 3 个 Select + 4 个 Input 高矮不一（datetime-local 在 small
-          下压不到 24px、实测 26px），宽度也是 132/150/190/124 各写各的。 */}
+      {/* 筛选条：全部控件统一默认尺寸（32px 高）。时间范围用单个 RangePicker 而不是两个
+          datetime-local：368px 是填了值之后两段 `YYYY-MM-DD HH:mm` 加箭头和日历图标的实测宽，
+          再窄会裁字。整条约 1292px，在 1600 视口（容器 1332px）下保持一行。 */}
       <Flex gap={8} wrap align="center" style={{ marginBottom: 16 }}>
         <Segmented
           value={levelFilter}
@@ -541,7 +565,7 @@ const SystemAlertsPage = () => {
         />
         <Select
           value={domainFilter}
-          style={{ minWidth: 140 }}
+          style={{ minWidth: 120 }}
           onChange={(value) => {
             setDomainFilter(value);
             setPage(1);
@@ -555,7 +579,7 @@ const SystemAlertsPage = () => {
         <Input
           aria-label={t('sysAlerts.instanceFilter')}
           placeholder={t('sysAlerts.instanceId')}
-          style={{ width: 180, flex: 'none' }}
+          style={{ width: 140, flex: 'none' }}
           value={instanceFilter}
           onChange={(event) => {
             setInstanceFilter(event.target.value);
@@ -565,36 +589,29 @@ const SystemAlertsPage = () => {
         <Input
           aria-label={t('sysAlerts.labelsFilter')}
           placeholder={t('sysAlerts.labelsPlaceholder')}
-          style={{ width: 180, flex: 'none' }}
+          style={{ width: 140, flex: 'none' }}
           value={labelFilter}
           onChange={(event) => {
             setLabelFilter(event.target.value);
             setPage(1);
           }}
         />
-        <Input
-          aria-label={t('sysAlerts.startTimeFilter')}
-          type="datetime-local"
-          style={{ width: 210, height: 32, flex: 'none' }}
-          value={fromFilter}
-          onChange={(event) => {
-            setFromFilter(event.target.value);
-            setPage(1);
-          }}
-        />
-        <Input
-          aria-label={t('sysAlerts.endTimeFilter')}
-          type="datetime-local"
-          style={{ width: 210, height: 32, flex: 'none' }}
-          value={toFilter}
-          onChange={(event) => {
-            setToFilter(event.target.value);
+        <RangePicker
+          aria-label={t('sysAlerts.timeRangeFilter')}
+          placeholder={[t('sysAlerts.startTime'), t('sysAlerts.endTime')]}
+          showTime={{ format: 'HH:mm' }}
+          format="YYYY-MM-DD HH:mm"
+          style={{ width: 368, flex: 'none' }}
+          value={[fromFilter ? dayjs(fromFilter) : null, toFilter ? dayjs(toFilter) : null]}
+          onChange={(values) => {
+            setFromFilter(values?.[0] ? values[0].format('YYYY-MM-DDTHH:mm') : '');
+            setToFilter(values?.[1] ? values[1].format('YYYY-MM-DDTHH:mm') : '');
             setPage(1);
           }}
         />
         <Select
           value={transitionFilter}
-          style={{ minWidth: 140 }}
+          style={{ minWidth: 120 }}
           onChange={(value) => {
             setTransitionFilter(value);
             setPage(1);
@@ -608,7 +625,7 @@ const SystemAlertsPage = () => {
         <Select
           aria-label={t('sysAlerts.suppressionFilter')}
           value={suppressionFilter}
-          style={{ minWidth: 160 }}
+          style={{ minWidth: 140 }}
           onChange={(value) => {
             setSuppressionFilter(value);
             setPage(1);
@@ -619,11 +636,6 @@ const SystemAlertsPage = () => {
             { value: 'delivered', label: t('sysAlerts.notificationNotSuppressed') },
           ]}
         />
-        {collectorStatus && (
-          <Tag color="success" style={{ marginInlineEnd: 0, fontSize: 14 }}>
-            {t('sysAlerts.nativeCollectionEnabled')}
-          </Tag>
-        )}
       </Flex>
 
       <Flex vertical gap={12}>
