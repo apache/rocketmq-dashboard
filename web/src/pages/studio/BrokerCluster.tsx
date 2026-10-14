@@ -70,7 +70,6 @@ interface ProxyRecord {
   version: string;
   address: string;
   grpcPort: string;
-  connections: number;
 }
 
 const BROKER_EXPORT_COLUMNS: CsvColumn<BrokerRecord>[] = [
@@ -99,7 +98,6 @@ const PROXY_EXPORT_COLUMNS: CsvColumn<ProxyRecord>[] = [
   { header: 'Version', value: (proxy) => proxy.version },
   { header: 'HTTP Address', value: (proxy) => proxy.address },
   { header: 'gRPC Address', value: (proxy) => proxy.grpcPort },
-  { header: 'Connections', value: (proxy) => proxy.connections },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -170,7 +168,6 @@ function mapClusters(clusters: ClusterInfo[]): {
         version: cluster.version,
         address: proxy.addr,
         grpcPort: proxy.grpcPort ? `${host}:${proxy.grpcPort}` : '-',
-        connections: proxy.connections ?? 0,
       });
     });
   });
@@ -486,12 +483,6 @@ const BrokerClusterPage = () => {
           {text}
         </code>
       ),
-    },
-    {
-      title: t('brokerCluster.connections'),
-      dataIndex: 'connections',
-      key: 'connections',
-      render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
   ];
 
