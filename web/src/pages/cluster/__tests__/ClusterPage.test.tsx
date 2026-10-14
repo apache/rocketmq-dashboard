@@ -671,6 +671,22 @@ describe('Cluster page', () => {
     expect(screen.getByPlaceholderText('搜索 Proxy 地址')).toHaveValue('not-found');
   });
 
+  it('renders a fractional broker disk usage as a short progress label', async () => {
+    // A broker reporting commitLogDiskRatio=0.29 becomes 28.999999999999996 once scaled to
+    // percentage points. Progress reserves room for its label inside the bar, so the unrounded
+    // float printed all 17 digits and left the bar itself zero pixels wide.
+    const cluster = buildCluster();
+    cluster.brokers = [{ ...cluster.brokers[0], diskUsage: 28.999999999999996 }];
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([cluster]);
+
+    renderWithProviders(<ClusterPage />);
+
+    const row = (await screen.findByText('rocketmq-prod-0')).closest('tr');
+    if (!row) throw new Error('broker row not found');
+    expect(within(row).getByText('29%')).toBeInTheDocument();
+    expect(row.querySelector('.ant-progress-bg')).not.toBeNull();
+  });
+
   it('creates and deletes nameserver registry entries', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<ClusterPage />);

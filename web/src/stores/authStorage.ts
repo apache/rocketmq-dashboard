@@ -45,13 +45,17 @@ export function readAuthSession(): AuthSession {
 }
 
 export function persistAuthSession(user: string, userId: number | null, admin: boolean): void {
-  writeLocalStorage(USER_STORAGE_KEY, user);
-  if (userId != null) {
-    writeLocalStorage(USER_ID_STORAGE_KEY, String(userId));
-  } else {
-    removeLocalStorage(USER_ID_STORAGE_KEY);
+  const userWritten = writeLocalStorage(USER_STORAGE_KEY, user);
+  const userIdWritten =
+    userId != null
+      ? writeLocalStorage(USER_ID_STORAGE_KEY, String(userId))
+      : removeLocalStorage(USER_ID_STORAGE_KEY);
+  const adminWritten = writeLocalStorage(USER_ADMIN_STORAGE_KEY, String(admin));
+  if (!userWritten || !userIdWritten || !adminWritten) {
+    // Leave no partial session behind: a reload must not restore a display identity with keys
+    // missing. The in-memory store keeps working while browser storage is unavailable.
+    clearAuthSession();
   }
-  writeLocalStorage(USER_ADMIN_STORAGE_KEY, String(admin));
 }
 
 export function clearAuthSession(): void {

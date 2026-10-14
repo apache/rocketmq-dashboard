@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -134,6 +135,7 @@ const UserManagementPage = () => {
   const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
+  const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
@@ -142,6 +144,7 @@ const UserManagementPage = () => {
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
   const sessionDetailsRequestSeqRef = useRef(0);
+  const sessionDrawerUserIdRef = useRef<number | null>(null);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
@@ -155,6 +158,7 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
+      sessionDrawerUserIdRef.current = null;
       setSessionDrawerUser(null);
       setSessionDetails([]);
       return;
@@ -203,6 +207,7 @@ const UserManagementPage = () => {
     () => () => {
       requestSeqRef.current += 1;
       sessionDetailsRequestSeqRef.current += 1;
+      sessionDrawerUserIdRef.current = null;
     },
     [],
   );
@@ -215,12 +220,16 @@ const UserManagementPage = () => {
         const details = await listStudioUserSessions(record.id);
         if (requestId !== sessionDetailsRequestSeqRef.current) return;
         setSessionDetails(details);
+        setSessionDetailsFailed(false);
         setSessionDrawerUser((current) =>
           current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
         );
       } catch {
         if (requestId === sessionDetailsRequestSeqRef.current) {
+          // An empty list would read as "this account has no sessions" in the drawer, which is a
+          // claim the failed request cannot support (and a security-relevant one).
           setSessionDetails([]);
+          setSessionDetailsFailed(true);
           message.error(t('userMgmt.loadSessionsFailed'));
         }
       } finally {
@@ -233,28 +242,36 @@ const UserManagementPage = () => {
   );
 
   const openSessionDrawer = (record: StudioUser) => {
+    sessionDrawerUserIdRef.current = record.id;
     setSessionDrawerUser(record);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     void loadSessionDetails(record);
   };
 
   const closeSessionDrawer = () => {
+    sessionDrawerUserIdRef.current = null;
     sessionDetailsRequestSeqRef.current += 1;
     setSessionDrawerUser(null);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     setSessionDetailsLoading(false);
   };
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
     try {
+      const values = await createForm.validateFields();
       await createStudioUser(values);
       message.success(t('userMgmt.userCreated'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
-    } catch {
+    } catch (error) {
+      // Validation failures are surfaced by antd as field errors; only report
+      // request failures here. Either way the rejection must not escape this
+      // handler, since the modal wiring calls it fire-and-forget.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.createFailed'));
     }
   };
@@ -295,8 +312,8 @@ const UserManagementPage = () => {
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
     try {
+      const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
@@ -308,7 +325,9 @@ const UserManagementPage = () => {
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
-    } catch {
+    } catch (error) {
+      // See createUser: validation rejections must stay handled here.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.changePasswordFailed'));
     }
   };
@@ -328,7 +347,9 @@ const UserManagementPage = () => {
           navigate('/login', { replace: true });
           return;
         }
-        if (sessionDrawerUser?.id === record.id) {
+        // The operator may have closed or changed drawers while revocation was pending.
+        // Do not let its follow-up read take ownership of another user's session details.
+        if (sessionDrawerUserIdRef.current === record.id) {
           await loadSessionDetails({ ...record, activeSessionCount: 0 });
         }
         await loadUsers();
@@ -442,21 +463,24 @@ const UserManagementPage = () => {
     {
       title: t('userMgmt.lastActive'),
       dataIndex: 'lastSessionSeenAt',
-      width: 132,
+      // 182 = the `YYYY-MM-DD HH:mm:ss` label at 14px (149px as measured in Chromium with this
+      // app's font stack) plus the 16px of cell padding a default-size table puts on each side.
+      // The small-table equivalent used elsewhere is 156.
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.nearestExpiry'),
       dataIndex: 'nearestSessionExpiresAt',
-      width: 132,
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
-      width: 132,
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },
@@ -710,7 +734,8 @@ const UserManagementPage = () => {
                 {
                   key: 'activeSessionCount',
                   label: t('userMgmt.activeSessions'),
-                  children: sessionDetailsLoading ? '-' : sessionDetails.length,
+                  children:
+                    sessionDetailsLoading || sessionDetailsFailed ? '-' : sessionDetails.length,
                 },
                 {
                   key: 'status',
@@ -734,16 +759,32 @@ const UserManagementPage = () => {
                 },
               ]}
             />
-            <Table
-              rowKey="id"
-              loading={sessionDetailsLoading}
-              columns={sessionDetailColumns}
-              dataSource={sessionDetails}
-              tableLayout="fixed"
-              pagination={false}
-              scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
-              locale={{ emptyText: t('userMgmt.noActiveSessions') }}
-            />
+            {sessionDetailsFailed ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('userMgmt.loadSessionsFailed')}
+                action={
+                  <Button
+                    size="small"
+                    onClick={() => sessionDrawerUser && void loadSessionDetails(sessionDrawerUser)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            ) : (
+              <Table
+                rowKey="id"
+                loading={sessionDetailsLoading}
+                columns={sessionDetailColumns}
+                dataSource={sessionDetails}
+                tableLayout="fixed"
+                pagination={false}
+                scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
+                locale={{ emptyText: t('userMgmt.noActiveSessions') }}
+              />
+            )}
           </Space>
         )}
       </Drawer>
@@ -752,9 +793,13 @@ const UserManagementPage = () => {
         title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+        destroyOnHidden
       >
-        <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
+        <Form form={createForm} layout="vertical" initialValues={{ admin: false }} preserve={false}>
           <Form.Item
             name="username"
             label={t('userMgmt.username')}

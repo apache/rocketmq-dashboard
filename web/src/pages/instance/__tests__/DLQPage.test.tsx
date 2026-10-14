@@ -272,7 +272,7 @@ describe('DLQ page', () => {
 
       const row = (await screen.findByText('cg-order')).closest('tr');
       if (!row) throw new Error('DLQ group row not found');
-      expect(within(row).getByText('2026-07-24 18:00:00 GMT+8')).toBeInTheDocument();
+      expect(within(row).getByText('2026-07-24 18:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }

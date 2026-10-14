@@ -993,6 +993,89 @@ describe('TopicPage', () => {
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
 
+  const previewCsv = (name: string) =>
+    '"Name","Type","Write Queues","Read Queues","Permission"\n"' + name + '","NORMAL","4","6","RW"';
+
+  it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
+    const input = screen.getByTestId('topic-import-file');
+    await user.upload(input, new File([previewCsv('previous-resource')], 'first.csv'));
+    await screen.findByText('previous-resource');
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    let resolve!: (text: string) => void;
+    const next = new File([], 'second.csv');
+    Object.defineProperty(next, 'text', {
+      value: () =>
+        new Promise<string>((complete) => {
+          resolve = complete;
+        }),
+    });
+    await user.upload(input, next);
+    expect(screen.getByText('导入 Topic：second.csv')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+    expect(topicServiceMocks.importTopics).not.toHaveBeenCalled();
+    await act(async () => resolve(previewCsv('current-resource')));
+    await screen.findByText('current-resource');
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+      ]),
+    );
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'ignoresCancelledFileReadCompletionTest (%s)',
+    async (outcome) => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      mockTopicsList([]);
+      instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+      renderWithProviders('/instance/instance-proxy-1/topic');
+      await waitFor(() =>
+        expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+          expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+        ),
+      );
+      const input = screen.getByTestId('topic-import-file');
+      let resolve!: (text: string) => void;
+      let reject!: (error: Error) => void;
+      const first = new File([], 'first.csv');
+      Object.defineProperty(first, 'text', {
+        value: () =>
+          new Promise<string>((complete, fail) => {
+            resolve = complete;
+            reject = fail;
+          }),
+      });
+      await user.upload(input, first);
+      await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+      await user.upload(input, new File([previewCsv('current-resource')], 'second.csv'));
+      await screen.findByText('current-resource');
+      await act(async () => {
+        if (outcome === 'success') resolve(previewCsv('previous-resource'));
+        else reject(new Error('obsolete file read failed'));
+      });
+      expect(screen.getByText('current-resource')).toBeInTheDocument();
+      expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+      expect(screen.queryByText('obsolete file read failed')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: '开始导入' }));
+      await waitFor(() =>
+        expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+          expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+        ]),
+      );
+    },
+  );
+
   it('imports valid topic CSV rows through the backend batch service with the selected instance', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([]);

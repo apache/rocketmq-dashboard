@@ -38,7 +38,7 @@ import type { ThinkingBlock as ThinkingBlockData } from '../../render/blocks';
  * run stay closed.
  *
  * The open state is derived, not effect-synced: a manual toggle is remembered only for as long as
- * `autoOpen` keeps its value, so the transition into or out of streaming always wins over a stale
+ * the streaming context keeps its value, so the transition into or out of streaming wins over a stale
  * click. That is what makes "collapse on done" unconditional without an effect fighting the user.
  */
 
@@ -51,8 +51,8 @@ export interface ThinkingBlockProps {
 }
 
 interface Toggle {
-  /** Value of `autoOpen` the user's click applied to. */
-  autoOpen: boolean;
+  streaming: boolean;
+  latest: boolean;
   open: boolean;
 }
 
@@ -61,7 +61,13 @@ const ThinkingBlock = ({ block, streaming = false, latest = false }: ThinkingBlo
   const { token } = theme.useToken();
   const autoOpen = streaming && latest;
   const [toggle, setToggle] = useState<Toggle | null>(null);
-  const open = toggle !== null && toggle.autoOpen === autoOpen ? toggle.open : autoOpen;
+  const currentToggle =
+    toggle !== null && toggle.streaming === streaming && toggle.latest === latest ? toggle : null;
+  if (toggle !== null && currentToggle === null) {
+    // Discard an old context's click, including earlier blocks whose autoOpen stays false.
+    setToggle(null);
+  }
+  const open = currentToggle?.open ?? autoOpen;
 
   const enhance = block.source === 'enhance';
   const label = enhance ? t('ai.thinking.enhance') : t('ai.thinking.model');
@@ -74,7 +80,7 @@ const ThinkingBlock = ({ block, streaming = false, latest = false }: ThinkingBlo
         // auto-expand and the collapse-on-done rule are the only other writers of `open`.
         onClick={(event) => {
           event.preventDefault();
-          setToggle({ autoOpen, open: !open });
+          setToggle({ streaming, latest, open: !open });
         }}
         style={{
           display: 'flex',

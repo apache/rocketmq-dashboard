@@ -541,7 +541,7 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 180,
+      width: 156,
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
