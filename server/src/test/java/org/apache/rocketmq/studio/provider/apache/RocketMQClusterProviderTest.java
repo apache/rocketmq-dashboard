@@ -112,6 +112,24 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void discoverClustersRoundsDiskRatioToTenthsTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        KVTable runtime = runtimeStats();
+        runtime.getTable().put("commitLogDiskRatio", "0.29");
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtime);
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        // 0.29 * 100 is 28.999999999999996 in binary floating point. The web renders that number
+        // verbatim, and a label that wide squeezes the Progress bar inside it down to zero width.
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.getDiskUsage())
+                .isEqualTo(29.0D);
+    }
+
+    @Test
     void discoverClustersShouldParseDailyMessageCounters() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);

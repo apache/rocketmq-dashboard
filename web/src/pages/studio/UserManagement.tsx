@@ -463,21 +463,24 @@ const UserManagementPage = () => {
     {
       title: t('userMgmt.lastActive'),
       dataIndex: 'lastSessionSeenAt',
-      width: 132,
+      // 182 = the `YYYY-MM-DD HH:mm:ss` label at 14px (149px as measured in Chromium with this
+      // app's font stack) plus the 16px of cell padding a default-size table puts on each side.
+      // The small-table equivalent used elsewhere is 156.
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.nearestExpiry'),
       dataIndex: 'nearestSessionExpiresAt',
-      width: 132,
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
-      width: 132,
+      width: 182,
       ellipsis: true,
       render: dateTime,
     },

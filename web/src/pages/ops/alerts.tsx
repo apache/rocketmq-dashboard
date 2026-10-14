@@ -40,6 +40,7 @@ import {
 } from 'antd';
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type {
   AlertRule,
@@ -675,15 +676,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.channels'),
-      width: 130,
+      // DingTalk + Email + SMS 三个标签并排实测需 201px（TagList 已把标签自带的 8px margin 归零）
+      width: 210,
       render: (_, record) => (
-        <Flex gap={4} wrap="wrap">
-          {(record.channels ?? []).map((ch) => (
-            <Tag key={ch} color={channelColors[ch]}>
-              {channelLabels[ch]}
-            </Tag>
-          ))}
-        </Flex>
+        <TagList
+          items={(record.channels ?? []).map((ch) => ({
+            key: ch,
+            label: channelLabels[ch],
+            color: channelColors[ch],
+          }))}
+        />
       ),
     },
     {
@@ -702,7 +704,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.lastTriggered'),
-      width: 150,
+      width: 156,
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (

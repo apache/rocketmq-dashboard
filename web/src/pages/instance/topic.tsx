@@ -63,6 +63,7 @@ import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
 import TopicConfigComparisonDrawer from '../../components/TopicConfigComparisonDrawer';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -924,17 +925,19 @@ const TopicPageContent = ({
               Master {record.masterAddr}
             </Text>
           )}
-          <Space size={4} wrap>
-            {record.brokerIds.length > 0 ? (
-              record.brokerIds.map((id) => (
-                <Tag key={id} color={id === '0' ? 'blue' : undefined}>
-                  {id === '0' ? 'Master' : `Replica ${id}`}
-                </Tag>
-              ))
-            ) : (
-              <Tag color="warning">地址未知</Tag>
-            )}
-          </Space>
+          {record.brokerIds.length > 0 ? (
+            <TagList
+              items={record.brokerIds.map((id) => ({
+                key: id,
+                label: id === '0' ? 'Master' : `Replica ${id}`,
+                color: id === '0' ? 'blue' : undefined,
+              }))}
+              max={2}
+              tagMaxWidth={90}
+            />
+          ) : (
+            <Tag color="warning">地址未知</Tag>
+          )}
         </Space>
       ),
     },

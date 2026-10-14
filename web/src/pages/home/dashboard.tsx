@@ -385,7 +385,7 @@ const DashboardPage = () => {
       <Card
         title={t('dashboard.clusterHealth')}
         extra={<a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>}
-        styles={{ body: { padding: '0 20px 16px' } }}
+        styles={{ body: { padding: '16px 20px' } }}
       >
         <Table
           dataSource={clusters}

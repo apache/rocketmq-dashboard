@@ -181,11 +181,11 @@ const K8sCertsPage = () => {
       title: '到期时间',
       dataIndex: 'notAfter',
       key: 'notAfter',
-      width: 170,
+      width: 156,
       sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
       render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatUtcDateTime(iso, undefined, { zone: false })}
+          {formatUtcDateTime(iso)}
         </Text>
       ),
     },
