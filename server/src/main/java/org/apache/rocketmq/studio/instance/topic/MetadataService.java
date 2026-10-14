@@ -305,8 +305,10 @@ public class MetadataService {
     }
 
     private static String sendMessageDetail(SendMessageDTO request) {
-        // Mirrors the Apache send detail, minus the msgId which only exists after the call.
-        return "tag=" + request.getTag() + ", key=" + request.getKey();
+        // Match the Apache admin client's null handling; msgId exists only after the send.
+        String tag = request.getTag() == null ? "" : request.getTag();
+        String key = request.getKey() == null ? "" : request.getKey();
+        return "tag=" + tag + ", key=" + key;
     }
 
     /**

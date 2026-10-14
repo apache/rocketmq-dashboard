@@ -771,7 +771,7 @@ class MetadataServiceTest {
                 .hasMessage("cloud api unavailable");
 
         verify(operationAuditService).record("SEND_MESSAGE", "MESSAGE", "orders", "cloud-instance",
-                "tag=TagA, key=null", "FAILED", "cloud api unavailable");
+                "tag=TagA, key=", "FAILED", "cloud api unavailable");
     }
 
     @Test
@@ -794,6 +794,7 @@ class MetadataServiceTest {
         verify(operationAuditService).record("SEND_MESSAGE", "MESSAGE", "%RETRY%group-a", "cloud-instance",
                 "tag=paid, key=order-1", "SUCCESS", null);
     }
+
     @Test
     void listConsumerGroupsShouldReturnGroupsFromProvider() {
         ConsumerGroupVO group = new ConsumerGroupVO();
