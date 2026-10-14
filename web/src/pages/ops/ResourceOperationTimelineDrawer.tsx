@@ -98,6 +98,11 @@ const ResourceOperationTimelineDrawer = ({
     void listAuditRecords({ page, pageSize, ...filter })
       .then((result) => {
         if (requestVersion.current !== version) return;
+        const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+        if (page > lastPage) {
+          setPage(lastPage);
+          return;
+        }
         setResponse({
           queryKey,
           records: result.items,

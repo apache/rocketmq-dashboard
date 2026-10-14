@@ -74,4 +74,31 @@ describe('useActiveRunAttach', () => {
     await waitFor(() => expect(attach).toHaveBeenCalledWith(9, 77, 0));
     expect(attach).toHaveBeenCalledTimes(2);
   });
+
+  it('reattachesWhenTheRunAdvancesPastTheAdmissionWindowItWasAttachedInTest', async () => {
+    const attach = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ status }: { status: 'QUEUED' | 'RUNNING' }) =>
+        useActiveRunAttach(
+          7,
+          { activeRun: { id: 42, status }, lastSeq: 0 },
+          { isStreaming: false, attach },
+        ),
+      { initialProps: { status: 'QUEUED' as 'QUEUED' | 'RUNNING' } },
+    );
+
+    // A reload during admission attaches to a QUEUED row that has no worker yet: the server closes
+    // that stream with a bare `done` and no status, so nothing was observed.
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(7, 42, 0));
+
+    // The run now has a worker. Without re-attaching, the answer streams with nobody watching and
+    // the next send is refused with 409.
+    rerender({ status: 'RUNNING' });
+    await waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
+
+    // The same state again is not new information, so the guard still holds and nothing loops.
+    rerender({ status: 'RUNNING' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(attach).toHaveBeenCalledTimes(2);
+  });
 });

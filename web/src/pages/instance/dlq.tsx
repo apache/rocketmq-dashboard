@@ -50,6 +50,7 @@ import {
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -73,7 +74,7 @@ const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
   { header: 'Message Count', value: (group) => group.messageCount },
   { header: 'Retry Count', value: (group) => group.retryCount },
   { header: 'Status', value: (group) => group.status },
-  { header: 'Last Enqueue Time', value: (group) => group.lastEnqueueTime },
+  { header: 'Last Enqueue Time', value: (group) => formatUtcDateTime(group.lastEnqueueTime) },
 ];
 
 const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
@@ -538,10 +539,10 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 180,
+      width: 156,
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(time)}
+          {formatUtcDateTime(time)}
         </Text>
       ),
     },
@@ -775,12 +776,17 @@ const DLQPage = () => {
         }
         open={retryModalOpen}
         onCancel={() => {
+          if (retryInFlightRef.current) return;
           setRetryModalOpen(false);
           setRetryGroup(null);
           setRetryError(null);
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
+        cancelButtonProps={{ disabled: retrySubmitting }}
+        closable={!retrySubmitting}
+        keyboard={!retrySubmitting}
+        maskClosable={!retrySubmitting}
         okText="确认重投"
         cancelText="取消"
         width={520}
@@ -920,7 +926,7 @@ const DLQPage = () => {
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
-                    {formatDateTime(detailGroup.lastEnqueueTime)}
+                    {formatUtcDateTime(detailGroup.lastEnqueueTime)}
                   </Text>
                 </div>
               </Space>
