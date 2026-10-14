@@ -163,7 +163,7 @@ describe('NotificationDeliveriesPage', () => {
     await screen.findByText('Broker disk usage');
     await user.click(screen.getByRole('button', { name: '重新投递' }));
     await user.click(screen.getAllByRole('combobox')[1]);
-    await user.click(await screen.findByText('DELIVERED'));
+    await user.click(await screen.findByText('已投递'));
     expect(await screen.findByText('Delivered notification')).toBeInTheDocument();
 
     retry.resolve();
@@ -208,14 +208,14 @@ describe('NotificationDeliveriesPage', () => {
     await screen.findByText('Broker disk usage');
     await user.click(screen.getByRole('button', { name: '查看投递详情' }));
     const dialog = await screen.findByRole('dialog', { name: '投递详情' });
-    expect(within(dialog).getByText('FAILED')).toBeInTheDocument();
+    expect(within(dialog).getByText('投递失败')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /重试当前页失败记录/ }));
 
     // The queued retry is the page's new truth; the dialog must not keep offering a retry the
     // backend would reject as "not failed any more".
-    await waitFor(() => expect(within(dialog).getByText('PENDING')).toBeInTheDocument());
-    expect(within(dialog).queryByText('FAILED')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByText('待投递')).toBeInTheDocument());
+    expect(within(dialog).queryByText('投递失败')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
   });
 
@@ -254,15 +254,15 @@ describe('NotificationDeliveriesPage', () => {
     await screen.findByText('Broker disk usage');
     await user.click(screen.getByRole('button', { name: '查看投递详情' }));
     const dialog = await screen.findByRole('dialog', { name: '投递详情' });
-    expect(within(dialog).getByText('FAILED')).toBeInTheDocument();
+    expect(within(dialog).getByText('投递失败')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: '重新投递' }));
 
     // The dialog reads the page's row before the snapshot it opened with, so a single-row retry has
     // to patch that row: otherwise the stale FAILED copy wins for as long as the reload is in
     // flight and the dialog keeps offering a retry the backend refuses.
-    await waitFor(() => expect(within(dialog).getByText('PENDING')).toBeInTheDocument());
-    expect(within(dialog).queryByText('FAILED')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByText('待投递')).toBeInTheDocument());
+    expect(within(dialog).queryByText('投递失败')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
 
     // …and it stays queued once the held reload lands, whether or not the server still returns the
@@ -270,8 +270,8 @@ describe('NotificationDeliveriesPage', () => {
     act(() => {
       reload.resolve({ items: [], total: 0, page: 1, size: 20 });
     });
-    await waitFor(() => expect(within(dialog).getByText('PENDING')).toBeInTheDocument());
-    expect(within(dialog).queryByText('FAILED')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByText('待投递')).toBeInTheDocument());
+    expect(within(dialog).queryByText('投递失败')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: '重新投递' })).not.toBeInTheDocument();
   });
 
@@ -417,7 +417,7 @@ describe('NotificationDeliveriesPage', () => {
         size: 20,
       });
     await user.click(screen.getAllByRole('combobox')[1]);
-    await user.click(await screen.findByText('DELIVERED'));
+    await user.click(await screen.findByText('已投递'));
 
     await waitFor(() =>
       expect(listAlertDeliveriesPage).toHaveBeenCalledWith(
@@ -435,5 +435,39 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('names the delivery status and channel instead of printing the API codes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    // The list row: the status column must agree with the localized result column beside it.
+    await screen.findByText('Broker disk usage');
+    expect(screen.getByText('钉钉')).toBeInTheDocument();
+    expect(screen.getByText('投递失败')).toBeInTheDocument();
+    expect(screen.queryByText('dingtalk')).not.toBeInTheDocument();
+    expect(screen.queryByText('FAILED')).not.toBeInTheDocument();
+
+    // Both filters offer the names a reader understands; the values sent to the API stay codes.
+    await user.click(screen.getAllByRole('combobox')[0]);
+    expect(await screen.findByText('短信')).toBeInTheDocument();
+    expect(screen.queryByText('sms')).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole('combobox')[1]);
+    expect(await screen.findByText('等待重试')).toBeInTheDocument();
+    expect(screen.queryByText('RETRY_WAIT')).not.toBeInTheDocument();
+
+    // The detail dialog repeats the row, so it cannot fall back to the raw codes either.
+    await user.click(screen.getByRole('button', { name: '查看投递详情' }));
+    const detail = await screen.findByRole('dialog');
+    expect(within(detail).getByText('钉钉')).toBeInTheDocument();
+    expect(within(detail).getByText('投递失败')).toBeInTheDocument();
+    expect(detail.textContent).not.toContain('dingtalk');
+    expect(detail.textContent).not.toContain('FAILED');
   });
 });
