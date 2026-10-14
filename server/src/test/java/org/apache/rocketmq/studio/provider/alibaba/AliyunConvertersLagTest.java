@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.alibaba;
 
+import com.aliyun.sdk.service.rocketmq20220801.models.DataLiteTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.DataTopicLagMapValue;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -86,5 +87,38 @@ class AliyunConvertersLagTest {
                     assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
                     assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
                 });
+    }
+
+    @Test
+    void liteTopicLagShouldProduceAProgressRowTest() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .liteTopicLagMap(Map.of(
+                        "lite-orders", DataLiteTopicLagMapValue.builder().readyCount(7L).build()))
+                .build();
+
+        assertThat(AliyunConverters.toQueueProgressRows(data)).singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getTopic()).isEqualTo("lite-orders");
+                    assertThat(row.getDiffTotal()).isEqualTo(7L);
+                    assertThat(row.getBrokerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                    assertThat(row.getConsumerOffset()).isEqualTo(QueueProgressVO.UNKNOWN_OFFSET);
+                });
+    }
+
+    @Test
+    void liteTopicAndTopicBreakdownsShouldBothBeReportedTest() {
+        GetConsumerGroupLagResponseBody.Data data = GetConsumerGroupLagResponseBody.Data.builder()
+                .topicLagMap(Map.of("orders", DataTopicLagMapValue.builder().readyCount(40L).build()))
+                .liteTopicLagMap(Map.of(
+                        "lite-orders", DataLiteTopicLagMapValue.builder().readyCount(7L).build()))
+                .totalLag(GetConsumerGroupLagResponseBody.TotalLag.builder().readyCount(47L).build())
+                .build();
+
+        List<QueueProgressVO> rows = AliyunConverters.toQueueProgressRows(data);
+
+        assertThat(rows).extracting(QueueProgressVO::getTopic)
+                .containsExactlyInAnyOrder("orders", "lite-orders");
+        assertThat(rows).noneMatch(row -> "total".equals(row.getBroker()));
+        assertThat(rows.stream().mapToLong(QueueProgressVO::getDiffTotal).sum()).isEqualTo(47L);
     }
 }
