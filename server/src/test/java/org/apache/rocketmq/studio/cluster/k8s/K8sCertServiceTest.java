@@ -466,6 +466,98 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void createCertShouldBoundTheTextFieldsToTheirColumnsTest() {
+        // rmq_k8s_certificate.k8s_id and .cluster are VARCHAR(128) and .issuer is VARCHAR(256).
+        // A longer value must fail validation with 400 instead of reaching the INSERT, where
+        // MySQL would reject it and surface a 500 from the persistence layer.
+        assertCreateRejectsOversizedField("k8sId", MAX_CERT_IDENTITY_LENGTH + 1, MAX_CERT_IDENTITY_LENGTH);
+        assertCreateRejectsOversizedField("cluster", MAX_CERT_IDENTITY_LENGTH + 1, MAX_CERT_IDENTITY_LENGTH);
+        assertCreateRejectsOversizedField("issuer", MAX_CERT_ISSUER_LENGTH + 1, MAX_CERT_ISSUER_LENGTH);
+
+        verify(k8sCertRepository, never()).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void updateCertShouldBoundTheTextFieldsToTheirColumnsTest() {
+        when(k8sCertRepository.findById(1L)).thenReturn(Optional.of(sampleCert));
+
+        assertUpdateRejectsOversizedField("k8sId", MAX_CERT_IDENTITY_LENGTH + 1, MAX_CERT_IDENTITY_LENGTH);
+        assertUpdateRejectsOversizedField("cluster", MAX_CERT_IDENTITY_LENGTH + 1, MAX_CERT_IDENTITY_LENGTH);
+        assertUpdateRejectsOversizedField("issuer", MAX_CERT_ISSUER_LENGTH + 1, MAX_CERT_ISSUER_LENGTH);
+
+        verify(k8sCertRepository, never()).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void createCertShouldAcceptIdentityFieldsAtTheColumnWidthTest() {
+        // The cap is the column width, so a value that fits must pass — counted in code points,
+        // the unit MySQL counts a varchar in: 128 supplementary characters are 256 UTF-16 chars.
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("🚀".repeat(MAX_CERT_IDENTITY_LENGTH))
+                .cluster("c".repeat(MAX_CERT_IDENTITY_LENGTH))
+                .type("TLS")
+                .issuer("i".repeat(MAX_CERT_ISSUER_LENGTH))
+                .build();
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        K8sCertVO result = k8sCertService.createCert(command);
+
+        assertThat(result.getK8sId()).isEqualTo("🚀".repeat(MAX_CERT_IDENTITY_LENGTH));
+        assertThat(result.getCluster()).isEqualTo("c".repeat(MAX_CERT_IDENTITY_LENGTH));
+        assertThat(result.getIssuer()).isEqualTo("i".repeat(MAX_CERT_ISSUER_LENGTH));
+        verify(k8sCertRepository).save(any(K8sCertVO.class));
+    }
+
+    private void assertCreateRejectsOversizedField(String field, int length, int maxLength) {
+        CreateCertDTO command = CreateCertDTO.builder().type("TLS").build();
+        String value = "x".repeat(length);
+        setField(command, field, value);
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate " + field + " must not exceed " + maxLength + " characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    private void assertUpdateRejectsOversizedField(String field, int length, int maxLength) {
+        UpdateCertDTO command = UpdateCertDTO.builder().id(1L).build();
+        String value = "x".repeat(length);
+        setField(command, field, value);
+
+        assertThatThrownBy(() -> k8sCertService.updateCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate " + field + " must not exceed " + maxLength + " characters")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    private void setField(Object command, String field, String value) {
+        switch (field) {
+            case "k8sId" -> {
+                if (command instanceof CreateCertDTO create) {
+                    create.setK8sId(value);
+                } else {
+                    ((UpdateCertDTO) command).setK8sId(value);
+                }
+            }
+            case "cluster" -> {
+                if (command instanceof CreateCertDTO create) {
+                    create.setCluster(value);
+                } else {
+                    ((UpdateCertDTO) command).setCluster(value);
+                }
+            }
+            case "issuer" -> {
+                if (command instanceof CreateCertDTO create) {
+                    create.setIssuer(value);
+                } else {
+                    ((UpdateCertDTO) command).setIssuer(value);
+                }
+            }
+            default -> throw new IllegalArgumentException("Unknown field: " + field);
+        }
+    }
+
+    @Test
     void updateCertShouldThrowWhenNotFound() {
         when(k8sCertRepository.findById(999L)).thenReturn(Optional.empty());
 
