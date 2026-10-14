@@ -18,8 +18,10 @@ package org.apache.rocketmq.studio.provider.alibaba;
 
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListInstancesResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicSubscriptionsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,24 @@ class AliyunConvertersTest {
         TopicVO vo = AliyunConverters.toTopicVO(data, "7");
 
         assertThat(vo.getType()).isEqualTo(TopicType.LITE);
+    }
+
+    @Test
+    void toTopicConsumerVoShouldMarkTheUngettableLagAndTpsUnavailableTest() {
+        // ListTopicSubscriptionsResponseBody.Data carries only consistency, consumerGroupId,
+        // filterExpression, filterExpressionType, messageModel, subscriptionStatus and topicName -
+        // no lag or TPS. Leaving the VO defaults would present 0 backlog / 0 TPS as measured
+        // values; the Apache provider flags the same gap with metricsAvailable(false), which is
+        // the only value the console renders as unavailable.
+        ListTopicSubscriptionsResponseBody.Data data = ListTopicSubscriptionsResponseBody.Data.builder()
+                .consumerGroupId("cg-orders")
+                .messageModel("CLUSTERING")
+                .build();
+
+        TopicConsumerVO consumer = AliyunConverters.toTopicConsumerVO(data);
+
+        assertThat(consumer.getGroup()).isEqualTo("cg-orders");
+        assertThat(consumer.isMetricsAvailable()).isFalse();
     }
 
     @Test

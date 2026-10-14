@@ -165,7 +165,8 @@ export async function updateAclRule(
 export async function deleteAclRule(id: AclEntityId, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === id);
-    if (idx >= 0) aclRulesState.splice(idx, 1);
+    if (idx < 0) throw new Error(`ACL rule not found: ${id}`);
+    aclRulesState.splice(idx, 1);
     return;
   }
   return aclApi.deleteAclRule(id, instanceId);
@@ -210,7 +211,8 @@ export async function updateAclUser(
 export async function deleteAclUser(id: AclEntityId, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === id);
-    if (idx >= 0) aclUsersState.splice(idx, 1);
+    if (idx < 0) throw new Error(`ACL user not found: ${id}`);
+    aclUsersState.splice(idx, 1);
     return;
   }
   return aclApi.deleteAclUser(id, instanceId);

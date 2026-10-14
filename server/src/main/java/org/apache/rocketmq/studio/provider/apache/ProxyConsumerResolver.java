@@ -18,6 +18,10 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import jakarta.annotation.PreDestroy;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.netty.NettyRemotingClient;
@@ -183,22 +187,10 @@ public class ProxyConsumerResolver {
         if (cached != null && cached.expiresAtMillis() > System.currentTimeMillis()) {
             return ProxyAddressResolution.available(cached.addresses());
         }
-        Set<String> ips = new LinkedHashSet<>();
+        List<String> addresses;
         try {
-            executeAdmin(instanceId, admin -> {
-                ConsumerConnection connection = admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP);
-                if (connection != null && connection.getConnectionSet() != null) {
-                    for (Connection conn : connection.getConnectionSet()) {
-                        String clientAddr = conn.getClientAddr();
-                        if (clientAddr == null || clientAddr.isBlank()) {
-                            continue;
-                        }
-                        int separator = clientAddr.lastIndexOf(':');
-                        ips.add(separator > 0 ? clientAddr.substring(0, separator) : clientAddr);
-                    }
-                }
-                return null;
-            });
+            addresses = executeAdmin(instanceId, admin -> toProxyRemotingAddresses(
+                    admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP)));
         } catch (Exception e) {
             if (MqResponseCodes.hasResponseCode(e, ResponseCode.CONSUMER_NOT_ONLINE, ResponseCode.TOPIC_NOT_EXIST)) {
                 // A known absent heartbeat-syncer group means no proxy address is currently observable.
@@ -208,7 +200,6 @@ public class ProxyConsumerResolver {
             log.debug("Proxy discovery via heartbeat syncer failed for instance {}: {}", instanceId, e.getMessage());
             return ProxyAddressResolution.unavailable();
         }
-        List<String> addresses = ips.stream().map(ip -> ip + ":" + PROXY_REMOTING_PORT).toList();
         proxyAddressCache.put(cacheKey, new CachedProxyAddresses(addresses, System.currentTimeMillis() + PROXY_ADDRESS_CACHE_TTL_MILLIS));
         return ProxyAddressResolution.available(addresses);
     }
@@ -218,6 +209,34 @@ public class ProxyConsumerResolver {
             return runtimeAdminClientResolver.execute(instanceId, action);
         }
         return adminFactory.execute(properties.getNamesrvAddr(), null, action);
+    }
+
+    /**
+     * Discovers proxies through a broker in the selected topology, using the caller's pooled
+     * admin (and credentials). Callers cache this only within their current inventory request;
+     * the legacy instance cache must not mix NameServers or clusters with identical group names.
+     */
+    List<String> discoverProxyAddresses(MQAdminExt admin, String brokerAddress)
+            throws MQClientException, MQBrokerException, RemotingException, InterruptedException {
+        return toProxyRemotingAddresses(
+                admin.examineConsumerConnectionInfo(HEARTBEAT_SYNCER_CONSUMER_GROUP, brokerAddress));
+    }
+
+    private static List<String> toProxyRemotingAddresses(ConsumerConnection syncer) {
+        if (syncer == null || syncer.getConnectionSet() == null) {
+            return List.of();
+        }
+        Set<String> addresses = new LinkedHashSet<>();
+        for (Connection connection : syncer.getConnectionSet()) {
+            String clientAddr = connection == null ? null : connection.getClientAddr();
+            if (clientAddr == null || clientAddr.isBlank()) {
+                continue;
+            }
+            int separator = clientAddr.lastIndexOf(':');
+            addresses.add((separator > 0 ? clientAddr.substring(0, separator) : clientAddr)
+                    + ":" + PROXY_REMOTING_PORT);
+        }
+        return List.copyOf(addresses);
     }
 
     private NettyRemotingClient remotingClient() {

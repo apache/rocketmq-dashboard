@@ -180,6 +180,64 @@ describe('OpsPage', () => {
     expect(screen.queryByRole('button', { name: /重\s*试|Retry/ })).not.toBeInTheDocument();
   });
 
+  it('disables writes when a configuration reload fails after a successful load', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <LanguageSwitch />
+        <OpsPage />
+      </>,
+    );
+
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    vi.mocked(queryOpsHomePage).mockRejectedValueOnce(new Error('network down'));
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+
+    expect(await screen.findByRole('button', { name: /Retry/ })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('NamesrvAddr')).not.toBeInTheDocument();
+    screen.getAllByRole('switch').forEach((toggle) => expect(toggle).toBeDisabled());
+
+    await user.click(screen.getByRole('button', { name: /Retry/ }));
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    screen.getAllByRole('switch').forEach((toggle) => expect(toggle).toBeEnabled());
+  });
+
+  it('disables writes while a configuration reload is pending', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <LanguageSwitch />
+        <OpsPage />
+      </>,
+    );
+
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    let resolveReload!: (value: Awaited<ReturnType<typeof queryOpsHomePage>>) => void;
+    vi.mocked(queryOpsHomePage).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveReload = resolve;
+        }),
+    );
+    await user.click(screen.getByRole('button', { name: 'switch-language' }));
+    await waitFor(() => expect(queryOpsHomePage).toHaveBeenCalledTimes(2));
+
+    expect(screen.queryByPlaceholderText('NamesrvAddr')).not.toBeInTheDocument();
+    screen.getAllByRole('switch').forEach((toggle) => expect(toggle).toBeDisabled());
+
+    await act(async () => {
+      resolveReload({
+        namesvrAddrList: ['127.0.0.1:9876', '127.0.0.2:9876'],
+        configurationAvailable: true,
+        useVIPChannel: true,
+        useTLS: false,
+        currentNamesrv: '127.0.0.1:9876',
+      });
+    });
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    screen.getAllByRole('switch').forEach((toggle) => expect(toggle).toBeEnabled());
+  });
+
   it('hides write controls for read-only users', async () => {
     useAuthStore.setState({ user: 'reader', userId: 101, admin: false });
 
