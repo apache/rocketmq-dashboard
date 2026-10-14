@@ -18,10 +18,14 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Locale;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -84,7 +88,25 @@ class NativeAlertRulePolicyTest {
     @Test
     void leavesLegacyPrometheusRulesCompatibleTest() {
         assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.BUSINESS,
-                "rocketmq_consumer_lag_messages").build())).doesNotThrowAnyException();
+                "rocketmq_consumer_lag_messages").operator(null).build())).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "INVALID", "GT", " UNAVAILABLE "})
+    void rejectsNativeRulesWithoutSupportedOperatorTest(String operator) {
+        assertThatThrownBy(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").operator(operator).build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("operator")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE"})
+    void acceptsSupportedNativeOperatorsTest(String operator) {
+        assertThatCode(() -> NativeAlertRulePolicy.validate(rule(AlertDomain.CLUSTER, "broker.availability")
+                .instanceId("local").operator(operator).build())).doesNotThrowAnyException();
     }
 
     @Test
@@ -118,6 +140,7 @@ class NativeAlertRulePolicyTest {
     }
 
     private static AlertRuleVO.AlertRuleVOBuilder rule(AlertDomain domain, String metric) {
-        return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).consecutiveSamples(1);
+        return AlertRuleVO.builder().domain(domain).name("Test rule").metric(metric).operator(">")
+                .consecutiveSamples(1);
     }
 }
