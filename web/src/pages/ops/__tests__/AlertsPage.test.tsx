@@ -290,6 +290,27 @@ describe('AlertsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('names the window aggregations instead of printing the API codes', async () => {
+    const user = userEvent.setup();
+    renderPage('BUSINESS');
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+
+    // The default value is LAST; the selection already reads as its name.
+    expect(await screen.findByText('最近一次')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '窗口聚合' }));
+
+    // The visible option list, not the hidden aria mirror that keeps the raw value.
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.ant-select-item-option-content')).map((option) =>
+          option.textContent?.trim(),
+        ),
+      ).toEqual(['最近一次', '最大值', '最小值', '平均值', '总和']),
+    );
+  });
+
   it('formats the last triggered timestamp instead of rendering the raw ISO value', async () => {
     const lastTriggered = '2026-08-23T10:35:38.590731';
     vi.mocked(listAlertRulesPage).mockResolvedValue(
