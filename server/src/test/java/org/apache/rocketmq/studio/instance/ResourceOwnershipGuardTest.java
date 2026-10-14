@@ -642,6 +642,42 @@ class ResourceOwnershipGuardTest {
         return info;
     }
 
+    /**
+     * A reservation has to carry its own bookkeeping stamps. The shipped columns are declared
+     * {@code DEFAULT CURRENT_TIMESTAMP}, which the database evaluates on its own clock, while the create
+     * path stamps {@code gmt_modified} from the JVM clock — so a reservation that leans on the column
+     * default stores a creation time taken from a different clock than the modification time, and the
+     * two can disagree by the offset between the database and the studio (eight hours when the database
+     * runs in UTC and the studio in Asia/Shanghai). The two columns are recreated without their defaults
+     * here, so that "the reservation supplied the value" is what this test observes.
+     */
+    @Test
+    void topicReservationSuppliesItsOwnBookkeepingStampsTest() {
+        dropTimestampDefaults("topic");
+        guard.write(first, topic, "cluster", true, "NORMAL", () -> null);
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT gmt_create, gmt_modified FROM rmq_instance_topic WHERE name = ?", topic.name());
+        assertThat(row.get("gmt_create")).isNotNull();
+        assertThat(row.get("gmt_modified")).isNotNull();
+    }
+
+    @Test
+    void groupReservationSuppliesItsOwnBookkeepingStampsTest() {
+        dropTimestampDefaults("group");
+        Resource group = new Resource(Kind.GROUP, "orders-group");
+        guard.write(first, group, "cluster", true, null, () -> null);
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT gmt_create, gmt_modified FROM rmq_instance_group WHERE name = ?", group.name());
+        assertThat(row.get("gmt_create")).isNotNull();
+        assertThat(row.get("gmt_modified")).isNotNull();
+    }
+
+    /** Same table, but the two bookkeeping columns no longer fall back to the database clock. */
+    private void dropTimestampDefaults(String kind) {
+        jdbc.execute("ALTER TABLE rmq_instance_" + kind + " ALTER COLUMN gmt_create DROP DEFAULT");
+        jdbc.execute("ALTER TABLE rmq_instance_" + kind + " ALTER COLUMN gmt_modified DROP DEFAULT");
+    }
+
     private void legacyIndexes() {
         for (String kind : List.of("topic", "group")) {
             jdbc.execute("ALTER TABLE rmq_instance_" + kind + " DROP INDEX uk_" + kind + "_name");
