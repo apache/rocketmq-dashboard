@@ -700,4 +700,39 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('offers no page-local sort on the server-paginated result table', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-SORT-B'), storeTime: '2026-07-31T09:00:00Z' },
+      { ...createMessage('MID-SORT-A'), storeTime: '2026-07-31T08:00:00Z' },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await screen.findByText('MID-SORT-B');
+
+    const renderedIds = () =>
+      screen
+        .getAllByRole('row')
+        .map((row) => within(row).queryAllByText(/^MID-SORT-[AB]$/)[0]?.textContent)
+        .filter((id): id is string => Boolean(id));
+    expect(renderedIds()).toEqual(['MID-SORT-B', 'MID-SORT-A']);
+
+    // The table is paginated by the server (pagination.onChange re-runs the query), so an antd
+    // in-memory sorter can only reorder the page that happens to be loaded while its header
+    // claims the whole result set is sorted. No column may offer one.
+    for (const name of [/^Topic$/, /存储时间/]) {
+      const header = screen.getByRole('columnheader', { name });
+      expect(header).not.toHaveClass('ant-table-column-has-sorters');
+      expect(header.querySelector('.ant-table-column-sorters')).toBeNull();
+    }
+
+    // Clicking those headers must not reorder the rows the server returned.
+    await user.click(screen.getByRole('columnheader', { name: /存储时间/ }));
+    await user.click(screen.getByRole('columnheader', { name: /^Topic$/ }));
+    expect(renderedIds()).toEqual(['MID-SORT-B', 'MID-SORT-A']);
+  });
 });

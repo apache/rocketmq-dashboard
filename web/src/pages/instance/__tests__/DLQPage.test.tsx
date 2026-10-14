@@ -980,4 +980,38 @@ describe('DLQ page', () => {
     expect(screen.queryByText('cg-order')).not.toBeInTheDocument();
     expect(screen.getByText('-cg-"payment"')).toBeInTheDocument();
   });
+
+  it('offers no page-local sort on the server-paginated group table', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue({
+      items: [secondDlqGroup, dlqGroup],
+      total: 40,
+      page: 1,
+      size: 20,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('-cg-"payment"');
+
+    const renderedGroups = () =>
+      screen
+        .getAllByRole('row')
+        .map((row) => within(row).queryAllByText(/^(cg-order|-cg-"payment")$/)[0]?.textContent)
+        .filter((name): name is string => Boolean(name));
+    expect(renderedGroups()).toEqual(['-cg-"payment"', 'cg-order']);
+
+    // The group table is paginated by the server (listDLQGroups is called with page/pageSize),
+    // so an antd in-memory sorter only reorders the loaded page while its header claims the
+    // whole result set is sorted. No column may offer one.
+    for (const name of [/Group 名称/, /死信数量/, /最近入队时间/]) {
+      const header = screen.getByRole('columnheader', { name });
+      expect(header).not.toHaveClass('ant-table-column-has-sorters');
+      expect(header.querySelector('.ant-table-column-sorters')).toBeNull();
+    }
+
+    // Clicking those headers must not reorder the rows the server returned.
+    await user.click(screen.getByRole('columnheader', { name: /死信数量/ }));
+    await user.click(screen.getByRole('columnheader', { name: /Group 名称/ }));
+    expect(renderedGroups()).toEqual(['-cg-"payment"', 'cg-order']);
+  });
 });
