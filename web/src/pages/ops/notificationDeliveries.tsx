@@ -11,7 +11,7 @@ import {
   Card,
   DatePicker,
   Descriptions,
-  Drawer,
+  Modal,
   Flex,
   Input,
   Select,
@@ -393,11 +393,16 @@ const NotificationDeliveriesPage = () => {
           />
         </Card>
       </div>
-      <Drawer
+      <Modal
         title={t('deliveries.details')}
-        width={640}
+        width="min(640px, calc(100vw - 32px))"
         open={selectedDelivery !== undefined}
-        onClose={() => setSelectedDelivery(undefined)}
+        onCancel={() => setSelectedDelivery(undefined)}
+        footer={null}
+        destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {selectedDelivery && (
           <Flex vertical gap={20}>
@@ -463,7 +468,7 @@ const NotificationDeliveriesPage = () => {
             </div>
           </Flex>
         )}
-      </Drawer>
+      </Modal>
     </>
   );
 };

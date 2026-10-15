@@ -21,9 +21,9 @@ import {
   Alert,
   Button,
   DatePicker,
-  Drawer,
   Empty,
   Flex,
+  Modal,
   Pagination,
   Space,
   Spin,
@@ -53,7 +53,7 @@ export interface AuditTimelineResource {
   clusterId?: string | null;
 }
 
-interface ResourceOperationTimelineDrawerProps {
+interface ResourceOperationTimelineModalProps {
   open: boolean;
   resource: AuditTimelineResource;
   onClose: () => void;
@@ -70,11 +70,11 @@ const buildTimelineFilter = (
   ...(dateRange?.[1] ? { endDate: dateRange[1].format('YYYY-MM-DD') } : {}),
 });
 
-const ResourceOperationTimelineDrawer = ({
+const ResourceOperationTimelineModal = ({
   open,
   resource,
   onClose,
-}: ResourceOperationTimelineDrawerProps) => {
+}: ResourceOperationTimelineModalProps) => {
   const { t } = useLang();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -140,21 +140,26 @@ const ResourceOperationTimelineDrawer = ({
     : resourcePresentation.label;
 
   return (
-    <Drawer
+    <Modal
       title={t('audit.timelineTitle')}
       open={open}
-      width="min(720px, calc(100vw - 16px))"
-      onClose={onClose}
+      width="min(720px, calc(100vw - 32px))"
+      onCancel={onClose}
       destroyOnHidden
-      extra={
-        <Button
-          icon={<DownloadOutlined />}
-          aria-label={t('audit.timelineExport')}
-          loading={exporting}
-          onClick={() => void handleExport()}
-        >
-          {t('audit.timelineExport')}
-        </Button>
+      styles={{
+        body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+      }}
+      footer={
+        <Flex justify="flex-end">
+          <Button
+            icon={<DownloadOutlined />}
+            aria-label={t('audit.timelineExport')}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            {t('audit.timelineExport')}
+          </Button>
+        </Flex>
       }
     >
       <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -234,8 +239,8 @@ const ResourceOperationTimelineDrawer = ({
           <Empty description={t('audit.timelineEmpty')} />
         )}
       </Space>
-    </Drawer>
+    </Modal>
   );
 };
 
-export default ResourceOperationTimelineDrawer;
+export default ResourceOperationTimelineModal;

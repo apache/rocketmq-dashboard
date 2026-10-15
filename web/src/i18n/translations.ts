@@ -809,19 +809,31 @@ const translations: Record<string, Record<Lang, string>> = {
   'messagePage.nodeCost': { zh: '耗时 {time}ms', en: 'Duration {time}ms' },
   'messagePage.noTraceData': { zh: '暂无轨迹数据', en: 'No trace data' },
   'messagePage.directConsume': { zh: '直接消费', en: 'Consume Directly' },
-  'messagePage.directConsumeTitle': { zh: '直接消费消息', en: 'Consume Message Directly' },
-  'messagePage.execute': { zh: '执行', en: 'Execute' },
   'messagePage.directConsumeHint': {
-    zh: 'Broker 会请求指定在线客户端立即消费该消息。',
-    en: 'The broker will ask the specified online client to consume this message immediately.',
+    zh: 'Broker 会请求所选在线客户端立即消费该消息；这不是向 Topic 重新发送消息。',
+    en: 'The broker asks the selected online client to consume this message immediately; this does not resend it to the topic.',
   },
-  'messagePage.directConsumeNote': {
-    zh: '这不是向 Topic 重新发送消息；Broker 返回的消费结果会原样显示。',
-    en: 'This does not resend the message to the topic; the consume result returned by the broker is displayed as-is.',
+  'messagePage.consumerGroupSelect': { zh: '选择在线消费组', en: 'Select an online group' },
+  'messagePage.clientSelect': { zh: '选择在线客户端', en: 'Select an online client' },
+  'messagePage.noOnlineConsumerGroups': {
+    zh: '当前实例没有在线消费组',
+    en: 'No online consumer groups on this instance',
+  },
+  'messagePage.noOnlineClients': {
+    zh: '该消费组当前没有在线客户端',
+    en: 'This group has no online client right now',
+  },
+  'messagePage.directConsumeGroupsFailed': {
+    zh: '在线消费组加载失败，请稍后重试',
+    en: 'Failed to load online consumer groups; try again later',
+  },
+  'messagePage.directConsumeClientsFailed': {
+    zh: '在线客户端加载失败，请稍后重试',
+    en: 'Failed to load online clients; try again later',
   },
   'messagePage.directConsumeRequired': {
-    zh: '请填写目标消费组和在线客户端 ID',
-    en: 'Enter the target consumer group and an online client ID',
+    zh: '请选择目标消费组和在线客户端',
+    en: 'Select the target consumer group and an online client',
   },
   'messagePage.directConsumeResult': {
     zh: 'Broker 返回 {detail}，耗时 {time} ms',
@@ -832,8 +844,6 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Direct consume request failed; check that the consumer group and client are online',
   },
   'messagePage.downloadSuccess': { zh: '消息下载成功', en: 'Message downloaded' },
-  'messagePage.consumerGroupPlaceholder': { zh: '目标消费者组', en: 'Target consumer group' },
-  'messagePage.clientIdPlaceholder': { zh: '在线客户端 ID', en: 'Online client ID' },
 
   // ─── Message Query History ───
   'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
@@ -2051,6 +2061,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '它们尚不会下发到所选 RocketMQ 实例。实例级 ACL Provider 接入完成前，请在集群侧管理实际 ACL 策略。',
     en: 'They are not applied to the selected RocketMQ instance. Manage the effective ACL policy on the cluster until instance-scoped provider support is available.',
   },
+  'acl.apachePushNotice': {
+    zh: '当前 ACL 规则和用户保存在 Studio，点「下发到 Broker」后写入选中实例',
+    en: 'ACL rules and users live in Studio; "Push to broker" writes them to the selected instance',
+  },
+  'acl.apachePushDescription': {
+    zh: '下发为增量 upsert：只写 Studio 维护的账号，broker 上其他账号不受影响；未下发时 broker 沿用上一次下发的策略。',
+    en: 'The push is an additive upsert: only accounts maintained in Studio are written, other broker accounts stay untouched; until you push, the broker keeps the last pushed policy.',
+  },
   'acl.tencentRoleNotice': {
     zh: '当前 ACL 用户和规则由 Tencent Cloud Role 实时驱动',
     en: 'Current ACL users and rules are backed by Tencent Cloud roles',
@@ -2162,6 +2180,32 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.permType': { zh: '权限类型', en: 'Permission' },
   'acl.plainAccessSaved': { zh: 'Plain Access 账号已保存', en: 'Plain access account saved' },
   'acl.configExamined': { zh: '集群 ACL 配置已加载', en: 'Cluster ACL config loaded' },
+  'acl.pushToBroker': { zh: '下发到 Broker', en: 'Push to broker' },
+  'acl.pushNeedInstance': { zh: '先选择实例再下发', en: 'Select an instance before pushing' },
+  'acl.pushApacheOnly': {
+    zh: '下发仅支持 Apache 开源实例',
+    en: 'Push is only supported for Apache instances',
+  },
+  'acl.pushToBrokerTitle': { zh: '下发到 Broker 结果', en: 'Push to broker result' },
+  'acl.pushToBrokerDone': {
+    zh: '已下发 {pushed} 个账号到 Broker',
+    en: 'Pushed {pushed} account(s) to the broker',
+  },
+  'acl.pushToBrokerPartial': {
+    zh: '下发完成：成功 {pushed} 个，失败 {failed} 个',
+    en: 'Push finished: {pushed} succeeded, {failed} failed',
+  },
+  'acl.pushToBrokerFailed': { zh: '下发失败，请稍后重试', en: 'Push failed; try again later' },
+  'acl.pushToBrokerSummary': {
+    zh: '增量下发：只写 Studio 里维护的账号，Broker 上其他账号不受影响。成功 {pushed} 个、失败 {failed} 个，目标 Broker：{brokers}',
+    en: 'Additive push: only accounts maintained in Studio are written; other broker accounts stay untouched. {pushed} succeeded, {failed} failed. Brokers: {brokers}',
+  },
+  'acl.pushAccount': { zh: '账号', en: 'Account' },
+  'acl.pushPolicies': { zh: '策略数', en: 'Policies' },
+  'acl.pushSkipped': { zh: '未下发的规则', en: 'Rules not pushed' },
+  'acl.pushBrokerResults': { zh: 'Broker 结果', en: 'Broker results' },
+  'acl.pushBrokerOk': { zh: '成功', en: 'OK' },
+  'acl.pushBrokerFailed': { zh: '失败', en: 'Failed' },
   'acl.riskDiagnostics': { zh: 'ACL 风险诊断', en: 'ACL Risk Diagnostics' },
   'acl.riskHealthyMessage': {
     zh: '未发现高风险 ACL 配置',
@@ -2253,8 +2297,21 @@ const translations: Record<string, Record<Lang, string>> = {
   'topicCompare.fieldReadQueues': { zh: '读队列数', en: 'Read queues' },
   'topicCompare.fieldPermission': { zh: '权限', en: 'Permission' },
   'topicCompare.search': { zh: '搜索 Topic 名称', en: 'Search Topic name' },
-  'topicCompare.statusFilter': { zh: '对比状态筛选', en: 'Filter comparison status' },
-  'topicCompare.statusAll': { zh: '全部状态', en: 'All statuses' },
+  'topicCompare.emptyHint': {
+    zh: '选择源实例与目标实例，点「开始对比」后按 Topic 逐条列出配置差异。',
+    en: 'Pick a source and a target instance, then run the comparison to list the differences per topic.',
+  },
+  'topicCompare.filterByStatus': { zh: '按{status}筛选', en: 'Filter by {status}' },
+  'topicCompare.clearStatusFilter': { zh: '清除状态筛选', en: 'Clear status filter' },
+  'topicCompare.resultSummary': {
+    zh: '源 {source} → 目标 {target}：共比对 {total} 个 Topic，当前显示 {visible} 行（点状态卡可筛选）',
+    en: 'Source {source} → target {target}: {total} topics compared, {visible} shown (click a status card to filter)',
+  },
+  'topicCompare.differenceCountValue': { zh: '{count} 处差异', en: '{count} differences' },
+  'topicCompare.noRowsForFilter': {
+    zh: '当前筛选条件下没有 Topic',
+    en: 'No topic matches the current filter',
+  },
   'topicCompare.statusMatch': { zh: '一致', en: 'Match' },
   'topicCompare.statusDrift': { zh: '漂移', en: 'Drift' },
   'topicCompare.statusOnlySource': { zh: '仅源实例', en: 'Source only' },

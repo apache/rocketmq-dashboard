@@ -267,6 +267,7 @@ describe('UserManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '会话' }));
 
     const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    expect(document.querySelector('.ant-drawer')).toBeNull();
     expect(listStudioUserSessions).toHaveBeenCalledWith(7);
     expect(within(drawer).getAllByText('会话 ID').length).toBeGreaterThan(0);
     expect(within(drawer).getByText('19')).toBeInTheDocument();
@@ -365,12 +366,12 @@ describe('UserManagementPage', () => {
     await user.click(within(drawer).getByRole('button', { name: /close/i }));
     const secondRow = screen.getByRole('row', { name: /second-user/ });
     await user.click(within(secondRow).getByRole('button', { name: '会话' }));
-    const secondDrawer = await screen.findByRole('dialog', { name: 'second-user 的会话' });
-    expect(await within(secondDrawer).findByText('99')).toBeInTheDocument();
+    const secondDialog = await screen.findByRole('dialog', { name: 'second-user 的会话' });
+    expect(await within(secondDialog).findByText('99')).toBeInTheDocument();
     await act(async () => completeRevoke());
     await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
-    expect(within(secondDrawer).getByText('99')).toBeInTheDocument();
-    expect(within(secondDrawer).queryByText('19')).not.toBeInTheDocument();
+    expect(within(secondDialog).getByText('99')).toBeInTheDocument();
+    expect(within(secondDialog).queryByText('19')).not.toBeInTheDocument();
   });
 
   it('does not reload session details after their drawer is closed during revocation', async () => {
@@ -393,10 +394,11 @@ describe('UserManagementPage', () => {
     await act(async () => completeRevoke());
     await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
     expect(listStudioUserSessions).toHaveBeenCalledTimes(1);
-    // rc-drawer keeps the dialog node in the a11y tree until its exit motion finishes, and that
-    // motion is timer-driven: asserting synchronously passed in isolation and failed every
-    // full-suite run, where the timers lag behind the awaited reload.
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // antd's modal keeps the dialog node in the a11y tree until its exit motion finishes, and
+    // under jsdom that motion never completes, so the repo's convention is to assert the leave
+    // class instead of removal (same pattern as ClusterPage / InstancePage).
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
   });
 
   it('does not present a failed session read as an account without sessions', async () => {

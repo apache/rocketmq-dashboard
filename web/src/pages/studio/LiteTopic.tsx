@@ -23,7 +23,6 @@ import {
   Select,
   Tag,
   Modal,
-  Drawer,
   Card,
   Row,
   Col,
@@ -140,7 +139,7 @@ const LiteTopicPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
@@ -291,7 +290,7 @@ const LiteTopicPage: React.FC = () => {
     const requestId = ++sessionRequestId.current;
     if (sessionIds) setAvailableSessionIds(sessionIds);
     setSelectedSessionId(sessionId);
-    setSessionDrawerOpen(true);
+    setSessionModalOpen(true);
     setSessionLoading(true);
     setSessionData(null);
     try {
@@ -615,7 +614,7 @@ const LiteTopicPage: React.FC = () => {
     );
   };
 
-  // ─── Session Drawer Content ──────────────────────────────────
+  // ─── Session Modal Content ───────────────────────────────────
 
   const renderSessionContent = () => {
     if (sessionLoading) {
@@ -901,26 +900,29 @@ const LiteTopicPage: React.FC = () => {
         />
       </Card>
 
-      {/* Session Detail Drawer */}
-      <Drawer
+      {/* Session Detail Modal */}
+      <Modal
         title={
           <span>
             <ClockCounterClockwise size={16} style={{ marginRight: 8, color: '#1677ff' }} />
             {t('liteTopic.sessionDetail')}
           </span>
         }
-        placement="right"
-        width={680}
-        open={sessionDrawerOpen}
-        onClose={() => {
+        width="min(680px, calc(100vw - 32px))"
+        open={sessionModalOpen}
+        onCancel={() => {
           sessionRequestId.current += 1;
-          setSessionDrawerOpen(false);
+          setSessionModalOpen(false);
           setSessionLoading(false);
           setSessionData(null);
           setAvailableSessionIds([]);
           setSelectedSessionId(undefined);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {availableSessionIds.length > 1 && (
           <Select
@@ -937,7 +939,7 @@ const LiteTopicPage: React.FC = () => {
           />
         )}
         {renderSessionContent()}
-      </Drawer>
+      </Modal>
 
       {/* Extend TTL Modal */}
       <Modal

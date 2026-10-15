@@ -902,6 +902,7 @@ describe('MetricsExplorer', () => {
       } else {
         await user.click(screen.getByRole('button', { name: '查询历史' }));
         const dialog = await screen.findByRole('dialog', { name: '指标查询历史' });
+        expect(document.querySelector('.ant-drawer')).toBeNull();
         const row = within(dialog).getByText('Consumer Lag Messages').closest('.ant-list-item')!;
         await user.click(within(row as HTMLElement).getByRole('button', { name: '恢复' }));
       }
@@ -1222,7 +1223,7 @@ describe('MetricsExplorer', () => {
     const user = userEvent.setup();
     localStorage.setItem(METRICS_QUERY_HISTORY_STORAGE_KEY, JSON.stringify([createHistoryEntry()]));
 
-    renderWithProviders(<MetricsExplorer />);
+    const { container } = renderWithProviders(<MetricsExplorer />);
 
     await screen.findByRole('img', { name: 'Message In TPS time series' });
     await user.click(screen.getByRole('button', { name: '查询历史' }));
@@ -1242,7 +1243,9 @@ describe('MetricsExplorer', () => {
         step: '2m',
       }),
     );
-    expect(screen.getByText('Consumer Lag Messages')).toBeInTheDocument();
+    // The history modal's exit motion keeps its node (and its list text) in the document under
+    // jsdom, so assert the restored metric on the explorer's own tree, not the whole screen.
+    expect(within(container).getByText('Consumer Lag Messages')).toBeInTheDocument();
   });
 
   it('keeps the active query unchanged when history references a removed profile', async () => {

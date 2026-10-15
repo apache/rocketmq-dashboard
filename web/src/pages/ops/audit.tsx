@@ -60,9 +60,9 @@ import {
 } from './auditPresentation';
 import AuditSummaryCards from './AuditSummaryCards';
 import AuditRiskInsights from './AuditRiskInsights';
-import ResourceOperationTimelineDrawer, {
+import ResourceOperationTimelineModal, {
   type AuditTimelineResource,
-} from './ResourceOperationTimelineDrawer';
+} from './ResourceOperationTimelineModal';
 
 const emptyFilterOptions: AuditFilterOptions = {
   operationTypes: [],
@@ -567,7 +567,7 @@ const AuditPage: React.FC = () => {
       </Card>
 
       {timelineResource && (
-        <ResourceOperationTimelineDrawer
+        <ResourceOperationTimelineModal
           open
           resource={timelineResource}
           onClose={() => setTimelineResource(null)}

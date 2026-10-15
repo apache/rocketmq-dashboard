@@ -287,6 +287,26 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
+  it('keeps the action column wide enough for the four row buttons', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([{ ...createMessage('MID-WIDTH') }]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    await screen.findByRole('row', { name: /MID-WIDTH/ });
+
+    const widths = [...document.querySelectorAll('.ant-table-content colgroup col')].map(
+      (col) => (col as HTMLElement).style.width,
+    );
+    // 操作列 = 4 个小按钮（详情/轨迹/验证/下载）实测 264px + 3×6px gap + 单元格左右 padding 16px；
+    // 少给就会让右对齐的按钮组左溢压住「大小」列（实测于本地 Chromium + Noto Sans CJK，1600 视口，
+    // 详见 message.tsx 列定义注释）。
+    expect(lastElement(widths)).toBe('298px');
+    expect(widths).toContain('68px');
+  });
+
   it.each([
     ['UnsafeInteger', '{"orderId":9007199254740993}'],
     ['Int64Max', '{"orderId":9223372036854775807}'],
