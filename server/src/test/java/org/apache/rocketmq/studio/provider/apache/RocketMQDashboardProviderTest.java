@@ -524,6 +524,126 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldBoundExtremeTpsExponentsBeforeAggregationTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("1e-2147483647", "1e2147483647"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("1.75", "2.25"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(2L);
+        });
+    }
+
+    @Test
+    void dashboardShouldPreserveAcceptedDoubleTpsFormatsTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("0x1.8p0", "2.5D"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+    }
+
+    @Test
+    void dashboardShouldAggregateSubUnitBrokerTpsBeforeRoundingTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("0.75", "0.75"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("0.75", "0.75"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(2L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(1L);
+        });
+    }
+
+    @Test
+    void dashboardShouldPreserveExactDecimalTpsBoundariesTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokers = new HashMap<>();
+        for (int i = 0; i < 10; i++) {
+            String brokerName = "broker-" + i;
+            String address = "10.0.0." + (20 + i) + ":10911";
+            brokers.put(brokerName, brokerData(brokerName, address));
+            when(adminExt.fetchBrokerRuntimeStats(address)).thenReturn(runtimeStats("0.1", "0.2"));
+        }
+        info.setBrokerAddrTable(brokers);
+        info.setClusterAddrTable(new HashMap<>(java.util.Map.of("DefaultCluster", brokers.keySet())));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(1L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(2L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(3L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(1L);
+            assertThat(cluster.getTpsOut()).isEqualTo(2L);
+        });
+    }
+
+    @Test
+    void dashboardShouldAggregateBrokerTpsFractionsBeforeRoundingTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("10.75", "20.75"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("20.75", "10.75"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(31L);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(31L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(62L);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(31L);
+            assertThat(cluster.getTpsOut()).isEqualTo(31L);
+        });
+    }
+
+    @Test
+    void dashboardShouldSaturateAggregatedTpsWithoutNegativeTrafficTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("6000000000000000000", "3000000000000000000"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911"))
+                .thenReturn(runtimeStats("6000000000000000000", "3000000000000000000"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTpsIn()).isEqualTo(Long.MAX_VALUE);
+        assertThat(dashboard.getStats().getTpsOut()).isEqualTo(6_000_000_000_000_000_000L);
+        assertThat(dashboard.getStats().getMessagesPerSecond()).isEqualTo(Long.MAX_VALUE);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(Long.MAX_VALUE);
+            assertThat(cluster.getTpsOut()).isEqualTo(6_000_000_000_000_000_000L);
+        });
+    }
+
+    @Test
     void dashboardShouldReportMessagesProducedSinceTodayMorning() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
