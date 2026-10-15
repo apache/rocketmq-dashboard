@@ -601,6 +601,47 @@ class InstanceServiceTest {
     }
 
     @Test
+    void updateInstanceShouldNotPresentUnmeasuredResourceCountsAsAvailableTest() {
+        InstanceVO existing = InstanceVO.builder().name("inst-a").type(InstanceType.PROXY_CLUSTER)
+                .endpoint("namesrv:9876").build();
+        existing.setId(1L);
+        InstanceVO request = InstanceVO.builder().endpoint("namesrv:9877").build();
+        request.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO updated = instanceService.updateInstance(request);
+
+        // Counts are not columns on the row, so this response carries whatever the read-back had and
+        // this call never measured them. docs/api-spec.md defines resourceCountsAvailable as saying
+        // whether the two numbers can be trusted, so leaving it on the default claimed a measurement
+        // that never happened.
+        assertThat(updated.isResourceCountsAvailable()).isFalse();
+    }
+
+    @Test
+    void createInstanceShouldNotPresentUnmeasuredResourceCountsAsAvailableTest() {
+        InstanceVO input = InstanceVO.builder()
+                .name("new-instance")
+                .endpoint("10.0.1.1:8080")
+                .type(InstanceType.PROXY_CLUSTER)
+                .build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> {
+            InstanceVO saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(1L);
+            }
+            return saved;
+        });
+
+        InstanceVO created = instanceService.createInstance(input);
+
+        // Registering an instance does not count the resources of the cluster it points at, so the
+        // response must not report "0 topics, 0 consumer groups" as a measurement either.
+        assertThat(created.isResourceCountsAvailable()).isFalse();
+    }
+
+    @Test
     void createInstanceShouldBoundTheEndpointByCodePointsTest() {
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
         // 512 code points but 1024 UTF-16 chars. MySQL counts a varchar(512) in characters, so the
