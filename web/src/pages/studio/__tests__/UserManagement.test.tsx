@@ -16,6 +16,7 @@
  */
 
 import { App } from 'antd';
+import type { ComponentProps } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
@@ -37,6 +38,33 @@ import { LangProvider } from '../../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../../utils/format';
 import UserManagementPage from '../UserManagement';
+
+const modalCallbacks = vi.hoisted(() => ({
+  createOk: null as (() => void) | null,
+  createCancel: null as (() => void) | null,
+  createOpen: false,
+  passwordOk: null as (() => void) | null,
+  passwordCancel: null as (() => void) | null,
+  passwordOpen: false,
+}));
+
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>();
+  const { createElement } = await import('react');
+  const Modal = (props: ComponentProps<typeof actual.Modal>) => {
+    if (props.title === '新建 Studio 用户') {
+      modalCallbacks.createOk = (props.onOk as (() => void) | undefined) ?? null;
+      modalCallbacks.createCancel = (props.onCancel as (() => void) | undefined) ?? null;
+      modalCallbacks.createOpen = props.open ?? false;
+    } else if (typeof props.title === 'string' && props.title.startsWith('重置 ')) {
+      modalCallbacks.passwordOk = (props.onOk as (() => void) | undefined) ?? null;
+      modalCallbacks.passwordCancel = (props.onCancel as (() => void) | undefined) ?? null;
+      modalCallbacks.passwordOpen = props.open ?? false;
+    }
+    return createElement(actual.Modal, props);
+  };
+  return { ...actual, Modal };
+});
 
 type MockAuthState = { admin: boolean; userId: number; logout: () => void };
 vi.mock('../../../api/studioUsers', () => ({
@@ -155,6 +183,10 @@ beforeAll(() => {
 describe('UserManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modalCallbacks.createOk = null;
+    modalCallbacks.createCancel = null;
+    modalCallbacks.passwordOk = null;
+    modalCallbacks.passwordCancel = null;
     vi.mocked(listStudioUsers).mockResolvedValue(studioUserPage);
     vi.mocked(getStudioUserSessionOverview).mockResolvedValue({
       activeSessionCount: 5,
@@ -231,12 +263,14 @@ describe('UserManagementPage', () => {
     const dialog = screen.getByRole('dialog', { name: '新建 Studio 用户' });
     await user.type(within(dialog).getByLabelText('用户名'), 'new-operator');
     await user.type(within(dialog).getByLabelText('初始密码'), 'password-123');
-    const ok = within(dialog).getByRole('button', { name: 'OK' });
-    fireEvent.click(ok);
+    act(() => modalCallbacks.createOk?.());
     await waitFor(() => expect(createStudioUser).toHaveBeenCalledTimes(1));
-    fireEvent.click(ok);
-    await act(async () => undefined);
-
+    await act(async () => {
+      modalCallbacks.createOk?.();
+      modalCallbacks.createOk?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(createStudioUser).toHaveBeenCalledTimes(1);
   });
 
@@ -249,12 +283,50 @@ describe('UserManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '改密' }));
     const dialog = screen.getByRole('dialog', { name: '重置 operator 的密码' });
     await user.type(within(dialog).getByLabelText('新密码'), 'password-456');
-    const ok = within(dialog).getByRole('button', { name: 'OK' });
-    fireEvent.click(ok);
+    act(() => modalCallbacks.passwordOk?.());
     await waitFor(() => expect(resetStudioUserPassword).toHaveBeenCalledTimes(1));
-    fireEvent.click(ok);
-    await act(async () => undefined);
+    await act(async () => {
+      modalCallbacks.passwordOk?.();
+      modalCallbacks.passwordOk?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(resetStudioUserPassword).toHaveBeenCalledTimes(1);
+  });
 
+  it('keeps the create dialog open when cancel is clicked during submission Test', async () => {
+    vi.mocked(createStudioUser).mockImplementation(() => new Promise<StudioUser>(() => undefined));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '新建用户' }));
+    const dialog = screen.getByRole('dialog', { name: '新建 Studio 用户' });
+    await user.type(within(dialog).getByLabelText('用户名'), 'new-operator');
+    await user.type(within(dialog).getByLabelText('初始密码'), 'password-123');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(createStudioUser).toHaveBeenCalledTimes(1));
+
+    act(() => modalCallbacks.createCancel?.());
+    expect(within(screen.getByRole('dialog')).getByLabelText('用户名')).toHaveValue('new-operator');
+    expect(modalCallbacks.createOpen).toBe(true);
+    expect(createStudioUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the password dialog open when cancel is clicked during submission Test', async () => {
+    vi.mocked(resetStudioUserPassword).mockImplementation(() => new Promise<void>(() => undefined));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '改密' }));
+    const dialog = screen.getByRole('dialog', { name: '重置 operator 的密码' });
+    await user.type(within(dialog).getByLabelText('新密码'), 'password-456');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(resetStudioUserPassword).toHaveBeenCalledTimes(1));
+
+    act(() => modalCallbacks.passwordCancel?.());
+
+    expect(within(screen.getByRole('dialog')).getByLabelText('新密码')).toHaveValue('password-456');
+    expect(modalCallbacks.passwordOpen).toBe(true);
     expect(resetStudioUserPassword).toHaveBeenCalledTimes(1);
   });
 
