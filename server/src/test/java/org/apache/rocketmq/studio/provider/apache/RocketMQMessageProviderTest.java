@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.client.AccessChannel;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
@@ -25,10 +26,18 @@ import org.apache.rocketmq.client.impl.MQAdminImpl;
 import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
+import org.apache.rocketmq.client.trace.TraceBean;
+import org.apache.rocketmq.client.trace.TraceContext;
+import org.apache.rocketmq.client.trace.TraceDataEncoder;
+import org.apache.rocketmq.client.trace.TraceTransferBean;
+import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageClientExt;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageDecoder;
+import org.apache.rocketmq.common.message.MessageConst;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageType;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -945,6 +954,108 @@ class RocketMQMessageProviderTest {
         assertThat(record.getConsumerStatus().get(0).getGroup()).isEqualTo("cons-group");
         assertThat(record.getConsumerStatus().get(0).getDeliveryStatus())
                 .isEqualTo(DeliveryStatus.success);
+    }
+
+    @Test
+    void getMessageTraceResolvesPhysicalIdToSdkTraceIdentityTest() throws Exception {
+        String physicalId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MessageExt original = originalWithTraceIdentity(physicalId, "logical-message-id");
+        when(adminExt.viewMessage("orders", physicalId)).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", physicalId);
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", physicalId, "orders", "CUSTOM_TRACE");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        assertThat(result.getConsumerStatus()).singleElement().satisfies(status -> {
+            assertThat(status.getGroup()).isEqualTo("consumer-group");
+            assertThat(status.getDeliveryStatus()).isEqualTo(DeliveryStatus.success);
+        });
+        verify(adminExt).queryMessage(eq("CUSTOM_TRACE"), eq("logical-message-id"), eq(64),
+                eq(original.getStoreTimestamp() - 5 * 60_000L), anyLong());
+    }
+
+    @Test
+    void getMessageTraceResolvesDecodedLookupIdentityTest() throws Exception {
+        String physicalId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt original = originalWithTraceIdentity(physicalId, "logical-message-id");
+        when(clientApi.viewMessage("172.30.10.100:10911", null, 27521713L, 3000L)).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", physicalId);
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", physicalId, null);
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("logical-message-id"), eq(64),
+                eq(original.getStoreTimestamp() - 5 * 60_000L), anyLong());
+    }
+
+    @Test
+    void getMessageTraceKeepsSuppliedLogicalIdTest() throws Exception {
+        MessageExt original = originalWithTraceIdentity("physical-id", "logical-message-id");
+        when(adminExt.viewMessage("orders", "logical-message-id")).thenReturn(original);
+        stubSdkTraceIndex("logical-message-id", "physical-id");
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", "logical-message-id", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("logical-message-id"), eq(64),
+                anyLong(), anyLong());
+    }
+
+    @Test
+    void getMessageTraceKeepsIdWhenOriginalHasNoUniquePropertyTest() throws Exception {
+        MessageExt original = originalWithTraceIdentity("legacy-message-id", null);
+        when(adminExt.viewMessage("orders", "legacy-message-id")).thenReturn(original);
+        stubSdkTraceIndex("legacy-message-id", "physical-id");
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", "legacy-message-id", "orders");
+
+        assertThat(result.getNodes()).extracting(TraceNodeVO::getTitle).containsExactly("produce", "consume");
+    }
+
+    private static MessageExt originalWithTraceIdentity(String physicalId, String logicalId) {
+        MessageExt original = new MessageExt();
+        original.setMsgId(physicalId);
+        original.setTopic("orders");
+        original.setStoreTimestamp(10_000_000L);
+        if (logicalId != null) {
+            MessageAccessor.putProperty(original, MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, logicalId);
+        }
+        return original;
+    }
+
+    private void stubSdkTraceIndex(String logicalId, String physicalId) throws Exception {
+        TraceTransferBean producer = sdkTrace(TraceType.Pub, logicalId, physicalId);
+        TraceTransferBean consumer = sdkTrace(TraceType.SubAfter, logicalId, physicalId);
+        TraceTransferBean other = sdkTrace(TraceType.Pub, "unrelated-message-id", "other-offset-id");
+        assertThat(producer.getTransKey()).contains(logicalId).doesNotContain(physicalId);
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody((producer.getTransData() + consumer.getTransData() + other.getTransData())
+                .getBytes(StandardCharsets.UTF_8));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenAnswer(invocation -> new QueryResult(0L,
+                        producer.getTransKey().contains(invocation.<String>getArgument(1))
+                                ? List.of(traceMessage) : List.of()));
+    }
+
+    private static TraceTransferBean sdkTrace(TraceType type, String logicalId, String physicalId) {
+        TraceBean bean = new TraceBean();
+        bean.setTopic("orders");
+        bean.setMsgId(logicalId);
+        bean.setOffsetMsgId(physicalId);
+        bean.setKeys("order-key");
+        bean.setTags("tag");
+        bean.setStoreHost("172.30.10.100:10911");
+        bean.setMsgType(MessageType.Normal_Msg);
+        TraceContext context = new TraceContext();
+        context.setTraceType(type);
+        context.setAccessChannel(AccessChannel.LOCAL);
+        context.setTimeStamp(10_000_000L);
+        context.setGroupName(type == TraceType.Pub ? "producer-group" : "consumer-group");
+        context.setRegionId("region-a");
+        context.setSuccess(true);
+        context.setTraceBeans(List.of(bean));
+        return TraceDataEncoder.encoderFromContextBean(context);
     }
 
     @Test
