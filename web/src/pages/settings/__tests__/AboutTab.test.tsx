@@ -56,9 +56,9 @@ describe('AboutTab', () => {
   it('reads every label from the language context', () => {
     render(<AboutTab />);
 
-    // t is mocked to identity, so a rendered key proves the text came from the dictionary
-    // instead of a literal left in the component — the #4803 localization was lost once in
-    // a branch fold; this pins it.
+    // t is mocked to identity, so a rendered key proves the label came from the dictionary
+    // instead of a literal left in the component. Every one of these labels was a hardcoded
+    // Chinese literal before this change, so the loop below pins the t() wiring in place.
     for (const key of [
       'settings.aboutVersion',
       'settings.aboutBuildCommit',
