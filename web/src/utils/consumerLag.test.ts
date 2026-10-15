@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { UNKNOWN_LAG, formatLag, isLagAvailable, lagSortValue } from './consumerLag';
+import { UNKNOWN_LAG, formatLag, isLagAvailable } from './consumerLag';
 
 describe('consumer lag helpers', () => {
   it('treats the -1 sentinel and missing values as unavailable', () => {
@@ -34,12 +34,5 @@ describe('consumer lag helpers', () => {
     expect(formatLag(10000, 'unavailable')).toBe(formatLag(10000));
     expect(formatLag(UNKNOWN_LAG, 'unavailable')).toBe('unavailable');
     expect(formatLag(undefined, 'unavailable')).toBe('unavailable');
-  });
-
-  it('sorts unknown lags after every known lag', () => {
-    expect(lagSortValue(0)).toBe(0);
-    expect(lagSortValue(999999999)).toBe(999999999);
-    expect(lagSortValue(UNKNOWN_LAG)).toBe(Number.MAX_SAFE_INTEGER);
-    expect(lagSortValue(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
 });

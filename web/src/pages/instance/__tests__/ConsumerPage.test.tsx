@@ -2238,8 +2238,8 @@ describe('Consumer page', () => {
   // The two page-local sorter tests that used to live here (unknown lag after known backlogs,
   // unavailable connections after known client counts) were removed with the sorters themselves:
   // the consumer table is server-paginated, so an in-memory sorter reordered only the loaded
-  // page while its header claimed the whole result set was ordered. The sentinel handling they
-  // exercised is still pinned by consumerLag.test.ts and consumerConnections.test.ts.
+  // page while its header claimed the whole result set was ordered. lagSortValue and
+  // onlineInstancesSortValue lost their last production callers with them and are gone too.
 
   it('ignores settings responses from a previously closed group modal', async () => {
     const otherGroup = { ...group, name: 'other-cg' };

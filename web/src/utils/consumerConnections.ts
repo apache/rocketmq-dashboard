@@ -29,7 +29,3 @@ export const formatOnlineInstances = (
   value: number | null | undefined,
   unavailableLabel: string = String(UNKNOWN_ONLINE_INSTANCES),
 ): string => (isOnlineInstancesAvailable(value) ? value.toLocaleString() : unavailableLabel);
-
-/** Sort key that pushes unavailable connection counts to the end of an ascending list. */
-export const onlineInstancesSortValue = (value: number | null | undefined): number =>
-  isOnlineInstancesAvailable(value) ? value : Number.MAX_SAFE_INTEGER;
