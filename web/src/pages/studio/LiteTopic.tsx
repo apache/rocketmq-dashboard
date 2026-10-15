@@ -72,8 +72,8 @@ const formatDuration = (ms: number | undefined | null): string => {
 };
 
 /* LiteTopic instants (create / last-active) are epoch millis. Render them through the shared
- * UTC-based formatter like the other timestamp surfaces: the viewer's zone, labeled, instead of
- * Date.toLocaleString's locale-dependent, unlabeled browser-local string. */
+ * formatter like the other timestamp surfaces: a stable `YYYY-MM-DD HH:mm:ss` in the viewer's
+ * zone, instead of Date.toLocaleString's locale-dependent browser-local string. */
 export const formatTime = (timestamp: number | undefined | null): string => {
   if (timestamp == null || !Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
