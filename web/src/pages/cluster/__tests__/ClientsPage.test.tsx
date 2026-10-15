@@ -228,7 +228,9 @@ describe('Clients page', () => {
         fireEvent.click(within(diagnostics).getByText('客户端扫描结果不完整'));
         const dialog = await screen.findByRole('dialog');
         expect(within(dialog).getByText(description)).toBeInTheDocument();
-        expect(within(dialog).queryByText('clients.partialScanDescription')).not.toBeInTheDocument();
+        expect(
+          within(dialog).queryByText('clients.partialScanDescription'),
+        ).not.toBeInTheDocument();
       } finally {
         localStorage.removeItem('rocketmq-studio-language');
       }
