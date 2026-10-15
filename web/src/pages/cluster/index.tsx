@@ -203,6 +203,13 @@ const ClusterPage = () => {
 
   const [registryClusters, setRegistryClusters] = useState<ClusterInfo[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
+  // The registry lists feed the Broker, Proxy and NameServer registry tabs, and the certificate
+  // list feeds the registry form's K8s ID field. A failure there used to be cleared into an empty
+  // list, which those views render as "this deployment has registered nothing".
+  const [registryClustersLoadFailed, setRegistryClustersLoadFailed] = useState(false);
+  const [nsRegistryLoadFailed, setNsRegistryLoadFailed] = useState(false);
+  const [k8sIdOptionsLoadFailed, setK8sIdOptionsLoadFailed] = useState(false);
+  const [registryReloadNonce, setRegistryReloadNonce] = useState(0);
   const nsRegistryRequest = useRequestGeneration();
   const registryClustersRequest = useRequestGeneration();
   const k8sCertsRequest = useRequestGeneration();
@@ -220,10 +227,12 @@ const ClusterPage = () => {
       const nextClusters = await listRegistryClusters();
       if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryClusters(nextClusters);
+        setRegistryClustersLoadFailed(false);
       }
     } catch {
       if (registryClustersRequest.isCurrent(requestId)) {
         setRegistryClusters([]);
+        setRegistryClustersLoadFailed(true);
       }
     } finally {
       if (registryClustersRequest.isCurrent(requestId)) {
@@ -234,21 +243,27 @@ const ClusterPage = () => {
 
   useEffect(() => {
     void Promise.resolve().then(loadRegistryClusters);
-  }, [loadRegistryClusters]);
+  }, [loadRegistryClusters, registryReloadNonce]);
 
   const loadNsRegistry = useCallback(async () => {
     const requestId = nsRegistryRequest.begin();
     try {
       const entries = await listNameserverRegistry();
-      if (nsRegistryRequest.isCurrent(requestId)) setNsRegistry(entries);
+      if (nsRegistryRequest.isCurrent(requestId)) {
+        setNsRegistry(entries);
+        setNsRegistryLoadFailed(false);
+      }
     } catch {
-      if (nsRegistryRequest.isCurrent(requestId)) setNsRegistry([]);
+      if (nsRegistryRequest.isCurrent(requestId)) {
+        setNsRegistry([]);
+        setNsRegistryLoadFailed(true);
+      }
     }
   }, [nsRegistryRequest]);
 
   useEffect(() => {
     void Promise.resolve().then(loadNsRegistry);
-  }, [loadNsRegistry]);
+  }, [loadNsRegistry, registryReloadNonce]);
 
   useEffect(() => {
     const requestId = k8sCertsRequest.begin();
@@ -256,12 +271,16 @@ const ClusterPage = () => {
       .then((certs) => {
         if (k8sCertsRequest.isCurrent(requestId)) {
           setK8sIdOptions([...new Set(certs.map((cert) => cert.k8sId).filter(Boolean))]);
+          setK8sIdOptionsLoadFailed(false);
         }
       })
       .catch(() => {
-        if (k8sCertsRequest.isCurrent(requestId)) setK8sIdOptions([]);
+        if (k8sCertsRequest.isCurrent(requestId)) {
+          setK8sIdOptions([]);
+          setK8sIdOptionsLoadFailed(true);
+        }
       });
-  }, [k8sCertsRequest]);
+  }, [k8sCertsRequest, registryReloadNonce]);
 
   useEffect(
     () => () => {
@@ -1840,6 +1859,9 @@ const ClusterPage = () => {
     proxies: totalProxies,
   } = countClusterComponents(clusters);
 
+  const registryDataLoadFailed =
+    registryClustersLoadFailed || nsRegistryLoadFailed || k8sIdOptionsLoadFailed;
+
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
@@ -1903,6 +1925,19 @@ const ClusterPage = () => {
           message={instanceLoadError}
           action={
             <Button size="small" onClick={() => setInstanceLoadKey((key) => key + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      {registryDataLoadFailed && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button size="small" onClick={() => setRegistryReloadNonce((nonce) => nonce + 1)}>
               {t('common.retry')}
             </Button>
           }
