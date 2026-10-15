@@ -237,7 +237,11 @@ const AclPageContent = ({
         }
       })
       .catch(() => {
-        if (mounted) message.error(t('common.fetchDataFailed'));
+        if (mounted) {
+          setRules([]);
+          setRuleTotal(0);
+          message.error(t('common.fetchDataFailed'));
+        }
       })
       .finally(() => {
         if (mounted) setRulesLoading(false);
@@ -259,7 +263,11 @@ const AclPageContent = ({
         }
       })
       .catch(() => {
-        if (mounted) message.error(t('common.fetchDataFailed'));
+        if (mounted) {
+          setUsers([]);
+          setUserTotal(0);
+          message.error(t('common.fetchDataFailed'));
+        }
       })
       .finally(() => {
         if (mounted) setUsersLoading(false);
