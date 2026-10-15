@@ -491,9 +491,19 @@ public class NotificationOutboxService {
         }
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(parseRecipients(settings.getEmailRecipients()));
-        message.setSubject("[RocketMQ Studio] " + alert.getTitle());
+        message.setSubject("[RocketMQ Studio] " + subjectLine(alert.getTitle()));
         message.setText(content);
         sender.send(message);
+    }
+
+    /**
+     * A mail subject is a single header line: the alert title is the rule's name verbatim, and a
+     * name carrying a line break would otherwise fold the rest of the subject into the header on
+     * the wire (its own line becomes a continuation). Collapse the breaks into spaces, the same
+     * way {@code AlertService} keeps an exported rule comment on one line.
+     */
+    private static String subjectLine(String title) {
+        return title == null ? "" : title.replaceAll("[\\r\\n]+", " ");
     }
 
     private static String[] parseRecipients(String raw) throws AddressException {
