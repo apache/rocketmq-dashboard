@@ -2088,6 +2088,30 @@ describe('Consumer page', () => {
     expect(await screen.findByText('消费组配置已保存')).toBeInTheDocument();
   });
 
+  it('keeps an invalid settings form open without submitting it', async () => {
+    vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
+      groupName: 'remote-cg',
+      retryQueueNums: 1,
+      retryMaxTimes: 16,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+    await user.click(within(row).getByRole('button', { name: /详\s*情/ }));
+    const dialog = await screen.findByRole('dialog', { name: /remote-cg/ });
+    await user.click(within(dialog).getByRole('tab', { name: /配\s*置/ }));
+    const retryQueueInput = await within(dialog).findByLabelText('重试队列数');
+    await waitFor(() => expect(retryQueueInput).toHaveValue('1'));
+
+    await user.clear(retryQueueInput);
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    expect(await within(dialog).findByText('请输入重试队列数')).toBeInTheDocument();
+    expect(consumerService.updateConsumerGroupSettings).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
+  });
+
   it('edits consumption switches from the detail modal settings tab', async () => {
     vi.mocked(consumerService.getConsumerGroupSettings).mockResolvedValue({
       groupName: 'remote-cg',

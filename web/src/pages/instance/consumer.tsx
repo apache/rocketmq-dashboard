@@ -590,7 +590,15 @@ const ConsumerPageContent = ({
   const saveSettings = async () => {
     if (!settingsGroup || !selectedInstanceId) return;
     const requestId = settingsRequestIdRef.current;
-    const values = await settingsForm.validateFields();
+    let values;
+    try {
+      values = await settingsForm.validateFields();
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'errorFields' in error)) {
+        message.error('保存消费组配置失败，请稍后重试');
+      }
+      return;
+    }
     if (requestId !== settingsRequestIdRef.current) return;
     const original = originalSettingsRef.current;
     const risks: string[] = [];
