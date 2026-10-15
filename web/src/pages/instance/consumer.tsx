@@ -2314,7 +2314,12 @@ const ConsumerPageContent = ({
             <Descriptions.Item label="采集时间">
               {selectedStack?.capturedAt ? formatUtcDateTime(selectedStack.capturedAt) : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
+            <Descriptions.Item label="线程数">
+              {/* While the capture is in flight, or after it failed, no thread list was read:
+                  showing 0 would present it as a measured count (the capture time beside it
+                  already renders "-"). */}
+              {selectedStack?.threadCount ?? '-'}
+            </Descriptions.Item>
           </Descriptions>
 
           {stackLoading ? (

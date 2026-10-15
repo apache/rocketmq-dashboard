@@ -108,6 +108,16 @@ const groupPage = (
   ...overrides,
 });
 
+/** The `线程数` value cell of the thread-stack modal's header row. */
+const threadCountCell = (dialog: HTMLElement) => {
+  // antd wraps the label in a span inside its own cell, so the value cell is the label cell's
+  // next sibling rather than the first content cell of the row (the row carries two items).
+  const labelCell = within(dialog).getByText('线程数').closest('th, td');
+  const cell = labelCell?.nextElementSibling;
+  if (!cell) throw new Error('thread count cell not found');
+  return cell as HTMLElement;
+};
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((complete) => {
@@ -1309,6 +1319,42 @@ describe('Consumer page', () => {
     expect(
       screen.getByText('org.apache.demo.OrderListener.consume(OrderListener.java:42)'),
     ).toBeInTheDocument();
+  });
+
+  it('does not report a thread count for a stack capture that never returned', async () => {
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([
+        {
+          ...group,
+          instances: [
+            {
+              clientId: 'client-1',
+              protocol: 'Remoting',
+              address: '10.0.0.1:39210',
+              subscribedTopics: ['remote-topic'],
+              lastHeartbeat: '2026-07-23T00:00:00Z',
+              topicLag: {},
+            },
+          ],
+        },
+      ]),
+    );
+    // A Proxy-connected client answers the capture with an error; nothing about its threads was
+    // ever read, and the header row used to print 0 as if it had been counted.
+    vi.mocked(consumerService.getConsumerStack).mockRejectedValue(new Error('capture unsupported'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('button', { name: /线程栈/ }));
+
+    const stackModal = (await screen.findByText('消费者线程栈')).closest<HTMLElement>(
+      '[role="dialog"]',
+    );
+    if (!stackModal) throw new Error('consumer stack modal not found');
+    const threadCount = threadCountCell(stackModal);
+    expect(threadCount).toHaveTextContent('-');
+    expect(threadCount).not.toHaveTextContent('0');
   });
 
   it('renders the stack capture time in the viewer timezone from the offset-less UTC wire format', async () => {
