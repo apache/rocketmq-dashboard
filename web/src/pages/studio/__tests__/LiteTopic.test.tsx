@@ -92,7 +92,10 @@ const createDeferred = <T,>() => {
 
 describe('LiteTopic time formatting', () => {
   it('preserves epoch timestamps and rejects invalid provider values', () => {
-    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    // Epoch instants render as a stable `YYYY-MM-DD HH:mm:ss` in the viewer's zone, never the
+    // locale-dependent Date.toLocaleString string.
+    expect(formatTime(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(formatTime(0)).not.toBe(new Date(0).toLocaleString());
     expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTime(Number.MAX_VALUE)).toBe('-');
   });
