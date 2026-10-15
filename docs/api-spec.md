@@ -149,6 +149,8 @@
 | 105 | POST | `/api/proxies/addresses` | 添加 Proxy 地址 |
 | 106 | DELETE | `/api/proxies/addresses` | 删除 Proxy 地址 |
 | 107 | POST | `/api/proxies/config/reload` | 热更新 Proxy 配置 |
+| 119 | GET | `/api/auth/status` | 登录策略与当前用户 |
+| 120 | POST | `/api/auth/password` | 修改当前用户密码 |
 
 ## 通用响应格式
 
@@ -229,6 +231,45 @@ POST /api/auth/logout
 ```
 
 **Response `data`:** `null`
+
+### 1.3 获取登录策略与当前用户
+
+```
+GET /api/auth/status
+```
+
+无需认证即可调用：未登录时 `authenticated` 为 `false`、`user` 为 `null`，调用方据此决定是否显示登录页。
+
+**Response `data`:** `AuthStatus`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `loginRequired` | `boolean` | 是否要求登录：`studio.auth.login-required` 或通用设置中的开关任一开启即为 `true` |
+| `authenticated` | `boolean` | 当前会话是否已认证 |
+| `user` | `object \| null` | 已认证时的用户信息，否则为 `null` |
+| `user.userId` | `number` | 用户 ID（数据库主键）；配置引导用户（未落库）为空 |
+| `user.username` | `string` | 用户名 |
+| `user.admin` | `boolean` | 是否管理员 |
+
+响应带 `Cache-Control: no-store`。
+
+### 1.4 修改当前用户密码
+
+```
+POST /api/auth/password
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `currentPassword` | `string` | 是 | 当前密码 |
+| `newPassword` | `string` | 是 | 新密码，长度 8–256 |
+
+**Response `data`:** `null`
+
+需要已认证会话（否则返回 `401`）；用户管理未初始化时返回 `503`。修改成功后该用户的全部会话都会被
+吊销（包括发起请求的会话），后续请求返回 `401`，需要重新登录。
 
 ---
 
