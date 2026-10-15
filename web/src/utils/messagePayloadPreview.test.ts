@@ -211,6 +211,53 @@ describe('messagePayloadPreview', () => {
     });
   });
 
+  it('recognizes padded reserved names without matching business-name prefixes', () => {
+    expect(isReservedMessageProperty('  tags  ')).toBe(true);
+    expect(isReservedMessageProperty('\tUnIq_KeY\n')).toBe(true);
+    expect(isReservedMessageProperty('TAGS_EXTRA')).toBe(false);
+    expect(isReservedMessageProperty('   ')).toBe(false);
+  });
+
+  it.each(['form', 'text'] as const)(
+    'warns about reserved properties in %s mode without rewriting their names',
+    (propsMode) => {
+      const properties = [
+        { key: '  UnIq_KeY  ', value: ' custom-id ' },
+        { key: ' tags ', value: ' paid ' },
+        { key: 'TAGS_EXTRA', value: 'custom' },
+        { key: 'tenant', value: 'retail' },
+      ];
+      const preview = analyzeMessagePayloadPreview({
+        topic: 'orders-topic',
+        body: '{}',
+        propsMode,
+        ...(propsMode === 'form'
+          ? { properties }
+          : { propsText: properties.map(({ key, value }) => `${key}=${value}`).join('\n') }),
+      });
+
+      expect(preview.blockingIssues).toEqual([]);
+      const reservedIssue = preview.issues.find((issue) => issue.code === 'RESERVED_PROPERTY_KEY');
+      expect(reservedIssue).toMatchObject({
+        names: ['UnIq_KeY', 'tags'],
+      });
+      // The existing form-mode test covers warning status and severity.
+      if (propsMode === 'text') {
+        expect(preview.status).toBe('warning');
+        expect(reservedIssue).toMatchObject({ severity: 'warning', field: 'properties' });
+      }
+      expect(preview.properties).toEqual({
+        UnIq_KeY: 'custom-id',
+        tags: 'paid',
+        TAGS_EXTRA: 'custom',
+        tenant: 'retail',
+      });
+      expect(
+        preview.propertyEntries.filter((entry) => entry.reserved).map((entry) => entry.key),
+      ).toEqual(['UnIq_KeY', 'tags']);
+    },
+  );
+
   it('summarizes empty property values and large property sets without blocking send', () => {
     const properties = Array.from({ length: 4 }, (_, index) => ({
       key: `k${index}`,
