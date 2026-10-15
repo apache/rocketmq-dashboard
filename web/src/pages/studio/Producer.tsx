@@ -25,9 +25,11 @@ import {
   Flex,
   Form,
   Select,
+  Space,
   Statistic,
   Table,
   Tag,
+  Typography,
 } from 'antd';
 import { DownloadSimple, MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -83,6 +85,8 @@ const ProducerPage = () => {
   const [failedBrokers, setFailedBrokers] = useState<string[]>([]);
   const [failedProducerGroups, setFailedProducerGroups] = useState<string[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instancesLoadFailed, setInstancesLoadFailed] = useState(false);
+  const [instancesReloadNonce, setInstancesReloadNonce] = useState(0);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
@@ -105,6 +109,7 @@ const ProducerPage = () => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
+        setInstancesLoadFailed(false);
         setSelectedInstanceId((current) =>
           apacheInstances.some((instance) => instance.name === current)
             ? current
@@ -112,15 +117,15 @@ const ProducerPage = () => {
         );
       })
       .catch(() => {
-        if (!cancelled) {
-          setInstances([]);
-        }
+        // Clearing the options here made a failed request look like a deployment without
+        // instances: the filter silently emptied, and nothing offered a retry.
+        if (!cancelled) setInstancesLoadFailed(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instancesReloadNonce]);
 
   // Invalidates any in-flight connection query and drops its visible results,
   // shared by every scope change (instance / topic) so a slow response can never
@@ -337,17 +342,35 @@ const ProducerPage = () => {
       >
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
           <Form.Item label="INSTANCE">
-            <Select
-              aria-label="Instance"
-              value={selectedInstanceId}
-              onChange={handleInstanceChange}
-              placeholder="Select instance"
-              style={{ width: 220 }}
-              options={instances.map((instance) => ({
-                value: instance.name,
-                label: instance.name,
-              }))}
-            />
+            <Flex align="center" gap={8}>
+              <Select
+                aria-label="Instance"
+                value={selectedInstanceId}
+                onChange={handleInstanceChange}
+                placeholder="Select instance"
+                status={instancesLoadFailed ? 'error' : undefined}
+                style={{ width: 220 }}
+                options={instances.map((instance) => ({
+                  value: instance.name,
+                  label: instance.name,
+                }))}
+              />
+              {instancesLoadFailed && (
+                <Space size={4}>
+                  <Typography.Text type="danger" style={{ fontSize: 14 }}>
+                    {t('instance.listLoadFailed')}
+                  </Typography.Text>
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0, height: 'auto' }}
+                    onClick={() => setInstancesReloadNonce((nonce) => nonce + 1)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                </Space>
+              )}
+            </Flex>
           </Form.Item>
           <Form.Item
             label="TOPIC"

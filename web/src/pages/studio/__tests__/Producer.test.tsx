@@ -159,6 +159,23 @@ describe('ProducerPage', () => {
     expect(screen.queryByText('cloud-instance')).not.toBeInTheDocument();
   });
 
+  it('announces a failed instance-list load instead of an empty instance filter', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    // An empty Select cannot say whether the deployment has no instances or the request failed.
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /搜索/ })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('实例列表加载失败，请稍后重试')).not.toBeInTheDocument();
+    });
+    expect(await screen.findByRole('button', { name: /搜索/ })).toBeEnabled();
+  });
+
   it('renders topic options loaded from the API', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProducerPage />);
