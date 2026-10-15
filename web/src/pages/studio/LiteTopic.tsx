@@ -182,6 +182,7 @@ const LiteTopicPage: React.FC = () => {
   const displayRequestId = useRef(0);
   const displayQueryRef = useRef<{ pattern?: string; namespace?: string }>({});
   const sessionRequestId = useRef(0);
+  const ttlInstanceRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -239,6 +240,7 @@ const LiteTopicPage: React.FC = () => {
     const mountedState = mountedRef;
     const bootstrapCounter = bootstrapRequestId;
     const displayCounter = displayRequestId;
+    const ttlCounter = ttlInstanceRequestId;
     mountedState.current = true;
 
     const bootstrapId = ++bootstrapCounter.current;
@@ -300,6 +302,7 @@ const LiteTopicPage: React.FC = () => {
       mountedState.current = false;
       ++bootstrapCounter.current;
       ++displayCounter.current;
+      ++ttlCounter.current;
     };
   }, [capabilityRetryVersion, fetchData]);
 
@@ -342,18 +345,21 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
+    const requestId = ++ttlInstanceRequestId.current;
     setExtendTTLForm({
       instanceId: '',
       topicPattern: record.topicPattern || '',
       newTTL: null,
     });
     setExtendTTLModalOpen(true);
+    setTtlInstanceOptions([]);
     // The TTL write is ownership-checked against the owning instance, so the
     // modal needs the Apache-vendor instance list; auto-select when only one
     // candidate exists.
     setTtlInstancesLoading(true);
     listInstances()
       .then((instances) => {
+        if (requestId !== ttlInstanceRequestId.current) return;
         const candidates = instances.filter(supportsApacheRuntime);
         setTtlInstanceOptions(candidates);
         setExtendTTLForm((form) =>
@@ -363,11 +369,17 @@ const LiteTopicPage: React.FC = () => {
         );
       })
       .catch(() => {
-        setTtlInstanceOptions([]);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstanceOptions([]);
       })
       .finally(() => {
-        setTtlInstancesLoading(false);
+        if (requestId === ttlInstanceRequestId.current) setTtlInstancesLoading(false);
       });
+  };
+
+  const closeExtendTTL = () => {
+    ++ttlInstanceRequestId.current;
+    setExtendTTLModalOpen(false);
+    setTtlInstancesLoading(false);
   };
 
   const handleExtendTTL = async () => {
@@ -381,7 +393,7 @@ const LiteTopicPage: React.FC = () => {
         extendTTLForm.newTTL,
       );
       message.success(t('liteTopic.extendTtlSuccess'));
-      setExtendTTLModalOpen(false);
+      closeExtendTTL();
       void fetchData(patternFilter || undefined, namespaceFilter || undefined);
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
@@ -998,7 +1010,7 @@ const LiteTopicPage: React.FC = () => {
         title={t('liteTopic.extendTtlModalTitle')}
         open={extendTTLModalOpen}
         onOk={handleExtendTTL}
-        onCancel={() => setExtendTTLModalOpen(false)}
+        onCancel={closeExtendTTL}
         confirmLoading={extendTTLLoading}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
