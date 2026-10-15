@@ -73,6 +73,7 @@ import {
 import { listTopics } from '../../services/topicService';
 import { getConsumerGroup, listAllConsumerGroups } from '../../services/consumerService';
 import type { ConsumerGroup, ConsumerInstance } from '../../api/metadata';
+import type { InstanceVendor } from '../../api/instance';
 import { getInstanceCapabilities } from '../../services/instanceService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import useAuthStore from '../../stores/authStore';
@@ -419,6 +420,7 @@ const MessagePageContent = ({
   const [directConsumeCapability, setDirectConsumeCapability] = useState<{
     instanceId: string;
     status: DirectConsumeCapabilityStatus;
+    vendor: InstanceVendor | null;
   } | null>(null);
   const queryGenerationRef = useRef(0);
   // The query whose results the table currently shows. Pagination must re-run this
@@ -449,12 +451,13 @@ const MessagePageContent = ({
             status: result.capabilities.includes('DIRECT_MESSAGE_CONSUME')
               ? 'supported'
               : 'unsupported',
+            vendor: result.vendor ?? null,
           });
         }
       })
       .catch(() => {
         if (active) {
-          setDirectConsumeCapability({ instanceId, status: 'unavailable' });
+          setDirectConsumeCapability({ instanceId, status: 'unavailable', vendor: null });
         }
       });
     return () => {
@@ -467,6 +470,18 @@ const MessagePageContent = ({
       ? directConsumeCapability.status
       : 'loading';
   const directConsumeSupported = directConsumeCapabilityStatus === 'supported';
+  // The footer selectors pick the consume target from the live consumer connection inventory.
+  // Only Apache instances expose one: cloud vendor group rows never report online instances,
+  // and the group-detail endpoint the client selector depends on answers 501 for cloud
+  // instances. A cloud instance advertising DIRECT_MESSAGE_CONSUME (the server-side consume
+  // API exists) must therefore show the honest disabled state instead of two selectors that
+  // can never fill — the free-text dialog that used to serve this case was removed.
+  const directConsumeInventoryUnavailable =
+    directConsumeSupported &&
+    directConsumeCapability !== null &&
+    directConsumeCapability.vendor !== null &&
+    directConsumeCapability.vendor !== 'APACHE';
+  const directConsumeUsable = directConsumeSupported && !directConsumeInventoryUnavailable;
   const directConsumeDisabledReason = !selectedInstanceId
     ? t('message.directConsumeSelectInstance')
     : directConsumeCapabilityStatus === 'unavailable'
@@ -475,7 +490,9 @@ const MessagePageContent = ({
         ? t('message.directConsumeUnsupported')
         : directConsumeCapabilityStatus === 'loading'
           ? t('message.directConsumeCapabilityLoading')
-          : undefined;
+          : directConsumeInventoryUnavailable
+            ? t('message.directConsumeCloudInventoryUnavailable')
+            : undefined;
 
   const onlineGroupsRequestRef = useRef(0);
   const onlineClientsRequestRef = useRef(0);
@@ -483,7 +500,7 @@ const MessagePageContent = ({
   // 只在详情弹窗打开时拉在线消费组：这是「直接消费」的实时目标清单，不该在进页面时就打。
   // 与本文件其他加载 effect 一致用 setTimeout(0) 起头，避免在 effect 体内同步 setState。
   useEffect(() => {
-    if (!modalOpen || !directConsumeSupported || !selectedInstanceId) return undefined;
+    if (!modalOpen || !directConsumeUsable || !selectedInstanceId) return undefined;
     const instanceId = selectedInstanceId;
     const requestId = ++onlineGroupsRequestRef.current;
     const timer = window.setTimeout(() => {
@@ -505,7 +522,7 @@ const MessagePageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [modalOpen, directConsumeSupported, selectedInstanceId, t]);
+  }, [modalOpen, directConsumeUsable, selectedInstanceId, t]);
 
   const handleConsumeGroupChange = (groupName: string) => {
     setDirectConsumeGroup(groupName);
@@ -1407,7 +1424,7 @@ const MessagePageContent = ({
                 showSearch
                 optionFilterProp="label"
                 loading={onlineGroupsLoading}
-                disabled={!directConsumeSupported}
+                disabled={!directConsumeUsable}
                 value={directConsumeGroup || undefined}
                 options={groupOptions}
                 onChange={handleConsumeGroupChange}
@@ -1424,7 +1441,7 @@ const MessagePageContent = ({
                 showSearch
                 optionFilterProp="label"
                 loading={onlineClientsLoading}
-                disabled={!directConsumeSupported || !directConsumeGroup}
+                disabled={!directConsumeUsable || !directConsumeGroup}
                 value={directConsumeClientId || undefined}
                 options={clientOptions}
                 onChange={setDirectConsumeClientId}
@@ -1442,7 +1459,7 @@ const MessagePageContent = ({
                     icon={<SendOutlined />}
                     loading={directConsumeSubmitting}
                     disabled={
-                      !directConsumeSupported ||
+                      !directConsumeUsable ||
                       !selectedInstanceId ||
                       !selectedMsg ||
                       !directConsumeGroup ||
