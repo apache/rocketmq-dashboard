@@ -41,6 +41,8 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
+import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.VerifySendMessageResponseBody;
@@ -90,6 +92,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -1170,6 +1173,56 @@ class AliyunInstanceProviderTest {
 
         assertThatThrownBy(() -> provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders"))
                 .isInstanceOf(BusinessException.class).extracting("code").isEqualTo(422);
+    }
+
+    @Test
+    void updateTopicShouldRejectQueueCountsTheVendorCannotApplyTest() {
+        stubInstance();
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setWriteQueues(4);
+        topic.setReadQueues(4);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("queue counts");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void updateTopicShouldRejectAPermissionTheVendorCannotApplyTest() {
+        stubInstance();
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setPerm(TopicPerm.RO);
+
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).contains("read-write");
+                });
+        verifyNoInteractions(clientFactory);
+    }
+
+    @Test
+    void updateTopicShouldStillSendARemarkOnlyUpdateTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.updateTopic(any(UpdateTopicRequest.class))).thenReturn(CompletableFuture.completedFuture(
+                UpdateTopicResponse.create().toBuilder().statusCode(200).build()));
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setRemark("updated remark");
+
+        TopicVO updated = provider.updateTopic(STUDIO_INSTANCE_ID, topic);
+
+        assertThat(updated.getRemark()).isEqualTo("updated remark");
+        ArgumentCaptor<UpdateTopicRequest> captor = ArgumentCaptor.forClass(UpdateTopicRequest.class);
+        verify(asyncClient).updateTopic(captor.capture());
+        assertThat(captor.getValue().getTopicName()).isEqualTo("orders");
+        assertThat(captor.getValue().getRemark()).isEqualTo("updated remark");
     }
 
     private void stubInstance() {

@@ -53,6 +53,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.AliyunResponseValidator;
 import org.apache.rocketmq.studio.common.util.Pagination;
@@ -277,6 +278,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         if (topic == null || !StringUtils.hasText(topic.getName())) {
             throw new BusinessException(400, "Topic name is required");
         }
+        requireUpdatableFields(topic);
         UpdateTopicRequest request = UpdateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
                 .topicName(topic.getName())
@@ -285,6 +287,24 @@ public class AliyunInstanceProvider implements InstanceProvider {
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.updateTopic(request));
         topic.setInstanceId(instanceId);
         return topic;
+    }
+
+    /**
+     * Rejects the topic properties the Aliyun OpenAPI cannot change. Neither {@code
+     * CreateTopicRequest} nor {@code UpdateTopicRequest} carries a queue count or a permission
+     * field (and reads report the fixed read-write default), so an update that asks for either
+     * would otherwise return the requested values as if they had been written to the cloud. The
+     * console sends the topic's current values, which are zero queue counts and RW.
+     */
+    private static void requireUpdatableFields(TopicVO topic) {
+        if (topic.getWriteQueues() > 0 || topic.getReadQueues() > 0) {
+            throw new BusinessException(400,
+                    "Aliyun RocketMQ does not support changing a topic's queue counts");
+        }
+        if (topic.getPerm() != null && topic.getPerm() != TopicPerm.RW) {
+            throw new BusinessException(400,
+                    "Aliyun RocketMQ topics are always read-write; the topic permission cannot be changed");
+        }
     }
 
     @Override

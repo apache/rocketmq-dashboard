@@ -1189,6 +1189,13 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static void validateUpdateTopic(TopicVO topic) {
         validateTopicName(topic);
         validateQueueNumber(topic);
+        // ModifyTopicRequest carries the queue count and no permission field, and reads report
+        // every cloud topic as read-write: an update cannot change the permission, so it must not
+        // return the requested value as if it had been applied.
+        if (topic.getPerm() != null && topic.getPerm() != TopicPerm.RW) {
+            throw new BusinessException(400,
+                    "Tencent Cloud RocketMQ topics are always read-write; the topic permission cannot be changed");
+        }
     }
 
     private static void validateTopicName(TopicVO topic) {
