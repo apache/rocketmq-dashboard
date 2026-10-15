@@ -7,6 +7,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -35,36 +36,34 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 		Short: "Create or update a complete Studio access context",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, cfg, err := runtime.configForWrite()
-			if err != nil {
-				return err
-			}
 			name := args[0]
-			// Map zero-value lookup yields an empty Context for new entries,
-			// so the per-flag Changed branches below fill it incrementally.
-			contextValue, exists := cfg.Contexts[name]
-			if !exists {
-				if missing := missingFlags(cmd.Flags(), newContextRequiredFlags); len(missing) > 0 {
-					return invalidArgument(
-						"new context requires --" + strings.Join(missing, ", --"))
+			var created bool
+			err := runtime.updateConfig(cmd.Context(), func(cfg *config.Config) error {
+				contextValue, exists := cfg.Contexts[name]
+				created = !exists
+				if !exists {
+					if missing := missingFlags(cmd.Flags(), newContextRequiredFlags); len(missing) > 0 {
+						return invalidArgument("new context requires --" + strings.Join(missing, ", --"))
+					}
 				}
-			}
-			if cmd.Flags().Changed("server") {
-				contextValue.Server = server
-			}
-			if cmd.Flags().Changed("access-key-env") {
-				contextValue.Credential.AccessKeyRef = "env:" + accessKeyEnv
-			}
-			if cmd.Flags().Changed("secret-key-env") {
-				contextValue.Credential.SecretKeyRef = "env:" + secretKeyEnv
-			}
-			cfg.Contexts[name] = contextValue
-			if err := runtime.store.Save(path, cfg); err != nil {
+				if cmd.Flags().Changed("server") {
+					contextValue.Server = server
+				}
+				if cmd.Flags().Changed("access-key-env") {
+					contextValue.Credential.AccessKeyRef = "env:" + accessKeyEnv
+				}
+				if cmd.Flags().Changed("secret-key-env") {
+					contextValue.Credential.SecretKeyRef = "env:" + secretKeyEnv
+				}
+				cfg.Contexts[name] = contextValue
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
 			if output.IsStructured(runtime.options.output) {
-				return output.Structured(out, runtime.options.output, map[string]any{"context": name, "created": !exists})
+				return output.Structured(out, runtime.options.output, map[string]any{"context": name, "created": created})
 			}
 			fmt.Fprintf(out, "updated context %s\n", name)
 			return nil
@@ -83,15 +82,14 @@ func newConfigUseContextCommand(runtime commandRuntime) *cobra.Command {
 		Short:   "Switch the current context",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, cfg, err := runtime.configForWrite()
+			err := runtime.updateConfig(cmd.Context(), func(cfg *config.Config) error {
+				if _, ok := cfg.Contexts[args[0]]; !ok {
+					return invalidArgument(fmt.Sprintf("context %q does not exist", args[0]))
+				}
+				cfg.CurrentContext = args[0]
+				return nil
+			})
 			if err != nil {
-				return err
-			}
-			if _, ok := cfg.Contexts[args[0]]; !ok {
-				return invalidArgument(fmt.Sprintf("context %q does not exist", args[0]))
-			}
-			cfg.CurrentContext = args[0]
-			if err := runtime.store.Save(path, cfg); err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
@@ -111,19 +109,18 @@ func newConfigDeleteContextCommand(runtime commandRuntime) *cobra.Command {
 		Short:   "Delete a named rmqctl context",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, cfg, err := runtime.configForWrite()
-			if err != nil {
-				return err
-			}
 			name := args[0]
-			if _, ok := cfg.Contexts[name]; !ok {
-				return invalidArgument(fmt.Sprintf("context %q does not exist", name))
-			}
-			delete(cfg.Contexts, name)
-			if cfg.CurrentContext == name {
-				cfg.CurrentContext = ""
-			}
-			if err := runtime.store.Save(path, cfg); err != nil {
+			err := runtime.updateConfig(cmd.Context(), func(cfg *config.Config) error {
+				if _, ok := cfg.Contexts[name]; !ok {
+					return invalidArgument(fmt.Sprintf("context %q does not exist", name))
+				}
+				delete(cfg.Contexts, name)
+				if cfg.CurrentContext == name {
+					cfg.CurrentContext = ""
+				}
+				return nil
+			})
+			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
@@ -194,14 +191,10 @@ func missingFlags(flags *pflag.FlagSet, required []string) []string {
 	return missing
 }
 
-func (r commandRuntime) configForWrite() (string, config.Config, error) {
+func (r commandRuntime) updateConfig(ctx context.Context, mutate func(*config.Config) error) error {
 	path, err := r.store.Path(r.options.configPath)
 	if err != nil {
-		return "", config.Config{}, err
+		return err
 	}
-	cfg, err := r.store.Load(path)
-	if err != nil {
-		return "", config.Config{}, err
-	}
-	return path, cfg, nil
+	return r.store.Update(ctx, path, mutate)
 }
