@@ -60,10 +60,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -647,6 +650,20 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportTopicsShouldLabelTheTimestampColumnsWithTheServerZoneTest() {
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            when(apacheProvider.listTopics("instance-a", null, null))
+                    .thenReturn(List.of(topic("orders", "critical", TopicType.NORMAL)));
+
+            assertTimestampColumnsAreZoned(metadataService.exportTopics("instance-a", null, null, List.of()));
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
+    }
+
+    @Test
     void importTopicsShouldContinueAfterRowFailureTest() {
         when(apacheProvider.importTopic(eq("instance-a"), any(TopicVO.class))).thenAnswer(invocation -> {
             TopicVO topic = invocation.getArgument(1);
@@ -1099,6 +1116,21 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldLabelTheTimestampColumnsWithTheServerZoneTest() {
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            when(apacheProvider.listConsumerGroups("instance-a", null))
+                    .thenReturn(List.of(consumerGroup("orders-cg", "orders", 1, SubscriptionMode.Push)));
+
+            assertTimestampColumnsAreZoned(
+                    metadataService.exportConsumerGroups("instance-a", null, null, List.of()));
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
+    }
+
+    @Test
     void exportConsumerGroupsShouldEscapeFormulaCells() {
         ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
         when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
@@ -1218,6 +1250,22 @@ class MetadataServiceTest {
                 .hasMessage("Resource belongs to another instance")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
         verifyNoInteractions(apacheProvider);
+    }
+
+    /**
+     * The exported timestamps are zone-less server-local values, so the two timestamp columns have
+     * to name the server's UTC offset the way the audit export labels its timestamp column. The
+     * expectation is derived from the offset current at export time instead of a fixed
+     * {@code +08:00}, so the assertion also holds where the suite runs in another zone.
+     */
+    private static void assertTimestampColumnsAreZoned(String csv) {
+        ZoneOffset offset = OffsetDateTime.now().getOffset();
+        String zone = "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+        assertThat(csv.lines().findFirst().orElseThrow())
+                .contains("Created At(" + zone + ")")
+                .contains("Updated At(" + zone + ")")
+                .doesNotContain("\"Created At\"")
+                .doesNotContain("\"Updated At\"");
     }
 
     private ConsumerGroupVO consumerGroup(String name, String namespace, long lag, SubscriptionMode mode) {

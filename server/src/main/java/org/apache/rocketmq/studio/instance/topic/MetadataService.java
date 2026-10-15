@@ -801,7 +801,8 @@ public class MetadataService {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Cluster ID", "Subscription Mode", "Consume Type",
                 "Online Instances", "Total Lag", "Delay Seconds", "Subscription Data Type",
-                "Delivery Order Type", "Retry Max Times", "Subscribed Topics", "Created At", "Updated At");
+                "Delivery Order Type", "Retry Max Times", "Subscribed Topics",
+                CsvUtil.timestampColumn("Created At"), CsvUtil.timestampColumn("Updated At"));
         for (ConsumerGroupVO group : groups) {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
@@ -896,7 +897,8 @@ public class MetadataService {
     private String buildTopicCsv(List<TopicVO> topics) {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", "Namespace", "Type", "Cluster ID", "Write Queues", "Read Queues",
-                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark", "Created At", "Updated At");
+                "Permission", "Message Count", "TPS", "Consumer Groups", "Remark",
+                CsvUtil.timestampColumn("Created At"), CsvUtil.timestampColumn("Updated At"));
         for (TopicVO topic : topics) {
             CsvUtil.appendRow(csv, topic.getName(), topic.getNamespace(), toText(topic.getType()), topic.getClusterId(),
                     topic.getWriteQueues(), topic.getReadQueues(), toText(topic.getPerm()), topic.getMessageCount(),

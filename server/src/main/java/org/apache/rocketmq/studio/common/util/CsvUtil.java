@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.common.util;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+
 /**
  * Shared CSV rendering helpers used by export endpoints. Cells are always quoted and
  * values starting with formula characters ({@code = + - @ \t \r \n}) are prefixed with
@@ -26,6 +29,25 @@ public final class CsvUtil {
     public static final String CRLF = "\r\n";
 
     private CsvUtil() {
+    }
+
+    /**
+     * The server's current UTC offset, e.g. {@code UTC+08:00} (plain {@code UTC} on a server whose
+     * zone is UTC). Exported timestamps are zone-less server-local values, so a timestamp column
+     * has to name the zone its values are in.
+     */
+    public static String serverZoneLabel() {
+        ZoneOffset offset = OffsetDateTime.now().getOffset();
+        return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+    }
+
+    /**
+     * Header of a column carrying a zone-less server-local timestamp, e.g.
+     * {@code Created At(UTC+08:00)}, so an exported file can be read without out-of-band timezone
+     * knowledge. The audit export labels its timestamp column the same way.
+     */
+    public static String timestampColumn(String label) {
+        return label + "(" + serverZoneLabel() + ")";
     }
 
     public static void appendRow(StringBuilder csv, Object... values) {

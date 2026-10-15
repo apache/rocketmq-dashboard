@@ -18,6 +18,10 @@ package org.apache.rocketmq.studio.common.util;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.TimeZone;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class CsvUtilTest {
@@ -27,6 +31,22 @@ class CsvUtilTest {
         StringBuilder csv = new StringBuilder();
         CsvUtil.appendRow(csv, "Name", null, 7);
         assertThat(csv.toString()).isEqualTo("\"Name\",\"\",\"7\"\r\n");
+    }
+
+    @Test
+    void timestampColumnShouldNameTheZoneOfTheZoneLessValuesTest() {
+        TimeZone originalZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            ZoneOffset offset = OffsetDateTime.now().getOffset();
+            String zone = "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+            assertThat(CsvUtil.timestampColumn("Created At")).isEqualTo("Created At(" + zone + ")");
+
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            assertThat(CsvUtil.timestampColumn("Created At")).isEqualTo("Created At(UTC)");
+        } finally {
+            TimeZone.setDefault(originalZone);
+        }
     }
 
     @Test
