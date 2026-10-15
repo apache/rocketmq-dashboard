@@ -497,6 +497,12 @@ const AuditPage: React.FC = () => {
           />
           <DatePicker.RangePicker
             value={dateRange as [Dayjs | null, Dayjs | null] | null}
+            // `GET /api/audit-logs` takes `startDate` and `endDate` as independent optional
+            // parameters (`AuditController.queryLogs`) and `buildAuditFilters` already maps a
+            // single end, so the control has to accept one: Ant Design otherwise keeps the range
+            // pending until both ends are picked, and a one-sided "since that day" filter cannot
+            // be expressed. #6637 restored the same behaviour on the system alerts page.
+            allowEmpty={[true, true]}
             onChange={(vals) => {
               setPage(1);
               setDateRange(vals as [Dayjs | null, Dayjs | null] | null);
