@@ -28,11 +28,12 @@ import {
   Modal,
   InputNumber,
   Typography,
+  Alert,
   message,
   Tooltip,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
-import { DownloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -110,6 +111,7 @@ const AuditPage: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
@@ -158,6 +160,7 @@ const AuditPage: React.FC = () => {
         if (recordsRequestRef.current !== requestId) return;
         setRecords(result.items);
         setTotal(result.total);
+        setLoadFailed(false);
         if (result.items.length === 0 && result.total > 0 && page > 1) {
           setPage(Math.max(1, Math.ceil(result.total / pageSize)));
           return;
@@ -165,7 +168,10 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
+          // A failed read must not leave the page asserting an empty audit trail: the summary
+          // below would report 0 operations and 0 operators for a store it never reached.
           message.error(t('audit.loadFailed'));
+          setLoadFailed(true);
         }
       })
       .finally(() => {
@@ -225,7 +231,10 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('audit.summaryLoadFailed'));
+        if (!cancelled) {
+          message.error(t('audit.summaryLoadFailed'));
+          setLoadFailed(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
@@ -536,7 +545,24 @@ const AuditPage: React.FC = () => {
         </Flex>
       </Flex>
 
-      <AuditSummaryCards summary={summary} loading={summaryLoading} />
+      {loadFailed && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => setRefreshKey((key) => key + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
+      <AuditSummaryCards summary={summary} loading={summaryLoading} failed={loadFailed} />
       <AuditRiskInsights summary={summary} records={records} loading={loading || summaryLoading} />
 
       {/* ─── Table ─── */}
