@@ -294,6 +294,77 @@ describe('ACL page', () => {
     );
   });
 
+  it('clamps rules back to the first page when the out-of-range page is also the last one', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const ruleItems = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index + 1,
+        principal: 'remote-user',
+        resource: `acl-topic-${String(index + 1).padStart(2, '0')}`,
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        gmtCreate: '2026-07-23T00:00:00Z',
+      }));
+    vi.mocked(aclService.listAclRules).mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        // Every rule was deleted server-side, so page 2 is out of range and the total is 0 too.
+        return { items: [], total: 0, page: 2, size: 20 };
+      }
+      return { items: ruleItems(20), total: 40, page: 1, size: 20 };
+    });
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('acl-topic-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    // page 2 > lastPage 1, so the page falls back to 1 even though the fresh total is 0.
+    await waitFor(() =>
+      expect(aclService.listAclRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+  });
+
+  it('clamps the user list back to the first page when the out-of-range page is also the last one', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const userItems = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index + 1,
+        username: `acl-user-${String(index + 1).padStart(2, '0')}`,
+        accessKey: `access-${index + 1}`,
+        secretKey: `secret-${index + 1}`,
+        admin: false,
+        clusters: ['cluster-a'],
+      }));
+    vi.mocked(aclService.pageAclUsers).mockImplementation(async (params) => {
+      if (params?.page === 2) {
+        return { items: [], total: 0, page: 2, size: 20 };
+      }
+      return { items: userItems(20), total: 40, page: 1, size: 20 };
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('acl-user-01')).toBeInTheDocument();
+
+    const secondPage = document.querySelector('.ant-pagination-item-2');
+    expect(secondPage).not.toBeNull();
+    await user.click(secondPage as HTMLElement);
+
+    await waitFor(() =>
+      expect(aclService.pageAclUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, pageSize: 20 }),
+      ),
+    );
+  });
+
   it('closes an ACL rule dialog when switching to another instance', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(instanceService.listInstances).mockResolvedValue([
