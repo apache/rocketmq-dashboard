@@ -544,10 +544,12 @@ public class NotificationOutboxService {
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
-        // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
-        // exhausted deliveries never landed in the audit summary's failed bucket.
+        // The audit result vocabulary is SUCCESS/FAILED/PARTIAL (docs/api-spec.md), and the summary
+        // buckets only those three: "RETRYING" rows were counted in its total but in no bucket.
+        // Both branches audit a failed attempt, and the operation name already tells a scheduled
+        // retry (RETRY_ALERT_NOTIFICATION) from an exhausted one (FAIL_ALERT_NOTIFICATION).
         recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
-                exhausted ? "FAILED" : "RETRYING", abbreviate(error));
+                "FAILED", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
 

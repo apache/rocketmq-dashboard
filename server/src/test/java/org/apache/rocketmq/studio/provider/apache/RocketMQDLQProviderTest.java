@@ -495,8 +495,10 @@ class RocketMQDLQProviderTest {
                 "instance-a", "group-a", 100L, 200L, "target-topic"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
@@ -710,13 +712,16 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
+        DLQResendResultVO result = provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
 
+        // The response keeps its own documented outcome vocabulary; only the audit result maps onto
+        // the summary's buckets, where a no-op resend is not a failure.
+        assertThat(result.getOutcome()).isEqualTo("NO_MESSAGES");
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(pullConsumer).fetchSubscribeMessageQueues(dlqTopic);
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), eq(null),
-                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("NO_MESSAGES"));
+                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("SUCCESS"));
     }
 
     @Test
@@ -726,8 +731,9 @@ class RocketMQDLQProviderTest {
         TopicList existingTargets = new TopicList();
         existingTargets.setTopicList(Set.of("target-topic"));
         when(adminExt.fetchAllTopicList()).thenReturn(existingTargets);
-        provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
+        DLQResendResultVO result = provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
+        assertThat(result.getOutcome()).isEqualTo("NO_MESSAGES");
         verify(runtimeAdminClientResolver).executePullConsumer(eq("instance-a"), any());
         verify(pullConsumer).fetchSubscribeMessageQueues(dlqTopic);
         verify(pullConsumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
@@ -738,7 +744,7 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 isNull(),
                 contains("matched=0, resent=0, failed=0"),
-                eq("NO_MESSAGES"));
+                eq("SUCCESS"));
     }
 
     @Test
@@ -763,8 +769,10 @@ class RocketMQDLQProviderTest {
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
@@ -794,8 +802,10 @@ class RocketMQDLQProviderTest {
         assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        // A resend against a missing DLQ topic answers 404: the audit result uses the shared
+        // FAILED word and the detail keeps the dlqTopicMissing marker.
         verify(auditService).record(eq("RESEND_DLQ"), eq("DLQ"), eq("group-a"), isNull(),
-                contains("dlqTopicMissing=true"), eq("NOT_FOUND"));
+                contains("dlqTopicMissing=true"), eq("FAILED"));
         verify(runtimeAdminClientResolver, never()).executeProducer(anyString(), any());
     }
 
