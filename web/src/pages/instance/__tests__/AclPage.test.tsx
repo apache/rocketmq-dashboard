@@ -277,6 +277,9 @@ describe('ACL page', () => {
 
       renderWithProviders(<AclPage />);
 
+      // The default tab is the users list; the rule creation times live on the rules tab.
+      await openRulesTab(userEvent.setup({ pointerEventsCheck: 0 }));
+
       expect(await screen.findByText('2026-07-23 10:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();

@@ -127,6 +127,30 @@ class AuditServiceTest {
 
             assertThat(result.getItems().get(0).getTimestamp())
                     .isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
+            // The wire row is a copy: the stored row keeps its server-local base.
+            assertThat(stored.getTimestamp()).isEqualTo(LocalDateTime.of(2026, 8, 1, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void summarizeShouldSerializeLatestAtAsUtcWallTimeTest() {
+        // latestAt rides the same wire as the page rows: zone-less server-local in storage, UTC
+        // for every JSON consumer, while the audit CSV keeps naming the server offset.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AuditSummaryVO stored = AuditSummaryVO.builder()
+                    .total(3)
+                    .latestAt(LocalDateTime.of(2026, 8, 1, 10, 0, 0))
+                    .build();
+            when(auditRepository.summarize(isNull(), isNull(), isNull(), isNull(),
+                    isNull(), isNull(), isNull())).thenReturn(stored);
+
+            AuditSummaryVO result = auditService.summarize(null, null, null, null, null, null, null);
+
+            assertThat(result.getLatestAt()).isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
         } finally {
             TimeZone.setDefault(original);
         }

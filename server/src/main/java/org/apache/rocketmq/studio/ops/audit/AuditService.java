@@ -81,8 +81,15 @@ public class AuditService {
                                     String clusterId, String startDate, String endDate, String result) {
         DateRange range = parseDateRange(startDate, endDate);
         String normalizedSearch = normalizeSearch(search);
-        return auditRepository.summarize(normalizedSearch, operationType, resourceType, clusterId,
-                range.start(), range.end(), result);
+        AuditSummaryVO summary = auditRepository.summarize(normalizedSearch, operationType,
+                resourceType, clusterId, range.start(), range.end(), result);
+        // latestAt rides the same wire as the page rows: zone-less server-local in storage,
+        // UTC for every JSON consumer, while the audit CSV keeps naming the server offset.
+        if (summary != null && summary.getLatestAt() != null) {
+            summary.setLatestAt(summary.getLatestAt().atZone(ZoneId.systemDefault())
+                    .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
+        }
+        return summary;
     }
 
     public String exportLogs(String search, String operationType, String resourceType,
@@ -127,13 +134,26 @@ public class AuditService {
         return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
     }
 
+    /** Returns a copy with the timestamp shifted to the UTC wire; the stored row keeps its base. */
     private static AuditRecordVO toUtcWire(AuditRecordVO record) {
-        if (record == null || record.getTimestamp() == null) {
-            return record;
+        if (record == null) {
+            return null;
         }
-        record.setTimestamp(record.getTimestamp().atZone(ZoneId.systemDefault())
-                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
-        return record;
+        AuditRecordVO wire = AuditRecordVO.builder()
+                .operator(record.getOperator())
+                .operationType(record.getOperationType())
+                .resourceType(record.getResourceType())
+                .target(record.getTarget())
+                .clusterId(record.getClusterId())
+                .detail(record.getDetail())
+                .result(record.getResult())
+                .errorMessage(record.getErrorMessage())
+                .timestamp(record.getTimestamp() == null ? null : record.getTimestamp()
+                        .atZone(ZoneId.systemDefault())
+                        .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime())
+                .build();
+        wire.setId(record.getId());
+        return wire;
     }
 
 
