@@ -363,7 +363,14 @@ describe('metrics explorer diagnostics', () => {
 
       const merged = mergeMetricsQueryHistory([existing], incoming);
 
-      expect(merged).toEqual([incoming, existing]);
+      // The point of this case is separation: an unscoped query and one scoped to an instance
+      // literally named "global" must survive as two entries. Ordering follows queriedAt now,
+      // so both iteration orders converge on the same result.
+      expect(merged).toHaveLength(2);
+      expect(merged.map((entry) => entry.id)).toEqual(
+        expect.arrayContaining([unscoped.id, scoped.id]),
+      );
+      expect(merged).toEqual([scoped, unscoped]);
       localStorage.clear();
       expect(saveMetricsQueryHistory(merged)).toBe(true);
       expect(loadMetricsQueryHistory()).toEqual([scoped, unscoped]);
