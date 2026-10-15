@@ -210,6 +210,25 @@ class AiRunServiceTest {
     }
 
     @Test
+    void admissionShouldRefuseAConfiguredModelTheRunColumnCannotStoreTest() {
+        // The per-request override is bounded by AiMessageDTO; the configured model is not, and the
+        // conversation row carries none, so the configured id is what the run would snapshot.
+        conversation.setModel(null);
+        when(llmConfigService.getConfig()).thenReturn(LlmConfigVO.builder()
+                .engine(LlmConfigVO.ENGINE_CLAUDE_CODE)
+                .model("m".repeat(129))
+                .enabled(true)
+                .build());
+
+        assertThatThrownBy(() -> service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("again")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getMessage()).contains("128"));
+        // Refused before admission: no run row and no user turn.
+        assertThat(runInserts).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
     void aConversationWithoutToolsShouldSaySoInItsTimelineTest() {
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.empty());
 

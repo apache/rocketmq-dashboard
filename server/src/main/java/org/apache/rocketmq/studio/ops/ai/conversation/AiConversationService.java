@@ -172,7 +172,11 @@ public class AiConversationService implements ApplicationRunner {
         conversation.setTitle(DEFAULT_TITLE);
         conversation.setOwner(StringUtils.hasText(owner) ? owner.trim() : "system");
         conversation.setEngine(config == null ? "" : config.normalizeEngine());
-        conversation.setModel(config == null || config.getModel() == null ? "" : config.getModel().trim());
+        String model = config == null || config.getModel() == null ? "" : config.getModel().trim();
+        // The row stores the id verbatim in VARCHAR(128); a longer configured value must not reach
+        // the insert, where MySQL would reject the row and the request would end as a 500.
+        LlmConfigService.requireStorableModel(model);
+        conversation.setModel(model);
         conversation.setMode(normalizeMode(mode));
         conversation.setInstanceId(StringUtils.hasText(instanceId) ? instanceId.trim() : null);
         conversation.setLastSeq(0);
