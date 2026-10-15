@@ -34,6 +34,7 @@ import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientController;
 import org.apache.rocketmq.studio.cluster.client.ClientService;
 import org.apache.rocketmq.studio.cluster.client.ProducerConnectionScanResult;
+import org.apache.rocketmq.studio.cluster.client.ProducerGroupScanResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -537,9 +538,10 @@ class RocketMQClientProviderTest {
                         "pg-shipment", List.of(producerInfo("producer-shipment", "10.0.0.4:1000")),
                         " ", List.of(producerInfo("ignored", "10.0.0.5:1000")))));
 
-        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 2);
+        ProducerGroupScanResult scan = provider.scanProducerGroups("instance-a", "TopicA", "pg", 2);
 
-        assertThat(groups).containsExactly("pg-order", "pg-payment");
+        assertThat(scan.groups()).containsExactly("pg-order", "pg-payment");
+        assertThat(scan.complete()).isTrue();
         verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
     }
 
@@ -550,7 +552,7 @@ class RocketMQClientProviderTest {
         when(adminExt.getAllProducerInfo(anyString()))
                 .thenThrow(new IllegalStateException("broker unavailable"));
 
-        assertThatThrownBy(() -> provider.findProducerGroups("instance-a", "TopicA", "pg", 20))
+        assertThatThrownBy(() -> provider.scanProducerGroups("instance-a", "TopicA", "pg", 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query producer groups from all brokers")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
@@ -566,9 +568,12 @@ class RocketMQClientProviderTest {
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-payment", List.of(producerInfo("producer-payment", "10.0.0.2:1000")))));
 
-        List<String> groups = provider.findProducerGroups("instance-a", "TopicA", "pg", 20);
+        ProducerGroupScanResult scan = provider.scanProducerGroups("instance-a", "TopicA", "pg", 20);
 
-        assertThat(groups).containsExactly("pg-payment");
+        // The surviving groups are still returned, but the selector now knows the list is partial.
+        assertThat(scan.groups()).containsExactly("pg-payment");
+        assertThat(scan.complete()).isFalse();
+        assertThat(scan.failedBrokers()).containsExactly("127.0.0.1:10911");
     }
 
     @Test

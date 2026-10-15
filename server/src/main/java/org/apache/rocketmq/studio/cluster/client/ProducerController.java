@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/producer")
@@ -34,7 +33,7 @@ public class ProducerController {
     private final ProducerConnectionService producerConnectionService;
 
     @GetMapping("/groups")
-    public Result<List<String>> listProducerGroups(
+    public Result<ProducerGroupScanVO> listProducerGroups(
             @RequestParam String instanceId,
             @RequestParam(required = false) String topic,
             @RequestParam(required = false) String query,

@@ -51,7 +51,8 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
     @Test
     void listProducerGroupsShouldReturnSuggestions() throws Exception {
         when(producerConnectionService.listProducerGroups("instance-1", "order-topic", "pg", 20))
-                .thenReturn(List.of("pg-order", "pg-payment"));
+                .thenReturn(new ProducerGroupScanVO(
+                        List.of("pg-order", "pg-payment"), true, List.of()));
 
         mockMvc.perform(get("/api/producer/groups")
                         .param("instanceId", "instance-1")
@@ -59,10 +60,30 @@ class ProducerControllerTest extends WebMvcAuthTestSupport {
                         .param("query", "pg")
                         .param("limit", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0]").value("pg-order"))
-                .andExpect(jsonPath("$.data[1]").value("pg-payment"));
+                .andExpect(jsonPath("$.data.groups[0]").value("pg-order"))
+                .andExpect(jsonPath("$.data.groups[1]").value("pg-payment"))
+                .andExpect(jsonPath("$.data.complete").value(true))
+                .andExpect(jsonPath("$.data.failedBrokers").isEmpty());
 
         verify(producerConnectionService).listProducerGroups("instance-1", "order-topic", "pg", 20);
+    }
+
+    @Test
+    void listProducerGroupsShouldReportAnIncompleteScanTest() throws Exception {
+        // #4468 marked the producer connection scan but left the group selector returning a partial
+        // list with no marker; the payload now carries the brokers that could not be scanned.
+        when(producerConnectionService.listProducerGroups("instance-1", "order-topic", null, 20))
+                .thenReturn(new ProducerGroupScanVO(
+                        List.of("pg-order"), false, List.of("broker-b:10911")));
+
+        mockMvc.perform(get("/api/producer/groups")
+                        .param("instanceId", "instance-1")
+                        .param("topic", "order-topic")
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.groups[0]").value("pg-order"))
+                .andExpect(jsonPath("$.data.complete").value(false))
+                .andExpect(jsonPath("$.data.failedBrokers[0]").value("broker-b:10911"));
     }
 
     @Test

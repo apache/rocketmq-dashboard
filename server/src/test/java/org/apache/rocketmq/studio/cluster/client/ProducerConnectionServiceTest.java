@@ -121,22 +121,42 @@ class ProducerConnectionServiceTest {
 
     @Test
     void listProducerGroupsShouldDelegateSelectorDiscoveryWithNormalizedFilters() {
-        when(clientProvider.findProducerGroups("instance-1", "order-topic", "pg", 100))
-                .thenReturn(List.of("pg-order", "pg-payment"));
+        when(clientProvider.scanProducerGroups("instance-1", "order-topic", "pg", 100))
+                .thenReturn(ProducerGroupScanResult.complete(List.of("pg-order", "pg-payment")));
 
-        assertThat(producerConnectionService.listProducerGroups(" instance-1 ", " order-topic ", " pg ", 1000))
-                .containsExactly("pg-order", "pg-payment");
-        verify(clientProvider).findProducerGroups("instance-1", "order-topic", "pg", 100);
+        ProducerGroupScanVO scan =
+                producerConnectionService.listProducerGroups(" instance-1 ", " order-topic ", " pg ", 1000);
+
+        assertThat(scan.getGroups()).containsExactly("pg-order", "pg-payment");
+        assertThat(scan.isComplete()).isTrue();
+        assertThat(scan.getFailedBrokers()).isEmpty();
+        verify(clientProvider).scanProducerGroups("instance-1", "order-topic", "pg", 100);
     }
 
     @Test
     void listProducerGroupsShouldApplyDefaultSelectorLimit() {
-        when(clientProvider.findProducerGroups("instance-1", null, null, 20))
-                .thenReturn(List.of("pg-order"));
+        when(clientProvider.scanProducerGroups("instance-1", null, null, 20))
+                .thenReturn(ProducerGroupScanResult.complete(List.of("pg-order")));
 
-        assertThat(producerConnectionService.listProducerGroups("instance-1", " ", " ", null))
+        assertThat(producerConnectionService.listProducerGroups("instance-1", " ", " ", null).getGroups())
                 .containsExactly("pg-order");
-        verify(clientProvider).findProducerGroups("instance-1", null, null, 20);
+        verify(clientProvider).scanProducerGroups("instance-1", null, null, 20);
+    }
+
+    @Test
+    void listProducerGroupsShouldReportBrokersThatCouldNotBeScanned() {
+        // A selector that drops an unreachable broker's groups looks like a complete list: the scan
+        // has to carry the gap so the console can say the suggestions are partial.
+        when(clientProvider.scanProducerGroups("instance-1", "order-topic", null, 20))
+                .thenReturn(new ProducerGroupScanResult(
+                        List.of("pg-order"), List.of("broker-a:10911")));
+
+        ProducerGroupScanVO scan =
+                producerConnectionService.listProducerGroups("instance-1", "order-topic", null, null);
+
+        assertThat(scan.isComplete()).isFalse();
+        assertThat(scan.getFailedBrokers()).containsExactly("broker-a:10911");
+        assertThat(scan.getGroups()).containsExactly("pg-order");
     }
 
     @Test
