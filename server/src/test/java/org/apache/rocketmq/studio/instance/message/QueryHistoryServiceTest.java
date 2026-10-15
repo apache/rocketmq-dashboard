@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.message;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -287,6 +288,21 @@ class QueryHistoryServiceTest {
         assertThat(savedMessage.path("msgId").asText()).isEqualTo("message-with-payload");
         assertThat(savedMessage.has("body")).isFalse();
         assertThat(savedMessage.has("properties")).isFalse();
+    }
+
+    @Test
+    void unwritableResultSnapshotIsReportedInsteadOfStoredAsNullTest() throws Exception {
+        ObjectMapper failing = mock(ObjectMapper.class);
+        when(failing.writeValueAsString(any())).thenThrow(new JsonProcessingException("cannot write") { });
+        QueryHistoryService failingService = new QueryHistoryService(
+                messageQueryMapper, traceQueryMapper, properties, clock, failing);
+        List<MessageRecordVO> messages = List.of(MessageRecordVO.builder().msgId("msg-1").build());
+
+        // A null snapshot reads back as "nothing stored", so returning one here would let the
+        // history row advertise its result count while serving no results.
+        assertThatThrownBy(() -> failingService.buildResultSnapshot(messages))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Failed to serialize the query result snapshot");
     }
 
     @Test
