@@ -625,6 +625,47 @@ describe('AlertsPage', () => {
     expect(screen.getByPlaceholderText('搜索规则名称或指标')).toHaveValue('');
   });
 
+  it('ignores a stale runtime response that resolves after the domain switches', async () => {
+    let resolveClusterRuntime!: (value: Awaited<ReturnType<typeof listAlertRuleRuntime>>) => void;
+    vi.mocked(listAlertRuleRuntime).mockImplementation((domain) => {
+      if (domain === 'CLUSTER') {
+        return new Promise((resolve) => {
+          resolveClusterRuntime = resolve;
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { rerender } = renderPage('CLUSTER');
+    await screen.findByText('Broker disk usage');
+
+    rerender(
+      <App>
+        <LangProvider>
+          <AlertsPage domain="BUSINESS" />
+        </LangProvider>
+      </App>,
+    );
+    await screen.findByText('Broker disk usage');
+
+    const row = getRuleRow('Broker disk usage');
+    await act(async () => {
+      resolveClusterRuntime([
+        {
+          ruleId: alertRules[0].id,
+          fingerprint: 'stale-fingerprint',
+          status: 'FIRING',
+          consecutiveHits: 3,
+          currentValue: 90,
+          nextReminderAt: null,
+        },
+      ]);
+    });
+
+    expect(within(row).getByText('未采集')).toBeInTheDocument();
+    expect(within(row).queryByText('触发 1')).not.toBeInTheDocument();
+  });
+
   it('uses the business rule API and loads only business metrics for the selected instance', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {
