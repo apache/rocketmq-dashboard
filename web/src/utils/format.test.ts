@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
   formatTimeOfDay,
   formatTimeMs,
+  roundPercent,
 } from './format';
 
 describe('formatBytes', () => {
@@ -65,6 +66,12 @@ describe('formatBytes', () => {
     expect(formatPercent(12.345, -1)).toBe('12%');
   });
 
+  it('rounds percentages to the tenth the progress bars display', () => {
+    expect(roundPercent(28.999999999999996)).toBe(29);
+    expect(roundPercent(62.5)).toBe(62.5);
+    expect(roundPercent(0)).toBe(0);
+  });
+
   it('uses a placeholder for invalid dates and numeric values', () => {
     expect(formatDate('not-a-date')).toBe('-');
     expect(formatDateTime(new Date(Number.NaN))).toBe('-');
@@ -79,9 +86,9 @@ describe('formatBytes', () => {
 
   it('treats timezone-less alert timestamps as UTC', () => {
     expect(formatUtcDateTime('2026-08-23T10:35:38.590731', 'America/Los_Angeles')).toBe(
-      '2026-08-23 03:35:38 PDT',
+      '2026-08-23 03:35:38',
     );
-    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38 UTC');
+    expect(formatUtcDateTime('2026-08-23T10:35:38Z', 'UTC')).toBe('2026-08-23 10:35:38');
   });
 
   it('formats recent timestamps for compact conversation history', () => {
@@ -100,6 +107,23 @@ describe('formatBytes', () => {
 });
 
 describe('formatTimeMs', () => {
+  it.each([8_640_000_000_000_001, -8_640_000_000_000_001, Number.MAX_VALUE, -Number.MAX_VALUE])(
+    'uses the placeholder for finite timestamps outside the Date range: %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe('-');
+      expect(formatRelativeTime(value, 'en', (key) => key, Date.now())).toBe('-');
+      expect(formatRelativeTime(Date.now(), 'en', (key) => key, value)).toBe('-');
+    },
+  );
+
+  it.each([8_640_000_000_000_000, -8_640_000_000_000_000])(
+    'keeps representable boundary dates: %s',
+    (value) => {
+      expect(formatTimeMs(value)).toBe(`${formatDateTime(new Date(value))}.000`);
+      expect(formatRelativeTime(value, 'en', (key) => key, value)).toBe('ai.history.justNow');
+    },
+  );
+
   const shape = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
 
   it('preserves the Unix epoch timestamp', () => {

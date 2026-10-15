@@ -173,7 +173,7 @@ specs.append((
         stat_panel(3, "Total Topics", "count(count by (topic) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(4, "Total Consumer Groups", "count(count by (group) (rocketmq_messages_out_total{cluster=\"$cluster\"}))", 6, 8),
         stat_panel(5, "Producer Count", "max(rocketmq_producer_count{cluster=\"$cluster\"})", 6, 8),
-        stat_panel(6, "Broker Count", "count(rocketmq_messages_in_total{cluster=\"$cluster\"})", 6, 8),
+        stat_panel(6, "Broker Count", "count(count by (broker) (rocketmq_messages_in_total{cluster=\"$cluster\"}))", 6, 8),
     ],
 ))
 
@@ -272,7 +272,7 @@ specs.append((
     "rocketmq-dlq", "RocketMQ DLQ & Retry",
     "Dead-letter queue resend volume and latency.",
     [
-        ts_panel(1, "DLQ Resend Count (1m)", "rate(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])", 12, 0, "{{topic}}"),
+        ts_panel(1, "DLQ Resend Count (1m)", "increase(rocketmq_dlq_resend_count{cluster=\"$cluster\"}[1m])", 12, 0, "{{topic}}"),
         ts_panel(2, "DLQ Resend Latency", "rocketmq_dlq_resend_latency{cluster=\"$cluster\"}", 12, 0, "{{topic}}", "s"),
     ],
 ))

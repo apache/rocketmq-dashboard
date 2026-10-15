@@ -113,6 +113,18 @@ const selectedInstance = {
   gmtModified: '2026-01-01T00:00:00Z',
 };
 
+const healthyBrokerRoute: BrokerRoute = {
+  brokerName: 'broker-a',
+  brokerAddr: '10.0.0.1:10911',
+  masterAddr: '10.0.0.1:10911',
+  writeQueues: 8,
+  readQueues: 8,
+  perm: 'RW',
+  readable: true,
+  writable: true,
+  replicaCount: 1,
+};
+
 const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
     <App>
@@ -228,9 +240,29 @@ describe('TopicPage', () => {
     expect(cols.length).toBeGreaterThan(0);
     const actionCol = cols[cols.length - 1] as HTMLElement;
     // 操作列实测依据（勿随意改小，topic.tsx 列定义处有同步注释）：
-    // 4 个小按钮（详情/配置/发送/删除）一行占 282px，按钮右对齐贴住表格右缘
-    // （与 Group 管理页操作列一致），列宽不足时按钮溢出产生横向滚动条。
-    expect(actionCol.style.width).toBe('282px');
+    // 4 个小按钮（详情/配置/发送/删除）实测 274px + 单元格左右 padding 各 8px = 290px，
+    // 按钮右对齐贴住表格右缘（与 Group 管理页操作列一致）。只算左 padding 会让按钮组左溢
+    // 8px 压住「修改时间」列。
+    expect(actionCol.style.width).toBe('290px');
+  });
+
+  it('gives each of the four row actions its own color', async () => {
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await screen.findByText('topic-01');
+
+    const row = screen.getByText('topic-01').closest('tr') as HTMLElement;
+    const buttons = within(row).getAllByRole('button');
+    const colors = buttons.map((button) => button.style.color);
+
+    // 详情/配置/发送/删除 四个按钮曾有两个同为 #1677ff，用户要求区分开。
+    expect(buttons.map((button) => button.textContent)).toEqual(['详情', '配置', '发送', '删除']);
+    expect(colors).toEqual([
+      'rgb(22, 119, 255)',
+      'rgb(114, 46, 209)',
+      'rgb(82, 196, 26)',
+      'rgb(255, 77, 79)',
+    ]);
+    expect(new Set(colors).size).toBe(colors.length);
   });
 
   it('reloads the authoritative server page after creating a topic', async () => {
@@ -566,6 +598,57 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('still loads the routes when the consumer page fails, and does not claim the topic has no route', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([
+      {
+        brokerName: 'broker-a',
+        brokerAddr: '10.101.2.11:10911',
+        writeQueues: 8,
+        readQueues: 8,
+        perm: 'RW',
+      },
+    ]);
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // The route lookup is an independent request: a failed consumer page must not skip it, or the
+    // modal renders the empty fallback as "the broker has no route" for a topic that exists.
+    await waitFor(() =>
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+  });
+
+  it('shows a retry instead of the rebuild action when the route request itself failed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicRoutes.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    expect(await screen.findByText('路由信息加载失败')).toBeInTheDocument();
+    // Rebuilding an existing topic is not the answer to a failed request.
+    expect(screen.queryByRole('button', { name: '在 Broker 上重建' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('labels an empty consumer table as a failed load instead of as no consumers', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    topicServiceMocks.getTopicConsumerPage.mockRejectedValueOnce(new Error('blip'));
+
+    await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
+
+    // Those rows never arrived, so an empty table must not read as "nobody consumes this topic".
+    expect(await screen.findByText('消费者加载失败，请重试')).toBeInTheDocument();
+  });
+
   it('clamps back to a valid page when the current page becomes empty after a delete', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([
@@ -660,6 +743,39 @@ describe('TopicPage', () => {
     expect(screen.getByText('共 0 个 Topic')).toBeInTheDocument();
   });
 
+  it('drops a deleted topic from the selection so the batch delete cannot re-submit it', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const topic = buildTopics(1)[0];
+    let call = 0;
+    topicServiceMocks.listTopicsPage.mockImplementation(async () => {
+      call += 1;
+      return call === 1
+        ? { items: [topic], total: 1, page: 1, size: 20 }
+        : { items: [], total: 0, page: 1, size: 20 };
+    });
+    topicServiceMocks.deleteTopic.mockResolvedValue(undefined);
+    renderWithProviders();
+
+    const row = await screen.findByRole('row', { name: /topic-01/ });
+    await user.click(within(row).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    await user.click(within(row).getByRole('button', { name: /删除/ }));
+    const dialog = (await screen.findByText(/确定要删除 Topic「topic-01」/)).closest(
+      '.ant-modal',
+    ) as HTMLElement;
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.deleteTopic).toHaveBeenCalledWith('topic-01', 'instance-proxy-1'),
+    );
+    // The row is gone, so a selection still holding its name can only fail on the next batch
+    // delete - and that failure re-seeds the same unusable selection.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument(),
+    );
+  });
+
   it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
@@ -688,61 +804,6 @@ describe('TopicPage', () => {
       }),
     );
     expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
-  });
-
-  it('renders topic route health diagnostics in the detail modal', async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const routes: BrokerRoute[] = [
-      {
-        brokerName: 'broker-a',
-        brokerAddr: '',
-        masterAddr: '',
-        brokerAddrs: {
-          '1': '10.0.0.2:10911',
-        },
-        brokerIds: [1],
-        replicaCount: 1,
-        writeQueues: 12,
-        readQueues: 0,
-        perm: 'WO',
-        permCode: 2,
-        readable: false,
-        writable: true,
-        topicSysFlag: 0,
-      },
-      {
-        brokerName: 'broker-b',
-        brokerAddr: '10.0.0.3:10911',
-        masterAddr: '10.0.0.3:10911',
-        brokerAddrs: {
-          '0': '10.0.0.3:10911',
-        },
-        brokerIds: [0],
-        replicaCount: 0,
-        writeQueues: 2,
-        readQueues: 8,
-        perm: 'RW',
-        permCode: 6,
-        readable: true,
-        writable: true,
-        topicSysFlag: 0,
-      },
-    ];
-    mockTopicsList([buildTopics(1)[0]]);
-    topicServiceMocks.getTopicRoutes.mockResolvedValue(routes);
-    renderWithProviders();
-
-    await user.click(await screen.findByRole('button', { name: /详情/ }));
-
-    expect(await screen.findByText('路由诊断：不可用')).toBeInTheDocument();
-    expect(screen.getByText('可写 Broker')).toBeInTheDocument();
-    expect(screen.getByText('14 个写队列')).toBeInTheDocument();
-    expect(screen.getByText('Replica 1')).toBeInTheDocument();
-    expect(screen.getAllByText('写队列分布不均').length).toBeGreaterThan(0);
-    expect(screen.getByText('broker-a：读队列不可用')).toBeInTheDocument();
-    expect(
-      screen.getByText('检查 Broker 是否仍向 NameServer 注册，并确认 master 节点可达。'),
-    ).toBeInTheDocument();
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
@@ -896,6 +957,89 @@ describe('TopicPage', () => {
     expect(screen.queryByText('topic-b')).not.toBeInTheDocument();
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
+
+  const previewCsv = (name: string) =>
+    '"Name","Type","Write Queues","Read Queues","Permission"\n"' + name + '","NORMAL","4","6","RW"';
+
+  it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+      ),
+    );
+    const input = screen.getByTestId('topic-import-file');
+    await user.upload(input, new File([previewCsv('previous-resource')], 'first.csv'));
+    await screen.findByText('previous-resource');
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    let resolve!: (text: string) => void;
+    const next = new File([], 'second.csv');
+    Object.defineProperty(next, 'text', {
+      value: () =>
+        new Promise<string>((complete) => {
+          resolve = complete;
+        }),
+    });
+    await user.upload(input, next);
+    expect(screen.getByText('导入 Topic：second.csv')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+    expect(topicServiceMocks.importTopics).not.toHaveBeenCalled();
+    await act(async () => resolve(previewCsv('current-resource')));
+    await screen.findByText('current-resource');
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+      ]),
+    );
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'ignoresCancelledFileReadCompletionTest (%s)',
+    async (outcome) => {
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      mockTopicsList([]);
+      instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+      renderWithProviders('/instance/instance-proxy-1/topic');
+      await waitFor(() =>
+        expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledWith(
+          expect.objectContaining({ instanceId: 'instance-proxy-1' }),
+        ),
+      );
+      const input = screen.getByTestId('topic-import-file');
+      let resolve!: (text: string) => void;
+      let reject!: (error: Error) => void;
+      const first = new File([], 'first.csv');
+      Object.defineProperty(first, 'text', {
+        value: () =>
+          new Promise<string>((complete, fail) => {
+            resolve = complete;
+            reject = fail;
+          }),
+      });
+      await user.upload(input, first);
+      await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+      await user.upload(input, new File([previewCsv('current-resource')], 'second.csv'));
+      await screen.findByText('current-resource');
+      await act(async () => {
+        if (outcome === 'success') resolve(previewCsv('previous-resource'));
+        else reject(new Error('obsolete file read failed'));
+      });
+      expect(screen.getByText('current-resource')).toBeInTheDocument();
+      expect(screen.queryByText('previous-resource')).not.toBeInTheDocument();
+      expect(screen.queryByText('obsolete file read failed')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: '开始导入' }));
+      await waitFor(() =>
+        expect(topicServiceMocks.importTopics).toHaveBeenCalledWith('instance-proxy-1', [
+          expect.objectContaining({ name: 'current-resource', instanceId: 'instance-proxy-1' }),
+        ]),
+      );
+    },
+  );
 
   it('imports valid topic CSV rows through the backend batch service with the selected instance', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -1057,7 +1201,29 @@ describe('TopicPage', () => {
     });
   });
 
-  it('previews the send payload and submits the normalized properties', async () => {
+  it('loads the topic page once when the instance list lands after it', async () => {
+    let releaseInstances: (instances: unknown[]) => void = () => {};
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<unknown[]>((resolve) => {
+          releaseInstances = resolve;
+        }),
+    );
+    mockTopicsList(buildTopics(1));
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    // The route already names the instance, so the page must not wait for the instance list…
+    await waitFor(() => expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(1));
+
+    // …and the list landing afterwards must not fire a second, identical request.
+    await act(async () => {
+      releaseInstances([selectedInstance]);
+    });
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopicsPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits the normalized send payload', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
@@ -1077,12 +1243,6 @@ describe('TopicPage', () => {
       target: { value: 'trace-1' },
     });
 
-    await waitFor(() => expect(within(dialog).getByText('可以发送')).toBeInTheDocument());
-    expect(within(dialog).getByText('JSON Object')).toBeInTheDocument();
-    expect(within(dialog).getByText('Tag paid')).toBeInTheDocument();
-    expect(within(dialog).getByText('Key order-1')).toBeInTheDocument();
-    expect(within(dialog).getByText('traceId=trace-1')).toBeInTheDocument();
-
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
     await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
@@ -1096,7 +1256,7 @@ describe('TopicPage', () => {
     });
   });
 
-  it('blocks duplicate form properties in the send payload preflight', async () => {
+  it('blocks duplicate form properties when sending', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     mockTopicsList([buildTopics(1)[0]]);
     renderWithProviders();
@@ -1114,10 +1274,6 @@ describe('TopicPage', () => {
     fireEvent.change(propertyValues[0], { target: { value: 'first' } });
     fireEvent.change(propertyKeys[1], { target: { value: 'traceId' } });
     fireEvent.change(propertyValues[1], { target: { value: 'second' } });
-
-    await waitFor(() => expect(within(dialog).getByText('阻止发送')).toBeInTheDocument());
-    expect(within(dialog).getByText('属性名重复')).toBeInTheDocument();
-    expect(within(dialog).getByText('重复属性仅保留第一个值：traceId')).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: /发\s*送/ }));
 
@@ -1297,12 +1453,66 @@ describe('TopicPage', () => {
       resolveSecond([healthyRoute]);
       await secondCheck;
     });
-    expect(screen.getByText(/所有 Topic 在 Broker 上均有路由/)).toBeInTheDocument();
+    // The check only looks at the rows of the current page and filter, so the verdict must say so
+    // instead of declaring the whole inventory healthy.
+    expect(
+      screen.getByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由.*只覆盖当前页与当前筛选/),
+    ).toBeInTheDocument();
 
     await act(async () => {
       resolveFirst([]);
       await firstCheck;
     });
     expect(screen.queryByText('缺失路由')).not.toBeInTheDocument();
+  });
+
+  it('reports a failed route check instead of claiming every topic has a route', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(1));
+    topicServiceMocks.getTopicRoutes.mockRejectedValue(new Error('blip'));
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    // A lookup that threw proves nothing about that topic, so the empty state must not fall back
+    // to the healthy verdict: nothing was verified, and the transient toast is long gone by the
+    // time anyone reads the dialog.
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('counts only the topics whose route check succeeded', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(2));
+    topicServiceMocks.getTopicRoutes.mockImplementation(async (name: string) => {
+      if (name === 'topic-02') throw new Error('blip');
+      return [healthyBrokerRoute];
+    });
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(await screen.findByText('路由校验失败：1 个 Topic 未能校验')).toBeInTheDocument();
+    expect(screen.queryByText(/2 个 Topic 在 Broker 上均有路由/)).not.toBeInTheDocument();
+  });
+
+  it('scopes the sync verdict to the rows the list actually shows', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    // Rows belonging to another instance are still in state while an instance switch is in
+    // flight, and the table hides them; the verdict must not count topics nobody can see.
+    mockTopicsList([buildTopics(1)[0], { ...buildTopics(2)[1], instanceId: 'instance-other' }]);
+    topicServiceMocks.getTopicRoutes.mockResolvedValue([healthyBrokerRoute]);
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    expect(screen.queryByText('topic-02')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /同步/ }));
+
+    expect(
+      await screen.findByText(/当前列表中的 1 个 Topic 在 Broker 上均有路由/),
+    ).toBeInTheDocument();
   });
 });

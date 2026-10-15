@@ -26,6 +26,8 @@ import org.apache.rocketmq.client.impl.MQClientAPIImpl;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
+import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -159,8 +161,11 @@ class RocketMQMessageProviderTest {
         brokerResult.setConsumeResult(CMResult.CR_SUCCESS);
         brokerResult.setRemark("consumed");
         brokerResult.setSpentTimeMills(12);
-        MessageExt message = prepareDirectConsumption();
-        String offsetId = message.getMsgId();
+        MessageClientExt message = prepareDirectConsumption();
+        String offsetId = message.getOffsetMsgId();
+        // The fixture has to model production, where the UNIQ_KEY getMsgId() returns is a different
+        // string from the offset id — otherwise this test cannot tell the two apart.
+        assertThat(message.getMsgId()).isNotEqualTo(offsetId);
         when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", offsetId))
                 .thenReturn(brokerResult);
 
@@ -170,11 +175,13 @@ class RocketMQMessageProviderTest {
         assertThat(result.getRemark()).isEqualTo("consumed");
         assertThat(result.getSpentTimeMillis()).isEqualTo(12);
         verify(adminExt).consumeMessageDirectly("billing", "client-a", "orders", offsetId);
+        // The UNIQ_KEY is not a physical location; handing it to the broker is the bug this pins.
+        verify(adminExt, never()).consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId());
     }
 
     @Test
     void directConsumptionRejectsInvalidActualMessageWithoutRemoteWriteTest() throws Exception {
-        MessageExt message = prepareDirectConsumption();
+        MessageClientExt message = prepareDirectConsumption();
         for (java.net.SocketAddress address : java.util.Arrays.asList(null,
                 InetSocketAddress.createUnresolved("unknown.invalid", 10911),
                 new InetSocketAddress("10.0.0.9", 10911))) {
@@ -185,7 +192,7 @@ class RocketMQMessageProviderTest {
         message.setTopic("other-topic");
         assertDirectConflict();
         message.setTopic("orders");
-        message.setMsgId("not-an-offset-id");
+        message.setOffsetMsgId("not-an-offset-id");
         assertDirectConflict();
         verify(adminExt, never()).consumeMessageDirectly(anyString(), anyString(), anyString(), anyString());
     }
@@ -207,7 +214,7 @@ class RocketMQMessageProviderTest {
                 .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.getCode()).isEqualTo(409));
     }
 
-    private MessageExt prepareDirectConsumption() throws Exception {
+    private MessageClientExt prepareDirectConsumption() throws Exception {
         var instance = org.apache.rocketmq.studio.instance.InstanceVO.builder().name("cluster-a").build();
         when(ownershipGuard.requireInstance("instance-a")).thenReturn(instance);
         when(ownershipGuard.topicResource("orders")).thenCallRealMethod();
@@ -229,9 +236,14 @@ class RocketMQMessageProviderTest {
         route.setQueueDatas(List.of(queue));
         when(adminExt.examineTopicRouteInfo("orders")).thenReturn(route);
         String offsetId = "AC1E0A6400002A9F0000000000000001";
-        MessageExt message = new MessageExt();
+        MessageClientExt message = new MessageClientExt();
         message.setTopic("orders");
-        message.setMsgId(offsetId);
+        // viewMessage hands back a MessageClientExt, whose getMsgId() prefers the client-side UNIQ_KEY
+        // (its "port" segment is a process id, so it cannot be decoded as a physical location); the
+        // broker address + commitlog offset the broker needs lives in getOffsetMsgId(). The fixture
+        // models both, otherwise passing the wrong one to the broker stays invisible.
+        MessageClientIDSetter.setUniqID(message);
+        message.setOffsetMsgId(offsetId);
         message.setStoreHost(new InetSocketAddress("172.30.10.100", 10911));
         when(adminExt.viewMessage("orders", "msg-1")).thenReturn(message);
         return message;
@@ -251,8 +263,8 @@ class RocketMQMessageProviderTest {
     void directlyConsumesMessageReportsAnOfflineClientAsNotFoundTest() throws Exception {
         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online" when
         // the typed client id is not connected, which is the normal state for a stale dialog.
-        MessageExt message = prepareDirectConsumption();
-        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getMsgId()))
+        MessageClientExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-offline", "orders", message.getOffsetMsgId()))
                 .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR,
                         "The Consumer billing client-offline not online"));
         DirectConsumeMessageDTO request = directRequest();
@@ -266,8 +278,8 @@ class RocketMQMessageProviderTest {
 
     @Test
     void directlyConsumesMessageKeepsOtherBrokerFailuresAsBadGatewayTest() throws Exception {
-        MessageExt message = prepareDirectConsumption();
-        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getMsgId()))
+        MessageClientExt message = prepareDirectConsumption();
+        when(adminExt.consumeMessageDirectly("billing", "client-a", "orders", message.getOffsetMsgId()))
                 .thenThrow(new MQClientException(ResponseCode.SYSTEM_ERROR, "broker rejected the request"));
 
         assertThatThrownBy(() -> provider.consumeMessageDirectly(directRequest()))
@@ -699,6 +711,89 @@ class RocketMQMessageProviderTest {
                 "instance-a", "TopicA", null, null, null, 100L, 200L);
 
         assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-correction");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
+    void queryByTopicBoundsRepeatedUnmatchedBatchesTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 0L, 0L, 100L, 100L);
+        when(pullConsumer.pull(eq(queue), eq("*"), anyLong(), eq(32))).thenAnswer(invocation ->
+                new PullResult(PullStatus.NO_MATCHED_MSG, (Long) invocation.getArgument(2) + 1,
+                        0L, 100L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(35)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicStopsWhenUnmatchedBatchDoesNotAdvanceTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 30L, 30L);
+        when(pullConsumer.pull(queue, "*", 10L, 32))
+                .thenReturn(new PullResult(PullStatus.NO_MATCHED_MSG, 10L, 0L, 30L, null));
+
+        assertThat(provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L)).isEmpty();
+
+        verify(pullConsumer, times(1)).pull(eq(queue), eq("*"), anyLong(), eq(32));
+    }
+
+    @Test
+    void queryByTopicContinuesAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 20L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
+        verify(pullConsumer).pull(queue, "*", 10L, 32);
+        verify(pullConsumer).pull(queue, "*", 20L, 32);
+        verify(pullConsumer).pull(queue, "*", 40L, 32);
+    }
+
+    @Test
+    void queryByTopicResetsIllegalOffsetCounterAfterUnmatchedBatchTest() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-gap");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult unmatchedBatch = new PullResult(PullStatus.NO_MATCHED_MSG, 17L, 0L, 50L, null);
+        PullResult foundAfterGap = new PullResult(PullStatus.FOUND, 40L, 20L, 50L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 50L, List.of());
+        when(pullConsumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+        mockQueueWindow(pullConsumer, queue, 100L, 200L, 10L, 10L, 50L, 50L);
+        for (long offset : new long[] {10L, 11L, 12L, 17L, 18L, 19L}) {
+            when(pullConsumer.pull(queue, "*", offset, 32))
+                    .thenReturn(new PullResult(PullStatus.OFFSET_ILLEGAL, offset + 1, 0L, 50L, null));
+        }
+        when(pullConsumer.pull(queue, "*", 13L, 32)).thenReturn(unmatchedBatch);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterGap);
+        when(pullConsumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+
+        List<MessageRecordVO> messages = provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-gap");
         verify(pullConsumer).pull(queue, "*", 10L, 32);
         verify(pullConsumer).pull(queue, "*", 20L, 32);
         verify(pullConsumer).pull(queue, "*", 40L, 32);
