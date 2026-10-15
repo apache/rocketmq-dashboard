@@ -855,6 +855,28 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'messagePage.downloadSuccess': { zh: '消息下载成功', en: 'Message downloaded' },
 
+  // ─── Queue Browser ───
+  'queueBrowser.loadQueues': { zh: '加载队列', en: 'Load Queues' },
+  'queueBrowser.loadQueuesFailed': {
+    zh: '加载队列信息失败',
+    en: 'Failed to load queue information',
+  },
+  'queueBrowser.pullFailed': { zh: '拉取消息失败', en: 'Failed to pull the message' },
+  'queueBrowser.emptyHint': {
+    zh: '选择 Topic 并点击「加载队列」，按队列浏览消息',
+    en: 'Select a topic and click "Load Queues" to browse messages by queue',
+  },
+  'queueBrowser.offsetRange': { zh: 'Offset 范围', en: 'Offset Range' },
+  'queueBrowser.queueSummary': {
+    zh: '共 {queues} 个队列，总消息量 {messages} 条',
+    en: '{queues} queues, {messages} messages in total',
+  },
+  'queueBrowser.detailEmptyHint': {
+    zh: '点击左侧「查看」，消息详情将显示在这里',
+    en: 'Click "View" on the left; message details appear here',
+  },
+  'queueBrowser.noMessageAtOffset': { zh: '该 offset 处无消息', en: 'No message at this offset' },
+
   // ─── Message Query History ───
   'messageHistory.title': { zh: '服务端查询历史', en: 'Server Query History' },
   'messageHistory.messageQueries': { zh: '消息查询', en: 'Message Queries' },
