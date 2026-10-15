@@ -27,6 +27,7 @@ import {
   Select,
   Tabs,
   Modal,
+  Tooltip,
   Form,
   Switch,
   Checkbox,
@@ -46,6 +47,7 @@ import {
   Eye,
   EyeSlash,
   Key,
+  UploadSimple,
 } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -64,10 +66,17 @@ import {
   examineBrokerClusterAclConfig,
   listAclRules,
   pageAclUsers,
+  pushAclToBroker,
   updateAclRule,
   updateAclUser,
 } from '../../services/aclService';
-import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../../api/acl';
+import type {
+  AclRule,
+  AclUser,
+  AclClusterConfig,
+  PlainAccessConfig,
+  PushAclToBrokerResult,
+} from '../../api/acl';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
 import { analyzeAclRisk, type AclRiskIssue } from '../../utils/aclRiskDiagnostics';
@@ -136,6 +145,17 @@ const AclPageContent = ({
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
   const tencentRoleMode = selectedInstance?.vendor === 'TENCENT';
+  // Apache 实例（以及还没选实例时）可以把 Store 里的账号与策略一键下发到 broker，
+  // 所以「仅本地元数据、请去集群侧管理」的旧口径只对没有下发通道的云厂商成立。
+  const apachePushMode =
+    selectedInstance === undefined ||
+    selectedInstance.vendor === undefined ||
+    selectedInstance.vendor === 'APACHE';
+  const noticeKeys = tencentRoleMode
+    ? { title: 'acl.tencentRoleNotice', description: 'acl.tencentRoleDescription' }
+    : apachePushMode
+      ? { title: 'acl.apachePushNotice', description: 'acl.apachePushDescription' }
+      : { title: 'acl.localMetadataNotice', description: 'acl.localMetadataDescription' };
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
@@ -148,7 +168,7 @@ const AclPageContent = ({
   const [userKeyword, setUserKeyword] = useState('');
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState('rules');
+  const [activeTab, setActiveTab] = useState('users');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
   const [ruleTotal, setRuleTotal] = useState(0);
@@ -184,6 +204,8 @@ const AclPageContent = ({
   // Cluster ACL config (examineBrokerClusterAclConfig)
   const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<PushAclToBrokerResult | null>(null);
   const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
   const examineRequestGenerationRef = useRef(0);
 
@@ -511,6 +533,98 @@ const AclPageContent = ({
       }
     }
   };
+
+  // 一键下发：把本页维护的账号与规则增量写进 broker（broker 上其他账号不动），
+  // 结果逐账号逐 broker 回报，失败不中断其余账号。
+  const pushDisabledReason = !selectedInstanceId
+    ? t('acl.pushNeedInstance')
+    : !apachePushMode
+      ? t('acl.pushApacheOnly')
+      : undefined;
+
+  const handlePushToBroker = async () => {
+    if (!selectedInstanceId) return;
+    setPushing(true);
+    try {
+      const result = await pushAclToBroker(selectedInstanceId);
+      setPushResult(result);
+      if (result.failed === 0) {
+        message.success(t('acl.pushToBrokerDone', { pushed: result.pushed }));
+      } else {
+        message.warning(
+          t('acl.pushToBrokerPartial', { pushed: result.pushed, failed: result.failed }),
+        );
+      }
+    } catch {
+      message.error(t('acl.pushToBrokerFailed'));
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const pushColumns: ColumnsType<PushAclToBrokerResult['accounts'][number]> = [
+    {
+      title: t('acl.pushAccount'),
+      dataIndex: 'username',
+      key: 'username',
+      render: (_, account) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text strong>{account.username}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 14, fontFamily: 'monospace' }}>
+            {account.subject}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: t('acl.pushPolicies'),
+      dataIndex: 'policyCount',
+      key: 'policyCount',
+      width: 90,
+      align: 'right',
+    },
+    {
+      title: t('acl.pushSkipped'),
+      key: 'skipped',
+      minWidth: 200,
+      render: (_, account) =>
+        account.skipped.length === 0 ? (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ) : (
+          <Space direction="vertical" size={2}>
+            {account.skipped.map((reason) => (
+              <Typography.Text key={reason} type="secondary" style={{ fontSize: 14 }}>
+                {reason}
+              </Typography.Text>
+            ))}
+          </Space>
+        ),
+    },
+    {
+      title: t('acl.pushBrokerResults'),
+      key: 'brokers',
+      width: 260,
+      render: (_, account) => (
+        <Space direction="vertical" size={2}>
+          {account.brokers.map((broker) => (
+            <Space key={broker.broker} size={6}>
+              <Tag color={broker.success ? 'success' : 'error'}>
+                {broker.success ? t('acl.pushBrokerOk') : t('acl.pushBrokerFailed')}
+              </Tag>
+              <Typography.Text type="secondary" style={{ fontSize: 14, fontFamily: 'monospace' }}>
+                {broker.broker}
+              </Typography.Text>
+              {broker.error && (
+                <Typography.Text type="secondary" style={{ fontSize: 14 }}>
+                  {broker.error}
+                </Typography.Text>
+              )}
+            </Space>
+          ))}
+        </Space>
+      ),
+    },
+  ];
 
   const openAddPlainModal = () => {
     setEditingPlain(null);
@@ -1077,22 +1191,45 @@ const AclPageContent = ({
         title={t('acl.title')}
         subtitle={t('acl.subtitle', { rules: rules.length, users: users.length })}
         extra={
-          <Button
-            type="primary"
-            icon={<Plus size={14} weight="bold" />}
-            onClick={activeTab === 'rules' ? openAddRuleModal : openAddUserModal}
-          >
-            {activeTab === 'rules' ? t('acl.addRule') : t('acl.addUser')}
-          </Button>
+          <Flex gap={8}>
+            <Tooltip title={pushDisabledReason}>
+              <span>
+                <Button
+                  icon={<UploadSimple size={14} />}
+                  loading={pushing}
+                  disabled={pushDisabledReason !== undefined}
+                  onClick={() => void handlePushToBroker()}
+                >
+                  {t('acl.pushToBroker')}
+                </Button>
+              </span>
+            </Tooltip>
+            <Button
+              type="primary"
+              icon={<Plus size={14} weight="bold" />}
+              onClick={activeTab === 'rules' ? openAddRuleModal : openAddUserModal}
+            >
+              {activeTab === 'rules' ? t('acl.addRule') : t('acl.addUser')}
+            </Button>
+          </Flex>
         }
       />
 
+      <div style={{ marginBottom: 12 }}>
+        <InstanceSelect
+          value={selectedInstanceId || undefined}
+          onChange={selectInstance}
+          options={instanceOptions}
+          style={{ width: 260 }}
+          failed={instancesFailed}
+          onRetry={reloadInstances}
+        />
+      </div>
+
       <InfoBanner
         data-testid="acl-local-metadata-notice"
-        title={t(tencentRoleMode ? 'acl.tencentRoleNotice' : 'acl.localMetadataNotice')}
-        description={t(
-          tencentRoleMode ? 'acl.tencentRoleDescription' : 'acl.localMetadataDescription',
-        )}
+        title={t(noticeKeys.title)}
+        description={t(noticeKeys.description)}
       />
 
       <Card variant="borderless" styles={{ body: { padding: 0 } }}>
@@ -1102,7 +1239,56 @@ const AclPageContent = ({
           style={{ padding: '0 16px' }}
           items={[
             {
+              key: 'users',
+              forceRender: true,
+              label: (
+                <Space size={6}>
+                  <User size={15} />
+                  <span>{t('acl.userTab')}</span>
+                </Space>
+              ),
+              children: (
+                <div>
+                  <div style={{ padding: '0 0 16px' }}>
+                    <Space>
+                      <Input.Search
+                        value={userKeyword}
+                        onChange={(event) => {
+                          setUserPage(1);
+                          setUserKeyword(event.target.value);
+                        }}
+                        allowClear
+                        style={{ width: 240 }}
+                      />
+                    </Space>
+                  </div>
+
+                  <Table
+                    columns={userColumns}
+                    dataSource={users}
+                    rowKey="id"
+                    loading={usersLoading}
+                    pagination={{
+                      current: userPage,
+                      pageSize: userPageSize,
+                      total: userTotal,
+                      showSizeChanger: true,
+                      showTotal: (total) => t('acl.totalUsers', { n: total }),
+                      onChange: (page, pageSize) => {
+                        setUserPage(page);
+                        setUserPageSize(pageSize);
+                      },
+                    }}
+                    size="small"
+                    tableLayout="fixed"
+                    scroll={{ x: tableScrollX(userColumns) }}
+                  />
+                </div>
+              ),
+            },
+            {
               key: 'rules',
+              forceRender: true,
               label: (
                 <Space size={6}>
                   <ShieldCheck size={15} />
@@ -1120,14 +1306,6 @@ const AclPageContent = ({
                       flexWrap: 'wrap',
                     }}
                   >
-                    <InstanceSelect
-                      value={selectedInstanceId || undefined}
-                      onChange={selectInstance}
-                      options={instanceOptions}
-                      style={{ width: 220 }}
-                      failed={instancesFailed}
-                      onRetry={reloadInstances}
-                    />
                     <Input
                       placeholder={t('acl.searchPrincipal')}
                       prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
@@ -1215,60 +1393,6 @@ const AclPageContent = ({
                     size="small"
                     tableLayout="fixed"
                     scroll={{ x: tableScrollX(ruleColumns) }}
-                  />
-                </div>
-              ),
-            },
-            {
-              key: 'users',
-              label: (
-                <Space size={6}>
-                  <User size={15} />
-                  <span>{t('acl.userTab')}</span>
-                </Space>
-              ),
-              children: (
-                <div>
-                  <div style={{ padding: '0 0 16px' }}>
-                    <Space>
-                      <Button
-                        type="primary"
-                        icon={<Plus size={14} weight="bold" />}
-                        onClick={openAddUserModal}
-                      >
-                        {t('acl.addUser')}
-                      </Button>
-                      <Input.Search
-                        value={userKeyword}
-                        onChange={(event) => {
-                          setUserPage(1);
-                          setUserKeyword(event.target.value);
-                        }}
-                        allowClear
-                        style={{ width: 240 }}
-                      />
-                    </Space>
-                  </div>
-
-                  <Table
-                    columns={userColumns}
-                    dataSource={users}
-                    rowKey="id"
-                    loading={usersLoading}
-                    pagination={{
-                      current: userPage,
-                      pageSize: userPageSize,
-                      total: userTotal,
-                      showSizeChanger: true,
-                      showTotal: (total) => t('acl.totalUsers', { n: total }),
-                      onChange: (page, pageSize) => {
-                        setUserPage(page);
-                        setUserPageSize(pageSize);
-                      },
-                    }}
-                    size="small"
-                    tableLayout="fixed"
-                    scroll={{ x: tableScrollX(userColumns) }}
                   />
                 </div>
               ),
@@ -1693,6 +1817,37 @@ const AclPageContent = ({
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={t('acl.pushToBrokerTitle')}
+        open={pushResult !== null}
+        onCancel={() => setPushResult(null)}
+        footer={<Button onClick={() => setPushResult(null)}>{t('common.close')}</Button>}
+        width={820}
+        destroyOnHidden
+      >
+        {pushResult && (
+          <Flex vertical gap={12}>
+            <InfoBanner
+              description={t('acl.pushToBrokerSummary', {
+                pushed: pushResult.pushed,
+                failed: pushResult.failed,
+                brokers: pushResult.brokers.join(', ') || '-',
+              })}
+              style={{ marginBottom: 0 }}
+            />
+            <Table
+              rowKey="username"
+              size="small"
+              columns={pushColumns}
+              dataSource={pushResult.accounts}
+              pagination={false}
+              tableLayout="fixed"
+              scroll={{ x: tableScrollX(pushColumns) }}
+            />
+          </Flex>
+        )}
       </Modal>
     </div>
   );
