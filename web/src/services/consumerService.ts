@@ -175,7 +175,7 @@ export async function getConsumerProgress(
   instanceId?: string,
 ): Promise<QueueProgress[]> {
   if (isMockMode()) {
-    return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
+    return (mockQueueProgress[name] ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name, instanceId);
 }
@@ -375,7 +375,7 @@ export async function previewConsumerOffsetReset(
 }
 
 function buildMockResetOffsetPreview(data: ResetConsumerOffsetRequest): ResetConsumerOffsetPreview {
-  const progressRows = ((mockQueueProgress[data.name] as unknown as QueueProgress[]) ?? []).filter(
+  const progressRows = (mockQueueProgress[data.name] ?? []).filter(
     (progress) => !progress.topic || progress.topic === data.topic,
   );
   const queues = progressRows.map((progress) =>
