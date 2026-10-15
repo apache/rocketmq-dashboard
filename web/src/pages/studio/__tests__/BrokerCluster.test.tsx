@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -224,6 +224,23 @@ describe('BrokerCluster Page', () => {
     expect(readonlyTags.length).toBeGreaterThan(0);
   });
 
+  it('renders a fractional disk usage as one short label and keeps the bar', async () => {
+    // The broker publishes commitLogDiskRatio as a fraction, and 0.29 * 100 is
+    // 28.999999999999996. Progress draws its own label inside the 80px bar, so the unrounded value
+    // printed the float twice and squeezed the bar down to zero width.
+    const [cluster] = clusterFixture;
+    vi.mocked(listClusters).mockResolvedValue([
+      { ...cluster, brokers: [{ ...cluster.brokers[0], diskUsage: 28.999999999999996 }] },
+    ]);
+    renderWithProviders(<BrokerCluster />);
+
+    const row = (await screen.findAllByText('broker-api-a'))[0].closest('tr');
+    if (!row) throw new Error('broker row not found');
+    expect(within(row).getAllByText('29%')).toHaveLength(1);
+    expect(row.querySelector('.ant-progress-text')).toBeNull();
+    expect(row.querySelector('.ant-progress-bg')).not.toBeNull();
+  });
+
   it('should switch to NameServer tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
@@ -401,5 +418,19 @@ describe('BrokerCluster Page', () => {
     await screen.findByText('broker-api-a');
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+  });
+
+  it('does not render a Connections column for nameservers', async () => {
+    // The backend NameServerVO has no connection count; the column used to
+    // fabricate a hardcoded 0 for every nameserver (and export it to CSV).
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByRole('tab', { name: /NameServer|Nameserver/i }));
+    await screen.findAllByRole('columnheader');
+
+    expect(
+      screen.queryByRole('columnheader', { name: /连接数|[Cc]onnections/ }),
+    ).not.toBeInTheDocument();
   });
 });

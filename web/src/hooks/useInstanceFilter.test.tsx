@@ -40,7 +40,8 @@ function InstanceRouteProbe() {
 
 describe('useInstanceFilter', () => {
   it.each(['topic', 'consumer', 'message', 'acl', 'dlq'])(
-    'preserves the selected instance and %s section with trailing slashes', async (section) => {
+    'preserves an encoded instance and %s section with trailing slashes Test',
+    async (section) => {
       instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }, { name: '实例 B' }]);
       const path = `/instance/${encodeURIComponent('实例 B')}/${section}/`;
       render(
@@ -53,7 +54,8 @@ describe('useInstanceFilter', () => {
   );
 
   it.each(['topic', 'consumer', 'message', 'acl', 'dlq'])(
-    'keeps the %s section when a trailing-slash static route chooses an instance', async (section) => {
+    'keeps the %s section when selecting a default instance from a trailing-slash route Test',
+    async (section) => {
       instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }]);
       render(
         <MemoryRouter initialEntries={[`/instance/${section}/`]}>
@@ -67,7 +69,7 @@ describe('useInstanceFilter', () => {
     },
   );
 
-  it('retains the section when recovering an unknown instance with a trailing slash', async () => {
+  it('retains the section when recovering an unknown instance with a trailing slash Test', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([{ name: 'instance-a' }]);
     render(
       <MemoryRouter initialEntries={['/instance/missing/consumer/']}>
@@ -103,6 +105,53 @@ describe('useInstanceFilter', () => {
     await waitFor(() => {
       expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
     });
+  });
+
+  it('selects the route instance while the list is still loading', async () => {
+    let release: (instances: unknown[]) => void = () => {};
+    // Once-scoped on purpose: this file never clears the shared mock, so a persistent pending
+    // implementation would leak into the tests below and hang their retry.
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Pages gate their own data request on selectedInstanceId, so the route instance must win
+    // before the list lands instead of serializing the page behind it. The selector also renders
+    // names only, so it must not ask for the (remotely resolved, seconds-slow) resource counts.
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+    });
+    expect(instanceServiceMocks.listInstances).toHaveBeenCalledWith();
+
+    release([
+      {
+        id: 7,
+        name: 'instance-a',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('false');
+    });
+    expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
   });
 
   it('reports a failed instance list and recovers from a retry', async () => {

@@ -95,6 +95,15 @@ describe('general settings API', () => {
     await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
   });
 
+  it('forwards the explicit non-AI scope without changing legacy requests', async () => {
+    const update: GeneralSettingsUpdate = { ...editableSettings, preserveLlmConfig: true };
+    mock.onPost('/settings/general/save').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(update);
+      return [200, { code: 200, data: null }];
+    });
+    await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
+  });
+
   it('sends the explicit API key clear flag', async () => {
     const update: GeneralSettingsUpdate = { ...editableSettings, clearApiKey: true };
     mock.onPost('/settings/general/save').reply((config) => {

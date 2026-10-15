@@ -321,7 +321,7 @@ GET /api/dashboard
 ### 3.1 获取实例列表
 
 ```
-GET /api/instances?type={type}&search={keyword}
+GET /api/instances?type={type}&search={keyword}&withCounts={withCounts}
 ```
 
 **Query Parameters:**
@@ -330,6 +330,7 @@ GET /api/instances?type={type}&search={keyword}
 |------|------|------|------|
 | `type` | `string` | 否 | 按类型过滤: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
+| `withCounts` | `boolean` | 否 | 默认 `false`。为 `true` 时逐实例解析 Topic / 消费组数量；云厂商走远程 OpenAPI（每实例两次调用），十几实例量级耗时秒级，只需要实例名的调用方（如实例选择器）不要开启 |
 
 **Response `data`:** `Instance[]`
 
@@ -340,8 +341,9 @@ GET /api/instances?type={type}&search={keyword}
 | `remark` | `string` | 备注 |
 | `type` | `string` | 接入类型: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
-| `topicCount` | `number` | Topic 数量 |
-| `consumerGroupCount` | `number` | 消费组数量 |
+| `topicCount` | `number` | Topic 数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `consumerGroupCount` | `number` | 消费组数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `resourceCountsAvailable` | `boolean` | 上面两个计数是否可信；`false` 表示未请求或解析失败，此时不应把 `0` 当成真实数量 |
 | `gmtCreate` | `string` | 创建时间 |
 | `gmtModified` | `string` | 更新时间 |
 
@@ -533,13 +535,24 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 | `clusterId` | `string` | 集群 ID |
 | `name` | `string` | Broker 名称 |
 
-**Response `data`:** `{ success: boolean, message: string }`
+**Response `data`:** `{ message: string }`
+
+接口先校验集群存在、且该集群下登记了这个 Broker，再把动作交给集群 Provider。当前 Provider 尚未实现 Broker 重启，校验通过后固定抛出 `501`，因此上面的成功分支不可达，调用方不应依赖任何 `success` 字段。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 集群不存在，或该集群下没有这个 Broker |
+| `501` | 当前集群 Provider 未实现 Broker 重启 |
 
 ### 4.5 创建 NameServer
 
 ```
 POST /api/nameservers/create
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -556,13 +569,15 @@ POST /api/nameservers/create
 POST /api/nameservers/update
 ```
 
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `version` | `string` | 否 | NameServer 版本（不传则不修改） |
 
 **Response `data`:** `NameServerInfo`
 
@@ -571,6 +586,8 @@ POST /api/nameservers/update
 ```
 POST /api/nameservers/restart
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -586,6 +603,8 @@ POST /api/nameservers/restart
 POST /api/nameservers/upgrade
 ```
 
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
+
 **Request Body:**
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -599,6 +618,8 @@ POST /api/nameservers/upgrade
 ```
 POST /api/nameservers/delete
 ```
+
+> **未实现**：与 §4.11 的重启 Proxy 相同，本接口在完成集群与地址校验后固定抛出 `501`，因此下表中的成功响应不会出现。NameServer 注册表的查询与增删改由 `GET /api/nameservers` 与 `POST /api/nameservers/registry/{create,update,delete}` 提供，本 spec 尚未收录。
 
 **Request Body:**
 
@@ -939,12 +960,13 @@ POST /api/topics/create
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID，缺失返回 `400 instanceId is required` |
 | `name` | `string` | 是 | Topic 名称 |
 | `namespace` | `string` | 否 | 命名空间 |
 | `type` | `string` | 是 | 类型 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `writeQueues` | `number` | 是 | 写队列数 |
-| `readQueues` | `number` | 是 | 读队列数 |
+| `clusterId` | `string` | 否 | 所属集群；Apache 写路径按实例与所有权记录解析目标集群，不读取该字段 |
+| `writeQueues` | `number` | 否 | 写队列数，须 ≥ 0；缺省或非正数时取 8 |
+| `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时取 8 |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
 
@@ -960,12 +982,13 @@ POST /api/topics/update
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID，缺失返回 `400 instanceId is required` |
 | `name` | `string` | 是 | Topic 名称（不可修改） |
 | `namespace` | `string` | 否 | 命名空间 |
 | `type` | `string` | 是 | 类型 |
-| `clusterId` | `string` | 是 | 所属集群 |
-| `writeQueues` | `number` | 是 | 写队列数 |
-| `readQueues` | `number` | 是 | 读队列数 |
+| `clusterId` | `string` | 否 | 所属集群；Apache 写路径按实例与所有权记录解析目标集群，不读取该字段 |
+| `writeQueues` | `number` | 否 | 写队列数，须 ≥ 0；缺省或非正数时保留现值 |
+| `readQueues` | `number` | 否 | 读队列数，须 ≥ 0；缺省或非正数时保留现值 |
 | `perm` | `string` | 否 | 权限，默认 `RW` |
 | `remark` | `string` | 否 | 备注 |
 
@@ -982,6 +1005,7 @@ POST /api/topics/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | Topic 名称 |
+| `instanceId` | `string` | 是 | 实例 ID（`DeleteTopicDTO` 校验非空） |
 
 **Response `data`:** `null`
 
@@ -1027,6 +1051,7 @@ POST /api/topics/send
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 实例 ID（消息写入该实例） |
 | `topic` | `string` | 是 | Topic 名称 |
 | `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key（用于消息查询） |
@@ -1151,9 +1176,9 @@ GET /api/groups/:name/subscriptions
 |------|------|------|
 | `topic` | `string` | Topic 名称 |
 | `expression` | `string` | 过滤表达式 |
-| `type` | `string` | 数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
-| `filterMode` | `string` | 过滤模式: `Tag 过滤` / `SQL92 过滤` / `全量` |
-| `consistency` | `string` | 一致性: `一致` / `不一致` |
+| `type` | `string` | 订阅过滤表达式类型: `TAG` / `SQL92` / `CLASS_FILTER`（各 provider 均原样透传 broker/OpenAPI 的表达式类型） |
+| `filterMode` | `string` | 过滤模式（由表达式类型归一化）: `TAG` / `SQL` / `CLASS_FILTER` |
+| `consistency` | `string` | 订阅一致性。Apache 实例为 `consistent`，无在线客户端等无法判定时为 `null`；云厂商实例为厂商返回值的字符串形式（如 Aliyun 的 `true` / `false`） |
 
 ### 6.5 创建消费组
 
@@ -1165,13 +1190,16 @@ POST /api/groups/create
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所属实例 ID，缺失返回 `400 instanceId is required` |
 | `name` | `string` | 是 | 消费组名称 |
 | `namespace` | `string` | 否 | 命名空间 |
 | `clusterId` | `string` | 是 | 所属集群 |
 | `subscriptionMode` | `string` | 是 | `Push` / `Pop` |
 | `consumeType` | `string` | 是 | `CLUSTERING` / `BROADCASTING` |
-| `subscribedTopics` | `string[]` | 否 | 订阅 Topic |
-| `retryMaxTimes` | `number` | 否 | 最大重试次数 |
+| `subscriptionDataType` | `string` | 否 | 订阅数据类型: `NORMAL` / `FIFO` / `DELAY` / `TRANSACTION` |
+| `deliveryOrderType` | `string` | 否 | 顺序类型（FIFO 时）: `PARTITON_ORDER` / `MESSAGES_ORDER` |
+| `retryMaxTimes` | `number` | 否 | 最大重试次数，须 ≥ 0 |
+| `delaySeconds` | `number` | 否 | 延迟秒数，须 ≥ 0 |
 
 **Response `data`:** `ConsumerGroup`
 
@@ -1186,6 +1214,7 @@ POST /api/groups/delete
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
+| `instanceId` | `string` | 是 | 实例 ID（`DeleteConsumerGroupDTO` 校验非空） |
 
 **Response `data`:** `null`
 
@@ -1200,8 +1229,9 @@ POST /api/groups/reset-offset
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 是 | 消费组名称 |
-| `timestamp` | `string` | 是 | 重置到指定时间 (ISO 8601) |
-| `topic` | `string` | 否 | 指定 Topic，不传则全部重置 |
+| `instanceId` | `string` | 是 | 实例 ID |
+| `timestamp` | `number` | 是 | 重置到的时间（Unix 毫秒时间戳，必须为正数） |
+| `topic` | `string` | 是 | 要重置的 Topic；本接口没有「全部重置」分支，必须显式指定 |
 
 **Response `data`:** `null`
 
@@ -1211,11 +1241,12 @@ POST /api/groups/reset-offset
 POST /api/groups/import
 ```
 
-**Request Body:** `multipart/form-data`
+**Request Body:** `application/json`
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `file` | `File` | JSON 配置文件 |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 目标实例 ID |
+| `groups` | `CreateConsumerGroupDTO[]` | 是 | 待导入的消费组，单次最多 100 条 |
 
 **Response `data`:**
 
@@ -1223,7 +1254,8 @@ POST /api/groups/import
 |------|------|------|
 | `imported` | `number` | 成功导入数量 |
 | `failed` | `number` | 失败数量 |
-| `errors` | `string[]` | 错误信息列表 |
+| `groups` | `ConsumerGroupVO[]` | 成功导入的消费组 |
+| `failures` | `{ index, name, message }[]` | 每条失败的原始下标、消费组名称与原因 |
 
 ### 6.9 导出消费组配置
 
@@ -1723,6 +1755,12 @@ POST /api/dlq/resend
 `DLQResendFailure` 的字段：`msgId`（`string`，重投失败的死信消息 ID）、`targetTopic`（`string`，解析出的目标
 Topic，未指定 `targetTopic` 时即原 Topic）、`reason`（`string`，归一化后的简短失败原因，最长 256 字符）。
 §9.4「重发选中的死信消息」返回同一结构，两条重投路径共用该 VO。
+
+> **跨集群拒绝（`409`）**：显式传入 `targetTopic` 时，若它解析出的集群不是死信 Topic（`%DLQ%{groupName}`）
+> 所属集群的子集，返回 `409 targetTopic resolves to a different cluster than %DLQ%{groupName}; resend rejected: {targetTopic}`
+> （`RocketMQDLQProvider.requireSameClusterAsDlqTopic`）。**省略 `targetTopic` 时同样校验**：服务端先按每条死信
+> 推断目的地（即其原 Topic），对推断出的每一个目的地跑同一次校验，任一跨集群即整批 `409` 拒绝，
+> 不会出现「重投了一半」。§9.4 的按 `msgIds` 重投走同一套校验。
 
 ### 9.3 分页获取死信消息明细
 
@@ -2239,6 +2277,9 @@ POST /api/settings/general/save
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
 | `model` | `string` | 是 | 模型名称 |
 | `baseUrl` | `string` | 是 | Base URL |
+| `preserveLlmConfig` | `boolean` | 否 | 默认 `false`；通用设置表单传 `true`，保留服务端当前 AI 配置 |
+
+`preserveLlmConfig=true` 时，请求中的 AI 字段（包括 API Key 及其清空标记）不会覆盖当前值；原有必填字段校验不变。省略该标记或传 `false` 时维持原完整更新契约。控制台通用表单使用该标记，AI 表单只修改 AI 配置，两条路径的读、合并和保存在单个服务进程内串行执行。这不提供跨进程的版本冲突检测；旧调用方的完整更新仍可能覆盖其他写入。标记不存入设置 JSON，也不出现在读取响应中。
 
 **Response `data`:** `null`
 

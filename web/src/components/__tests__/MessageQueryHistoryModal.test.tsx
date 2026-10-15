@@ -8,7 +8,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
+import MessageQueryHistoryModal from '../MessageQueryHistoryModal';
 import { LangProvider } from '../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../utils/format';
@@ -37,7 +37,7 @@ beforeAll(() => {
   });
 });
 
-describe('MessageQueryHistoryDrawer', () => {
+describe('MessageQueryHistoryModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -77,12 +77,40 @@ describe('MessageQueryHistoryDrawer', () => {
     });
   });
 
+  it('renders as a modal instead of a side drawer', async () => {
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(document.querySelector('.ant-modal')).not.toBeNull();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+  });
+
+  it('keeps the history tables at the small row height every other list uses', async () => {
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    // 默认尺寸表格的单行约 54px，全站列表口径是 small 的约 40px；这两个表漏了 size。
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(document.querySelector('.ant-table')).toHaveClass('ant-table-small');
+  });
+
   it('loads persisted message and trace history by instance', async () => {
     const user = userEvent.setup();
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -101,7 +129,7 @@ describe('MessageQueryHistoryDrawer', () => {
     const view = render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -111,7 +139,7 @@ describe('MessageQueryHistoryDrawer', () => {
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-b" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-b" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -142,7 +170,7 @@ describe('MessageQueryHistoryDrawer', () => {
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -151,12 +179,12 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.getByText(formatUtcDateTime('2026-08-05T12:00:00'))).toBeInTheDocument();
   });
 
-  it('renders query history drawer copy in English mode', async () => {
+  it('renders query history modal copy in English mode', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -170,13 +198,13 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
   });
 
-  it('keeps the applied search visible in the input after the drawer is closed and reopened', async () => {
+  it('keeps the applied search visible in the input after the modal is closed and reopened', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     const user = userEvent.setup();
     const view = render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -197,14 +225,14 @@ describe('MessageQueryHistoryDrawer', () => {
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open={false} clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open={false} clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -223,7 +251,7 @@ describe('MessageQueryHistoryDrawer', () => {
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );

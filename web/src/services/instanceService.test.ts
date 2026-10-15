@@ -259,6 +259,62 @@ describe('instanceService dedupe invalidation after mutations', () => {
     return holder as { resolve: (value: Instance[]) => void };
   }
 
+  it.each(['success', 'failure'] as const)(
+    'keepsThePostMutationRequestSharedWhenAnOlderReadSettlesTest (%s)',
+    async (outcome) => {
+      let resolveOld!: (value: Instance[]) => void;
+      let rejectOld!: (error: Error) => void;
+      let resolveFresh!: (value: Instance[]) => void;
+      const old = new Promise<Instance[]>((resolve, reject) => {
+        resolveOld = resolve;
+        rejectOld = reject;
+      });
+      const fresh = new Promise<Instance[]>((resolve) => {
+        resolveFresh = resolve;
+      });
+      const expected = [instanceFixture('kept', 'updated')];
+      instanceApiMock.listInstances
+        .mockReturnValueOnce(old)
+        .mockReturnValueOnce(fresh)
+        .mockResolvedValue(expected);
+      const first = listInstances().catch((error: unknown) => error);
+      await updateInstance({ instanceId: 'kept', remark: 'updated' });
+      const second = listInstances();
+      if (outcome === 'success') resolveOld([instanceFixture('kept', 'old')]);
+      else rejectOld(new Error('obsolete read failed'));
+      await first;
+      const third = listInstances();
+      // Settle all callers before asserting so a failing regression leaves no pending entries.
+      resolveFresh(expected);
+      const [secondResult, thirdResult] = await Promise.all([second, third]);
+      expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+      expect(secondResult).toEqual(expected);
+      expect(thirdResult).toEqual(expected);
+      expect(secondResult).not.toBe(thirdResult);
+      expect(secondResult[0]).not.toBe(thirdResult[0]);
+      secondResult[0].remark = 'caller-local change';
+      expect(thirdResult[0].remark).toBe('updated');
+      await listInstances();
+      expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('retriesAfterTheCurrentSharedReadFailsTest', async () => {
+    let reject!: (error: Error) => void;
+    const pending = new Promise<Instance[]>((_resolve, fail) => {
+      reject = fail;
+    });
+    instanceApiMock.listInstances.mockReturnValueOnce(pending).mockResolvedValue([]);
+    const first = listInstances();
+    const second = listInstances();
+    const settled = Promise.allSettled([first, second]);
+    reject(new Error('current read failed'));
+    expect((await settled).map((result) => result.status)).toEqual(['rejected', 'rejected']);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(1);
+    await expect(listInstances()).resolves.toEqual([]);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
   it('does not serve the pre-create snapshot to a list request issued after createInstance', async () => {
     const before = [instanceFixture('kept')];
     const after = [instanceFixture('kept'), instanceFixture('created')];
