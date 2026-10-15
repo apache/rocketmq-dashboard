@@ -29,8 +29,11 @@
  */
 export function normalizeAiMarkdown(content: string): string {
   let fence: { marker: string; length: number } | null = null;
+  // Split on the newline itself rather than a lookbehind (`/(?<=\n)/`): esbuild cannot downlevel
+  // lookbehind assertions, and the Vite default build target still covers Safari versions that
+  // throw a SyntaxError while merely parsing such a literal.
   return content
-    .split(/(?<=\n)/)
+    .split('\n')
     .map((line) => {
       const marker = /^ {0,3}(`{3,}|~{3,})([^\r\n]*)/.exec(line);
       if (fence) {
@@ -51,5 +54,5 @@ export function normalizeAiMarkdown(content: string): string {
       }
       return line.replace(/^(#{1,6})(?=\S)/, '$1 ').replace(/^([-+*])(?=\S)/, '$1 ');
     })
-    .join('');
+    .join('\n');
 }
