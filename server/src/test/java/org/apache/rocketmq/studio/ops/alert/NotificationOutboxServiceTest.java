@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -173,7 +174,7 @@ class NotificationOutboxServiceTest {
             when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                     .thenReturn(List.of(row));
             when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                    any(LocalDateTime.class), anyString())).thenReturn(0);
+                    any(LocalDateTime.class), anyString(), anyInt())).thenReturn(0);
 
             new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
                     mock(AlertRepository.class), mock(OperationAuditService.class)).dispatch();
@@ -241,7 +242,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         LocalDateTime silenceEndsAt = LocalDateTime.now().plusHours(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L).ruleId(4L)
                 .domain(AlertDomain.BUSINESS).instanceId("local").build()));
@@ -272,7 +273,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local")
@@ -316,7 +317,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -353,7 +354,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -388,7 +389,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -416,7 +417,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         AlertRepository alerts = mock(AlertRepository.class);
         OperationAuditService audit = mock(OperationAuditService.class);
@@ -446,7 +447,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -475,13 +476,13 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(0);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(0);
 
         new NotificationOutboxService(mapper, mock(SettingsRepository.class), mock(AlertSilenceService.class),
                 mock(AlertRepository.class), mock(OperationAuditService.class)).dispatch();
 
         verify(mapper).claimForDispatch(org.mockito.ArgumentMatchers.eq(8L), any(LocalDateTime.class),
-                any(LocalDateTime.class), any(LocalDateTime.class), anyString());
+                any(LocalDateTime.class), any(LocalDateTime.class), anyString(), eq(0));
     }
 
     @Test
@@ -632,7 +633,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.renewClaim(eq(8L), anyString(), any(LocalDateTime.class))).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
@@ -702,7 +703,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -753,7 +754,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.renewClaim(eq(8L), anyString(), any(LocalDateTime.class))).thenReturn(0);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -810,7 +811,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenReturn(1);
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -852,7 +853,7 @@ class NotificationOutboxServiceTest {
         when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                 .thenReturn(List.of(row));
         when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                any(LocalDateTime.class), anyString())).thenReturn(1);
+                any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
         when(mapper.update(any(), any())).thenThrow(new IllegalStateException("outbox database unavailable"));
         when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                 .level(AlertLevel.warning).title("Lag").description("high").instanceId("local").build()));
@@ -950,7 +951,7 @@ class NotificationOutboxServiceTest {
             when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                     .thenReturn(List.of(row));
             when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                    any(LocalDateTime.class), anyString())).thenReturn(1);
+                    any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
             when(mapper.update(any(), any())).thenReturn(1);
             when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L)
                     .level(AlertLevel.warning).title("Lag").description("high").instanceId("local")
@@ -987,7 +988,7 @@ class NotificationOutboxServiceTest {
             when(mapper.findDispatchable(any(LocalDateTime.class), any(LocalDateTime.class), any(Integer.class)))
                     .thenReturn(List.of(row));
             when(mapper.claimForDispatch(any(), any(LocalDateTime.class), any(LocalDateTime.class),
-                    any(LocalDateTime.class), anyString())).thenReturn(1);
+                    any(LocalDateTime.class), anyString(), anyInt())).thenReturn(1);
             when(mapper.update(any(), any())).thenReturn(1);
             AlertRepository alerts = mock(AlertRepository.class);
             when(alerts.findAlertById(9L)).thenReturn(Optional.of(SystemAlertVO.builder().id(9L).build()));
