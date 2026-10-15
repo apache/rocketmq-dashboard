@@ -143,7 +143,7 @@ the conversation re-attaches to it. All AI-related environment variables are doc
 ## Tech Stack
 
 - **Frontend** — React 18 + TypeScript + Vite + Ant Design + Tailwind CSS
-- **Backend** — Java 21 + Spring Boot 4.1 + Spring AI MCP 2.0 + MyBatis-Plus + Hexagonal Architecture (ArchUnit enforced)
+- **Backend** — Java 21 + Spring Boot 4.1 + Spring AI MCP 2.0 + MyBatis-Plus + Hexagonal Architecture (layering enforced in review)
 - **CLI** — Go 1.27 ([`rmqctl`](rmqctl/)), both the MCP bridge the hosted agent uses and a standalone signed client for the same tool surface
 - **Deployment** — Docker multi-stage builds (JDK runtime plus a Go stage that compiles `rmqctl` into the image), Nginx reverse proxy, Docker Compose or `deploy.sh` for remote deployment
 
@@ -152,7 +152,7 @@ the conversation re-attaches to it. All AI-related environment variables are doc
 - **Branches** — `rocketmq-studio` is the development trunk: base your branches and pull requests on it. `master_archive` keeps the legacy dashboard history and is not used for development. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow
 - **Code Style** — ESLint + Prettier for frontend, Husky pre-commit hook for auto-check
 - **Commit Format** — Conventional Commits (`feat:` / `fix:` / `refactor:` / `chore:` / `docs:` / `perf:`)
-- **Architecture Tests** — `mvn test` runs ArchUnit hexagonal architecture constraint checks
+- **Architecture Tests** — the hexagonal layering (domain / application / adapter) is enforced through review; the `archunit-junit5` dependency is declared but no rules are wired up, so `mvn test` does not run architecture checks yet
 - **i18n** — New frontend text must include both Chinese and English translations (`web/src/i18n/`)
 - **Table Width** — Tables must not show a horizontal scrollbar by default (only allowed when the window/container is manually narrowed); use `tableScrollX(columns)` from `web/src/utils/table.ts` to compute `scroll.x` from declared column widths instead of hardcoded magic numbers; when a modal contains a wide table, adjust the modal `width` dynamically per active tab (e.g., Group detail: Overview 800 / Progress 1080) so that container width ≥ table width; long-text columns (e.g., long Topic names) should use `ellipsis: true` + `title` for hover-to-see-full-name truncation (no wrapping)
 - **Action Column Width** — Button-bearing action columns must be sized as "measured button row width + cell padding + right margin"; never shrink them by guesswork: `ant-flex` is a block-level container that stretches to fill the cell, so an undersized column pushes buttons against (or past) the table's right edge, causing flush edges or horizontal scrollbars; measure the actual button row width in DevTools before changing, and update the guarding test accordingly (e.g., `TopicPage.test.tsx` "keeps the action column wide enough")
