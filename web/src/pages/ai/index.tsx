@@ -203,6 +203,19 @@ const AiPage = () => {
                 }
               />
             )}
+            {llm.error !== null && (
+              <Alert
+                type="error"
+                showIcon
+                message={t('ai.runtimeLoadFailed')}
+                description={llm.error || undefined}
+                action={
+                  <Button size="small" loading={llm.modelsLoading} onClick={() => llm.reload()}>
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            )}
             <RuntimeNotices mock={useMock} rmqctlAvailable={rmqctlAvailable} runError={run.error} />
             <Composer
               value={inputValue}

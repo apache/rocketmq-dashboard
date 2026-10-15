@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../../api/llm';
 import type { AgentEngine } from '../../../stores/engineStore';
+import { describeThrownMessage } from '../../../utils/apiError';
 
 /**
  * The provider runtime of the AI page: the LLM config, the selectable models and the current
@@ -55,6 +56,13 @@ export interface UseLlmRuntimeResult {
   selectedModel: string;
   /** Provider configured, enabled and a model selected: a send would be accepted. */
   llmReady: boolean;
+  /**
+   * Empty while the runtime loaded (or was never requested); the failure message otherwise. The
+   * caller keeps it on the page next to the composer: a runtime that could not be read is not a
+   * runtime that has nothing configured, and the composer is dead either way — the difference is
+   * whether the operator is told why and can retry.
+   */
+  error: string | null;
   setSelectedModel: (model: string) => void;
   /** Select a model and make sure it is among the options, e.g. one carried by a home-page draft. */
   selectModel: (model: string) => void;
@@ -70,6 +78,7 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   // Callbacks arrive as fresh closures on every render; a ref keeps `load` referentially stable so
   // the effect below runs once per `enabled` flip instead of on every render.
@@ -98,12 +107,14 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
       setModelOptions([]);
       setSelectedModel('');
       setModelsLoading(false);
+      setError(null);
       return;
     }
     setModelsLoading(true);
     try {
       const loaded = await getLlmConfig();
       if (requestId !== loadSeqRef.current) return;
+      setError(null);
       setConfig(loaded);
       if (isAgentEngine(loaded.engine)) optionsRef.current.onEngine?.(loaded.engine);
       if (loaded.model) setSelectedModel((current) => current || loaded.model);
@@ -120,8 +131,11 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
       } else if (loaded.model) {
         setModelOptions([{ value: loaded.model, label: loaded.model }]);
       }
-    } catch (error) {
-      if (requestId === loadSeqRef.current) optionsRef.current.onError?.(error);
+    } catch (failure) {
+      if (requestId === loadSeqRef.current) {
+        setError(describeThrownMessage(failure));
+        optionsRef.current.onError?.(failure);
+      }
     } finally {
       if (requestId === loadSeqRef.current) setModelsLoading(false);
     }
@@ -144,6 +158,7 @@ export function useLlmRuntime(options: UseLlmRuntimeOptions): UseLlmRuntimeResul
     modelsLoading,
     selectedModel,
     llmReady,
+    error,
     setSelectedModel,
     selectModel,
     reload: load,
