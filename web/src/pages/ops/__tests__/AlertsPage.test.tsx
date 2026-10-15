@@ -699,6 +699,50 @@ describe('AlertsPage', () => {
     );
   });
 
+  it('keeps the threshold the user typed when the operator toggles through Unavailable', async () => {
+    // Toggling to the Unavailable condition overwrote the threshold field with 0 and nothing put
+    // the user's value back, so the rule was saved against a zero the user never chose.
+    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
+      {
+        key: 'broker.availability',
+        label: 'Broker availability',
+        thresholdUnit: '',
+        supportsConsumerGroup: false,
+      },
+    ]);
+    vi.mocked(createAlertRule).mockResolvedValue(cloneRule(alertRules[0]));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '新建规则' }));
+    await user.type(screen.getByRole('textbox', { name: '规则名称' }), 'Broker down');
+    await user.click(screen.getByRole('combobox', { name: 'RocketMQ 实例' }));
+    await screen.findByRole('option', { name: 'local' });
+    await user.click(getSelectOption('local'));
+    await user.click(screen.getByRole('combobox', { name: '监控指标' }));
+    await user.click(getSelectOption('Broker 可用性'));
+    await user.click(screen.getByRole('combobox', { name: '运算符' }));
+    await user.click(getSelectOption('>'));
+    await user.type(screen.getByPlaceholderText('阈值'), '1');
+    await user.click(screen.getByRole('combobox', { name: '运算符' }));
+    await user.click(getSelectOption('不可用'));
+    await user.click(screen.getByRole('combobox', { name: '运算符' }));
+    await user.click(getSelectOption('>'));
+    expect(screen.getByPlaceholderText('阈值')).toHaveValue('1');
+    await user.click(screen.getByRole('combobox', { name: '持续时间' }));
+    await user.click(getSelectOption('5m'));
+    await user.click(screen.getByRole('checkbox', { name: 'Email' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /新\s*建/ }));
+
+    await waitFor(() =>
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Broker down', operator: '>', threshold: 1 }),
+      ),
+    );
+  });
+
   it('refreshes metric options from the selected instance capabilities', async () => {
     vi.mocked(listNativeAlertMetrics).mockResolvedValue([
       {

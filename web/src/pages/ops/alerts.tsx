@@ -1216,6 +1216,10 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             </Form.Item>
             <Form.Item label={t('alerts.threshold')}>
               <Flex gap={8}>
+                {/* The condition select deliberately leaves the threshold field alone. An Unavailable
+                    rule does not submit it (the server stores 0), but rewriting it on the way in
+                    erased the value the user had typed for good — including when the metric is
+                    switched to one without the condition, which resets the operator by itself. */}
                 <Form.Item
                   name="operator"
                   noStyle
@@ -1236,9 +1240,6 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
                         disabled: !supportsUnavailableCondition,
                       },
                     ]}
-                    onChange={(operator) => {
-                      if (operator === 'UNAVAILABLE') form.setFieldValue('threshold', 0);
-                    }}
                   />
                 </Form.Item>
                 {selectedOperator !== 'UNAVAILABLE' && (
