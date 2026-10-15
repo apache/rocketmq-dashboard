@@ -1848,6 +1848,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.tool.input': { zh: '输入参数', en: 'Input' },
   'ai.tool.output': { zh: '执行结果', en: 'Result' },
   'ai.tool.running': { zh: '执行中', en: 'Running' },
+  'ai.tool.noResult': { zh: '无结果', en: 'No result' },
+  'ai.tool.noResultNote': { zh: '运行已终止，该工具没有返回结果。', en: 'The run terminated before this tool returned a result.' },
   'ai.tool.success': { zh: '成功', en: 'Success' },
   'ai.tool.failed': { zh: '失败', en: 'Failed' },
   'ai.tool.truncated': { zh: '已截断（{size}）', en: 'Truncated ({size})' },

@@ -17,7 +17,7 @@
 
 import { memo, type CSSProperties } from 'react';
 import { Progress, Tag, theme } from 'antd';
-import { CaretRight, CheckCircle, CircleNotch, XCircle } from '@phosphor-icons/react';
+import { CaretRight, CheckCircle, CircleNotch, MinusCircle, XCircle } from '@phosphor-icons/react';
 import { useLang } from '../../../../i18n/LangContext';
 import type { McpTool } from '../../../../api/ai';
 import type { ToolBlock as ToolBlockData } from '../../render/blocks';
@@ -80,6 +80,12 @@ export interface ToolBlockProps {
   block: ToolBlockData;
   /** Catalog from `listTools()`, used for the risk tag. Optional: no catalog, no tag. */
   toolCatalog?: readonly McpTool[];
+  /**
+   * The run's terminal status when the run has ended (STOPPED / FAILED), null while it is live.
+   * A tool start whose run terminated without a result is an honest missing-result state, not a
+   * tool that is still running.
+   */
+  runStatus?: 'STOPPED' | 'FAILED' | null;
 }
 
 /** Duration as the operator reads it: milliseconds below a second, seconds above. */
@@ -104,13 +110,17 @@ function resolveCatalogTool(
   return catalog.find((entry) => toolDisplayName(entry.name) === display);
 }
 
-const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
+const ToolBlock = ({ block, toolCatalog, runStatus }: ToolBlockProps) => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const preStyle = usePreStyle();
 
   const catalogTool = resolveCatalogTool(toolCatalog, block.tool);
-  const running = block.status === 'running';
+  // A start without a result whose run is already terminal is an orphaned tool call: the card
+  // must stop promising ongoing execution, without inventing a successful or failed outcome.
+  const terminalWithoutResult =
+    (runStatus === 'STOPPED' || runStatus === 'FAILED') && block.status === 'running';
+  const running = block.status === 'running' && !terminalWithoutResult;
   const failed = block.status === 'done' && block.success === false;
   const displayName = toolDisplayName(block.tool);
 
@@ -160,6 +170,8 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
       >
         {running ? (
           <CircleNotch size={16} className="ai-icon-spin" style={{ color: token.colorPrimary }} />
+        ) : terminalWithoutResult ? (
+          <MinusCircle size={16} style={{ color: token.colorTextTertiary }} />
         ) : failed ? (
           <XCircle size={16} weight="fill" style={{ color: token.colorError }} />
         ) : (
@@ -190,10 +202,22 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
         )}
         <Tag
           data-testid="ai-tool-status"
-          color={running ? 'processing' : failed ? 'error' : 'success'}
+          color={running
+            ? 'processing'
+            : failed
+              ? 'error'
+              : terminalWithoutResult
+                ? 'default'
+                : 'success'}
           style={{ marginInlineEnd: 0, fontSize: 14, flexShrink: 0 }}
         >
-          {running ? t('ai.tool.running') : failed ? t('ai.tool.failed') : t('ai.tool.success')}
+          {running
+            ? t('ai.tool.running')
+            : failed
+              ? t('ai.tool.failed')
+              : terminalWithoutResult
+                ? t('ai.tool.noResult')
+                : t('ai.tool.success')}
         </Tag>
         {block.durationMs !== null && (
           <span style={{ fontSize: 14, color: token.colorTextTertiary, flexShrink: 0 }}>
@@ -221,6 +245,15 @@ const ToolBlock = ({ block, toolCatalog }: ToolBlockProps) => {
       {running && (
         <div data-testid="ai-tool-progress" style={{ marginTop: 8 }}>
           <Progress percent={100} status="active" showInfo={false} strokeWidth={2} />
+        </div>
+      )}
+
+      {terminalWithoutResult && (
+        <div
+          data-testid="ai-tool-no-result"
+          style={{ marginTop: 8, fontSize: 14, color: token.colorTextTertiary }}
+        >
+          {t('ai.tool.noResultNote')}
         </div>
       )}
 

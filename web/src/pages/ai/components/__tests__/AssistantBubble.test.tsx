@@ -305,6 +305,23 @@ describe('AssistantBubble', () => {
     },
   );
 
+  it.each(['STOPPED', 'FAILED'] as const)(
+    'showsAnHonestMissingResultForAToolStartOrphanedByATerminatedRunTest (%s)',
+    (runStatus) => {
+      // A tool start whose run terminated without a result is an orphaned call: the card must
+      // stop promising ongoing execution without inventing a successful or failed outcome.
+      const blocks: RenderBlock[] = [
+        runningToolBlock('toolu_1', 'rmq.topic.list', { instanceId: 'local' }),
+      ];
+      renderBubble({ blocks, bubbleExtra: { runStatus } });
+
+      expect(screen.getByTestId('ai-tool-block')).toBeInTheDocument();
+      expect(screen.getByTestId('ai-tool-status')).toHaveTextContent(String.fromCharCode(26080, 32467, 26524));
+      expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
+      expect(screen.getByTestId('ai-tool-no-result')).toBeInTheDocument();
+    },
+  );
+
   it('collapsesThinkingByDefaultAndCountsItsCharactersTest', () => {
     const text = '先确认实例能力。';
     renderBubble({ blocks: appendThinking([], text, 'model') });
