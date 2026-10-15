@@ -261,9 +261,10 @@ const buildTopOperator = (records: AuditRecord[]): AuditRiskOperator | null => {
   if (records.length === 0) return null;
   const operators = new Map<string, AuditRiskOperator>();
   records.forEach((record) => {
+    const identity = JSON.stringify(record.operator?.trim() || null);
     const name = normalizeText(record.operator, 'system');
     const existing =
-      operators.get(name) ??
+      operators.get(identity) ??
       ({
         name,
         count: 0,
@@ -275,7 +276,7 @@ const buildTopOperator = (records: AuditRecord[]): AuditRiskOperator | null => {
     existing.count += 1;
     if (isFailedAuditResult(record.result)) existing.failed += 1;
     if (isPartialAuditResult(record.result)) existing.partial += 1;
-    operators.set(name, existing);
+    operators.set(identity, existing);
   });
   const [topOperator] = [...operators.values()].sort(
     (left, right) => right.count - left.count || left.name.localeCompare(right.name),
