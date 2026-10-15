@@ -401,10 +401,10 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                             </pre>
                           </Card>
                         )}
-                      <MessageProperties
-                      properties={entry.message.properties}
-                      propertiesTruncated={entry.message.propertiesTruncated}
-                      />
+                        <MessageProperties
+                          properties={entry.message.properties}
+                          propertiesTruncated={entry.message.propertiesTruncated}
+                        />
                       </>
                     ) : (
                       <Text type="secondary">{t('queueBrowser.noMessageAtOffset')}</Text>
