@@ -842,6 +842,118 @@ describe('Cluster page', () => {
     ).toBeInTheDocument();
   });
 
+  it('scopes a registry row to its own NameServer when another entry serves the same broker cluster name', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 10,
+        name: 'instance-edge',
+        endpoint: 'edge-ns:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+      {
+        id: 11,
+        name: 'instance-prod',
+        endpoint: 'prod-ns:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '',
+        gmtModified: '',
+      },
+    ]);
+    // Both entries are backed by a broker cluster named `DefaultCluster` (the RocketMQ default)
+    // and the older entry comes first, which mirrors the server: ClusterService probes the
+    // registry in id order and overwrites each probe with name = entry name and
+    // nsClusterName = the broker cluster name discovered behind that entry's NameServer.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        id: 'DefaultCluster',
+        name: 'k8s-edge',
+        nsClusterName: 'DefaultCluster',
+        endpoint: 'edge-ns:9876',
+        nameServers: [{ addr: 'edge-ns:9876', status: 'healthy' }],
+      },
+      {
+        ...buildCluster(),
+        id: 'DefaultCluster',
+        name: 'DefaultCluster',
+        nsClusterName: 'DefaultCluster',
+        endpoint: 'prod-ns:9876',
+        nameServers: [{ addr: 'prod-ns:9876', status: 'healthy' }],
+      },
+    ]);
+    clusterServiceMocks.listNameserverRegistry.mockResolvedValue([
+      {
+        id: 1,
+        name: 'k8s-edge',
+        namesrvAddr: 'edge-ns:9876',
+        k8sNamespace: 'edge',
+        k8sId: 'ack-edge',
+        status: 'healthy',
+        description: null,
+        gmtCreate: '2026-08-17 19:15:37',
+        gmtModified: '2026-08-17 19:15:37',
+      },
+      {
+        id: 2,
+        name: 'DefaultCluster',
+        namesrvAddr: 'prod-ns:9876',
+        k8sNamespace: 'prod',
+        k8sId: 'ack-prod',
+        status: 'healthy',
+        description: null,
+        gmtCreate: '2026-08-17 19:15:37',
+        gmtModified: '2026-08-17 19:15:37',
+      },
+    ]);
+    clusterServiceMocks.getNameServerConfigDiff.mockImplementation(
+      async (_clusterId: string, instanceId?: string) => ({
+        cluster: 'DefaultCluster',
+        complete: true,
+        driftDetected: false,
+        nodeCount: 1,
+        reachableNodeCount: 1,
+        comparedKeys: ['serverWorkerThreads'],
+        nodes: [
+          {
+            address: instanceId === 'instance-prod' ? 'prod-ns:9876' : 'edge-ns:9876',
+            reachable: true,
+          },
+        ],
+        differences: [],
+      }),
+    );
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /prod-ns:9876/ });
+    await user.click(within(row).getByRole('button', { name: /配置差异/ }));
+
+    // The row must ask for the NameServer it names, not for the older entry whose NameServer
+    // happens to serve a broker cluster with the same name.
+    await waitFor(() =>
+      expect(clusterServiceMocks.getNameServerConfigDiff).toHaveBeenCalledWith(
+        'DefaultCluster',
+        'instance-prod',
+      ),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: /NameServer 配置差异 - DefaultCluster/,
+    });
+    expect(within(dialog).getByText('prod-ns:9876')).toBeInTheDocument();
+    expect(within(dialog).queryByText('edge-ns:9876')).not.toBeInTheDocument();
+  });
+
   it('omits instanceId for NameServer config drift when no instance owns the registry cluster', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     clusterServiceMocks.listRegistryClusters.mockResolvedValue([

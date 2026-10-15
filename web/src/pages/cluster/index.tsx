@@ -374,6 +374,11 @@ const ClusterPage = () => {
     [loadNsRegistry, t],
   );
 
+  // A registry entry owns the probes whose endpoint or address is its own namesrvAddr (the
+  // probe overwrites endpoint with that address and name with the entry name). nsClusterName
+  // is the broker cluster name discovered behind the probed NameServer, so two entries can
+  // report the same one — matching it pairs the row with whichever of them was registered
+  // first and reads the config of the wrong NameServer.
   const resolveNameserverRegistryCluster = useCallback(
     (entry: NameserverRegistryEntry) => {
       const namesrvAddr = safeText(entry.namesrvAddr);
@@ -382,8 +387,7 @@ const ClusterPage = () => {
         (cluster) =>
           cluster.endpoint === namesrvAddr ||
           cluster.nameServers.some((nameServer) => nameServer.addr === namesrvAddr) ||
-          cluster.name === name ||
-          cluster.nsClusterName === name,
+          cluster.name === name,
       );
     },
     [registryClusters],
