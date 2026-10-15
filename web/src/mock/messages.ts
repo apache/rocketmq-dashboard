@@ -15,18 +15,7 @@
  * limitations under the License.
  */
 
-export interface MessageRecord {
-  msgId: string;
-  topic: string;
-  tag: string;
-  key: string;
-  body: string;
-  storeTime: string;
-  bornHost: string;
-  storeHost: string;
-  properties: Record<string, string>;
-  size: number;
-}
+import type { MessageRecord } from '../api/message';
 
 export interface TraceNode {
   title: string;
@@ -59,6 +48,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:23:45.123Z',
     bornHost: '10.0.1.12:54321',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 0,
+    queueOffset: 1024,
     properties: {
       KEYS: 'order-12345',
       TAGS: 'create',
@@ -77,6 +69,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:25:12.456Z',
     bornHost: '10.0.1.12:54322',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 1,
+    queueOffset: 2048,
     properties: {
       KEYS: 'order-12346',
       TAGS: 'create',
@@ -95,6 +90,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:30:05.789Z',
     bornHost: '10.0.1.13:54321',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 2,
+    queueOffset: 3072,
     properties: {
       KEYS: 'order-12347',
       TAGS: 'create',
@@ -113,6 +111,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T11:15:33.234Z',
     bornHost: '10.0.1.12:54323',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 3,
+    queueOffset: 4096,
     properties: {
       KEYS: 'order-12348',
       TAGS: 'create',
@@ -131,6 +132,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T12:00:18.567Z',
     bornHost: '10.0.1.14:54321',
     storeHost: '10.0.2.5:10911',
+    brokerName: 'broker-c',
+    queueId: 0,
+    queueOffset: 5120,
     properties: {
       KEYS: 'order-12349',
       TAGS: 'create',
@@ -151,6 +155,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:24:05.890Z',
     bornHost: '10.0.1.20:54400',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 0,
+    queueOffset: 1024,
     properties: {
       KEYS: 'pay-67890',
       TAGS: 'success',
@@ -170,6 +177,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:26:18.123Z',
     bornHost: '10.0.1.20:54401',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 1,
+    queueOffset: 2048,
     properties: {
       KEYS: 'pay-67891',
       TAGS: 'success',
@@ -188,6 +198,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:32:45.456Z',
     bornHost: '10.0.1.21:54400',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 2,
+    queueOffset: 3072,
     properties: {
       KEYS: 'pay-67892',
       TAGS: 'failed',
@@ -206,6 +219,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T11:16:08.789Z',
     bornHost: '10.0.1.20:54402',
     storeHost: '10.0.2.5:10911',
+    brokerName: 'broker-c',
+    queueId: 3,
+    queueOffset: 4096,
     properties: {
       KEYS: 'pay-67893',
       TAGS: 'success',
@@ -224,6 +240,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T12:05:22.012Z',
     bornHost: '10.0.1.21:54401',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 0,
+    queueOffset: 5120,
     properties: {
       KEYS: 'pay-67894',
       TAGS: 'refunded',
@@ -244,6 +263,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T09:15:01.345Z',
     bornHost: '10.0.1.30:55000',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 0,
+    queueOffset: 1024,
     properties: {
       KEYS: 'user-10001',
       TAGS: 'login',
@@ -262,6 +284,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T09:30:12.678Z',
     bornHost: '10.0.1.31:55001',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 1,
+    queueOffset: 2048,
     properties: {
       KEYS: 'user-10042',
       TAGS: 'browse',
@@ -280,6 +305,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:05:33.901Z',
     bornHost: '10.0.1.30:55002',
     storeHost: '10.0.2.5:10911',
+    brokerName: 'broker-c',
+    queueId: 2,
+    queueOffset: 3072,
     properties: {
       KEYS: 'user-10099',
       TAGS: 'cart',
@@ -298,6 +326,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:15:45.234Z',
     bornHost: '10.0.1.30:55000',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 3,
+    queueOffset: 4096,
     properties: {
       KEYS: 'user-10001',
       TAGS: 'logout',
@@ -318,6 +349,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T13:00:05.567Z',
     bornHost: '10.0.1.40:55100',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 0,
+    queueOffset: 1024,
     properties: {
       KEYS: 'notif-001',
       TAGS: 'push',
@@ -337,6 +371,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T13:10:22.890Z',
     bornHost: '10.0.1.41:55101',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 1,
+    queueOffset: 2048,
     properties: {
       KEYS: 'notif-002',
       TAGS: 'sms',
@@ -355,6 +392,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T14:00:45.123Z',
     bornHost: '10.0.1.40:55102',
     storeHost: '10.0.2.5:10911',
+    brokerName: 'broker-c',
+    queueId: 2,
+    queueOffset: 3072,
     properties: {
       KEYS: 'notif-003',
       TAGS: 'email',
@@ -373,6 +413,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T15:30:18.456Z',
     bornHost: '10.0.1.41:55100',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 3,
+    queueOffset: 4096,
     properties: {
       KEYS: 'notif-004',
       TAGS: 'push',
@@ -393,6 +436,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T10:24:10.789Z',
     bornHost: '10.0.1.50:55200',
     storeHost: '10.0.2.4:10911',
+    brokerName: 'broker-b',
+    queueId: 0,
+    queueOffset: 1024,
     properties: {
       KEYS: 'inv-sku001',
       TAGS: 'sync',
@@ -411,6 +457,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T11:16:15.012Z',
     bornHost: '10.0.1.51:55201',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 1,
+    queueOffset: 2048,
     properties: {
       KEYS: 'inv-sku003',
       TAGS: 'deduct',
@@ -429,6 +478,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T14:30:05.345Z',
     bornHost: '10.0.1.50:55202',
     storeHost: '10.0.2.5:10911',
+    brokerName: 'broker-c',
+    queueId: 2,
+    queueOffset: 3072,
     properties: {
       KEYS: 'inv-sku015',
       TAGS: 'restock',
@@ -447,6 +499,9 @@ export const mockMessages: MessageRecord[] = [
     storeTime: '2026-07-01T16:00:22.678Z',
     bornHost: '10.0.1.52:55200',
     storeHost: '10.0.2.3:10911',
+    brokerName: 'broker-a',
+    queueId: 3,
+    queueOffset: 4096,
     properties: {
       KEYS: 'inv-sku022',
       TAGS: 'alert',
