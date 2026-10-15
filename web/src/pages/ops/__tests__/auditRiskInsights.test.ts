@@ -189,10 +189,12 @@ describe('audit risk insights', () => {
   });
 
   it('keeps a missing operator distinct from one literally named system Test', () => {
+    // Exercise malformed wire data without widening the declared AuditRecord contract.
+    const missingOperator = null as unknown as AuditRecord['operator'];
     const insights = buildAuditRiskInsights(null, [
-      record({ id: 1, operator: null, target: 'orders' }),
+      record({ id: 1, operator: missingOperator, target: 'orders' }),
       record({ id: 2, operator: '  ', target: 'payments' }),
-      record({ id: 3, operator: null, target: 'refunds' }),
+      record({ id: 3, operator: missingOperator, target: 'refunds' }),
       record({ id: 4, operator: 'system', target: 'invoices' }),
       record({ id: 5, operator: 'system', target: 'shipments' }),
       record({ id: 6, operator: 'ops-a', target: 'ledger' }),
