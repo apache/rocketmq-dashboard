@@ -147,7 +147,11 @@ verify() {
       [[ "$code" == "200" ]] && break
       sleep 5
     done
-    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" || warn "前端返回 HTTP $code"
+    # The backend branch above fails the deployment on an unhealthy server;
+    # a web tier that never answers must fail it too, otherwise the run ends
+    # with the success banner pointing at an entrance that returns 503.
+    [[ "$code" == "200" ]] && log "前端响应正常 (HTTP $code)" \
+      || err "前端健康检查未通过（HTTP ${code:-000}，docker logs rocketmq-web 查看原因）"
   fi
   log "🎉 部署完成 → http://$REMOTE_HOST:$PUBLIC_PORT/"
 }
