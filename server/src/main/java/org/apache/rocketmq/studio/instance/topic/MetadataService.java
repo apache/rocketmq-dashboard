@@ -843,7 +843,7 @@ public class MetadataService {
             CsvUtil.appendRow(csv, group.getName(), group.getNamespace(), group.getClusterId(),
                     toText(group.getSubscriptionMode()), toText(group.getConsumeType()),
                     onlineInstancesText(group.getOnlineInstances()), lagText(group.getTotalLag()),
-                    group.getDelaySeconds(), group.getSubscriptionDataType(), group.getDeliveryOrderType(),
+                    delayText(group), group.getSubscriptionDataType(), group.getDeliveryOrderType(),
                     group.getRetryMaxTimes(),
                     String.join(";", group.getSubscribedTopics() == null ? List.of() : group.getSubscribedTopics()),
                     group.getGmtCreate(), group.getGmtModified());
@@ -857,6 +857,16 @@ public class MetadataService {
 
     private static String onlineInstancesText(int onlineInstances) {
         return onlineInstances < 0 ? "unknown" : String.valueOf(onlineInstances);
+    }
+
+    /**
+     * A group whose broker-side stats carry no consumed-message timestamp never had its delay
+     * measured; {@code delaySeconds} stays at its initial zero in that case, so exporting the raw
+     * value would publish a fabricated "0 seconds" next to the "unknown" the lag and client-count
+     * columns already print for their own unmeasured sentinels.
+     */
+    private static String delayText(ConsumerGroupVO group) {
+        return group.isConsumptionTimestampAvailable() ? String.valueOf(group.getDelaySeconds()) : "unknown";
     }
 
     private String toText(Object value) {

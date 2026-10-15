@@ -1117,6 +1117,27 @@ class MetadataServiceTest {
     }
 
     @Test
+    void exportConsumerGroupsShouldRenderAnUnmeasurableDelayAsUnknownTest() {
+        ConsumerGroupVO unmeasurable = consumerGroup("orders-unmeasured", "orders", 10, SubscriptionMode.Pop);
+        unmeasurable.setConsumptionTimestampAvailable(false);
+        unmeasurable.setDelaySeconds(0);
+        ConsumerGroupVO measured = consumerGroup("orders-measured", "orders", 10, SubscriptionMode.Pop);
+        measured.setConsumptionTimestampAvailable(true);
+        measured.setDelaySeconds(7);
+        when(apacheProvider.listConsumerGroups("instance-a", null))
+                .thenReturn(List.of(unmeasurable, measured));
+
+        String csv = metadataService.exportConsumerGroups("instance-a", null, null, List.of());
+
+        // No consumed-message timestamp means the delay was never measured: the export must not
+        // publish the untouched zero, while a measured delay keeps exporting as its seconds.
+        assertThat(csv).contains(
+                "\"orders-unmeasured\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"1\",\"10\",\"unknown\"");
+        assertThat(csv).contains(
+                "\"orders-measured\",\"orders\",\"cluster-a\",\"Pop\",\"CLUSTERING\",\"1\",\"10\",\"7\"");
+    }
+
+    @Test
     void exportConsumerGroupsShouldEscapeFormulaCells() {
         ConsumerGroupVO group = consumerGroup("orders-cg", "=formula", 10, SubscriptionMode.Push);
         when(apacheProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
@@ -1248,6 +1269,7 @@ class MetadataServiceTest {
         group.setOnlineInstances(1);
         group.setTotalLag(lag);
         group.setDelaySeconds(3);
+        group.setConsumptionTimestampAvailable(true);
         group.setSubscriptionDataType("NORMAL");
         group.setRetryMaxTimes(16);
         group.setSubscribedTopics(List.of("orders-topic", "payments,topic"));
