@@ -297,7 +297,11 @@ const ClientsPage = () => {
     const instances = Array.from(
       new Map(
         clusterConnections.map((connection) => [
-          JSON.stringify([connection.clusterName, connection.type, connection.clientId ?? connection.address ?? connection.groupOrTopic]),
+          JSON.stringify([
+            connection.clusterName,
+            connection.type,
+            connection.clientId ?? connection.address ?? connection.groupOrTopic,
+          ]),
           connection,
         ]),
       ).values(),

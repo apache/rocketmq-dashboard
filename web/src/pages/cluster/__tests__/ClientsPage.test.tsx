@@ -266,12 +266,20 @@ describe('Clients page', () => {
       await screen.findAllByText('10.0.0.2:40000');
       const diagnostics = screen.getByTestId('client-connection-diagnostics');
       expect(within(diagnostics).getAllByText('DefaultProducer')).toHaveLength(2);
-      const inventory = within(diagnostics).getAllByText('DefaultProducer').map((cell) => cell.closest('tr')!);
+      const inventory = within(diagnostics)
+        .getAllByText('DefaultProducer')
+        .map((cell) => cell.closest('tr')!);
       expect(within(inventory[0]).getByText('cluster-a')).toBeInTheDocument();
       expect(within(inventory[1]).getByText('cluster-b')).toBeInTheDocument();
-      expect(within(inventory[0].closest('table')!).getByText(label)).toBeInTheDocument();
-      const producerStatistic = screen.getByText('Producer', { selector: '.ant-statistic-title' }).parentElement!;
-      expect(producerStatistic.querySelector('.ant-statistic-content-value')).toHaveTextContent('2');
+      expect(
+        within(inventory[0].closest('table')!).getByRole('columnheader', { name: label }),
+      ).toBeInTheDocument();
+      const producerStatistic = screen.getByText('Producer', {
+        selector: '.ant-statistic-title',
+      }).parentElement!;
+      expect(producerStatistic.querySelector('.ant-statistic-content-value')).toHaveTextContent(
+        '2',
+      );
       expect(within(diagnostics).queryByText('同一资源存在多版本客户端')).not.toBeInTheDocument();
       expect(within(diagnostics).queryByText('Client ID 连接到多个地址')).not.toBeInTheDocument();
       expect(connectionsService.listConnections).toHaveBeenCalledWith(

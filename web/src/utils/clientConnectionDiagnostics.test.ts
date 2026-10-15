@@ -424,7 +424,7 @@ describe('physical cluster scope', () => {
 
   it('assigns per-row metadata issues to their own cluster resource Test', () => {
     const diagnostics = analyzeClientConnections([
-      producer({ protocol: null }),
+      producer({ protocol: 'unrecognized-protocol' }),
       producer({ clusterName: 'cluster-b' }),
     ]);
     expect(
