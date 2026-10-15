@@ -589,6 +589,45 @@ describe('MessagePage async request ownership', () => {
     expect(within(dialog).getByText('请输入 Message ID')).toBeInTheDocument();
   });
 
+  it('says how many trace findings the diagnostics panel does not tag', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    // Nine failing stages at one instant and one successful delivery: exactly nine findings, so
+    // the panel's eight tags leave one out.
+    serviceMocks.getMessageTrace.mockResolvedValue({
+      nodes: Array.from({ length: 9 }, (_, index) => ({
+        title: `阶段 ${index}`,
+        timestamp: '2026-07-31T00:00:00.000Z',
+        costTime: 1,
+        status: 'error' as const,
+        description: `stage ${index} failed`,
+      })),
+      consumerStatus: [
+        {
+          group: 'cg-a',
+          deliveryStatus: 'success',
+          consumeTime: '2026-07-31T00:00:00.000Z',
+          retryCount: 0,
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await selectTopic(user);
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    await within(dialog).findByText('轨迹诊断');
+    // Nine failing stages produce nine findings. The tag row lists eight, and the health score is
+    // computed from all of them, so it has to say that one more exists.
+    const diagnosticsAlert = within(dialog)
+      .getByText('轨迹诊断')
+      .closest('.ant-alert') as HTMLElement;
+    expect(within(diagnosticsAlert).getByText('+1')).toBeInTheDocument();
+  });
+
   it('shows trace diagnostics for slow and failed delivery paths', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     serviceMocks.getMessageTrace.mockResolvedValue({

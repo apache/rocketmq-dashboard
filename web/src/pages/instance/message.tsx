@@ -194,6 +194,7 @@ const diagnosticStatusKey: Record<TraceDiagnosticStatus, string> = {
 const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagnostics }) => {
   const { t } = useLang();
   const issueData = diagnostics.issues.slice(0, 8);
+  const hiddenIssueCount = diagnostics.issues.length - issueData.length;
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
@@ -209,6 +210,9 @@ const TraceDiagnosticsPanel = ({ diagnostics }: { diagnostics: MessageTraceDiagn
                 {t(issue.titleKey, issue.params)}
               </Tag>
             ))}
+            {/* The health score counts every finding, not only the tagged ones, so the tag row has
+                to say how many it left out - the same disclosure the topic page's route tags use. */}
+            {hiddenIssueCount > 0 && <Tag>+{hiddenIssueCount}</Tag>}
           </Flex>
         }
       />
