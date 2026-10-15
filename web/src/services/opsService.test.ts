@@ -21,13 +21,16 @@ import { mockAuditRecords } from '../mock/audit';
 import {
   acknowledgeAlert,
   createAlertRule,
+  createAlertSilence,
   deleteAlertRule,
+  deleteAlertSilence,
   exportAlertRulesTransfer,
   exportAuditLogs,
   getAuditFilterOptions,
   importAlertRulesTransfer,
   listAlertRules,
   listAlertRulesPage,
+  listAlertSilences,
   listAuditRecords,
   listSystemAlerts,
   listSystemAlertsPage,
@@ -224,6 +227,37 @@ describe('ops service mock data', () => {
     expect((await listSystemAlerts()).find((alert) => alert.id === target!.id)?.acknowledged).toBe(
       true,
     );
+  });
+
+  it('rejects ending a maintenance window the mock inventory does not have Test', async () => {
+    const silence = await createAlertSilence({
+      startsAt: '2026-10-16T00:00:00Z',
+      endsAt: '2026-10-16T01:00:00Z',
+      reason: 'missing-silence-contract-test',
+    });
+    const missingId = silence.id + 1;
+
+    // The endpoint answers 404 "Alert silence not found: <id>" (AlertSilenceService.delete);
+    // ending a maintenance window the store does not have must not read as a success.
+    await expect(deleteAlertSilence(missingId)).rejects.toThrow(
+      `Alert silence not found: ${missingId}`,
+    );
+    expect((await listAlertSilences()).map((item) => item.id)).toEqual([silence.id]);
+
+    await deleteAlertSilence(silence.id);
+    expect((await listAlertSilences()).map((item) => item.id)).toEqual([]);
+  });
+
+  it('still ends a maintenance window the mock inventory has Test', async () => {
+    const silence = await createAlertSilence({
+      startsAt: '2026-10-16T02:00:00Z',
+      endsAt: '2026-10-16T03:00:00Z',
+      reason: 'existing-silence-contract-test',
+    });
+
+    await expect(deleteAlertSilence(silence.id)).resolves.toBeUndefined();
+
+    expect((await listAlertSilences()).map((item) => item.id)).not.toContain(silence.id);
   });
 
   it('returns copied audit records', async () => {

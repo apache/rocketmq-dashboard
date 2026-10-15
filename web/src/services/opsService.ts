@@ -483,6 +483,11 @@ export async function createAlertSilence(data: CreateAlertSilence): Promise<Aler
 
 export async function deleteAlertSilence(id: number): Promise<void> {
   if (!isMockMode()) return opsApi.deleteAlertSilence(id);
+  if (!alertSilencesState.some((silence) => silence.id === id)) {
+    // The endpoint answers 404 "Alert silence not found: <id>" (AlertSilenceService.delete);
+    // ending a maintenance window the store does not have must not read as a success.
+    throw new Error(`Alert silence not found: ${id}`);
+  }
   alertSilencesState = alertSilencesState.filter((silence) => silence.id !== id);
 }
 
