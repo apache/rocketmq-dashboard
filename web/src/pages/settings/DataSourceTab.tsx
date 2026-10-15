@@ -126,6 +126,7 @@ export const DataSourceTab = () => {
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
@@ -135,6 +136,9 @@ export const DataSourceTab = () => {
   const [exporting, setExporting] = useState(false);
   const requestSeqRef = useRef(0);
   const [deleteRefreshVersion, setDeleteRefreshVersion] = useState(0);
+  const queryKey = JSON.stringify([debouncedSearch, typeFilter, page, pageSize]);
+  const listActionsDisabled =
+    loading || search.trim() !== debouncedSearch || loadedQueryKey !== queryKey;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -166,10 +170,12 @@ export const DataSourceTab = () => {
         }
         setDataSources(result.items);
         setTotal(result.total);
+        setLoadedQueryKey(queryKey);
       } catch {
         if (requestId === requestSeqRef.current) {
           setDataSources([]);
           setTotal(0);
+          setLoadedQueryKey(null);
           message.error(t('settings.dataSourceLoadFailed'));
         }
       } finally {
@@ -178,7 +184,7 @@ export const DataSourceTab = () => {
         }
       }
     })();
-  }, [debouncedSearch, page, pageSize, t, typeFilter]);
+  }, [debouncedSearch, page, pageSize, queryKey, t, typeFilter]);
 
   useEffect(() => {
     void loadDataSources();
@@ -209,6 +215,7 @@ export const DataSourceTab = () => {
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
   ) => {
+    if (key !== 'modal' && listActionsDisabled) return;
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
       message.warning(t('settings.dataSourceAuthTestHint'));
       return;
@@ -237,6 +244,7 @@ export const DataSourceTab = () => {
   };
 
   const openEditModal = (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
     setEditingDataSource(dataSource);
     dsForm.setFieldsValue(dataSource);
     setModalOpen(true);
@@ -276,6 +284,7 @@ export const DataSourceTab = () => {
   };
 
   const handleDelete = async (dataSource: DataSource) => {
+    if (listActionsDisabled) return;
     try {
       await deleteDataSource(dataSource.key);
       // Refresh through the effect so a completed deletion uses the current filters/page,
@@ -305,6 +314,7 @@ export const DataSourceTab = () => {
   };
 
   const handleExport = async () => {
+    if (listActionsDisabled || total === 0) return;
     setExporting(true);
     try {
       const exported = await listAllDataSources({
@@ -363,7 +373,7 @@ export const DataSourceTab = () => {
             size="small"
             icon={<ApiOutlined />}
             loading={testingKeys.has(record.key)}
-            disabled={authNeedsSecret(record.auth)}
+            disabled={listActionsDisabled || authNeedsSecret(record.auth)}
             title={authNeedsSecret(record.auth) ? t('settings.dataSourceAuthTestHint') : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
@@ -373,6 +383,7 @@ export const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={listActionsDisabled}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -383,7 +394,13 @@ export const DataSourceTab = () => {
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={listActionsDisabled}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
@@ -424,7 +441,7 @@ export const DataSourceTab = () => {
             icon={<DownloadSimple size={14} />}
             onClick={() => void handleExport()}
             loading={exporting}
-            disabled={loading || total === 0}
+            disabled={listActionsDisabled || total === 0}
           >
             {t('common.export')}
           </Button>

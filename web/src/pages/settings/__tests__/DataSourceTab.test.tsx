@@ -281,6 +281,43 @@ describe('DataSourceTab', () => {
     await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
   });
 
+  it('disables old-row actions and export while a changed search is pending', async () => {
+    const nextList = deferred<DataSourcePage>();
+    vi.mocked(listDataSourcesPage)
+      .mockResolvedValueOnce(sourcePage)
+      .mockReturnValueOnce(nextList.promise);
+    render(
+      <App>
+        <LangProvider>
+          <DataSourceTab />
+        </LangProvider>
+      </App>,
+    );
+
+    const oldRow = await screen.findByRole('row', { name: /Prometheus prod/ });
+    fireEvent.change(screen.getByPlaceholderText('搜索数据源名称'), {
+      target: { value: 'stage' },
+    });
+    expect(within(oldRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    expect(within(oldRow).getByRole('button', { name: /删除/ })).toBeDisabled();
+    expect(within(oldRow).getByRole('button', { name: /测试连接/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /导出/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /导出/ }));
+    expect(listAllDataSources).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(listDataSourcesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'stage' }),
+      ),
+    );
+    expect(within(oldRow).getByRole('button', { name: /编辑/ })).toBeDisabled();
+    await act(async () => nextList.resolve({ ...sourcePage, items: [], total: 0 }));
+    await waitFor(() => expect(screen.queryByText('Prometheus prod')).not.toBeInTheDocument());
+    expect(testDataSource).not.toHaveBeenCalled();
+    expect(deleteDataSource).not.toHaveBeenCalled();
+    expect(listAllDataSources).not.toHaveBeenCalled();
+  });
+
   it('does not report a data source as offline when the backend has not tested it', async () => {
     render(
       <LangProvider>
