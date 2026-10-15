@@ -175,7 +175,8 @@ export type CreateAlertSilence = Omit<AlertSilence, 'id' | 'createdBy'>;
 export interface AuditRecord {
   id: number;
   timestamp: string;
-  operator: string;
+  /** Null when the audit row carries no operator (the column is nullable); renderers fall back. */
+  operator: string | null;
   operationType: string;
   resourceType: string;
   target: string | null;
