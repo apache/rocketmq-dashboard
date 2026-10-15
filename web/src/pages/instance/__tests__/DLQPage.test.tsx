@@ -1114,4 +1114,25 @@ describe('DLQ page', () => {
     expect(screen.queryByText('cg-order')).not.toBeInTheDocument();
     expect(screen.getByText('-cg-"payment"')).toBeInTheDocument();
   });
+
+  it('declaresAScrollBudgetThatCoversItsExpandColumnTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByRole('button', { name: /消息明细/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    // scroll.x 是详情表的预算：窄到预算以下时表在 .ant-table-body 里横向滚动，宽到预算以上时多出的
+    // 宽度归未声明宽度的弹性列。预算 = 240（Message ID）+ 90（Queue）+ 90（Offset）+ 90（重投次数）
+    // + 160（入队时间）+ 140（Keys）+ 220（Body）+ 100（操作）= 1130，加 32（小表的选择框列）+ 48
+    //（antd 为展开图标列保留的宽度，展开列不属于 columns，见 utils/table.ts 的 EXPAND_COLUMN_WIDTH）
+    // = 1210。漏算展开列时预算只有 1162，窄窗口下 table-layout: fixed 会把固定列之外的部分压到
+    // 低于各列声明的宽度。
+    const table = [...dialog.querySelectorAll<HTMLTableElement>('table')].find((element) =>
+      /px$/.test(element.style.width),
+    );
+
+    expect(table?.style.width).toBe('1210px');
+  });
 });

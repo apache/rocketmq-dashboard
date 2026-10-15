@@ -1026,7 +1026,9 @@ const DLQPage = () => {
                 },
               }}
               tableLayout="fixed"
-              scroll={{ x: tableScrollX(detailColumns, { selection: true }) }}
+              // The row-expand column is rendered by antd and is not part of `columns`, so the
+              // table's budget has to reserve it explicitly (48px) next to the selection column.
+              scroll={{ x: tableScrollX(detailColumns, { selection: true, expandable: true }) }}
               columns={detailColumns}
             />
 
