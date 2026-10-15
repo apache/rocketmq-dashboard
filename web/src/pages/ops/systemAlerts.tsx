@@ -310,9 +310,14 @@ const SystemAlertsPage = () => {
           page: currentPage,
           pageSize: ALERT_EXPORT_PAGE_SIZE,
         });
-        if (result.items.length === 0) break;
-        rows.push(...result.items);
         expectedTotal = Math.min(expectedTotal, result.total);
+        if (result.items.length === 0) {
+          if (rows.length < expectedTotal) {
+            throw new Error('System alert export returned an incomplete page');
+          }
+          break;
+        }
+        rows.push(...result.items);
         currentPage += 1;
       }
       downloadCsv(

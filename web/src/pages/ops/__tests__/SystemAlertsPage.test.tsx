@@ -148,7 +148,7 @@ describe('SystemAlertsPage', () => {
         page: 1,
         size: 100,
       })
-      .mockResolvedValueOnce({ items: [], total: 200, page: 2, size: 100 });
+      .mockResolvedValueOnce({ items: [], total: 1, page: 2, size: 100 });
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Broker unavailable');
@@ -158,6 +158,33 @@ describe('SystemAlertsPage', () => {
     await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
     expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
     expect(listSystemAlertsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 100 });
+  });
+
+  it('rejects an empty export page while the server still reports unseen alerts', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const alert = {
+      id: 1,
+      level: 'error',
+      title: 'Broker unavailable',
+      description: 'broker a',
+      time: '2026-08-10 01:00',
+      acknowledged: false,
+    };
+    vi.mocked(listSystemAlertsPage)
+      .mockResolvedValueOnce({ items: [alert], total: 1, page: 1, size: 20 })
+      .mockResolvedValueOnce({ items: [alert], total: 2, page: 1, size: 100 })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(
+      await screen.findByText('Failed to export alert events. Please try again later.'),
+    ).toBeInTheDocument();
+    expect(listSystemAlertsPage).toHaveBeenCalledTimes(3);
+    expect(downloadCsv).not.toHaveBeenCalled();
   });
 
   it('renders an alert with an unknown backend level', async () => {
