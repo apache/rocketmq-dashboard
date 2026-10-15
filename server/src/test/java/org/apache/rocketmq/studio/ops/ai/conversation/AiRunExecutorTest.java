@@ -454,6 +454,11 @@ class AiRunExecutorTest {
         doThrow(new RuntimeException("deadlock found when trying to get lock"))
                 .when(eventRepository).insert(any(RmqAiEvent.class));
         provider.emit(new AgentEvent.TextDelta("answer"));
+        // Close the turn with a success frame. This case is about a failing flush, not about a stream
+        // that ends with no result frame at all — decide() now fails the latter on purpose, so without
+        // this frame the COMPLETED assertion below would be testing the wrong branch.
+        provider.emit(new AgentEvent.ResultMeta("session-9", 1200L, 30, 90,
+                AgentEventProjector.SUCCESS_SUBTYPE));
 
         startAndRun();
 

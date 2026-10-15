@@ -25,6 +25,8 @@ import org.apache.rocketmq.studio.ops.ai.LlmConfigVO;
 import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.PromptEnhancer;
 import org.apache.rocketmq.studio.ops.ai.conversation.agent.RmqctlWorkspace;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEvent;
+import org.apache.rocketmq.studio.ops.ai.conversation.event.AgentEventProjector;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.LiveEvent;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.RunStatus;
 import org.apache.rocketmq.studio.ops.ai.conversation.event.StopReason;
@@ -170,8 +172,11 @@ class AiRunServiceTest {
         // The worker picked the run up: QUEUED is a real state, not a label the row keeps.
         assertThat(runUpdates.get(0).getStatus()).isEqualTo(RunStatus.RUNNING.name());
         assertThat(runUpdates.get(0).getStartedAt()).isNotNull();
-        // ...and the run really did go on to execute and finish on the queued engine.
-        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        // ...and the run really did go on to execute and reach a terminal on the queued engine —
+        // a terminal, not specifically a success: this stub streams no frames, so the turn ends
+        // with the no-result failure instead of a success nothing projected.
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
         assertThat(emitters.get(0).timeoutMillis()).isEqualTo(AiRunExecutor.CLI_STREAM_TIMEOUT_MILLIS);
     }
 
@@ -326,9 +331,28 @@ class AiRunServiceTest {
         // 409 the stranded-QUEUED row produced for up to a day.
         org.mockito.Mockito.reset(workspace);
         when(workspace.prepare(anyLong(), any())).thenReturn(Optional.of(preparation()));
+        // Script a success frame so the recovered run completes: an unscripted stub stream now
+        // ends with the no-result failure, and this turn is meant to be a healthy one.
+        provider.emit(new AgentEvent.ResultMeta("session-2", 10L, 3, 4,
+                AgentEventProjector.SUCCESS_SUBTYPE));
         service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("second try"));
         assertThat(runInserts).hasSize(2);
         assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+    }
+
+    @Test
+    void aStreamThatEndsWithoutAResultFrameMustNotCompleteTheRunTest() {
+        // The stub streams no frames at all: the agent stream closes without a result frame, so
+        // nothing was projected and nothing errored with a frame of its own — the provider process
+        // simply went away mid-turn. Reporting COMPLETED would present a turn with no answer as a
+        // successful one. HTTP completion turns never carry a result frame and are deliberately
+        // excluded from this in decide().
+        service.sendMessage(CONVERSATION_ID, AiRunService.RunRequest.of("anybody home"));
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
+        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        assertThat(lastRun().getErrorCode()).isEqualTo(AiRunExecutor.ERROR_CODE_NO_RESULT);
+        assertThat(registry.isLive(RUN_ID)).isFalse();
     }
 
     @Test
