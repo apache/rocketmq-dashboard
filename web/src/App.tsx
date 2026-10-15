@@ -17,8 +17,9 @@
 
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Button, Result, Spin } from 'antd';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { getAuthStatus } from './api/auth';
+import { sessionExpiryRedirectUrl } from './api/client';
 import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
@@ -60,6 +61,7 @@ type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
 export function AuthGate() {
   const { t } = useLang();
+  const location = useLocation();
   const clearAuth = useAuthStore((state) => state.logout);
   const syncAuth = useAuthStore((state) => state.login);
   const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
@@ -133,7 +135,9 @@ export function AuthGate() {
       </div>
     );
   }
-  if (gateState === 'denied') return <Navigate to="/login" replace />;
+  if (gateState === 'denied') {
+    return <Navigate to={sessionExpiryRedirectUrl(location.pathname, location.search)} replace />;
+  }
   if (gateState === 'error') {
     return (
       <Result

@@ -24,10 +24,11 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { App, Button, Form, Input, Typography } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
 import { login as loginApi } from '../../api/auth';
+import { sanitizeLoginRedirect } from '../../api/client';
 import { useTheme } from '../../theme/useTheme';
 import './index.css';
 
@@ -45,6 +46,7 @@ const LoginPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const authLogin = useAuthStore((s) => s.login);
   const { darkMode, toggleTheme } = useTheme();
 
@@ -58,7 +60,7 @@ const LoginPage = () => {
       const data = await loginApi(values.username, values.password);
       authLogin(data.user.username, data.user.userId, data.user.admin);
       message.success(t('login.success'));
-      navigate('/', { replace: true });
+      navigate(sanitizeLoginRedirect(searchParams.get('redirect')), { replace: true });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : t('login.failed');
       message.error(errorMsg);

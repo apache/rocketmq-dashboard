@@ -17,7 +17,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { lazy, type ComponentType } from 'react';
-import { MemoryRouter, Outlet, Route, Routes, useParams } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthStatus } from './api/auth';
 import App, { AuthGate, LazyRouteOutlet } from './App';
@@ -80,14 +80,20 @@ describe('LazyRouteOutlet', () => {
   });
 });
 
-function renderGate() {
+function LoginLocation() {
+  const location = useLocation();
+  return <div data-testid="login-location">{`${location.pathname}${location.search}`}</div>;
+}
+
+function renderGate(initialEntry = '/protected') {
   return render(
     <LangProvider>
-      <MemoryRouter initialEntries={['/protected']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/login" element={<div>login page</div>} />
+          <Route path="/login" element={<><div>login page</div><LoginLocation /></>} />
           <Route element={<AuthGate />}>
             <Route path="/protected" element={<div>protected content</div>} />
+            <Route path="/ops/alerts" element={<div>alerts page</div>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -148,6 +154,17 @@ describe('AuthGate', () => {
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
+  });
+
+  it('preserves an unauthenticated deep link through the login redirect', async () => {
+    mockedGetAuthStatus.mockResolvedValue({ loginRequired: true, authenticated: false });
+
+    renderGate('/ops/alerts?level=error');
+
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+    expect(screen.getByTestId('login-location')).toHaveTextContent(
+      '/login?redirect=%2Fops%2Falerts%3Flevel%3Derror',
+    );
   });
 
   it('hides protected content and rechecks the session after another tab signs out', async () => {
