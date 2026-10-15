@@ -433,6 +433,334 @@ describe('AlertsPage', () => {
     expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).not.toBeChecked();
   });
 
+  it.each([
+    { action: 'single', enabled: true },
+    { action: 'bulk', enabled: true },
+    { action: 'single', enabled: false },
+    { action: 'bulk', enabled: false },
+  ] as const)(
+    'removesRulesThatLeaveTheStatusFilterAfterSuccessfulToggle($action, $enabled)Test',
+    async ({ action, enabled }) => {
+      let storedRule = { ...cloneRule(alertRules[0]), enabled };
+      vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, query) =>
+        pageResult(
+          query?.enabled === undefined || query.enabled === storedRule.enabled ? [storedRule] : [],
+        ),
+      );
+      vi.mocked(toggleAlertRule).mockImplementation(async (_id, enabled) => {
+        storedRule = { ...storedRule, enabled };
+        return storedRule;
+      });
+      vi.mocked(bulkToggleAlertRules).mockImplementation(async (ids, enabled) => {
+        storedRule = { ...storedRule, enabled };
+        return { succeededIds: ids, failures: {}, updatedRules: [storedRule] };
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('Broker disk usage');
+      await user.click(screen.getAllByRole('combobox')[0]);
+      await user.click(
+        await screen.findByText(enabled ? '已启用' : '已禁用', {
+          selector: '.ant-select-item-option-content',
+        }),
+      );
+      await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(2));
+
+      if (action === 'single') {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+        await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledWith(1, !enabled));
+      } else {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+        await user.click(screen.getByRole('button', { name: enabled ? '批量禁用' : '批量启用' }));
+        await waitFor(() => expect(bulkToggleAlertRules).toHaveBeenCalledWith([1], !enabled));
+      }
+
+      await waitFor(() => expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument());
+      expect(screen.getByText('共 0 条规则')).toBeInTheDocument();
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith('CLUSTER', {
+        enabled,
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+      });
+    },
+  );
+
+  it.each(['single', 'bulk'] as const)(
+    'blocksActionsUntilTheFilteredListReconcilesAfter%sToggleTest',
+    async (action) => {
+      let resolveRefresh!: (result: PageResult<AlertRule>) => void;
+      const pendingRefresh = new Promise<PageResult<AlertRule>>((resolve) => {
+        resolveRefresh = resolve;
+      });
+      const enabledRule = { ...cloneRule(alertRules[0]), enabled: true };
+      vi.mocked(listAlertRulesPage)
+        .mockResolvedValueOnce(pageResult([enabledRule]))
+        .mockResolvedValueOnce(pageResult([enabledRule]))
+        .mockReturnValue(pendingRefresh);
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('Broker disk usage');
+      await user.click(screen.getAllByRole('combobox')[0]);
+      await user.click(
+        await screen.findByText('已启用', { selector: '.ant-select-item-option-content' }),
+      );
+      await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(2));
+      if (action === 'single') {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+      } else {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+        await user.click(screen.getByRole('button', { name: '批量禁用' }));
+      }
+      await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(3));
+      expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toBeDisabled();
+      expect(
+        within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }),
+      ).toBeDisabled();
+      expect(
+        within(getRuleRow('Broker disk usage')).getByRole('button', { name: '删除' }),
+      ).toBeDisabled();
+      expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).toBeDisabled();
+      fireEvent.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+      expect(toggleAlertRule).toHaveBeenCalledTimes(action === 'single' ? 1 : 0);
+      expect(bulkToggleAlertRules).toHaveBeenCalledTimes(action === 'bulk' ? 1 : 0);
+      await act(async () => resolveRefresh(pageResult([])));
+      await waitFor(() => expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument());
+      expect(screen.getByRole('button', { name: '新建规则' })).toBeEnabled();
+    },
+  );
+
+  it('retainsOnlyFailedMatchingRulesAfterFilteredPartialBulkToggleTest', async () => {
+    let storedRules = alertRules.slice(0, 2).map((rule) => ({ ...cloneRule(rule), enabled: true }));
+    vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, query) =>
+      pageResult(
+        storedRules.filter(
+          (rule) => query?.enabled === undefined || rule.enabled === query.enabled,
+        ),
+      ),
+    );
+    vi.mocked(bulkToggleAlertRules).mockImplementation(async () => {
+      storedRules = storedRules.map((rule) => (rule.id === 1 ? { ...rule, enabled: false } : rule));
+      return {
+        succeededIds: [1],
+        failures: { '2': 'network error' },
+        updatedRules: [storedRules[0]],
+      };
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('已启用', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(2));
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量禁用' }));
+
+    await waitFor(() => expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument());
+    expect(within(getRuleRow('Consumer lag')).getByRole('checkbox')).toBeChecked();
+    expect(within(getRuleRow('Consumer lag')).getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByText('共 1 条规则')).toBeInTheDocument();
+    expect(screen.getByText('已禁用 1 条告警规则，1 条失败')).toBeInTheDocument();
+  });
+
+  it.each(['single', 'bulk'] as const)(
+    'refreshesCurrentPendingPageAfter%sToggleWithoutRestoringStaleRowsTest',
+    async (action) => {
+      let resolveToggle!: (rule: AlertRule) => void;
+      let resolveBulk!: (result: Awaited<ReturnType<typeof bulkToggleAlertRules>>) => void;
+      vi.mocked(toggleAlertRule).mockReturnValue(
+        new Promise((resolve) => {
+          resolveToggle = resolve;
+        }),
+      );
+      vi.mocked(bulkToggleAlertRules).mockReturnValue(
+        new Promise((resolve) => {
+          resolveBulk = resolve;
+        }),
+      );
+      let resolveOldPage!: (result: PageResult<AlertRule>) => void;
+      const oldPage = new Promise<PageResult<AlertRule>>((resolve) => {
+        resolveOldPage = resolve;
+      });
+      const currentRule = { ...cloneRule(alertRules[2]), id: 21, name: 'Current page rule' };
+      let pageTwoCalls = 0;
+      vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, query) => {
+        if (query?.page === 2) {
+          pageTwoCalls += 1;
+          if (pageTwoCalls === 1) return oldPage;
+          return { ...pageResult([currentRule]), page: 2, total: 21 };
+        }
+        return { ...pageResult(alertRules.slice(0, 2)), total: 21 };
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText('Broker disk usage');
+      await expectRuleRowInteractive('Broker disk usage');
+      if (action === 'single') {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+        await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledWith(1, true));
+      } else {
+        await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+        await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+        await user.click(screen.getByRole('button', { name: '批量启用' }));
+        await waitFor(() => expect(bulkToggleAlertRules).toHaveBeenCalledWith([1, 2], true));
+      }
+      await user.click(screen.getByTitle('2'));
+      await waitFor(() => expect(pageTwoCalls).toBe(1));
+      await act(async () => {
+        const updated = { ...cloneRule(alertRules[0]), enabled: true };
+        if (action === 'single') resolveToggle(updated);
+        else
+          resolveBulk({
+            succeededIds: [1],
+            failures: { '2': 'network error' },
+            updatedRules: [updated],
+          });
+      });
+      await screen.findByText('Current page rule');
+      expect(listAlertRulesPage).toHaveBeenLastCalledWith('CLUSTER', {
+        enabled: undefined,
+        page: 2,
+        pageSize: 20,
+        search: undefined,
+      });
+      expect(within(getRuleRow('Current page rule')).getByRole('checkbox')).not.toBeChecked();
+      expect(screen.getByText('已选择 0 条告警规则')).toBeInTheDocument();
+      await act(async () => {
+        resolveOldPage({
+          ...pageResult([{ ...currentRule, name: 'Stale page rule' }]),
+          page: 2,
+          total: 21,
+        });
+      });
+      expect(screen.getByText('Current page rule')).toBeInTheDocument();
+      expect(screen.queryByText('Stale page rule')).not.toBeInTheDocument();
+      expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
+    },
+  );
+
+  it('doesNotRestoreHiddenFailuresOrKeepSuccessfulSelectionsAfterSearchChangesTest', async () => {
+    let resolveBulk!: (result: Awaited<ReturnType<typeof bulkToggleAlertRules>>) => void;
+    vi.mocked(bulkToggleAlertRules).mockReturnValue(
+      new Promise((resolve) => {
+        resolveBulk = resolve;
+      }),
+    );
+    let storedRules = alertRules.slice(0, 2).map(cloneRule);
+    vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, query) =>
+      pageResult(storedRules.filter((rule) => !query?.search || rule.name.includes(query.search))),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量启用' }));
+    await waitFor(() => expect(bulkToggleAlertRules).toHaveBeenCalledWith([1, 2], true));
+    fireEvent.change(screen.getByPlaceholderText('搜索规则名称或指标'), {
+      target: { value: 'Broker' },
+    });
+    await waitFor(() => expect(screen.queryByText('Consumer lag')).not.toBeInTheDocument());
+    await act(async () => {
+      storedRules = storedRules.map((rule) => (rule.id === 1 ? { ...rule, enabled: true } : rule));
+      resolveBulk({
+        succeededIds: [1],
+        failures: { '2': 'network error' },
+        updatedRules: [storedRules[0]],
+      });
+    });
+    await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(3));
+    expect(listAlertRulesPage).toHaveBeenLastCalledWith('CLUSTER', {
+      enabled: undefined,
+      page: 1,
+      pageSize: 20,
+      search: 'Broker',
+    });
+    expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(getRuleRow('Broker disk usage')).getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByText('已选择 0 条告警规则')).toBeInTheDocument();
+  });
+
+  it('keepsTheLatestStatusFilterWhenAToggleCompletesTest', async () => {
+    let storedRule = { ...cloneRule(alertRules[0]), enabled: true };
+    let resolveToggle!: (rule: AlertRule) => void;
+    vi.mocked(toggleAlertRule).mockReturnValue(
+      new Promise((resolve) => {
+        resolveToggle = resolve;
+      }),
+    );
+    vi.mocked(listAlertRulesPage).mockImplementation(async (_domain, query) =>
+      pageResult(
+        query?.enabled === undefined || query.enabled === storedRule.enabled ? [storedRule] : [],
+      ),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await expectRuleRowInteractive('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('switch'));
+    await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledWith(1, false));
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('已禁用', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument());
+    await act(async () => {
+      storedRule = { ...storedRule, enabled: false };
+      resolveToggle(storedRule);
+    });
+    await screen.findByText('Broker disk usage');
+    expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(listAlertRulesPage).toHaveBeenLastCalledWith('CLUSTER', {
+      enabled: false,
+      page: 1,
+      pageSize: 20,
+      search: undefined,
+    });
+  });
+
+  it('doesNotRefreshOrReplaceANewDomainAfterPendingToggleCompletesTest', async () => {
+    mockDomainRules();
+    let resolveToggle!: (rule: AlertRule) => void;
+    vi.mocked(toggleAlertRule).mockReturnValue(
+      new Promise((resolve) => {
+        resolveToggle = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderAlertHistory();
+    await screen.findByText('Cluster rule');
+    await expectRuleRowInteractive('Cluster rule');
+    await user.click(within(getRuleRow('Cluster rule')).getByRole('switch'));
+    await waitFor(() => expect(toggleAlertRule).toHaveBeenCalledWith(1, true));
+    await user.click(screen.getByRole('button', { name: 'Browser back' }));
+    await screen.findByText('Business rule');
+    await waitFor(() => expect(listAlertRulesPage).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveToggle({ ...cloneRule(alertRules[0]), name: 'Cluster updated', enabled: true });
+    });
+    expect(screen.getByText('Business rule')).toBeInTheDocument();
+    expect(within(getRuleRow('Business rule')).getByRole('switch')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.queryByText('Cluster updated')).not.toBeInTheDocument();
+    expect(listAlertRulesPage).toHaveBeenCalledTimes(2);
+  });
+
   it('loads a server-side page and filters by status and search', async () => {
     vi.mocked(listAlertRulesPage).mockClear();
     vi.mocked(listAlertRulesPage).mockResolvedValue({
