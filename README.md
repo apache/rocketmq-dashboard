@@ -100,7 +100,7 @@ the cluster at `nameserver:9876` over the shared network (the backend default).
 | **K8s Certs** | Studio-local TLS / mTLS / ServiceAccount certificate configuration |
 | **Topics** | Topic CRUD, route viewer, consumer list, multi-type support (Normal / FIFO / Delay / Transaction / Lite) |
 | **Consumer Groups** | Consumer group CRUD, consumption progress, subscription details, offset reset, config import/export |
-| **ACL** | ACL rules and user management, v1 / v2 dual version support |
+| **ACL** | ACL rules and user management, v1 / v2 dual version support; risk diagnostics distinguish bounded native address ranges from unrestricted sources using the existing breadth thresholds |
 | **Messages** | Query by Topic / MsgId / Key / time range, message trace visualization |
 | **Dead Letter Queue** | DLQ message viewing and batch resend |
 | **Clients** | Producer / Consumer online connection list, protocol and language version stats |

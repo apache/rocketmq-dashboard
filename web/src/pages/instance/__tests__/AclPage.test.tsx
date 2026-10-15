@@ -1195,4 +1195,31 @@ describe('ACL page', () => {
       expect.objectContaining({ accessKey: 'new-svc' }),
     );
   });
+  it('distinguishes a stored account subnet from unrestricted access Test', async () => {
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
+      clusterId: 'DefaultCluster',
+      aclEnabled: true,
+      aclVersion: 'ACL 2.0',
+      globalWhiteRemoteAddresses: [],
+      accountCount: 1,
+      accounts: [
+        {
+          accessKey: 'service-account',
+          admin: false,
+          whiteRemoteAddress: '10.0.2.*',
+          defaultTopicPerm: 'DENY',
+          defaultGroupPerm: 'DENY',
+          topicPerms: ['orders=PUB'],
+          groupPerms: ['orders-cg=SUB'],
+        },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
+    const diagnostics = await screen.findByTestId('acl-risk-diagnostics');
+    expect(within(diagnostics).queryByText('账号 IP 白名单范围过大')).not.toBeInTheDocument();
+    expect(within(diagnostics).getByText('ACL 配置健康')).toBeInTheDocument();
+  });
 });
