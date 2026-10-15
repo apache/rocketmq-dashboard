@@ -47,12 +47,26 @@ Usage: install.sh [options]
 EOF
 }
 
+# Rejects a value-less option before $2 is ever read: under `set -u` a bare `--version` died on
+# an unbound-variable error instead of the usage message, and `--version --os linux` silently
+# swallowed `--os` as the version and kept going. A value that is itself one of the installer's
+# options is that swallow, not a value; anything else (a path with a dash, spaces) stays a value.
+require_option_value() {
+  case "${2-}" in
+    --version|--bin-dir|--os|--arch|-h|--help|"")
+      echo "option $1 requires a value" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --version) VERSION="$2"; shift 2 ;;
-    --bin-dir) BIN_DIR="$2"; shift 2 ;;
-    --os)      TARGET_OS="$2"; shift 2 ;;
-    --arch)    TARGET_ARCH="$2"; shift 2 ;;
+    --version) require_option_value "$@"; VERSION="$2"; shift 2 ;;
+    --bin-dir) require_option_value "$@"; BIN_DIR="$2"; shift 2 ;;
+    --os)      require_option_value "$@"; TARGET_OS="$2"; shift 2 ;;
+    --arch)    require_option_value "$@"; TARGET_ARCH="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
