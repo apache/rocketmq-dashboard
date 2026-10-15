@@ -2235,67 +2235,11 @@ describe('Consumer page', () => {
     expect(within(dialog).getByText('不可用')).toBeInTheDocument();
   });
 
-  it('sorts groups with an unknown lag after known backlogs in lag order', async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
-      groupPage([
-        { ...group, name: 'unknown-lag-cg', totalLag: -1 },
-        { ...group, name: 'known-lag-cg', totalLag: 15000 },
-      ]),
-    );
-    renderWithProviders(<ConsumerPage />);
-    await screen.findByRole('row', { name: /unknown-lag-cg/ });
-
-    const [lagHeader] = screen.getAllByText('总堆积量');
-    await user.click(lagHeader);
-    await waitFor(() => {
-      const rows = Array.from(document.querySelectorAll('tbody tr'));
-      const order = rows
-        .map((row) => row.textContent ?? '')
-        .map((text) =>
-          text.includes('unknown-lag-cg')
-            ? 'unknown'
-            : /\bknown-lag-cg\b/.test(text)
-              ? 'known'
-              : '',
-        )
-        .filter(Boolean);
-      expect(order).toEqual(['known', 'unknown']);
-    });
-  });
-
-  it('sorts groups with unavailable connections after known client counts', async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
-    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
-      groupPage([
-        { ...group, name: 'unknown-conn-cg', onlineInstances: -1 },
-        { ...group, name: 'known-conn-cg', onlineInstances: 12 },
-      ]),
-    );
-    renderWithProviders(<ConsumerPage />);
-    await screen.findByRole('row', { name: /unknown-conn-cg/ });
-
-    // The sentinel must never reach the cell as a bare -1 ...
-    expect(screen.getByRole('row', { name: /unknown-conn-cg/ }).textContent).toContain('不可用');
-
-    // ... and must not sort as "fewer clients than zero".
-    const [clientsHeader] = screen.getAllByText('在线客户端');
-    await user.click(clientsHeader);
-    await waitFor(() => {
-      const rows = Array.from(document.querySelectorAll('tbody tr'));
-      const order = rows
-        .map((row) => row.textContent ?? '')
-        .map((text) =>
-          text.includes('unknown-conn-cg')
-            ? 'unknown'
-            : /\bknown-conn-cg\b/.test(text)
-              ? 'known'
-              : '',
-        )
-        .filter(Boolean);
-      expect(order).toEqual(['known', 'unknown']);
-    });
-  });
+  // The two page-local sorter tests that used to live here (unknown lag after known backlogs,
+  // unavailable connections after known client counts) were removed with the sorters themselves:
+  // the consumer table is server-paginated, so an in-memory sorter reordered only the loaded
+  // page while its header claimed the whole result set was ordered. lagSortValue and
+  // onlineInstancesSortValue lost their last production callers with them and are gone too.
 
   it('ignores settings responses from a previously closed group modal', async () => {
     const otherGroup = { ...group, name: 'other-cg' };
@@ -2369,5 +2313,16 @@ describe('Consumer page', () => {
     } finally {
       localStorage.removeItem('rocketmq-studio-language');
     }
+  });
+
+  it('does not offer page-local sorters on the server-paginated table', async () => {
+    // The table holds one server page; an in-memory sorter would reorder only that page while
+    // its header suggests the whole result set is ordered.
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText('remote-cg');
+
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+    expect(document.querySelectorAll('.ant-table-column-sorters')).toHaveLength(0);
   });
 });

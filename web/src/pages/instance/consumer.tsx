@@ -103,8 +103,8 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
-import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
-import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
+import { formatLag, isLagAvailable } from '../../utils/consumerLag';
+import { formatOnlineInstances } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -951,7 +951,6 @@ const ConsumerPageContent = ({
       // without a horizontal scrollbar there; on wider windows this column takes the surplus.
       minWidth: 170,
       ellipsis: true,
-      sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
         <Tooltip title={`${name}（点击复制）`}>
           <Text
@@ -993,7 +992,6 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
-      sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
@@ -1004,7 +1002,6 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
-      sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
     {
@@ -1013,8 +1010,6 @@ const ConsumerPageContent = ({
       key: 'onlineInstances',
       width: 100,
       align: 'center',
-      sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
       render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
     },
     {
@@ -1023,7 +1018,6 @@ const ConsumerPageContent = ({
       key: 'totalLag',
       width: 96,
       align: 'right',
-      sorter: (a, b) => lagSortValue(a.totalLag) - lagSortValue(b.totalLag),
       render: (lag: number) =>
         isLagAvailable(lag) ? (
           lag.toLocaleString()
@@ -1037,7 +1031,6 @@ const ConsumerPageContent = ({
       key: 'delaySeconds',
       width: 100,
       align: 'right',
-      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
       render: (seconds: number) => formatDelay(seconds ?? 0, lang),
     },
     {
@@ -1047,7 +1040,6 @@ const ConsumerPageContent = ({
       // 156 = the 140px `YYYY-MM-DD HH:mm:ss` label at 14px plus the small-table cell padding;
       // anything narrower truncates the timestamp.
       width: 156,
-      sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}
@@ -1059,7 +1051,6 @@ const ConsumerPageContent = ({
       dataIndex: 'gmtModified',
       key: 'gmtModified',
       width: 156,
-      sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
           {formatDateTime(d)}

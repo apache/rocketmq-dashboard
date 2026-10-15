@@ -27,7 +27,3 @@ export const formatLag = (
   lag: number | null | undefined,
   unavailableLabel: string = String(UNKNOWN_LAG),
 ): string => (isLagAvailable(lag) ? lag.toLocaleString() : unavailableLabel);
-
-/** Sort key that pushes unknown lags to the end of an ascending list. */
-export const lagSortValue = (lag: number | null | undefined): number =>
-  isLagAvailable(lag) ? lag : Number.MAX_SAFE_INTEGER;

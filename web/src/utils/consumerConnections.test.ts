@@ -20,7 +20,6 @@ import {
   UNKNOWN_ONLINE_INSTANCES,
   formatOnlineInstances,
   isOnlineInstancesAvailable,
-  onlineInstancesSortValue,
 } from './consumerConnections';
 
 describe('consumer connection helpers', () => {
@@ -40,12 +39,5 @@ describe('consumer connection helpers', () => {
     expect(formatOnlineInstances(1000, '不可用')).toBe(formatOnlineInstances(1000));
     expect(formatOnlineInstances(UNKNOWN_ONLINE_INSTANCES, '不可用')).toBe('不可用');
     expect(formatOnlineInstances(undefined, 'unknown')).toBe('unknown');
-  });
-
-  it('sorts unavailable connection counts after every known count', () => {
-    expect(onlineInstancesSortValue(0)).toBe(0);
-    expect(onlineInstancesSortValue(64)).toBe(64);
-    expect(onlineInstancesSortValue(UNKNOWN_ONLINE_INSTANCES)).toBe(Number.MAX_SAFE_INTEGER);
-    expect(onlineInstancesSortValue(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
 });
