@@ -8,7 +8,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import MessageQueryHistoryDrawer from '../MessageQueryHistoryDrawer';
+import MessageQueryHistoryModal from '../MessageQueryHistoryModal';
 import { LangProvider } from '../../i18n/LangContext';
 import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
 import { formatUtcDateTime } from '../../utils/format';
@@ -37,7 +37,7 @@ beforeAll(() => {
   });
 });
 
-describe('MessageQueryHistoryDrawer', () => {
+describe('MessageQueryHistoryModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -77,33 +77,64 @@ describe('MessageQueryHistoryDrawer', () => {
     });
   });
 
-  it.each(['messages', 'traces'] as const)('recovers an out-of-range %s page after changing instance', async (tab) => {
-    const user = userEvent.setup();
-    const row = tab === 'messages'
-      ? { id: 1, queryType: 'KEY', topic: 'orders', messageKey: 'remaining-record', resultCount: 1, queriedBy: 'alice', queriedAt: '' }
-      : { id: 1, msgId: 'remaining-record', topic: 'orders', nodeCount: 1, consumerCount: 1, queriedBy: 'alice', queriedAt: '' };
-    const list = tab === 'messages' ? vi.mocked(listMessageQueryHistory) : vi.mocked(listTraceQueryHistory);
-    list.mockImplementation(async ({ clusterId, page = 1 }) => ({
-      items: clusterId === 'instance-a' || page === 1 ? [row] : [],
-      total: clusterId === 'instance-a' ? 60 : 1,
-      page, size: 20,
-    }) as never);
-    const drawer = (clusterId: string) => (
-      <App><LangProvider><MessageQueryHistoryDrawer open clusterId={clusterId} onClose={vi.fn()} /></LangProvider></App>
+  it('renders as a modal instead of a side drawer', async () => {
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
     );
-    const view = render(drawer('instance-a'));
-    if (tab === 'traces') await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
-    expect(await screen.findByText('remaining-record')).toBeInTheDocument();
-    await user.click(within(screen.getByRole('tabpanel')).getByTitle('3'));
-    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 })));
-    view.rerender(drawer('instance-b'));
-    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ clusterId: 'instance-b', page: 1 })));
-    expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(document.querySelector('.ant-modal')).not.toBeNull();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
   });
 
-  it('does not offer a page size that the fixed-size API request ignores', async () => {
+  it('keeps the history tables at the small row height every other list uses', async () => {
+    render(
+      <App>
+        <LangProvider>
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
+        </LangProvider>
+      </App>,
+    );
+
+    // 默认尺寸表格的单行约 54px，全站列表口径是 small 的约 40px；这两个表漏了 size。
+    expect(await screen.findByText('order-1')).toBeInTheDocument();
+    expect(document.querySelector('.ant-table')).toHaveClass('ant-table-small');
+  });
+
+  it.each(['messages', 'traces'] as const)(
+    'recovers an out-of-range %s page after changing instance Test',
+    async (tab) => {
+      const user = userEvent.setup();
+      const row = tab === 'messages'
+        ? { id: 1, queryType: 'KEY', topic: 'orders', messageKey: 'remaining-record', resultCount: 1, queriedBy: 'alice', queriedAt: '' }
+        : { id: 1, msgId: 'remaining-record', topic: 'orders', nodeCount: 1, consumerCount: 1, queriedBy: 'alice', queriedAt: '' };
+      const list = tab === 'messages' ? vi.mocked(listMessageQueryHistory) : vi.mocked(listTraceQueryHistory);
+      list.mockImplementation(async ({ clusterId, page = 1 }) => ({
+        items: clusterId === 'instance-a' || page === 1 ? [row] : [],
+        total: clusterId === 'instance-a' ? 60 : 1,
+        page, size: 20,
+      }) as never);
+      const modal = (clusterId: string) => (
+        <App><LangProvider><MessageQueryHistoryModal open clusterId={clusterId} onClose={vi.fn()} /></LangProvider></App>
+      );
+      const view = render(modal('instance-a'));
+      if (tab === 'traces') await user.click(screen.getByRole('tab', { name: '轨迹查询' }));
+      expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+      await user.click(within(screen.getByRole('tabpanel')).getByTitle('3'));
+      await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 })));
+      view.rerender(modal('instance-b'));
+      await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ clusterId: 'instance-b', page: 1 })));
+      expect(await screen.findByText('remaining-record')).toBeInTheDocument();
+    },
+  );
+
+  it('does not offer a page size that fixed-size API requests ignore Test', async () => {
     vi.mocked(listMessageQueryHistory).mockResolvedValue({ items: [], total: 60, page: 1, size: 20 });
-    render(<App><LangProvider><MessageQueryHistoryDrawer open onClose={vi.fn()} /></LangProvider></App>);
+    render(<App><LangProvider><MessageQueryHistoryModal open onClose={vi.fn()} /></LangProvider></App>);
     await screen.findByTitle('3');
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
@@ -113,7 +144,7 @@ describe('MessageQueryHistoryDrawer', () => {
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -132,7 +163,7 @@ describe('MessageQueryHistoryDrawer', () => {
     const view = render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -142,7 +173,7 @@ describe('MessageQueryHistoryDrawer', () => {
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-b" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-b" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -173,7 +204,7 @@ describe('MessageQueryHistoryDrawer', () => {
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -182,12 +213,12 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.getByText(formatUtcDateTime('2026-08-05T12:00:00'))).toBeInTheDocument();
   });
 
-  it('renders query history drawer copy in English mode', async () => {
+  it('renders query history modal copy in English mode', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -201,13 +232,13 @@ describe('MessageQueryHistoryDrawer', () => {
     expect(screen.queryByText('服务端查询历史')).not.toBeInTheDocument();
   });
 
-  it('keeps the applied search visible in the input after the drawer is closed and reopened', async () => {
+  it('keeps the applied search visible in the input after the modal is closed and reopened', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     const user = userEvent.setup();
     const view = render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -228,14 +259,14 @@ describe('MessageQueryHistoryDrawer', () => {
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open={false} clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open={false} clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
     view.rerender(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );
@@ -254,7 +285,7 @@ describe('MessageQueryHistoryDrawer', () => {
     render(
       <App>
         <LangProvider>
-          <MessageQueryHistoryDrawer open clusterId="instance-a" onClose={vi.fn()} />
+          <MessageQueryHistoryModal open clusterId="instance-a" onClose={vi.fn()} />
         </LangProvider>
       </App>,
     );

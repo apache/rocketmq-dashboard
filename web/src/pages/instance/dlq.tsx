@@ -25,7 +25,6 @@ import {
   Space,
   Flex,
   Modal,
-  Drawer,
   DatePicker,
   Tooltip,
   Typography,
@@ -50,6 +49,7 @@ import {
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { buildCsv, downloadBlob, downloadCsv, type CsvColumn } from '../../utils/download';
 import { describeThrownMessage } from '../../utils/apiError';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 
 const { Text } = Typography;
@@ -73,7 +73,7 @@ const DLQ_EXPORT_COLUMNS: CsvColumn<DLQGroup>[] = [
   { header: 'Message Count', value: (group) => group.messageCount },
   { header: 'Retry Count', value: (group) => group.retryCount },
   { header: 'Status', value: (group) => group.status },
-  { header: 'Last Enqueue Time', value: (group) => group.lastEnqueueTime },
+  { header: 'Last Enqueue Time', value: (group) => formatUtcDateTime(group.lastEnqueueTime) },
 ];
 
 const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
@@ -369,8 +369,8 @@ const DLQPage = () => {
     exportDLQGroups(selectedGroups, 'dlq-groups.csv');
   };
 
-  /* ─── DLQ Message Details Drawer ─── */
-  const openDetailDrawer = (group: DLQGroup) => {
+  /* ─── DLQ Message Details Modal ─── */
+  const openDetailModal = (group: DLQGroup) => {
     detailRequestIdRef.current += 1;
     detailResendRequestIdRef.current += 1;
     detailResendInFlightRef.current = false;
@@ -540,11 +540,11 @@ const DLQPage = () => {
       title: '最近入队时间',
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
-      width: 180,
+      width: 156,
       sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
       render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(time)}
+          {formatUtcDateTime(time)}
         </Text>
       ),
     },
@@ -558,7 +558,7 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => openDetailDrawer(record)}
+            onClick={() => openDetailModal(record)}
           >
             消息明细
           </Button>
@@ -585,7 +585,7 @@ const DLQPage = () => {
     },
   ];
 
-  /* ─── Detail Drawer Columns ─── */
+  /* ─── Detail Modal Columns ─── */
   const detailColumns: ColumnsType<DLQMessage> = [
     {
       title: 'Message ID',
@@ -778,12 +778,17 @@ const DLQPage = () => {
         }
         open={retryModalOpen}
         onCancel={() => {
+          if (retryInFlightRef.current) return;
           setRetryModalOpen(false);
           setRetryGroup(null);
           setRetryError(null);
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
+        cancelButtonProps={{ disabled: retrySubmitting }}
+        closable={!retrySubmitting}
+        keyboard={!retrySubmitting}
+        maskClosable={!retrySubmitting}
         okText="确认重投"
         cancelText="取消"
         width={520}
@@ -859,13 +864,13 @@ const DLQPage = () => {
       </Modal>
 
       {/* ═══════════════════════════════════════════
-         Message Detail Drawer
+         Message Detail Modal
          ═══════════════════════════════════════════ */}
-      <Drawer
+      <Modal
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width={1180}
+        width="min(1180px, calc(100vw - 32px))"
         open={detailOpen}
-        onClose={() => {
+        onCancel={() => {
           detailRequestIdRef.current += 1;
           detailResendRequestIdRef.current += 1;
           detailResendInFlightRef.current = false;
@@ -876,7 +881,11 @@ const DLQPage = () => {
           setDetailSelectedMsgIds([]);
           setDetailError(null);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {detailGroup && (
           <>
@@ -923,7 +932,7 @@ const DLQPage = () => {
                     最近入队时间
                   </Text>
                   <Text style={{ fontFamily: 'monospace' }}>
-                    {formatDateTime(detailGroup.lastEnqueueTime)}
+                    {formatUtcDateTime(detailGroup.lastEnqueueTime)}
                   </Text>
                 </div>
               </Space>
@@ -1032,7 +1041,7 @@ const DLQPage = () => {
             )}
           </>
         )}
-      </Drawer>
+      </Modal>
     </div>
   );
 };

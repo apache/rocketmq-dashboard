@@ -43,7 +43,11 @@ public class MessageRedeliveryToolHandler extends MutationToolHandler<MessageRed
     private static final PlanDescription PLAN_DESCRIPTION = new PlanDescription(
             "redeliver message '%s' for consumer group '%s' in instance '%s'.",
             List.of("Publishes a new message containing the source payload and properties."),
-            List.of());
+            List.of("The source is the message explorer's display projection; a lossy source "
+                    + "(truncated or binary body, abbreviated user properties) is refused "
+                    + "before the plan is produced.",
+                    "A complete user value that happens to end in '...' is read as abbreviated "
+                    + "while the truncated flag is set, so such a source is refused too."));
 
     private final MetadataService metadataService;
 
@@ -62,6 +66,9 @@ public class MessageRedeliveryToolHandler extends MutationToolHandler<MessageRed
         String groupName = requireGroupName(input);
         MessageRecordVO source = metadataService.findMessageForRedelivery(
                 context.instanceId(), input.sourceTopic(), input.msgId());
+        // Same exact-source guard execute() applies, so the plan can never promise a
+        // publish that the execution stage would refuse.
+        metadataService.requireExactSourceMessage(source);
         String destination = resolveDestination(input, groupName);
         return PLAN_DESCRIPTION.builder(input.msgId(), groupName, context.instanceId())
                 .before(new RedeliverySource(source.getMsgId(), source.getTopic(), source.getTag(), source.getKey(),
