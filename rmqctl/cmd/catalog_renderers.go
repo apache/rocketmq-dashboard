@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -48,7 +49,53 @@ func renderTable(w, errOut io.Writer, tool toolcatalog.Tool, result any) error {
 			return err
 		}
 	}
+	if notice := pagedTableNotice(result, len(rows)); notice != "" {
+		_, err := fmt.Fprint(errOut, notice)
+		return err
+	}
 	return nil
+}
+
+// pagedTableNotice reports the page a table view is showing. Every paged listing carries page,
+// pageSize and total, and the default page size is the server's 20, so a table that prints one page
+// must not read as the whole list. The note goes to stderr and leaves stdout to the rows, the way
+// the message tools' truncation warning does.
+func pagedTableNotice(result any, shown int) string {
+	payload, ok := result.(map[string]any)
+	if !ok {
+		return ""
+	}
+	page := payloadNumber(payload["page"])
+	pageSize := payloadNumber(payload["pageSize"])
+	total := payloadNumber(payload["total"])
+	if page < 1 || pageSize < 1 || total <= int64(shown) {
+		return ""
+	}
+	pages := (total + pageSize - 1) / pageSize
+	return fmt.Sprintf(
+		"WARNING: the table shows page %d of %d (%d of %d rows); pass --page/--page-size to see the rest, or --output json for the full payload.\n",
+		page, pages, shown, total)
+}
+
+// payloadNumber accepts the json.Number values the client decodes with UseNumber plus the plain
+// integers a future or stubbed payload may carry; anything else means the field is absent.
+func payloadNumber(value any) int64 {
+	switch typed := value.(type) {
+	case json.Number:
+		number, err := typed.Int64()
+		if err != nil {
+			return 0
+		}
+		return number
+	case float64:
+		return int64(typed)
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	default:
+		return 0
+	}
 }
 
 func tableRows(result any, dataKey string) ([]map[string]any, error) {
