@@ -19,15 +19,16 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
-	"github.com/gofrs/flock"
 )
 
 // The helper runs the production command parser and handlers in another OS
@@ -56,11 +57,27 @@ func TestConfigMutationsWaitAndReloadLatestDocument(t *testing.T) {
 			if err := store.Save(path, cfg); err != nil {
 				t.Fatal(err)
 			}
-			held := flock.New(path+".lock", flock.SetPermissions(0o600))
-			if err := held.Lock(); err != nil {
-				t.Fatal(err)
+			locked := make(chan struct{})
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			releaseLock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer releaseLock()
+			parentDone := make(chan error, 1)
+			go func() {
+				parentDone <- store.Update(context.Background(), path, func(latest *config.Config) error {
+					close(locked)
+					<-release
+					latest.Contexts["delta"] = value
+					return nil
+				})
+			}()
+			select {
+			case <-locked:
+			case err := <-parentDone:
+				t.Fatalf("parent transaction: %v", err)
+			case <-time.After(10 * time.Second):
+				t.Fatal("parent lock timed out")
 			}
-			defer held.Close()
 			args := []string{"-test.run=^TestConfigMutationProcessHelper$", "--", "--config", path, "config", operation}
 			switch operation {
 			case "set-context":
@@ -106,11 +123,8 @@ func TestConfigMutationsWaitAndReloadLatestDocument(t *testing.T) {
 				t.Fatalf("command completed while config transaction was locked: %v; %s", err, stderr.String())
 			case <-time.After(300 * time.Millisecond):
 			}
-			cfg.Contexts["delta"] = value
-			if err := store.Save(path, cfg); err != nil {
-				t.Fatal(err)
-			}
-			if err := held.Unlock(); err != nil {
+			releaseLock()
+			if err := <-parentDone; err != nil {
 				t.Fatal(err)
 			}
 			select {

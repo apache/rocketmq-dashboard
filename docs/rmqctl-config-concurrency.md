@@ -9,8 +9,8 @@ are validated against the latest document.
 
 The CLI waits up to 30 seconds for an exclusive native file lock. Ctrl-C cancels the
 wait. A lock failure or timeout reports an error without writing the configuration.
-Linux, macOS and Windows use the platform's native locking through
-[`gofrs/flock`](https://github.com/gofrs/flock). This protocol targets local filesystems;
+Linux/macOS use flock and Windows uses LockFileEx through platform-specific
+standard-library code, with no new Go modules. This protocol targets local filesystems;
 network filesystem locking and third-party editors are outside its guarantees.
 
 The stable `<config>.lock` sidecar remains after the command exits. Do not delete it

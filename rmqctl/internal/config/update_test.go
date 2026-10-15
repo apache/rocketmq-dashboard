@@ -29,8 +29,6 @@ import (
 	"runtime"
 	"testing"
 	"time"
-
-	"github.com/gofrs/flock"
 )
 
 func updateTestPath(t *testing.T) string {
@@ -107,8 +105,8 @@ func TestUpdateRollsBackFailuresAndReleasesLock(t *testing.T) {
 func TestUpdateCancellationAndDeadlineDoNotMutate(t *testing.T) {
 	path := updateTestPath(t)
 	store := NewStore()
-	held := flock.New(path+".lock", flock.SetPermissions(0o600))
-	if err := held.Lock(); err != nil {
+	held, err := acquireConfigLock(context.Background(), path+".lock")
+	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Close()
@@ -131,12 +129,12 @@ func TestUpdateCancellationAndDeadlineDoNotMutate(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("canceled update created config: %v", err)
 	}
-	if err := held.Unlock(); err != nil {
+	if err := held.Close(); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err := store.Update(ctx, path, func(cfg *Config) error { cfg.Contexts["alpha"] = updateTestContext(); cancel(); return nil })
+	err = store.Update(ctx, path, func(cfg *Config) error { cfg.Contexts["alpha"] = updateTestContext(); cancel(); return nil })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation before save: %v", err)
 	}
@@ -151,14 +149,14 @@ func TestUpdateDirectoryAliasesShareLock(t *testing.T) {
 	if err := os.Symlink(filepath.Dir(path), alias); err != nil {
 		t.Skipf("directory symlink unavailable: %v", err)
 	}
-	held := flock.New(path+".lock", flock.SetPermissions(0o600))
-	if err := held.Lock(); err != nil {
+	held, err := acquireConfigLock(context.Background(), path+".lock")
+	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	err := NewStore().Update(ctx, filepath.Join(alias, filepath.Base(path)), func(*Config) error { return nil })
+	err = NewStore().Update(ctx, filepath.Join(alias, filepath.Base(path)), func(*Config) error { return nil })
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("directory alias bypassed lock: %v", err)
 	}

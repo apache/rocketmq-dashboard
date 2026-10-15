@@ -2,7 +2,17 @@
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package config
 
@@ -13,8 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/gofrs/flock"
 )
 
 const configLockTimeout = 30 * time.Second
@@ -54,21 +62,17 @@ func (s Store) Update(ctx context.Context, path string, mutate func(*Config) err
 		return statErr
 	}
 
-	lock := flock.New(lockPath, flock.SetPermissions(0o600))
+	waitCtx, cancel := context.WithTimeout(ctx, configLockTimeout)
+	defer cancel()
+	lock, err := acquireConfigLock(waitCtx, lockPath)
+	if err != nil {
+		return fmt.Errorf("acquire config lock %s: %w", lockPath, err)
+	}
 	defer func() {
 		if closeErr := lock.Close(); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("release config lock: %w", closeErr))
 		}
 	}()
-	waitCtx, cancel := context.WithTimeout(ctx, configLockTimeout)
-	defer cancel()
-	locked, err := lock.TryLockContext(waitCtx, configLockRetry)
-	if err != nil {
-		return fmt.Errorf("acquire config lock %s: %w", lockPath, err)
-	}
-	if !locked {
-		return fmt.Errorf("could not acquire config lock %s", lockPath)
-	}
 	if err := checkFilePermissions(lockPath); err != nil {
 		return err
 	}
