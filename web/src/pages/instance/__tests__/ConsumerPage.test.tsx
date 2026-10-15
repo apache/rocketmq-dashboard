@@ -298,6 +298,39 @@ describe('Consumer page', () => {
     ]);
   });
 
+  it('preserves an unknown reported total beside a known queue subtotal Test', async () => {
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+      groupPage([{ ...group, totalLag: -1 }]),
+    );
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
+      {
+        topic: 'remote-topic',
+        broker: 'broker-a',
+        queueId: 0,
+        brokerOffset: 117,
+        consumerOffset: 100,
+        diffTotal: 17,
+      },
+      {
+        topic: 'remote-topic',
+        broker: 'broker-a',
+        queueId: 1,
+        brokerOffset: 0,
+        consumerOffset: 5,
+        diffTotal: -1,
+      },
+    ]);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() => expect(consumerService.getConsumerProgress).toHaveBeenCalled());
+    await user.click(await screen.findByRole('tab', { name: /健康诊断/ }));
+    const panel = await screen.findByRole('tabpanel', { name: /健康诊断/ });
+    await waitFor(() => expect(within(panel).getByText('报告堆积：不可用')).toBeInTheDocument());
+    expect(within(panel).getByText('1 个 Queue 堆积不可用')).toBeInTheDocument();
+    expect(within(panel).getByText('17')).toBeInTheDocument();
+  });
+
   it('renders the page subtitle and pagination totals in the display language', async () => {
     window.localStorage.setItem('rocketmq-studio-language', 'en');
     renderWithProviders(<ConsumerPage />);

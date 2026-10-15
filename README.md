@@ -82,7 +82,7 @@ the cluster at `nameserver:9876` over the shared network (the backend default).
 
 ![Dashboard AI chat](docs/pics/home-ai-chat.png)
 
-**Consumer group management** — the group list shows subscription mode, online clients, total lag, and consumption delay; expanding a row reveals per-Topic subscription consistency and filter expressions, alongside offset reset and config import/export.
+**Consumer group management** — the group list shows subscription mode, online clients, total lag, and consumption delay; expanding a row reveals per-Topic subscription consistency and filter expressions, alongside offset reset and config import/export. Health diagnostics keep known queue-lag subtotals separate from an unavailable group total; a queue-derived total requires nonempty, fully measured queue progress.
 
 ![Consumer group management](docs/pics/group-list.png)
 

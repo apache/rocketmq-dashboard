@@ -141,7 +141,7 @@ const heartbeatAgeSeconds = (lastHeartbeat: string | undefined, now: number): nu
 const knownLag = (progress: QueueProgress[]): number =>
   progress.reduce((sum, queue) => sum + (isLagAvailable(queue.diffTotal) ? queue.diffTotal : 0), 0);
 
-const reportedLag = (group: ConsumerGroup, fallback: number): number | null =>
+const reportedLag = (group: ConsumerGroup, fallback: number | null): number | null =>
   isLagAvailable(group.totalLag) ? group.totalLag : fallback;
 
 const topicCount = (group: ConsumerGroup, subscriptions: SubscriptionEntry[]): number => {
@@ -402,15 +402,20 @@ export const analyzeConsumerGroupHealth = (
     .map((queue) => queue.diffTotal)
     .filter((lag): lag is number => isLagAvailable(lag));
   const totalKnownLag = knownLag(progress);
-  const summaryReportedLag = reportedLag(group, totalKnownLag);
   const unknownQueueCount = progress.length - knownQueueLags.length;
+  const summaryReportedLag = reportedLag(
+    group,
+    progress.length > 0 && unknownQueueCount === 0 ? totalKnownLag : null,
+  );
+  // A positive subtotal proves backlog exists even when the complete total is unknown.
+  const observedLag = summaryReportedLag ?? (knownQueueLags.length > 0 ? totalKnownLag : null);
   const heartbeatAges = (group.instances ?? [])
     .map((client) => heartbeatAgeSeconds(client.lastHeartbeat, now))
     .filter((age): age is number => age !== null);
   const issues = [
     ...subscriptionIssues(subscriptions),
     ...progressIssues(progress, knownQueueLags, unknownQueueCount, normalizedOptions),
-    ...runtimeIssues(group, summaryReportedLag, now, normalizedOptions),
+    ...runtimeIssues(group, observedLag, now, normalizedOptions),
   ];
   const status = maxStatus(issues);
 
