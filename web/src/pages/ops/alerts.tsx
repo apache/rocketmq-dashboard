@@ -88,6 +88,17 @@ const channelColors: Record<string, string> = {
 
 const durationOptions = ['1m', '5m', '15m', '30m'];
 const reminderIntervalOptions = ['5m', '15m', '30m', '1h', '4h'];
+/**
+ * The aggregation values the backend accepts (`AlertRuleRequestDTO` rejects anything else), named
+ * for the console: `LAST` is the newest sample in the window, which the bare code does not say.
+ */
+const aggregationLabelKeys: Record<string, string> = {
+  LAST: 'alerts.aggregation.LAST',
+  MAX: 'alerts.aggregation.MAX',
+  MIN: 'alerts.aggregation.MIN',
+  AVG: 'alerts.aggregation.AVG',
+  SUM: 'alerts.aggregation.SUM',
+};
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
 const availabilityMetrics = new Set([
   'nameserver.availability',
@@ -1268,9 +1279,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
             <Form.Item name="aggregation" label={t('alerts.windowAggregation')} initialValue="LAST">
               <Select
-                options={['LAST', 'MAX', 'MIN', 'AVG', 'SUM'].map((value) => ({
-                  label: value,
+                options={Object.entries(aggregationLabelKeys).map(([value, labelKey]) => ({
                   value,
+                  label: t(labelKey),
                 }))}
               />
             </Form.Item>

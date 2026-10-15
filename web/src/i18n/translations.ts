@@ -1163,6 +1163,11 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'alerts.durationRequired': { zh: '请选择持续时间', en: 'Select a duration' },
   'alerts.windowAggregation': { zh: '窗口聚合', en: 'Window aggregation' },
+  'alerts.aggregation.LAST': { zh: '最近一次', en: 'Latest' },
+  'alerts.aggregation.MAX': { zh: '最大值', en: 'Maximum' },
+  'alerts.aggregation.MIN': { zh: '最小值', en: 'Minimum' },
+  'alerts.aggregation.AVG': { zh: '平均值', en: 'Average' },
+  'alerts.aggregation.SUM': { zh: '总和', en: 'Sum' },
   'alerts.windowSeconds': { zh: '窗口秒数', en: 'Window seconds' },
   'alerts.windowRetentionHelp': {
     zh: '聚合只使用本地当前保留的指标快照。当前保留周期之外的历史数据不可用；调整保留时间不会使规则失效。',
