@@ -91,6 +91,63 @@ const createHistoryEntry = (
   });
 
 describe('metrics explorer diagnostics', () => {
+  it('doesNotInventZeroMeasurementsForBlankScalarSamplesTest', () => {
+    const data: MetricData = {
+      resultType: 'matrix',
+      warnings: [],
+      series: [
+        {
+          labels: { instance: 'broker-a' },
+          histograms: [],
+          values: [
+            { timestamp: 1, value: '0' },
+            { timestamp: 2, value: ' -1.25e2 ' },
+            { timestamp: 3, value: '' },
+            { timestamp: 4, value: ' \t\n ' },
+          ],
+        },
+      ],
+    };
+    expect(
+      toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, value }) => ({
+        timestamp,
+        value,
+      })),
+    ).toEqual([
+      { timestamp: 1, value: 0 },
+      { timestamp: 2, value: -125 },
+    ]);
+    expect(summarizeMetricData(data)).toMatchObject({
+      sampleCount: 2,
+      scalarSampleCount: 2,
+      latestTimestamp: 2,
+    });
+    expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({
+      sampleCount: 2,
+      latestTimestamp: 2,
+      latestValue: -125,
+    });
+    expect(
+      buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' }).map(
+        (row) => row.value,
+      ),
+    ).toEqual([0, -125]);
+  });
+
+  it('keepsABlankOnlyScalarSeriesUnavailableTest', () => {
+    const data: MetricData = {
+      resultType: 'matrix',
+      warnings: [],
+      series: [{ labels: {}, histograms: [], values: [{ timestamp: 1, value: ' ' }] }],
+    };
+    expect(toMetricSeriesSamples(data.series[0]).samples).toEqual([]);
+    expect(summarizeMetricData(data)).toMatchObject({ visibleSeriesCount: 0, sampleCount: 0 });
+    expect(buildMetricSeriesDetailRows(data, metric)[0].latestValue).toBeUndefined();
+    expect(buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' })).toEqual(
+      [],
+    );
+  });
+
   it('preserves both sample kinds in a mixed Prometheus matrix series', () => {
     const data: MetricData = {
       resultType: 'matrix',
