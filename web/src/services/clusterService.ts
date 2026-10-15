@@ -51,7 +51,63 @@ export async function listRegistryClusters(): Promise<ClusterInfo[]> {
   return clusterApi.listRegistryClusters();
 }
 
+/**
+ * The registry endpoints are backed by a real store, so mock mode has to own one too: without a
+ * mock branch these four calls left mock mode entirely, and the cluster page's NameServer registry
+ * then listed nothing (its loadNsRegistry catch clears the failure to []) while every create,
+ * update and delete went to the real backend. The demo store is derived from the name servers the
+ * mock clusters already declare - labelled after their cluster and position, the only identity the
+ * fixture carries - and the mutations apply the endpoint's rules: a blank or duplicate name and an
+ * unknown id are refused with the same messages.
+ */
+const mockNsRegistryStore: NameserverRegistryEntry[] = [];
+for (const cluster of clusters) {
+  cluster.nameServers.forEach((nameServer, index) => {
+    mockNsRegistryStore.push({
+      id: mockNsRegistryStore.length + 1,
+      name: `${cluster.nsClusterName}-${index + 1}`,
+      namesrvAddr: nameServer.addr,
+      k8sNamespace: null,
+      k8sId: null,
+      status: nameServer.status,
+      description: null,
+      gmtCreate: null,
+      gmtModified: null,
+    });
+  });
+}
+
+function copyNsRegistryEntry(entry: NameserverRegistryEntry): NameserverRegistryEntry {
+  return { ...entry };
+}
+
+/** CreateNameserverRegistryDTO/UpdateNameserverRegistryDTO are @NotBlank name; the stored name is compared as-is. */
+function requireRegistryName(name: string | undefined): string {
+  const normalized = (name ?? '').trim();
+  if (!normalized) {
+    throw new Error('name is required');
+  }
+  return normalized;
+}
+
+function requireRegistryEntry(id: number): NameserverRegistryEntry {
+  const entry = mockNsRegistryStore.find((item) => item.id === id);
+  if (!entry) {
+    throw new Error(`NameServer registry entry not found: ${id}`);
+  }
+  return entry;
+}
+
+function rejectDuplicateRegistryName(name: string, exceptId?: number): void {
+  if (mockNsRegistryStore.some((entry) => entry.name === name && entry.id !== exceptId)) {
+    throw new Error(`NameServer registry name already exists: ${name}`);
+  }
+}
+
 export async function listNameserverRegistry(): Promise<NameserverRegistryEntry[]> {
+  if (isMockMode()) {
+    return mockNsRegistryStore.map(copyNsRegistryEntry);
+  }
   return clusterApi.listNameserverRegistry();
 }
 
@@ -59,8 +115,26 @@ export async function createNameserverRegistry(data: {
   name: string;
   namesrvAddr: string;
   k8sNamespace?: string;
+  k8sId?: string;
   description?: string;
 }): Promise<NameserverRegistryEntry> {
+  if (isMockMode()) {
+    const name = requireRegistryName(data.name);
+    rejectDuplicateRegistryName(name);
+    const entry: NameserverRegistryEntry = {
+      id: mockNsRegistryStore.reduce((max, item) => Math.max(max, item.id), 0) + 1,
+      name,
+      namesrvAddr: data.namesrvAddr,
+      k8sNamespace: data.k8sNamespace ?? null,
+      k8sId: data.k8sId ?? null,
+      status: null,
+      description: data.description ?? null,
+      gmtCreate: null,
+      gmtModified: null,
+    };
+    mockNsRegistryStore.push(entry);
+    return copyNsRegistryEntry(entry);
+  }
   return clusterApi.createNameserverRegistry(data);
 }
 
@@ -69,12 +143,35 @@ export async function updateNameserverRegistry(data: {
   name: string;
   namesrvAddr: string;
   k8sNamespace?: string;
+  k8sId?: string;
   description?: string;
 }): Promise<NameserverRegistryEntry> {
+  if (isMockMode()) {
+    const entry = requireRegistryEntry(data.id);
+    const name = requireRegistryName(data.name);
+    rejectDuplicateRegistryName(name, data.id);
+    Object.assign(entry, {
+      name,
+      namesrvAddr: data.namesrvAddr,
+      // An omitted optional field is cleared, the way the endpoint clears those columns.
+      k8sNamespace: data.k8sNamespace ?? null,
+      k8sId: data.k8sId ?? null,
+      description: data.description ?? null,
+    });
+    return copyNsRegistryEntry(entry);
+  }
   return clusterApi.updateNameserverRegistry(data);
 }
 
 export async function deleteNameserverRegistry(id: number): Promise<void> {
+  if (isMockMode()) {
+    const index = mockNsRegistryStore.findIndex((entry) => entry.id === id);
+    if (index < 0) {
+      throw new Error(`NameServer registry entry not found: ${id}`);
+    }
+    mockNsRegistryStore.splice(index, 1);
+    return;
+  }
   await clusterApi.deleteNameserverRegistry(id);
 }
 
