@@ -363,8 +363,12 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             totalTopics = allTopics.size();
             totalGroups = allGroups.size();
 
-            // Build per-cluster overview
-            for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
+            // Build per-cluster overview. A HashMap iterates deterministically for a given key
+            // set, but the cluster list view sorts by name; sort here too so the two views agree.
+            List<Map.Entry<String, Set<String>>> sortedClusters =
+                    new ArrayList<>(clusterAddrTable.entrySet());
+            sortedClusters.sort(Map.Entry.comparingByKey());
+            for (Map.Entry<String, Set<String>> clusterEntry : sortedClusters) {
                 String clusterName = clusterEntry.getKey();
                 Set<String> brokerNames = clusterEntry.getValue() == null ? Set.of() : clusterEntry.getValue();
                 int clusterBrokers = 0;
