@@ -54,6 +54,7 @@ import type { DataSource } from '../api/settings';
 import type { MetricData, MetricMapping, MetricProfile } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
 import { downloadCsv } from '../utils/download';
+import { formatUtcDateTime } from '../utils/format';
 import { tableScrollX } from '../utils/table';
 import {
   buildMetricCsvFilename,
@@ -1018,15 +1019,18 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     [customPanel?.data],
   );
 
+  // Sample, window and history instants go through the shared formatter: a stable
+  // `YYYY-MM-DD HH:mm:ss` in the viewer's zone, the way the rest of the console renders an instant.
+  // `formatSeconds` still takes epoch seconds and `formatMillis` epoch milliseconds.
   const formatSeconds = useCallback(
     (timestamp?: number) =>
-      timestamp === undefined ? '-' : new Date(timestamp * 1000).toLocaleString(locale),
-    [locale],
+      timestamp === undefined ? '-' : formatUtcDateTime(new Date(timestamp * 1000)),
+    [],
   );
   const formatMillis = useCallback(
     (timestamp?: number) =>
-      timestamp === undefined ? '-' : new Date(timestamp).toLocaleString(locale),
-    [locale],
+      timestamp === undefined ? '-' : formatUtcDateTime(new Date(timestamp)),
+    [],
   );
   const formatHistorySource = (entry: MetricsQueryHistoryEntry) =>
     entry.dataSourceKey ? entry.dataSourceName || entry.dataSourceKey : copy.defaultDataSource;
