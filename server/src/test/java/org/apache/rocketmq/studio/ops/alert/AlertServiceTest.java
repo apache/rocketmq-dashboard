@@ -1078,6 +1078,37 @@ class AlertServiceTest {
         verify(alertRepository).insertRule(distinct);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"60s,1m", "1h30m,90m", "1000ms,1s", "0s,''"})
+    void equivalentDurationEditKeepsEvaluationStateTest(String original, String replacement) {
+        AlertRuleVO existing = durationRule(1L, original);
+        AlertRuleVO update = durationRule(1L, replacement);
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository, never()).deleteByRuleId(1L);
+    }
+
+    @Test
+    void changedDurationStillResetsEvaluationStateTest() {
+        AlertRuleVO existing = durationRule(1L, "60s");
+        AlertRuleVO update = durationRule(1L, "2m");
+        when(alertRepository.findRuleById(1L)).thenReturn(java.util.Optional.of(existing));
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        alertService.updateRule(update);
+
+        verify(alertStateRepository).deleteByRuleId(1L);
+    }
+
+    private static AlertRuleVO durationRule(Long id, String duration) {
+        return AlertRuleVO.builder().id(id).name("Disk usage").domain(AlertDomain.CLUSTER)
+                .instanceId("local").metric("broker.disk.usage_ratio").operator(">=").threshold(0.85)
+                .duration(duration).enabled(true).build();
+    }
+
     @Test
     void updateRuleShouldRejectAnotherRulesEvaluationConditionsTest() {
         AlertRuleVO existing = AlertRuleVO.builder()
