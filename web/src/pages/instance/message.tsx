@@ -127,6 +127,9 @@ const getDefaultRange = (): [Dayjs, Dayjs] => [dayjs().subtract(2, 'day').startO
 
 /* ─── Helpers ─── */
 
+/* -1 is the server's unknown sentinel for a body size the vendor API does not report. */
+const formatMessageSize = (bytes: number): string => (bytes < 0 ? '-' : formatBytes(bytes));
+
 const formatBody = (body: string): string => {
   try {
     return JSON.stringify(JSON.parse(body), null, 2);
@@ -902,7 +905,7 @@ const MessagePageContent = ({
       // 「12.3 MB」实测 48px + 左右 padding 16px；原来给 80 是把宽度让给了溢出的操作列。
       width: 68,
       align: 'right',
-      render: (size: number) => formatBytes(size),
+      render: (size: number) => formatMessageSize(size),
     },
     {
       title: t('common.actions'),
@@ -1023,7 +1026,7 @@ const MessagePageContent = ({
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.key}</span>
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.size')}>
-              {formatBytes(selectedMsg.size)}
+              {formatMessageSize(selectedMsg.size)}
             </Descriptions.Item>
             <Descriptions.Item label={t('messagePage.reconsumeTimes')}>
               <span style={{ fontFamily: 'monospace' }}>{selectedMsg.reconsumeTimes ?? '-'}</span>

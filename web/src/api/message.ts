@@ -20,6 +20,7 @@ export interface MessageRecord {
   reconsumeTimes?: number;
   properties: Record<string, string>;
   propertiesTruncated?: boolean;
+  /** Body size in bytes; -1 when the vendor API does not report one (unknown, not zero). */
   size: number;
 }
 

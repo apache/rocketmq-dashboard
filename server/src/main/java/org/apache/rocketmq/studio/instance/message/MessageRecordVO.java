@@ -28,6 +28,9 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessageRecordVO {
+    /** Message size in bytes is unknown to some vendor APIs; -1 is the unknown sentinel, not a measurement. */
+    public static final int UNKNOWN_SIZE = -1;
+
     private String msgId;
     private String topic;
     private String tag;
