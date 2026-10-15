@@ -179,6 +179,25 @@ describe('consumer service mock data', () => {
       mode.mock = true;
     }
   });
+  it('rejects an empty API page while the reported group total is still unseen', async () => {
+    mode.mock = false;
+    metadataApi.listConsumerGroupPage.mockReset();
+    metadataApi.listConsumerGroupPage
+      .mockResolvedValueOnce({
+        items: [{ name: 'cg-a', subscribedTopics: [], instances: [] }],
+        total: 2,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({ items: [], total: 2, page: 2, size: 100 });
+    try {
+      await expect(listAllConsumerGroups()).rejects.toThrow('Incomplete consumer group list');
+      expect(metadataApi.listConsumerGroupPage).toHaveBeenCalledTimes(2);
+    } finally {
+      mode.mock = true;
+      metadataApi.listConsumerGroupPage.mockReset();
+    }
+  });
   it('returns copied progress and subscription rows', async () => {
     const firstProgress = await getConsumerProgress('cg-order-notify');
     const firstSubscriptions = await getConsumerSubscriptions('cg-order-notify');
