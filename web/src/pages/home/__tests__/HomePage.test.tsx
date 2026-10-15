@@ -205,6 +205,33 @@ describe('HomePage LLM models', () => {
       state: { historyIntent: 'open' },
     });
   });
+
+  it('says the assistant configuration could not be loaded instead of leaving the input dead', async () => {
+    llmApiMocks.getLlmConfig.mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    renderHome();
+
+    // The composer only explains a missing configuration when it has one, so a failed load
+    // would otherwise leave the box disabled with no reason and no way to retry.
+    expect(await screen.findByText('加载AI配置失败')).toBeInTheDocument();
+    const input = screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信');
+    await user.type(input, '查看集群状态{enter}');
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(llmApiMocks.getLlmConfig).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('加载AI配置失败')).not.toBeInTheDocument());
+    expect(await screen.findByTestId('ai-provider-status')).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, '查看集群状态{enter}');
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/ai', {
+        state: expect.objectContaining({ prompt: '查看集群状态' }),
+      });
+    });
+  });
 });
 
 describe('HomePage footer', () => {
