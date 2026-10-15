@@ -40,6 +40,7 @@ import org.apache.rocketmq.studio.provider.apache.ConsumerLagResolver;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CsvUtil;
@@ -302,8 +303,20 @@ public class MetadataService {
         request.setTopic(requireName(request.getTopic(), "topicName"));
         request.setInstanceId(requireWriteInstance(request.getInstanceId(),
                 ownershipGuard.topicResource(request.getTopic()), true));
+        // The registered topic type drives dispatch on every surface that can send a message:
+        // the REST path and the AI message-send tool share this rule, so a FIFO topic cannot
+        // receive an un-grouped message through one while the other refuses it.
+        MessageSendPolicies.validateForTopicType(
+                resolveSendTopicType(request.getInstanceId(), request.getTopic()),
+                request.getMessageGroup(), request.getDeliveryTimestamp());
         InstanceProvider provider = resolve(request.getInstanceId());
         return sourceTopic == null ? provider.sendMessage(request) : provider.redeliverMessage(request, sourceTopic);
+    }
+
+    private TopicType resolveSendTopicType(String instanceId, String topicName) {
+        return findTopic(instanceId, null, topicName)
+                .map(TopicVO::getType)
+                .orElse(null);
     }
 
     /**
