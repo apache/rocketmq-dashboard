@@ -173,6 +173,50 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('重置')).toBeInTheDocument();
   });
 
+  it('keeps a broker without runtime stats after the measured ones when sorting by TPS', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(listClusters).mockResolvedValue([
+      {
+        ...clusterFixture[0],
+        brokers: [
+          {
+            name: 'broker-unmeasured',
+            addr: '10.0.1.12:10911',
+            version: '5.3.0',
+            status: 'running',
+            diskUsage: 10,
+            tpsIn: 0,
+            tpsOut: 0,
+            runtimeStatsAvailable: false,
+          },
+          {
+            name: 'broker-measured',
+            addr: '10.0.1.13:10911',
+            version: '5.3.0',
+            status: 'running',
+            diskUsage: 20,
+            tpsIn: 900,
+            tpsOut: 5,
+          },
+        ],
+      },
+    ]);
+    renderWithProviders(<BrokerCluster />);
+
+    await screen.findByText('broker-measured');
+    // The unmeasured broker's TPS cells render the placeholder, not a zero.
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByText('入站 TPS'));
+
+    const rowTexts = screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    const measuredIndex = rowTexts.findIndex((text) => text.includes('broker-measured'));
+    const unmeasuredIndex = rowTexts.findIndex((text) => text.includes('broker-unmeasured'));
+    expect(measuredIndex).toBeGreaterThanOrEqual(0);
+    // An unavailable TPS is not the lowest TPS, so the row must not lead the ascending order.
+    expect(unmeasuredIndex).toBeGreaterThan(measuredIndex);
+  });
+
   it('should display broker tab with data from the API', async () => {
     renderWithProviders(<BrokerCluster />);
     // Default tab is broker - data is loaded asynchronously from the service
