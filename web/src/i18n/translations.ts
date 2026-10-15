@@ -225,6 +225,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '客户端连接列表不完整：部分查询失败。',
     en: 'Client connections are incomplete: some queries failed.',
   },
+  'clients.partialScanDescription': {
+    zh: '客户端连接扫描不完整：部分查询失败或达到扫描上限。',
+    en: 'Client connection scans are incomplete: some queries failed or reached the scan limit.',
+  },
   'clients.selectClusterPlaceholder': { zh: '选择 Broker 集群', en: 'Select Broker cluster' },
   'clients.selectNameserverPlaceholder': { zh: '选择 NameServer', en: 'Select NameServer' },
   'cluster.k8sIdExtra': {
