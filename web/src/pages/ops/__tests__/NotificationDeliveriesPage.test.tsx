@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -159,7 +159,7 @@ describe('NotificationDeliveriesPage', () => {
     await screen.findByText('Broker disk usage');
     await user.click(screen.getByRole('button', { name: '重新投递' }));
     await user.click(screen.getAllByRole('combobox')[1]);
-    await user.click(await screen.findByText('DELIVERED'));
+    await user.click(await screen.findByText('已投递'));
     expect(await screen.findByText('Delivered notification')).toBeInTheDocument();
 
     retry.resolve();
@@ -314,7 +314,7 @@ describe('NotificationDeliveriesPage', () => {
         size: 20,
       });
     await user.click(screen.getAllByRole('combobox')[1]);
-    await user.click(await screen.findByText('DELIVERED'));
+    await user.click(await screen.findByText('已投递'));
 
     await waitFor(() =>
       expect(listAlertDeliveriesPage).toHaveBeenCalledWith(
@@ -332,5 +332,43 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('names the delivery status and channel instead of printing the API codes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    // The list row: the status column must agree with the localized result column beside it.
+    await screen.findByText('Broker disk usage');
+    expect(screen.getByText('钉钉')).toBeInTheDocument();
+    expect(screen.getByText('投递失败')).toBeInTheDocument();
+    expect(screen.queryByText('dingtalk')).not.toBeInTheDocument();
+    expect(screen.queryByText('FAILED')).not.toBeInTheDocument();
+
+    // Both filters offer the names a reader understands; the values sent to the API stay codes.
+    await user.click(screen.getAllByRole('combobox')[0]);
+    expect(await screen.findByText('短信')).toBeInTheDocument();
+    expect(screen.queryByText('sms')).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole('combobox')[1]);
+    expect(await screen.findByText('等待重试')).toBeInTheDocument();
+    expect(screen.queryByText('RETRY_WAIT')).not.toBeInTheDocument();
+
+    // The drawer repeats the row, so it cannot fall back to the raw codes either.
+    await user.click(screen.getByRole('button', { name: '查看投递详情' }));
+    const drawer = await waitFor(() => {
+      const body = document.querySelector('.ant-drawer-body') as HTMLElement | null;
+      if (!body) throw new Error('the delivery drawer is not open yet');
+      return body;
+    });
+    expect(within(drawer).getByText('钉钉')).toBeInTheDocument();
+    expect(within(drawer).getByText('投递失败')).toBeInTheDocument();
+    expect(drawer.textContent).not.toContain('dingtalk');
+    expect(drawer.textContent).not.toContain('FAILED');
   });
 });

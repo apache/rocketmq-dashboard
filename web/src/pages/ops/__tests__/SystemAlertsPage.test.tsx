@@ -589,6 +589,11 @@ describe('SystemAlertsPage', () => {
     );
     expect(error).toHaveStyle({ overflowWrap: 'anywhere', wordBreak: 'break-word' });
 
+    // The timeline names the channel and the status; the wire codes stay out of the operator view.
+    expect(screen.getByText('钉钉: 投递失败 (5)')).toBeInTheDocument();
+    expect(screen.getByText('邮件: 已投递 (1)')).toBeInTheDocument();
+    expect(screen.queryByText('dingtalk: FAILED (5)')).not.toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: '重新投递' }));
     await waitFor(() => {
       expect(retryAlertDelivery).toHaveBeenCalledWith(9);
@@ -613,11 +618,11 @@ describe('SystemAlertsPage', () => {
     renderPage();
 
     await user.click((await screen.findAllByRole('button', { name: '投递记录' }))[0]);
-    await screen.findByText('email: FAILED (1)');
+    await screen.findByText('邮件: 投递失败 (1)');
     await user.click(screen.getAllByRole('button', { name: '重新投递' })[0]);
     await waitFor(() => expect(listAlertDeliveries).toHaveBeenCalledTimes(2));
     expect(retryAlertDelivery).toHaveBeenNthCalledWith(1, 9);
-    const emailDelivery = screen.getByText('email: FAILED (1)').parentElement;
+    const emailDelivery = screen.getByText('邮件: 投递失败 (1)').parentElement;
     expect(emailDelivery).not.toBeNull();
     await user.click(within(emailDelivery!).getByRole('button', { name: '重新投递' }));
     await waitFor(() => expect(retryAlertDelivery).toHaveBeenNthCalledWith(2, 10));
@@ -629,10 +634,10 @@ describe('SystemAlertsPage', () => {
         { id: 10, channel: 'email', status: 'RETRY_WAIT', attemptCount: 2 },
       ]),
     );
-    expect(await screen.findByText('email: RETRY_WAIT (2)')).toBeInTheDocument();
+    expect(await screen.findByText('邮件: 等待重试 (2)')).toBeInTheDocument();
 
     await act(async () => firstRefresh.resolve(failed));
-    expect(screen.getByText('email: RETRY_WAIT (2)')).toBeInTheDocument();
+    expect(screen.getByText('邮件: 等待重试 (2)')).toBeInTheDocument();
   });
 
   it('tracks simultaneous acknowledgements independently', async () => {

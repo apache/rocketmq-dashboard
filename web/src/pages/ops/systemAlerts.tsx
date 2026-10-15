@@ -61,6 +61,7 @@ import type {
   PageResult,
   SystemAlert,
 } from '../../api/ops';
+import { formatDeliveryChannel, formatDeliveryStatus } from './alertDeliveryPresentation';
 import { formatUtcDateTime, formatNumber } from '../../utils/format';
 import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 import { zonedLocalDateTimeToUtc } from '../../utils/timeZone';
@@ -814,7 +815,8 @@ const SystemAlertsPage = () => {
                                     : 'processing'
                               }
                             >
-                              {delivery.channel}: {delivery.status} ({delivery.attemptCount})
+                              {formatDeliveryChannel(delivery.channel, t)}:{' '}
+                              {formatDeliveryStatus(delivery.status, t)} ({delivery.attemptCount})
                             </Tag>
                             {delivery.status === 'FAILED' && (
                               <Button
