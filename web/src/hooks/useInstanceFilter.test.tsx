@@ -67,6 +67,53 @@ describe('useInstanceFilter', () => {
     });
   });
 
+  it('selects the route instance while the list is still loading', async () => {
+    let release: (instances: unknown[]) => void = () => {};
+    // Once-scoped on purpose: this file never clears the shared mock, so a persistent pending
+    // implementation would leak into the tests below and hang their retry.
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-a/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Pages gate their own data request on selectedInstanceId, so the route instance must win
+    // before the list lands instead of serializing the page behind it. The selector also renders
+    // names only, so it must not ask for the (remotely resolved, seconds-slow) resource counts.
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+    });
+    expect(instanceServiceMocks.listInstances).toHaveBeenCalledWith();
+
+    release([
+      {
+        id: 7,
+        name: 'instance-a',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        gmtCreate: '2026-01-01T00:00:00Z',
+        gmtModified: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('instances-failed')).toHaveTextContent('false');
+    });
+    expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
+  });
+
   it('reports a failed instance list and recovers from a retry', async () => {
     instanceServiceMocks.listInstances
       .mockRejectedValueOnce(new Error('offline'))

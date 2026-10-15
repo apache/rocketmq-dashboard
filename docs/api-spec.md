@@ -321,7 +321,7 @@ GET /api/dashboard
 ### 3.1 获取实例列表
 
 ```
-GET /api/instances?type={type}&search={keyword}
+GET /api/instances?type={type}&search={keyword}&withCounts={withCounts}
 ```
 
 **Query Parameters:**
@@ -330,6 +330,7 @@ GET /api/instances?type={type}&search={keyword}
 |------|------|------|------|
 | `type` | `string` | 否 | 按类型过滤: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `search` | `string` | 否 | 按名称或地址搜索 |
+| `withCounts` | `boolean` | 否 | 默认 `false`。为 `true` 时逐实例解析 Topic / 消费组数量；云厂商走远程 OpenAPI（每实例两次调用），十几实例量级耗时秒级，只需要实例名的调用方（如实例选择器）不要开启 |
 
 **Response `data`:** `Instance[]`
 
@@ -340,8 +341,9 @@ GET /api/instances?type={type}&search={keyword}
 | `remark` | `string` | 备注 |
 | `type` | `string` | 接入类型: `CLOUD` / `PROXY_LOCAL` / `PROXY_CLUSTER` / `DIRECT` |
 | `endpoint` | `string` | 接入地址 |
-| `topicCount` | `number` | Topic 数量 |
-| `consumerGroupCount` | `number` | 消费组数量 |
+| `topicCount` | `number` | Topic 数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `consumerGroupCount` | `number` | 消费组数量；未请求 `withCounts` 或解析失败时为 `0` |
+| `resourceCountsAvailable` | `boolean` | 上面两个计数是否可信；`false` 表示未请求或解析失败，此时不应把 `0` 当成真实数量 |
 | `gmtCreate` | `string` | 创建时间 |
 | `gmtModified` | `string` | 更新时间 |
 
