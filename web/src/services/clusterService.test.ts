@@ -32,12 +32,26 @@ import {
   listClusters,
   listK8sCerts,
   previewClusterConfig,
+  testClusterConnection,
   updateClusterConfig,
   updateK8sCert,
   updateNameServer,
 } from './clusterService';
 
 describe('clusterService mock clusters', () => {
+  it('requires the NameServer address the endpoint requires', async () => {
+    // TestConnectionDTO declares @NotBlank namesrvAddr, so the endpoint answers 400
+    // "namesrvAddr is required" for a blank address. The connect form's required rule accepts a
+    // whitespace-only value (async-validator's required rule rejects only the empty string), so
+    // the service sees blank input and the mock must reject it like connectionsService does.
+    await expect(testClusterConnection('   ')).rejects.toThrow('namesrvAddr is required');
+    await expect(testClusterConnection('')).rejects.toThrow('namesrvAddr is required');
+
+    await expect(testClusterConnection(' 10.101.2.1:9876 ')).resolves.toMatchObject({
+      connected: true,
+      namesrvAddr: '10.101.2.1:9876',
+    });
+  });
   it('returns defensive copies from cluster detail reads', async () => {
     const cluster = await getCluster('cluster-prod');
     const originalBrokerStatus = cluster.brokers[0].status;
