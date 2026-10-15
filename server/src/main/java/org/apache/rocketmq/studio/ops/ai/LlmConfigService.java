@@ -27,8 +27,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -373,18 +371,15 @@ public class LlmConfigService {
     }
 
     private boolean isValidApiBase(String apiBase) {
+        if (apiBase.endsWith(CHAT_COMPLETIONS_PATH)) {
+            return false;
+        }
         try {
-            URI uri = new URI(apiBase);
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!("http".equals(scheme) || "https".equals(scheme)) || !StringUtils.hasText(uri.getHost())
-                    || apiBase.endsWith(CHAT_COMPLETIONS_PATH)) {
-                return false;
-            }
-            // SSRF guard on both the save and test paths (validate() runs for each). Loopback is
-            // allowed because a local ollama gateway is a supported provider, but link-local and
-            // cloud-metadata addresses (169.254.x.x) are rejected.
-            return UrlHostGuard.isAllowedHost(uri.getHost(), true);
-        } catch (URISyntaxException exception) {
+            // Use the same URL and credential checks as save/test/query paths. Local LLM gateways
+            // may use loopback, while link-local and metadata addresses remain disallowed.
+            UrlHostGuard.check(apiBase, true);
+            return true;
+        } catch (IllegalArgumentException exception) {
             return false;
         }
     }
