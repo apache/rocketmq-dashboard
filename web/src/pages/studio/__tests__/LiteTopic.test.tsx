@@ -252,6 +252,50 @@ describe('LiteTopic Page', () => {
       localStorage.removeItem('rocketmq-studio-language');
     }
   });
+
+  it('sorts a pattern whose TTL and last-active value are unset after the measurable ones', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'aaa-unmeasured-*',
+        // The provider leaves these unset when the broker reports no TTL attribute and no session
+        // ever reported an access; both cells render '-'.
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'zzz-measured-*',
+        averageTTL: 3_600_000,
+        lastActiveTime: Date.UTC(2026, 7, 20, 10, 0, 0),
+        sessionIds: ['session-1'],
+      },
+    ] as LiteTopicItem[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('zzz-measured-*');
+    const rowOrder = () => screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    const indexOf = (pattern: string) => rowOrder().findIndex((text) => text.includes(pattern));
+
+    // Ascending: a value the column renders as '-' must not sort as a zero TTL, which would
+    // place that pattern as if it had expired before every measurable one.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    // The unset value stays last in the descending direction too instead of swapping to the top.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    await user.click(screen.getByText('最后活跃'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+  });
+
   it('sends the owning instance id when extending TTL', async () => {
     // LiteTopicTTLUpdateDTO requires a non-blank instanceId; only the
     // Apache-vendor instance is a candidate for the ownership-checked write.

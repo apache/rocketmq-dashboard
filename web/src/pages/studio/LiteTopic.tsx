@@ -76,6 +76,18 @@ export const formatTime = (timestamp: number | undefined | null): string => {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
 };
 
+/**
+ * Sort key for a column value the provider can leave unset. The cells render `-` in that case
+ * (`formatDuration` / `formatTime`), and neither an absent TTL nor an absent last-active instant
+ * may sort as a measured zero: ascending, that would place the pattern before every measurable one
+ * as if it had expired first or been idle longest. Ant Design negates the comparator for a
+ * descending column, so the unset value has to stay last in both directions.
+ */
+const unmeasuredSortKey = (
+  value: number | undefined,
+  sortOrder?: 'ascend' | 'descend' | null,
+): number => value ?? (sortOrder === 'descend' ? Number.MIN_SAFE_INTEGER : Number.MAX_SAFE_INTEGER);
+
 const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' => {
   if (percent >= 90) return 'exception';
   if (percent >= 70) return 'active';
@@ -466,7 +478,8 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'averageTTL',
       key: 'averageTTL',
       render: (val: number) => formatDuration(val),
-      sorter: (a, b) => (a.averageTTL || 0) - (b.averageTTL || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.averageTTL, sortOrder) - unmeasuredSortKey(b.averageTTL, sortOrder),
     },
     {
       title: t('liteTopic.status'),
@@ -479,7 +492,9 @@ const LiteTopicPage: React.FC = () => {
       dataIndex: 'lastActiveTime',
       key: 'lastActiveTime',
       render: (val: number) => formatTime(val),
-      sorter: (a, b) => (a.lastActiveTime || 0) - (b.lastActiveTime || 0),
+      sorter: (a, b, sortOrder?: 'ascend' | 'descend' | null) =>
+        unmeasuredSortKey(a.lastActiveTime, sortOrder) -
+        unmeasuredSortKey(b.lastActiveTime, sortOrder),
     },
     {
       title: t('liteTopic.actions'),
