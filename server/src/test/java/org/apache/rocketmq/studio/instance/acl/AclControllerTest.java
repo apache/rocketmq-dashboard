@@ -109,7 +109,7 @@ class AclControllerTest extends WebMvcAuthTestSupport {
         rule.setId(1L);
         rule.setGmtCreate(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(20)))
                 .thenReturn(PageResult.of(java.util.List.of(rule), 1, 1, 20));
 
         mockMvc.perform(get("/api/acl/rules"))
@@ -127,7 +127,7 @@ class AclControllerTest extends WebMvcAuthTestSupport {
     @Test
     void listRulesShouldPassQueryParams() throws Exception {
         when(aclService.listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
-                isNull(), eq(3), eq(5))).thenReturn(PageResult.empty(3, 5));
+                isNull(), isNull(), eq(3), eq(5))).thenReturn(PageResult.empty(3, 5));
 
         mockMvc.perform(get("/api/acl/rules")
                         .param("principal", "user1")
@@ -142,12 +142,25 @@ class AclControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data.size").value(5));
 
         verify(aclService).listRules(eq("user1"), eq("topic-a"), eq("namespace"), eq("DENY"),
-                isNull(), eq(3), eq(5));
+                isNull(), isNull(), eq(3), eq(5));
+    }
+
+    @Test
+    void listRulesShouldApplyTheAclVersionFilterTest() throws Exception {
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), eq("1.0"),
+                isNull(), eq(1), eq(20))).thenReturn(PageResult.empty(1, 20));
+
+        mockMvc.perform(get("/api/acl/rules").param("aclVersion", "1.0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), eq("1.0"),
+                isNull(), eq(1), eq(20));
     }
 
     @Test
     void listRulesShouldRejectPageSizeAboveTheInventoryLimit() throws Exception {
-        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
+        when(aclService.listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq(1), eq(101))).thenThrow(new BusinessException(400,
                 "page must be >= 1 and pageSize must be between 1 and 100"));
 
@@ -159,7 +172,7 @@ class AclControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.message")
                         .value("page must be >= 1 and pageSize must be between 1 and 100"));
 
-        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(),
+        verify(aclService).listRules(isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
                 eq(1), eq(101));
     }
 
