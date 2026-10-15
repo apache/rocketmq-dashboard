@@ -1112,10 +1112,16 @@ const ConsumerPageContent = ({
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
-                  await reloadConsumerGroupPage();
-                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
-                  message.success(`消费组 ${record.name} 已删除`);
+                  // The dialog stays open until this promise settles, so a rejected request has
+                  // to be reported here - antd only logs it and the operator would see nothing.
+                  try {
+                    await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                    await reloadConsumerGroupPage();
+                    setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                    message.success(`消费组 ${record.name} 已删除`);
+                  } catch {
+                    message.error(t('common.operationFailed'));
+                  }
                 },
               });
             }}
@@ -1553,20 +1559,26 @@ const ConsumerPageContent = ({
                   okButtonProps: { danger: true },
                   cancelText: '取消',
                   onOk: async () => {
-                    const names = selectedRowKeys.map(String);
-                    const { deleted, failed } = await batchDeleteConsumerGroups(
-                      names,
-                      selectedInstanceId || undefined,
-                    );
-                    if (deleted.length > 0) await reloadConsumerGroupPage();
-                    if (failed.length > 0) {
-                      message.warning(
-                        `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
+                    // A request-level failure is not a partial result: report it instead of
+                    // letting the rejection disappear into antd's confirm handling.
+                    try {
+                      const names = selectedRowKeys.map(String);
+                      const { deleted, failed } = await batchDeleteConsumerGroups(
+                        names,
+                        selectedInstanceId || undefined,
                       );
-                      setSelectedRowKeys(failed);
-                    } else {
-                      message.success(`已删除 ${deleted.length} 个 Group`);
-                      setSelectedRowKeys([]);
+                      if (deleted.length > 0) await reloadConsumerGroupPage();
+                      if (failed.length > 0) {
+                        message.warning(
+                          `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
+                        );
+                        setSelectedRowKeys(failed);
+                      } else {
+                        message.success(`已删除 ${deleted.length} 个 Group`);
+                        setSelectedRowKeys([]);
+                      }
+                    } catch {
+                      message.error(t('common.operationFailed'));
                     }
                   },
                 });
