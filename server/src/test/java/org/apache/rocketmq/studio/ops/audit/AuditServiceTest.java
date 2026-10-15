@@ -106,6 +106,33 @@ class AuditServiceTest {
     }
 
     @Test
+    void queryLogsShouldSerializeTimestampsAsUtcWallTimeTest() {
+        // Audit rows are stored as zone-less server-local wall clocks; the page renders them in
+        // the viewer's zone, so the JSON wire carries UTC. A UTC container viewed from UTC+8
+        // would otherwise show every audit time eight hours off while the CSV export of the
+        // same rows stays correct.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AuditRecordVO stored = AuditRecordVO.builder()
+                    .operationType("CREATE")
+                    .timestamp(LocalDateTime.of(2026, 8, 1, 10, 0, 0))
+                    .build();
+            when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(),
+                    eq(false), isNull(), isNull(), isNull(), eq(1), eq(20)))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AuditRecordVO> result = auditService.queryLogs(
+                    1, 20, null, null, null, null, null, false, null, null, null);
+
+            assertThat(result.getItems().get(0).getTimestamp())
+                    .isEqualTo(LocalDateTime.of(2026, 8, 1, 2, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
     void queryLogsParsesDateRangeBeforeDelegating() {
         when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(),
                 isNull(), eq(false), any(LocalDateTime.class), any(LocalDateTime.class),

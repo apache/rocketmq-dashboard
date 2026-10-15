@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.TimeZone;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -422,6 +423,57 @@ class AclServiceTest {
         assertThat(users.get(0).getAccessKey()).isEqualTo("access-key-123456");
         assertThat(users.get(0).getSecretKey()).isEqualTo("secret-key-987654");
         verify(aclRepository).findUsers();
+    }
+
+    @Test
+    void listUsersShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        // gmtCreate is stored as a zone-less server-local wall clock and the page renders it in
+        // the viewer's zone, so the wire carries UTC — the same convention the audit page uses.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclUserVO stored = AclUserVO.builder()
+                    .username("orders")
+                    .accessKey("access-key-123456")
+                    .secretKey("secret-key-987654")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findUsers()).thenReturn(List.of(stored));
+
+            List<AclUserVO> result = aclService.listUsers(null);
+
+            assertThat(result.get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            // The stored row itself keeps the server-local base.
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void listRulesShouldSerializeGmtCreateAsUtcWallTimeTest() {
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            AclRuleVO stored = AclRuleVO.builder()
+                    .principal("user1")
+                    .resource("topic-1")
+                    .decision("ALLOW")
+                    .gmtCreate(LocalDateTime.of(2026, 7, 23, 10, 0, 0))
+                    .build();
+            when(aclRepository.findRulePage(null, null, null, null, null, 1, 20))
+                    .thenReturn(PageResult.of(List.of(stored), 1, 1, 20));
+
+            PageResult<AclRuleVO> result = aclService.listRules(null, null, null, null, null,
+                    null, null);
+
+            assertThat(result.getItems().get(0).getGmtCreate())
+                    .isEqualTo(LocalDateTime.of(2026, 7, 23, 2, 0, 0));
+            assertThat(stored.getGmtCreate()).isEqualTo(LocalDateTime.of(2026, 7, 23, 10, 0, 0));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @ParameterizedTest
