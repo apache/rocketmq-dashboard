@@ -407,7 +407,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 };
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
-  const { lang } = useLang();
+  const { lang, t } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
     lang === 'zh'
@@ -1151,6 +1151,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     const nextDataSource = entry.dataSourceKey
       ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
       : undefined;
+    // A named history source is part of the query's identity. An unavailable source
+    // must not silently become the default backend or replace the active query.
+    if (entry.dataSourceKey && !nextDataSource) {
+      void message.warning(
+        t('metricsExplorer.unavailableHistorySource', {
+          source: entry.dataSourceName || entry.dataSourceKey,
+        }),
+      );
+      return;
+    }
     const nextDataSourceKey = nextDataSource?.key ?? '';
     // The current selection, read before the entry replaces it below, so that declining the
     // credentials prompt can put it back (see handleAuthCancel).
@@ -1480,6 +1490,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
+                // Enter may confirm an IME candidate, including WebKit's post-composition key.
+                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (!event.shiftKey) {
                   event.preventDefault();
                   void runCustomQuery(customPromql, selectedRange);

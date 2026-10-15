@@ -94,6 +94,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
   'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
 
+  // ─── Metrics Explorer ───
+  'metricsExplorer.unavailableHistorySource': {
+    zh: '该历史记录中的数据源“{source}”已不可用，已保留当前查询。',
+    en: 'The data source "{source}" in this history entry is unavailable. The current query was kept.',
+  },
+
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
@@ -3630,6 +3636,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.notSupported': {
     zh: '当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x',
     en: 'LiteTopic is not supported on the current cluster. Please upgrade to RocketMQ 5.x',
+  },
+  'liteTopic.capabilityCheckFailed': {
+    zh: '无法确认当前集群是否支持 LiteTopic，请重试。',
+    en: 'Could not check whether the current cluster supports LiteTopic. Please retry.',
   },
   'liteTopic.fetchListFailed': {
     zh: '获取 LiteTopic 列表失败',
