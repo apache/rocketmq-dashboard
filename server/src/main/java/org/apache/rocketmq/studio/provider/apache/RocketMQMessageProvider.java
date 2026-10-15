@@ -22,6 +22,7 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.message.MessageClientExt;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -574,7 +575,15 @@ public class RocketMQMessageProvider implements MessageProvider {
                     if (message == null || !topic.equals(message.getTopic())) {
                         throw new BusinessException(409, "Message's actual topic does not match the authorized resource");
                     }
-                    requireDirectMessageTarget(target, message.getMsgId(), true);
+                    // The broker locates a message by its offset id (broker address + commitlog offset).
+                    // viewMessage hands back a MessageClientExt, whose getMsgId() prefers the client-side
+                    // UNIQ_KEY — its "port" segment is a process id, so decoding it as a physical location
+                    // fails. Both the ownership guard and the broker call therefore use the offset id, and
+                    // fall back to getMsgId() only for a plain MessageExt, where that is the offset id.
+                    String offsetMessageId = message instanceof MessageClientExt clientMessage
+                            ? clientMessage.getOffsetMsgId()
+                            : message.getMsgId();
+                    requireDirectMessageTarget(target, offsetMessageId, true);
                     if (!(message.getStoreHost() instanceof java.net.InetSocketAddress host)
                             || host.getAddress() == null
                             || !target.masters().contains(host.getAddress().getHostAddress() + ":" + host.getPort())) {
@@ -583,7 +592,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                     org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult result;
                     try {
                         result = ((DefaultMQAdminExt) admin).consumeMessageDirectly(group, client,
-                                topic, message.getMsgId());
+                                topic, offsetMessageId);
                     } catch (Exception exception) {
                         String rootMessage = rootMessage(exception);
                         // The broker answers SYSTEM_ERROR with "The Consumer <group> <client> not online"

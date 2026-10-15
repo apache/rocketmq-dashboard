@@ -160,6 +160,13 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
+// antd's Spin keys `.ant-spin-blur` (pointer-events: none over the table) on state that lags the
+// Table's loading prop by a commit; clicking a row button inside that window is rejected. Same
+// helper as ConsumerPage.test.tsx.
+async function expectInteractive(element: Element) {
+  await waitFor(() => expect(getComputedStyle(element).pointerEvents).not.toBe('none'));
+}
+
 describe('Clients page', () => {
   it('returns to the first page when the connection search changes', async () => {
     const pagedConnections = Array.from({ length: 21 }, (_, index) => ({
@@ -402,6 +409,7 @@ describe('Clients page', () => {
       within(screen.getByTestId('language-version-distribution')).getByText('未知 unknown: 1'),
     ).toBeInTheDocument();
     expect(screen.getByText('客户端连接列表不完整：部分查询失败。')).toBeInTheDocument();
+    await expectInteractive(within(row).getByRole('button', { name: /详情/ }));
     await user.click(within(row).getByRole('button', { name: /详情/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getAllByText('-')).toHaveLength(2);

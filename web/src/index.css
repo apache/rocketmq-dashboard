@@ -478,3 +478,10 @@ body {
 .instance-table .ant-table-thead > tr > th {
   text-align: center;
 }
+
+/* Form helper text (Form.Item `extra`) sat flush against the control above it — the type
+   description in the create-topic modal read as part of the radio cards. A small top margin
+   applies to every `extra` in the app, which is the convention for "explanation under a field". */
+.ant-form-item-extra {
+  margin-top: 4px;
+}

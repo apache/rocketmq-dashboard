@@ -200,6 +200,7 @@ describe('LiteTopic Page', () => {
 
     await user.click(await screen.findByText('查看会话'));
     await screen.findByText('session-1');
+    expect(document.querySelector('.ant-drawer')).toBeNull();
 
     expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
     // The percentage is the load-bearing half: the panel's title came from an i18n key this change
