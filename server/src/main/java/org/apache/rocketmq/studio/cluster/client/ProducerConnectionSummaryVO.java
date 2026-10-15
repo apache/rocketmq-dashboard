@@ -38,6 +38,9 @@ public class ProducerConnectionSummaryVO {
     public static final String INCOMPLETE_CLIENT_METADATA = "INCOMPLETE_CLIENT_METADATA";
     public static final String INCOMPLETE_SCAN = "INCOMPLETE_SCAN";
 
+    /** Bucket of connections that reported no value for a distribution dimension. */
+    public static final String UNKNOWN_DIMENSION = "UNKNOWN";
+
     private int totalConnections;
     private int uniqueClientCount;
     private int uniqueAddressCount;
@@ -64,8 +67,8 @@ public class ProducerConnectionSummaryVO {
         summary.uniqueAddressCount = countDistinct(safeConnections, ProducerConnectionVO::getClientAddr);
         summary.languages = distribution(safeConnections, ProducerConnectionVO::getLanguage);
         summary.versions = distribution(safeConnections, ProducerConnectionVO::getVersionDesc);
-        summary.uniqueLanguageCount = summary.languages.size();
-        summary.uniqueVersionCount = summary.versions.size();
+        summary.uniqueLanguageCount = reportedDimensionCount(summary.languages);
+        summary.uniqueVersionCount = reportedDimensionCount(summary.versions);
         summary.duplicateClientIds = duplicateClientIds(safeConnections);
         summary.warnings = warnings(summary, safeConnections, complete);
         summary.readiness = readiness(summary, complete);
@@ -78,6 +81,19 @@ public class ProducerConnectionSummaryVO {
                 .map(extractor)
                 .filter(ProducerConnectionSummaryVO::hasText)
                 .distinct()
+                .count();
+    }
+
+    /**
+     * Number of distribution buckets a connection really reported. The {@code UNKNOWN} bucket stays in
+     * the distribution so the console can show it, but it is not a language or a version: counting it
+     * would render "Versions: 2" for one version plus one unreported client and raise
+     * {@link #MIXED_CLIENT_VERSION} - a claim that clients run different versions, where
+     * {@link #INCOMPLETE_CLIENT_METADATA} already states that the metadata is missing.
+     */
+    private static int reportedDimensionCount(List<ProducerConnectionSummaryItemVO> distribution) {
+        return (int) distribution.stream()
+                .filter(item -> !UNKNOWN_DIMENSION.equals(item.getValue()))
                 .count();
     }
 
@@ -151,7 +167,7 @@ public class ProducerConnectionSummaryVO {
     }
 
     private static String normalizeDimension(String value) {
-        return hasText(value) ? value.trim() : "UNKNOWN";
+        return hasText(value) ? value.trim() : UNKNOWN_DIMENSION;
     }
 
     private static boolean hasText(String value) {

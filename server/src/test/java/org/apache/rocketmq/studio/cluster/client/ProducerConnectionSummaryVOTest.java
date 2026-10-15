@@ -88,6 +88,22 @@ class ProducerConnectionSummaryVOTest {
         assertThat(summary.getWarnings()).containsExactly(ProducerConnectionSummaryVO.INCOMPLETE_SCAN);
     }
 
+    @Test
+    void fromShouldNotCountAnUnreportedVersionAsASecondVersionTest() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(List.of(
+                connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0"),
+                connection("producer-b", "10.0.0.2:38888", "Java", null)));
+
+        assertThat(summary.getUniqueVersionCount()).isEqualTo(1);
+        assertThat(summary.getUniqueLanguageCount()).isEqualTo(1);
+        assertThat(summary.getWarnings()).containsExactly(
+                ProducerConnectionSummaryVO.INCOMPLETE_CLIENT_METADATA);
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.WARNING);
+        assertThat(summary.getVersions())
+                .extracting(ProducerConnectionSummaryItemVO::getValue)
+                .containsExactlyInAnyOrder("UNKNOWN", "5.1.0");
+    }
+
     private ProducerConnectionVO connection(String clientId, String address, String language, String version) {
         return ProducerConnectionVO.builder()
                 .clientId(clientId)
