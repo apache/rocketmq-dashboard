@@ -117,6 +117,57 @@ describe('messagePayloadPreview', () => {
     expect(scalarPreview.issues.map((issue) => issue.code)).toEqual(['SCALAR_JSON_BODY']);
   });
 
+  it.each([
+    ['padded content', '  tenant-blue  ', '  tenant-blue  '],
+    ['Unicode padding', '\u3000租户一\u3000', '\u3000租户一\u3000'],
+    ['internal spaces', 'tenant blue', 'tenant blue'],
+    ['empty value', '', ''],
+    ['whitespace-only value', ' \t\u3000 ', ''],
+    ['missing value', undefined, ''],
+  ])('preservesFormValueSemanticsAndByteCountsFor%sTest', (_label, value, expected) => {
+    const preview = analyzeMessagePayloadPreview({
+      topic: 'orders-topic',
+      body: '{}',
+      propsMode: 'form',
+      properties: [{ key: ' tenant ', value }],
+    });
+
+    expect(preview.properties).toEqual({ tenant: expected });
+    expect(preview.propertyEntries[0]).toMatchObject({
+      key: 'tenant',
+      value: expected,
+      valueBytes: new TextEncoder().encode(expected).length,
+    });
+    expect(preview.summary.propertyBytes).toBe(6 + new TextEncoder().encode(expected).length);
+    expect(preview.issues.some((item) => item.code === 'EMPTY_PROPERTY_VALUE')).toBe(
+      expected === '',
+    );
+    expect(preview.blockingIssues).toEqual([]);
+  });
+
+  it('keepsBlankRowAndNormalizedDuplicateKeyRulesTest', () => {
+    const result = buildMessagePropertiesFromRows([
+      { key: ' ', value: ' \t ' },
+      { key: ' tenant ', value: 'first' },
+      { key: 'tenant', value: 'second' },
+    ]);
+    expect(result.entries.map(({ key, value }) => ({ key, value }))).toEqual([
+      { key: 'tenant', value: 'first' },
+    ]);
+    expect(result.issues.map(({ code }) => code)).toEqual(['DUPLICATE_PROPERTY_KEY']);
+  });
+
+  it('retainsTheBatchTextWhitespaceConventionTest', () => {
+    const preview = analyzeMessagePayloadPreview({
+      topic: 'orders-topic',
+      body: '{}',
+      propsMode: 'text',
+      propsText: ' tenant =  tenant-blue  ',
+    });
+    expect(preview.properties).toEqual({ tenant: 'tenant-blue' });
+    expect(preview.blockingIssues).toEqual([]);
+  });
+
   it('reports duplicate form properties and keeps only the first value', () => {
     const result = buildMessagePropertiesFromRows([
       { key: 'traceId', value: 'first' },
