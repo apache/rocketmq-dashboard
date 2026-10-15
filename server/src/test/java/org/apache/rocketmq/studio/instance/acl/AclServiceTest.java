@@ -1270,4 +1270,72 @@ class AclServiceTest {
         verify(admin, never()).createUser(any(), any());
         verify(admin, never()).updateAcl(any(), any(AclInfo.class));
     }
+
+    @Test
+    void createUserShouldRejectAUsernameThatCannotFitItsColumnTest() {
+        String tooLong = "u".repeat(129);
+
+        assertThatThrownBy(() -> aclService.createUser(
+                AclUserVO.builder().username(tooLong).build(), null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("username must not exceed 128 characters");
+                });
+
+        // The column counts characters, not UTF-16 units, so 128 code points still fit even when
+        // they are surrogate pairs; the guard is counted in code points for that reason.
+        String astral = "\uD83D\uDE00".repeat(128);
+        when(aclRepository.saveUser(any(AclUserVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        assertThat(aclService.createUser(AclUserVO.builder().username(astral).build(), null)
+                .getUsername()).isEqualTo(astral);
+    }
+
+    @Test
+    void updateUserShouldRejectAUsernameThatCannotFitItsColumnTest() {
+        UpdateAclUserDTO request = new UpdateAclUserDTO();
+        request.setId("1");
+        request.setUsername("u".repeat(129));
+
+        assertThatThrownBy(() -> aclService.updateUser(request, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("username must not exceed 128 characters");
+                });
+        verify(aclRepository, never()).replaceUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void createRuleShouldRejectAPrincipalThatCannotFitItsColumnTest() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("p".repeat(129))
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.createRule(input, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("principal must not exceed 128 characters");
+                });
+    }
+
+    @Test
+    void updateRuleShouldRejectAPrincipalThatCannotFitItsColumnTest() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id(1L)
+                .principal("p".repeat(129))
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input, null))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("principal must not exceed 128 characters");
+                });
+        verifyNoInteractions(aclRepository);
+    }
 }
