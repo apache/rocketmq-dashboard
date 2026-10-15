@@ -161,6 +161,7 @@ class ClusterAlertRuleControllerTest extends WebMvcAuthTestSupport {
     }
     @Test
     void rejectsInvalidThresholdsBeforeAnyRuleOperationTest() throws Exception {
+        int checkedRequests = 0;
         for (String prefix : List.of("/api/cluster-alert-rules")) {
             for (String threshold : List.of("1e309", "-1e309", "null")) {
                 String rule = "{\"id\":42,\"name\":\"Invalid\",\"metric\":\"rocketmq_tps\",\"threshold\":"
@@ -168,12 +169,15 @@ class ClusterAlertRuleControllerTest extends WebMvcAuthTestSupport {
                 for (String operation : List.of("create", "update", "test")) {
                     mockMvc.perform(post(prefix + "/" + operation).contentType(MediaType.APPLICATION_JSON)
                                     .content(rule)).andExpect(status().isBadRequest());
+                    checkedRequests++;
                 }
                 mockMvc.perform(post(prefix + "/import").contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"version\":1,\"domain\":\"CLUSTER\",\"rules\":[" + rule + "]}"))
                         .andExpect(status().isBadRequest());
+                checkedRequests++;
             }
         }
+        org.junit.jupiter.api.Assertions.assertEquals(12, checkedRequests, "all invalid request cases must execute");
         org.mockito.Mockito.verifyNoInteractions(alertService, nativeAlertRuleTestService,
                 metricCatalogService, transferService);
     }
