@@ -20,6 +20,7 @@ import lombok.AccessLevel;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 import java.util.Date;
 import java.util.List;
 
@@ -39,9 +40,11 @@ public class Acl2PolicyContext {
     // ========== Base Fields (Compatible with ACL 1.0) ==========
 
     /** Access key (user identifier) */
+    @ToString.Exclude
     private String accessKey;
 
     /** Secret key for authentication */
+    @ToString.Exclude
     private String secretKey;
 
     /** Whether this is an admin user */
