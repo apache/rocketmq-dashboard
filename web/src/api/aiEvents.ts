@@ -56,7 +56,8 @@ export type StopReason =
   | 'PROVIDER_ERROR'
   | 'SERVER_RESTART'
   | 'OVERLOADED'
-  | 'ORPHANED';
+  | 'ORPHANED'
+  | 'RETENTION';
 
 /**
  * Severity of an advisory (non-fatal) notice. Mirrors the Java `AgentEventProjector.LEVEL_INFO` /

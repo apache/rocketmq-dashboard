@@ -208,6 +208,7 @@ const STOP_REASON_COVERAGE: Record<StopReason, true> = {
   SERVER_RESTART: true,
   OVERLOADED: true,
   ORPHANED: true,
+  RETENTION: true,
 };
 
 const NOTICE_LEVEL_COVERAGE: Record<NoticeLevel, true> = {
@@ -534,8 +535,8 @@ describe('run terminal vocabulary', () => {
     }
 
     expect(combinations).toBe(RUN_STATUSES.length * STOP_REASONS.length);
-    expect(combinations).toBe(40);
-    expect(STOP_REASONS).toHaveLength(8);
+    expect(combinations).toBe(45);
+    expect(STOP_REASONS).toHaveLength(9);
   });
 
   it('runStatusWithoutAReasonStampsTheStatusAndClosesTheBubbleTest', () => {

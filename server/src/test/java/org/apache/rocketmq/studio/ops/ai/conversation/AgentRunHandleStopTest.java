@@ -175,8 +175,13 @@ class AgentRunHandleStopTest {
         assertThat(AbortReason.TIMEOUT.stopReason()).isEqualTo(StopReason.TIMEOUT);
         assertThat(AbortReason.ORPHANED.status()).isEqualTo(RunStatus.FAILED);
         assertThat(AbortReason.ORPHANED.stopReason()).isEqualTo(StopReason.ORPHANED);
+        // A retention purge stops a run that still has a live owner, unlike the orphan sweep it
+        // would otherwise be indistinguishable from in rmq_ai_run.stop_reason.
+        assertThat(AbortReason.RETENTION.status()).isEqualTo(RunStatus.STOPPED);
+        assertThat(AbortReason.RETENTION.stopReason()).isEqualTo(StopReason.RETENTION);
         assertThat(AbortReason.SHUTDOWN.usesFullGrace()).isFalse();
         assertThat(AbortReason.USER_STOP.usesFullGrace()).isTrue();
+        assertThat(AbortReason.RETENTION.usesFullGrace()).isTrue();
     }
 
     @Test

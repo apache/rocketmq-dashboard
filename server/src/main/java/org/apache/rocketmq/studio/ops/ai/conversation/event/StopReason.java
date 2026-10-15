@@ -51,5 +51,12 @@ public enum StopReason {
      * Found non-terminal with no live owner and no restart to blame, e.g. the stale-run watchdog
      * reclaimed a run whose executor vanished.
      */
-    ORPHANED
+    ORPHANED,
+
+    /**
+     * The retention sweep purged the run's conversation. The run still had a live owner, which is
+     * why this is not {@link #ORPHANED}: the server stopped it on purpose because the conversation
+     * it wrote into was expiring.
+     */
+    RETENTION
 }
