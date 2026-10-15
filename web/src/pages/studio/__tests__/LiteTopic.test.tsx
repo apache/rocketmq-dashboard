@@ -31,6 +31,7 @@ const apiMocks = vi.hoisted(() => ({
   queryLiteTopicList: vi.fn(),
   queryLiteTopicSession: vi.fn(),
   extendLiteTopicTTL: vi.fn(),
+  createLiteTopic: vi.fn(),
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
@@ -131,6 +132,40 @@ describe('LiteTopic Page', () => {
       consumedMessages: 0,
     });
     instanceApiMocks.listInstances.mockResolvedValue([]);
+    apiMocks.createLiteTopic.mockResolvedValue(undefined);
+  });
+
+  it('creates a Lite parent topic with the owning instance and an explicit TTL', async () => {
+    // CreateLiteTopicDTO requires a non-blank instanceId and an explicit TTL in minutes,
+    // so the create modal auto-selects the only Apache-vendor instance and prefills 1440.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+      { id: 2, name: 'cloud-1', vendor: 'ALIYUN' },
+    ] as unknown as Instance[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByRole('button', { name: /新建/ }));
+
+    await waitFor(() => {
+      const selected = document.querySelector('.ant-modal .ant-select-selection-item');
+      expect(selected?.textContent).toBe('apache-main');
+    });
+
+    await user.type(screen.getByPlaceholderText('父主题名称（不能包含 $）'), 'chat');
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(apiMocks.createLiteTopic).toHaveBeenCalledWith({
+        instanceId: 'apache-main',
+        topicPattern: 'chat',
+        ttlMinutes: 1440,
+        writeQueues: undefined,
+        readQueues: undefined,
+        remark: undefined,
+      });
+    });
   });
 
   it('sends the owning instance id when extending TTL', async () => {

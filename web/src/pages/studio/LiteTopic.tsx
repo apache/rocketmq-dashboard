@@ -45,6 +45,7 @@ import {
   Gauge,
   Info,
   DownloadSimple,
+  Plus,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -54,6 +55,7 @@ import {
   queryLiteTopicQuota,
   queryLiteTopicSession,
   extendLiteTopicTTL,
+  createLiteTopic,
   queryLiteTopicCapability,
   type LiteTopicQuota,
   type LiteTopicItem,
@@ -157,6 +159,25 @@ const LiteTopicPage: React.FC = () => {
   // only supports Apache-vendor instances for TTL updates).
   const [ttlInstanceOptions, setTtlInstanceOptions] = useState<Instance[]>([]);
   const [ttlInstancesLoading, setTtlInstancesLoading] = useState(false);
+
+  // Create Lite parent modal
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<{
+    instanceId: string;
+    topicPattern: string;
+    ttlMinutes: number | null;
+    writeQueues: number | null;
+    readQueues: number | null;
+    remark: string;
+  }>({
+    instanceId: '',
+    topicPattern: '',
+    ttlMinutes: 1440,
+    writeQueues: null,
+    readQueues: null,
+    remark: '',
+  });
+  const [createLoading, setCreateLoading] = useState(false);
 
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
@@ -308,6 +329,23 @@ const LiteTopicPage: React.FC = () => {
     }
   };
 
+  // Lite topic writes are ownership-checked against the owning instance, so both
+  // write modals need the Apache-vendor instance list; auto-select when only one
+  // candidate exists.
+  const loadWritableInstances = async (): Promise<Instance[]> => {
+    setTtlInstancesLoading(true);
+    try {
+      const candidates = (await listInstances()).filter(supportsApacheRuntime);
+      setTtlInstanceOptions(candidates);
+      return candidates;
+    } catch {
+      setTtlInstanceOptions([]);
+      return [];
+    } finally {
+      setTtlInstancesLoading(false);
+    }
+  };
+
   const handleOpenExtendTTL = (record: LiteTopicItem) => {
     setExtendTTLForm({
       instanceId: '',
@@ -315,26 +353,13 @@ const LiteTopicPage: React.FC = () => {
       newTTL: null,
     });
     setExtendTTLModalOpen(true);
-    // The TTL write is ownership-checked against the owning instance, so the
-    // modal needs the Apache-vendor instance list; auto-select when only one
-    // candidate exists.
-    setTtlInstancesLoading(true);
-    listInstances()
-      .then((instances) => {
-        const candidates = instances.filter(supportsApacheRuntime);
-        setTtlInstanceOptions(candidates);
-        setExtendTTLForm((form) =>
-          form.instanceId === '' && candidates.length === 1
-            ? { ...form, instanceId: String(candidates[0].name) }
-            : form,
-        );
-      })
-      .catch(() => {
-        setTtlInstanceOptions([]);
-      })
-      .finally(() => {
-        setTtlInstancesLoading(false);
-      });
+    void loadWritableInstances().then((candidates) => {
+      setExtendTTLForm((form) =>
+        form.instanceId === '' && candidates.length === 1
+          ? { ...form, instanceId: String(candidates[0].name) }
+          : form,
+      );
+    });
   };
 
   const handleExtendTTL = async () => {
@@ -354,6 +379,48 @@ const LiteTopicPage: React.FC = () => {
       message.error(t('liteTopic.extendTtlFailed'));
     } finally {
       setExtendTTLLoading(false);
+    }
+  };
+
+  const handleOpenCreate = () => {
+    setCreateForm({
+      instanceId: '',
+      topicPattern: '',
+      ttlMinutes: 1440,
+      writeQueues: null,
+      readQueues: null,
+      remark: '',
+    });
+    setCreateModalOpen(true);
+    void loadWritableInstances().then((candidates) => {
+      setCreateForm((form) =>
+        form.instanceId === '' && candidates.length === 1
+          ? { ...form, instanceId: String(candidates[0].name) }
+          : form,
+      );
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.instanceId || !createForm.topicPattern.trim() || createForm.ttlMinutes == null)
+      return;
+    setCreateLoading(true);
+    try {
+      await createLiteTopic({
+        instanceId: createForm.instanceId,
+        topicPattern: createForm.topicPattern.trim(),
+        ttlMinutes: createForm.ttlMinutes,
+        writeQueues: createForm.writeQueues ?? undefined,
+        readQueues: createForm.readQueues ?? undefined,
+        remark: createForm.remark.trim() || undefined,
+      });
+      message.success(t('liteTopic.createSuccess'));
+      setCreateModalOpen(false);
+      void fetchData(patternFilter || undefined, namespaceFilter || undefined);
+    } catch {
+      message.error(t('liteTopic.createFailed'));
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -813,6 +880,14 @@ const LiteTopicPage: React.FC = () => {
         extra={
           <Space>
             <Button
+              type="primary"
+              icon={<Plus size={14} />}
+              size="small"
+              onClick={handleOpenCreate}
+            >
+              {t('common.create')}
+            </Button>
+            <Button
               icon={<DownloadSimple size={14} />}
               size="small"
               disabled={loading || filteredTopicList.length === 0}
@@ -984,6 +1059,85 @@ const LiteTopicPage: React.FC = () => {
               value={extendTTLForm.newTTL}
               onChange={(val) => setExtendTTLForm({ ...extendTTLForm, newTTL: val })}
               min={1}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Create Lite Parent Modal */}
+      <Modal
+        title={t('liteTopic.createModalTitle')}
+        open={createModalOpen}
+        onOk={handleCreate}
+        onCancel={() => setCreateModalOpen(false)}
+        confirmLoading={createLoading}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        destroyOnHidden
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            label={t('liteTopic.instance')}
+            required
+            validateStatus={createForm.instanceId ? '' : 'error'}
+            help={createForm.instanceId ? undefined : t('liteTopic.instanceRequired')}
+          >
+            <Select
+              value={createForm.instanceId || undefined}
+              onChange={(val) => setCreateForm({ ...createForm, instanceId: val })}
+              loading={ttlInstancesLoading}
+              placeholder={t('liteTopic.instancePlaceholder')}
+              options={ttlInstanceOptions.map((instance) => ({
+                value: String(instance.name),
+                label: instance.name,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('liteTopic.parentTopicName')}
+            required
+            validateStatus={createForm.topicPattern.trim() ? '' : 'error'}
+            help={createForm.topicPattern.trim() ? undefined : t('liteTopic.patternRequired')}
+          >
+            <Input
+              value={createForm.topicPattern}
+              onChange={(e) => setCreateForm({ ...createForm, topicPattern: e.target.value })}
+              placeholder={t('liteTopic.createPatternPlaceholder')}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('liteTopic.ttlMinutes')}
+            required
+            help={t('liteTopic.ttlMinutesHelp')}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              value={createForm.ttlMinutes}
+              onChange={(val) => setCreateForm({ ...createForm, ttlMinutes: val })}
+              min={1}
+              max={43200}
+            />
+          </Form.Item>
+          <Form.Item label={t('topic.writeQueues')}>
+            <InputNumber
+              style={{ width: '100%' }}
+              value={createForm.writeQueues}
+              onChange={(val) => setCreateForm({ ...createForm, writeQueues: val })}
+              min={0}
+            />
+          </Form.Item>
+          <Form.Item label={t('topic.readQueues')}>
+            <InputNumber
+              style={{ width: '100%' }}
+              value={createForm.readQueues}
+              onChange={(val) => setCreateForm({ ...createForm, readQueues: val })}
+              min={0}
+            />
+          </Form.Item>
+          <Form.Item label={t('topic.remark')}>
+            <Input
+              value={createForm.remark}
+              onChange={(e) => setCreateForm({ ...createForm, remark: e.target.value })}
             />
           </Form.Item>
         </Form>

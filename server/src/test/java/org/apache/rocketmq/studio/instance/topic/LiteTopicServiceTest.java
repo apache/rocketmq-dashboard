@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -29,6 +30,7 @@ import org.apache.rocketmq.studio.provider.LiteTopicProvider;
 import org.apache.rocketmq.studio.provider.apache.RocketMQLiteTopicProvider;
 import org.apache.rocketmq.studio.provider.apache.RocketMQProperties;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Date;
 import java.util.LinkedHashSet;
@@ -36,16 +38,20 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class LiteTopicServiceTest {
 
     /** No NameServer configured: the provider reports the feature as unavailable. */
     private final ResourceOwnershipGuard guard = mock(ResourceOwnershipGuard.class);
+    private final MetadataService metadataService = mock(MetadataService.class);
     private final LiteTopicService unavailableService = new LiteTopicService(
             new RocketMQLiteTopicProvider(new MqAdminExtFactory(), new RocketMQProperties(),
-                    mock(RuntimeAdminClientResolver.class), guard), guard);
+                    mock(RuntimeAdminClientResolver.class), guard), guard, metadataService);
 
     @Test
     void listLiteTopicsShouldReportUnsupportedWhenProviderIsUnavailable() {
@@ -89,7 +95,7 @@ class LiteTopicServiceTest {
     @Test
     void extendTTLRequiresInstanceAndOwnershipTest() {
         LiteTopicProvider provider = mock(LiteTopicProvider.class);
-        LiteTopicService service = new LiteTopicService(provider, guard);
+        LiteTopicService service = new LiteTopicService(provider, guard, metadataService);
         assertThatThrownBy(() -> service.extendTTL(null, "chat", 60_000L))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.getCode()).isEqualTo(400));
         InstanceVO instance = InstanceVO.builder().name("instance-a").build();
@@ -129,7 +135,7 @@ class LiteTopicServiceTest {
         when(provider.listLiteTopics("chat", "DEFAULT")).thenReturn(List.of(summary));
         when(provider.isSupported()).thenReturn(true);
 
-        LiteTopicService service = new LiteTopicService(provider, guard);
+        LiteTopicService service = new LiteTopicService(provider, guard, metadataService);
         List<LiteTopicItemVO> items = service.listLiteTopics("chat", "DEFAULT");
 
         assertThat(items).singleElement().satisfies(item -> {
@@ -166,7 +172,7 @@ class LiteTopicServiceTest {
         session.setLiteTopics(new LinkedHashSet<>(List.of("bob", "alice")));
         when(provider.getSession("chat~g~c1")).thenReturn(session);
 
-        LiteTopicSessionVO vo = new LiteTopicService(provider, guard).getSession("chat~g~c1");
+        LiteTopicSessionVO vo = new LiteTopicService(provider, guard, metadataService).getSession("chat~g~c1");
 
         assertThat(vo.getSessionId()).isEqualTo("chat~g~c1");
         assertThat(vo.getClientAddress()).isEqualTo("10.0.0.9:1234");
@@ -199,7 +205,7 @@ class LiteTopicServiceTest {
         quota.setMaxCreationRate(0.0);
         when(provider.getQuota("DEFAULT")).thenReturn(quota);
 
-        LiteTopicQuotaVO vo = new LiteTopicService(provider, guard).getQuota("DEFAULT");
+        LiteTopicQuotaVO vo = new LiteTopicService(provider, guard, metadataService).getQuota("DEFAULT");
 
         assertThat(vo.getCurrentTopicCount()).isEqualTo(10);
         assertThat(vo.getMaxTopicCount()).isEqualTo(40);
@@ -210,5 +216,76 @@ class LiteTopicServiceTest {
         assertThat(vo.getMaxTTL()).isEqualTo(2_592_000_000L);
         assertThat(vo.getConsumerDensity()).isEqualTo(0.4);
         assertThat(vo.getCurrentCreationRate()).isZero();
+    }
+
+    @Test
+    void createShouldRejectInvalidInput() {
+        assertThatThrownBy(() -> unavailableService.create(null, "chat", 1440L, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> unavailableService.create("instance-a", " ", 1440L, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topicPattern is required");
+        // '$' separates a Lite parent topic from its lite topics (LiteUtil naming), so it is reserved.
+        assertThatThrownBy(() -> unavailableService.create("instance-a", "chat$room", 1440L, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topicPattern must not contain '$': it separates the parent topic from its lite topics")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> unavailableService.create("instance-a", "chat", null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ttlMinutes is required");
+        assertThatThrownBy(() -> unavailableService.create("instance-a", "chat", 0L, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ttlMinutes must be between 1 and 43200 minutes")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> unavailableService.create("instance-a", "chat", 43201L, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ttlMinutes must be between 1 and 43200 minutes");
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void createShouldReportUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> unavailableService.create("instance-a", "chat", 1440L, null, null, null))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo(LiteTopicProvider.UNSUPPORTED);
+                });
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void createShouldDelegateToMetadataServiceWithLiteTypeAndTtl() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        when(provider.isSupported()).thenReturn(true);
+        LiteTopicService service = new LiteTopicService(provider, guard, metadataService);
+
+        service.create(" instance-a ", " chat ", 1440L, 4, 8, "nightly chat parents");
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).createTopic(eq("instance-a"), captor.capture());
+        TopicVO topic = captor.getValue();
+        assertThat(topic.getName()).isEqualTo("chat");
+        assertThat(topic.getType()).isEqualTo(TopicType.LITE);
+        assertThat(topic.getTtlMinutes()).isEqualTo(1440L);
+        assertThat(topic.getWriteQueues()).isEqualTo(4);
+        assertThat(topic.getReadQueues()).isEqualTo(8);
+        assertThat(topic.getRemark()).isEqualTo("nightly chat parents");
+    }
+
+    @Test
+    void createShouldLeaveQueueCountsUnsetForDefaulting() {
+        LiteTopicProvider provider = mock(LiteTopicProvider.class);
+        when(provider.isSupported()).thenReturn(true);
+        LiteTopicService service = new LiteTopicService(provider, guard, metadataService);
+
+        service.create("instance-a", "chat", 60L, null, null, null);
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).createTopic(eq("instance-a"), captor.capture());
+        // Unset counts stay zero so createTopic applies its own 8/8 default.
+        assertThat(captor.getValue().getWriteQueues()).isZero();
+        assertThat(captor.getValue().getReadQueues()).isZero();
     }
 }

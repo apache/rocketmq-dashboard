@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -200,5 +201,65 @@ class LiteTopicControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.message").value("newTTL must be positive"));
 
         verifyNoInteractions(liteTopicService);
+    }
+
+    @Test
+    void createRequiresExplicitInstanceTest() throws Exception {
+        mockMvc.perform(post("/api/liteTopic").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"topicPattern\":\"chat\",\"ttlMinutes\":1440}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(400));
+        verifyNoInteractions(liteTopicService);
+    }
+
+    @Test
+    void createShouldRejectTtlOutsideProtocolRange() throws Exception {
+        mockMvc.perform(post("/api/liteTopic").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"instance-a\",\"topicPattern\":\"chat\",\"ttlMinutes\":43201}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("ttlMinutes must be between 1 and 43200 minutes"));
+        mockMvc.perform(post("/api/liteTopic").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instanceId\":\"instance-a\",\"topicPattern\":\"chat\",\"ttlMinutes\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("ttlMinutes must be between 1 and 43200 minutes"));
+        verifyNoInteractions(liteTopicService);
+    }
+
+    @Test
+    void createShouldDelegateToService() throws Exception {
+        CreateLiteTopicDTO request = new CreateLiteTopicDTO();
+        request.setInstanceId("instance-a");
+        request.setTopicPattern("chat");
+        request.setTtlMinutes(1440L);
+        request.setWriteQueues(4);
+        request.setReadQueues(8);
+        request.setRemark("nightly chat parents");
+
+        mockMvc.perform(post("/api/liteTopic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(liteTopicService).create(eq("instance-a"), eq("chat"), eq(1440L), eq(4), eq(8),
+                eq("nightly chat parents"));
+    }
+
+    @Test
+    void createShouldReturnUnsupportedWhenProviderIsUnavailable() throws Exception {
+        CreateLiteTopicDTO request = new CreateLiteTopicDTO();
+        request.setInstanceId("instance-a");
+        request.setTopicPattern("chat");
+        request.setTtlMinutes(1440L);
+        doThrow(new BusinessException(501, "LiteTopic is not supported by this provider"))
+                .when(liteTopicService)
+                .create(eq("instance-a"), eq("chat"), eq(1440L), isNull(), isNull(), isNull());
+
+        mockMvc.perform(post("/api/liteTopic")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value(501))
+                .andExpect(jsonPath("$.message").value("LiteTopic is not supported by this provider"));
     }
 }

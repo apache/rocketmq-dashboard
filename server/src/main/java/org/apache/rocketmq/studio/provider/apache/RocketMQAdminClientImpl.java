@@ -70,6 +70,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -303,7 +304,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
+                applyTopicType(topicConfig, topic.getType(), topic.getTtlMinutes());
 
                 boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
                 if (!physicalExists) {
@@ -397,7 +398,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
+                applyTopicType(topicConfig, topic.getType(), null);
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -450,13 +451,26 @@ public class RocketMQAdminClientImpl implements AdminClient {
         });
     }
 
-    private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
-        if (topicType == null) {
+    /**
+     * Writes creation-only topic attributes in one config change. The LITE TTL rides along with the
+     * message type on create: a LITE parent without {@code lite.topic.expiration} never expires its
+     * child lite topics. Updates never rewrite the TTL — it is owned by the LiteTopic TTL path,
+     * which checks every master before writing.
+     */
+    private void applyTopicType(TopicConfig topicConfig, TopicType topicType, Long ttlMinutes) {
+        if (topicType == null && ttlMinutes == null) {
             return;
         }
-        topicConfig.setAttributes(Map.of(
-                "+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
-                topicType.name()));
+        Map<String, String> attributes = new HashMap<>();
+        if (topicType != null) {
+            attributes.put("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
+                    topicType.name());
+        }
+        if (ttlMinutes != null && topicType == TopicType.LITE) {
+            attributes.put("+" + TopicAttributes.LITE_EXPIRATION_ATTRIBUTE.getName(),
+                    String.valueOf(ttlMinutes));
+        }
+        topicConfig.setAttributes(attributes);
     }
 
     @Override

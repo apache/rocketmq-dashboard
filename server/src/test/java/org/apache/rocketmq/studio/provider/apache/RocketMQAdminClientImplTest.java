@@ -754,6 +754,50 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicShouldWriteLiteTtlAttributeWithMessageType() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("chat");
+        topic.setType(TopicType.LITE);
+        topic.setTtlMinutes(1440L);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> config = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), config.capture());
+        // Both attributes must land in the same createAndUpdateTopicConfig call: a LITE parent
+        // written without lite.topic.expiration would never expire its child lite topics.
+        assertThat(config.getValue().getAttributes())
+                .containsEntry("+message.type", "LITE")
+                .containsEntry("+lite.topic.expiration", "1440");
+    }
+
+    @Test
+    void createTopicShouldIgnoreTtlForNonLiteTypes() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setTtlMinutes(1440L);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> config = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), config.capture());
+        assertThat(config.getValue().getAttributes())
+                .containsEntry("+message.type", "NORMAL")
+                .doesNotContainKey("+lite.topic.expiration");
+    }
+
+    @Test
     void virtualGroupCreationRejectsUnmatchedPhysicalClusterTest() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);

@@ -37,4 +37,6 @@ public class TopicVO extends BaseEntity {
     private double tps;
     private int consumerGroupCount;
     private String remark;
+    /** Create-only TTL in minutes for LITE parent topics ({@code lite.topic.expiration}). */
+    private Long ttlMinutes;
 }

@@ -70,6 +70,16 @@ export interface LiteTopicCapability {
   supported: boolean;
 }
 
+export interface CreateLiteTopicRequest {
+  instanceId: string;
+  topicPattern: string;
+  /** TTL of each lite topic under the parent, in minutes (1..43200). */
+  ttlMinutes: number;
+  writeQueues?: number;
+  readQueues?: number;
+  remark?: string;
+}
+
 // ─── API Functions ───────────────────────────────────────────────
 
 export async function queryLiteTopicList(
@@ -98,6 +108,12 @@ export async function extendLiteTopicTTL(
   // The backend's LiteTopicTTLUpdateDTO requires a non-blank instanceId
   // (the write is ownership-checked against the owning instance).
   await client.post('/liteTopic/extendTTL', { instanceId, topicPattern, newTTL });
+}
+
+export async function createLiteTopic(request: CreateLiteTopicRequest): Promise<void> {
+  // The backend's CreateLiteTopicDTO requires the owning instanceId and an explicit
+  // TTL in minutes: the LITE message type and the TTL land in one topic-config write.
+  await client.post('/liteTopic', request);
 }
 
 export async function queryLiteTopicQuota(namespace?: string): Promise<LiteTopicQuota> {

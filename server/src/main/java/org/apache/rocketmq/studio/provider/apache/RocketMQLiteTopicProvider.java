@@ -97,8 +97,8 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
     /** Upper bound on per-lite-topic offset lookups for one session detail. */
     static final int MAX_SESSION_LITE_TOPIC_SCAN = 200;
 
-    /** Mirror of {@code TopicAttributes.LITE_EXPIRATION_ATTRIBUTE}'s upper bound (30 days). */
-    static final int MAX_LITE_TTL_MINUTES = (int) TimeUnit.DAYS.toMinutes(30);
+    /** TTL upper bound shared with {@link LiteTopicProvider#MAX_TTL_MINUTES} (30 days in minutes). */
+    static final int MAX_LITE_TTL_MINUTES = LiteTopicProvider.MAX_TTL_MINUTES;
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;

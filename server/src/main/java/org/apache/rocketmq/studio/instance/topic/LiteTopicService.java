@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.ResourceOwnershipGuard;
 import org.apache.rocketmq.studio.model.LiteTopicQuota;
@@ -45,6 +46,7 @@ public class LiteTopicService {
 
     private final LiteTopicProvider liteTopicProvider;
     private final ResourceOwnershipGuard ownershipGuard;
+    private final MetadataService metadataService;
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
         return liteTopicProvider.listLiteTopics(pattern, namespace).stream()
@@ -78,6 +80,48 @@ public class LiteTopicService {
             throw new BusinessException(409, "TTL can only be updated on a registered Lite parent topic");
         }
         liteTopicProvider.extendTTL(instance.getName(), resource.name(), newTTL);
+    }
+
+    /**
+     * Creates a Lite parent topic in a single write. The LITE message type and the TTL attribute go
+     * into one {@code createAndUpdateTopicConfig} through the generic topic create path (ownership
+     * claim, catalog row and audit included), so a failure cannot leave a LITE parent without a TTL
+     * — {@code lite.topic.expiration} defaults to "never expire" when absent, and child lite topics
+     * are only reaped by that policy.
+     */
+    public void create(String instanceId, String topicPattern, Long ttlMinutes,
+                       Integer writeQueues, Integer readQueues, String remark) {
+        String identifier = ResourceOwnershipGuard.requireText(instanceId, "instanceId");
+        if (topicPattern == null || topicPattern.isBlank()) {
+            throw new BusinessException(400, "topicPattern is required");
+        }
+        String name = topicPattern.trim();
+        // Child lite topics are named %LMQ%$parent$liteTopic (LiteUtil), so '$' is reserved here.
+        if (name.contains("$")) {
+            throw new BusinessException(400,
+                    "topicPattern must not contain '$': it separates the parent topic from its lite topics");
+        }
+        if (ttlMinutes == null) {
+            throw new BusinessException(400, "ttlMinutes is required");
+        }
+        if (ttlMinutes < 1 || ttlMinutes > LiteTopicProvider.MAX_TTL_MINUTES) {
+            throw new BusinessException(400, "ttlMinutes must be between 1 and 43200 minutes");
+        }
+        if (!liteTopicProvider.isSupported()) {
+            throw new BusinessException(LiteTopicProvider.NOT_IMPLEMENTED, LiteTopicProvider.UNSUPPORTED);
+        }
+        TopicVO topic = new TopicVO();
+        topic.setName(name);
+        topic.setType(TopicType.LITE);
+        topic.setTtlMinutes(ttlMinutes);
+        if (writeQueues != null) {
+            topic.setWriteQueues(writeQueues);
+        }
+        if (readQueues != null) {
+            topic.setReadQueues(readQueues);
+        }
+        topic.setRemark(remark);
+        metadataService.createTopic(identifier, topic);
     }
 
     public LiteTopicQuotaVO getQuota(String namespace) {

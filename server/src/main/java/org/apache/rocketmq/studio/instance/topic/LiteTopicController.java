@@ -55,6 +55,13 @@ public class LiteTopicController {
         return Result.ok();
     }
 
+    @PostMapping
+    public Result<Void> createLiteTopic(@Valid @RequestBody CreateLiteTopicDTO request) {
+        liteTopicService.create(request.getInstanceId(), request.getTopicPattern(), request.getTtlMinutes(),
+                request.getWriteQueues(), request.getReadQueues(), request.getRemark());
+        return Result.ok();
+    }
+
     @GetMapping("/quota")
     public Result<LiteTopicQuotaVO> getQuota(@RequestParam(required = false) String namespace) {
         return Result.ok(liteTopicService.getQuota(namespace));

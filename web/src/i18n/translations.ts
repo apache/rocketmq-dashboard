@@ -3667,6 +3667,23 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
   'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
   'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
+  'liteTopic.createModalTitle': { zh: '创建 Lite 父主题', en: 'Create Lite Parent Topic' },
+  'liteTopic.createSuccess': { zh: 'Lite 父主题创建成功', en: 'Lite parent topic created' },
+  'liteTopic.createFailed': {
+    zh: '创建 Lite 父主题失败',
+    en: 'Failed to create Lite parent topic',
+  },
+  'liteTopic.ttlMinutes': { zh: 'TTL（分钟）', en: 'TTL (minutes)' },
+  'liteTopic.ttlMinutesHelp': {
+    zh: '每个 lite topic 在无新消息后保留的时长，1 到 43200 分钟（30 天）；创建时写入，未设置则子主题永不过期',
+    en: 'How long each lite topic is kept after its last message, 1 to 43200 minutes (30 days). Written at creation: without it, child lite topics never expire.',
+  },
+  'liteTopic.parentTopicName': { zh: '父主题名称', en: 'Parent Topic Name' },
+  'liteTopic.createPatternPlaceholder': {
+    zh: '父主题名称（不能包含 $）',
+    en: 'Parent topic name (must not contain $)',
+  },
+  'liteTopic.patternRequired': { zh: '请输入父主题名称', en: 'Enter the parent topic name' },
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
