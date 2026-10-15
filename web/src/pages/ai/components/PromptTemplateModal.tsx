@@ -32,6 +32,7 @@ import {
   Tag,
   Typography,
   message,
+  theme,
 } from 'antd';
 import { Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../../i18n/LangContext';
@@ -90,6 +91,7 @@ const PromptTemplateModal = ({
   onApply,
 }: PromptTemplateModalProps) => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [search, setSearch] = useState('');
@@ -341,8 +343,11 @@ const PromptTemplateModal = ({
         {/* 保存当前输入是次要操作，下沉到弹窗底部并弱化呈现 */}
         <div
           style={{
-            background: '#fafafa',
-            border: '1px solid #f0f0f0',
+            // Theme tokens instead of fixed light values: the block's text inherits the
+            // active theme's color, so a hardcoded light background made it unreadable in
+            // dark mode.
+            background: token.colorFillQuaternary,
+            border: `1px solid ${token.colorBorderSecondary}`,
             borderRadius: 8,
             padding: 12,
           }}
