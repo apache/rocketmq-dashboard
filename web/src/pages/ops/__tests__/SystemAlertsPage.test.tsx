@@ -26,7 +26,7 @@ import {
   listAlertSilencesPage,
   listSystemAlertsPage,
 } from '../../../services/opsService';
-import SystemAlertsPage 
+import SystemAlertsPage, { parseSilenceLabels } from '../systemAlerts';
 
 vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
@@ -84,8 +84,9 @@ const deferred = <T,>() => {
 describe('parseSilenceLabels', () => {
   it('keeps every valid selector, including object-property names', () => {
     const parsed = parseSilenceLabels('broker=broker-a,__proto__=broker-b', 'invalid');
-    expect(parsed).toEqual({ broker: 'broker-a', __proto__: 'broker-b' });
+    expect(parsed?.broker).toBe('broker-a');
     expect(Object.keys(parsed ?? {})).toContain('__proto__');
+    expect(Object.getOwnPropertyDescriptor(parsed, '__proto__')?.value).toBe('broker-b');
   });
 
   it('rejects duplicate normalized keys instead of keeping the last one', () => {

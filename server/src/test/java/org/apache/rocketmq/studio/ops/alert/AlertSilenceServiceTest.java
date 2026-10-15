@@ -82,6 +82,27 @@ class AlertSilenceServiceTest {
     }
 
     @Test
+    void rejectsSilenceLabelsThatCollideAfterTrimmingTest() {
+        AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
+        LocalDateTime start = LocalDateTime.of(2026, 8, 22, 9, 0);
+        CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
+        request.setDomain(AlertDomain.BUSINESS);
+        request.setRuleId(3L);
+        request.setInstanceId("local");
+        request.setStartsAt(start.atOffset(ZoneOffset.UTC));
+        request.setEndsAt(start.plusHours(1).atOffset(ZoneOffset.UTC));
+        request.setReason("maintenance");
+        // {"broker":"a"," broker ":"b"} trims to the same key twice: keeping the latter would
+        // silently change the requested scope, so creation is refused instead.
+        request.setLabels(new java.util.LinkedHashMap<>(Map.of("broker", "a", " broker ", "b")));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("duplicate key after trimming");
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
     void rejectsEmptyOrReversedTimeWindowTest() {
         AlertSilenceService service = new AlertSilenceService(repository, operationAuditService);
         CreateAlertSilenceDTO request = new CreateAlertSilenceDTO();
