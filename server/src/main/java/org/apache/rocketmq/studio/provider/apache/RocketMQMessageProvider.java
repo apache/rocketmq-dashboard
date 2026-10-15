@@ -878,11 +878,18 @@ public class RocketMQMessageProvider implements MessageProvider {
     // Pub layout (RocketMQ 5.5.0 TraceDataEncoder):
     //             type, time, region, group, topic, msgId,
     //             tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess
+    // Legacy 13-field records omit offsetMsgId; newer records may append clientHost.
     private TraceNodeVO buildProduceNode(String[] f) {
+        // Match the SDK's split behavior when selecting the layout: trailing empty columns do not count.
+        int fieldCount = f.length;
+        while (fieldCount > 0 && f[fieldCount - 1].isEmpty()) {
+            fieldCount--;
+        }
+        int successIndex = fieldCount == 13 ? 12 : 13;
         return TraceNodeVO.builder()
                 .title("produce")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 13)) ? "finish" : "failed")
+                .status(parseBoolean(field(f, successIndex)) ? "finish" : "failed")
                 .costTime(parseLong(field(f, 10)))
                 .description("producer=" + field(f, 3) + ", storeHost=" + field(f, 8))
                 .build();
