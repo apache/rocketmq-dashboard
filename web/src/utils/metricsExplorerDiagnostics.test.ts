@@ -152,30 +152,44 @@ describe('metrics explorer diagnostics', () => {
     const data: MetricData = {
       resultType: 'matrix',
       warnings: [],
-      series: [{
-        labels: { instance: 'broker-a' },
-        values: [{ timestamp: 2, value: '12' }],
-        histograms: [
-          { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
-          { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
-        ],
-      }],
+      series: [
+        {
+          labels: { instance: 'broker-a' },
+          values: [{ timestamp: 2, value: '12' }],
+          histograms: [
+            { timestamp: 3, histogram: { count: '4', sum: '20', buckets: [] } },
+            { timestamp: 1, histogram: { count: '2', sum: '10', buckets: [] } },
+          ],
+        },
+      ],
     };
 
-    expect(toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({ timestamp, kind })))
-      .toEqual([
-        { timestamp: 1, kind: 'histogram' },
-        { timestamp: 2, kind: 'scalar' },
-        { timestamp: 3, kind: 'histogram' },
-      ]);
+    expect(
+      toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, kind }) => ({
+        timestamp,
+        kind,
+      })),
+    ).toEqual([
+      { timestamp: 1, kind: 'histogram' },
+      { timestamp: 2, kind: 'scalar' },
+      { timestamp: 3, kind: 'histogram' },
+    ]);
     expect(summarizeMetricData(data)).toMatchObject({
-      seriesCount: 1, visibleSeriesCount: 1, sampleCount: 3,
-      scalarSampleCount: 1, histogramSampleCount: 2,
-      earliestTimestamp: 1, latestTimestamp: 3,
+      seriesCount: 1,
+      visibleSeriesCount: 1,
+      sampleCount: 3,
+      scalarSampleCount: 1,
+      histogramSampleCount: 2,
+      earliestTimestamp: 1,
+      latestTimestamp: 3,
     });
     expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({
-      sampleType: 'mixed', sampleCount: 3, latestTimestamp: 3,
-      latestValue: 20, histogramCount: 4, histogramSum: 20,
+      sampleType: 'mixed',
+      sampleCount: 3,
+      latestTimestamp: 3,
+      latestValue: 20,
+      histogramCount: 4,
+      histogramSum: 20,
     });
     const rows = buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' });
     expect(rows.map((row) => row.sampleType)).toEqual(['histogram', 'scalar', 'histogram']);
@@ -349,7 +363,14 @@ describe('metrics explorer diagnostics', () => {
 
       const merged = mergeMetricsQueryHistory([existing], incoming);
 
-      expect(merged).toEqual([incoming, existing]);
+      // The point of this case is separation: an unscoped query and one scoped to an instance
+      // literally named "global" must survive as two entries. Ordering follows queriedAt now,
+      // so both iteration orders converge on the same result.
+      expect(merged).toHaveLength(2);
+      expect(merged.map((entry) => entry.id)).toEqual(
+        expect.arrayContaining([unscoped.id, scoped.id]),
+      );
+      expect(merged).toEqual([scoped, unscoped]);
       localStorage.clear();
       expect(saveMetricsQueryHistory(merged)).toBe(true);
       expect(loadMetricsQueryHistory()).toEqual([scoped, unscoped]);
@@ -388,6 +409,58 @@ describe('metrics explorer diagnostics', () => {
 
     expect(explicit.id).not.toBe(implicit.id);
     expect(mergeMetricsQueryHistory([implicit], explicit)).toEqual([explicit, implicit]);
+  });
+
+  it('ordersLateCompletionsByQueryTimeWithoutMutatingInputTest', () => {
+    const newest = createHistoryEntry({ rangeId: '3h', queriedAt: 30 });
+    const oldest = createHistoryEntry({ rangeId: '1h', queriedAt: 10 });
+    const middle = createHistoryEntry({ rangeId: '2h', queriedAt: 20 });
+    const entries = [newest, oldest];
+
+    expect(mergeMetricsQueryHistory(entries, middle)).toEqual([newest, middle, oldest]);
+    expect(entries).toEqual([newest, oldest]);
+  });
+
+  it('capsHistoryAfterOrderingSoAnOlderCompletionCannotEvictANewerQueryTest', () => {
+    const entries = Array.from({ length: METRICS_QUERY_HISTORY_LIMIT }, (_, index) =>
+      createHistoryEntry({ rangeId: `${index + 1}h`, queriedAt: 100 - index }),
+    );
+    const late = createHistoryEntry({ rangeId: 'old', queriedAt: 1 });
+
+    expect(mergeMetricsQueryHistory(entries, late)).toEqual(entries);
+  });
+
+  it('retainsTheNewestOccurrenceWhenAnOlderDuplicateCompletesTest', () => {
+    const newest = createHistoryEntry({ queriedAt: 30 });
+    const late = createHistoryEntry({ queriedAt: 10 });
+
+    expect(mergeMetricsQueryHistory([newest], late)).toEqual([newest]);
+    expect(mergeMetricsQueryHistory([late], newest)).toEqual([newest]);
+  });
+
+  it('keepsEqualTimeOrderingStableAcrossPersistenceReloadTest', () => {
+    localStorage.clear();
+    const first = createHistoryEntry({ rangeId: '1h', queriedAt: 10 });
+    const second = createHistoryEntry({ rangeId: '2h', queriedAt: 10 });
+    const incoming = createHistoryEntry({ rangeId: '3h', queriedAt: 10 });
+    const merged = mergeMetricsQueryHistory([first, second], incoming);
+
+    expect(merged).toEqual([incoming, first, second]);
+    expect(saveMetricsQueryHistory(merged)).toBe(true);
+    expect(loadMetricsQueryHistory()).toEqual(merged);
+    clearMetricsQueryHistory();
+  });
+
+  it('deduplicatesBeforeApplyingACustomHistoryLimitTest', () => {
+    const newest = createHistoryEntry({ rangeId: '1h', queriedAt: 30 });
+    const duplicate = createHistoryEntry({ rangeId: '1h', queriedAt: 20 });
+    const distinct = createHistoryEntry({ rangeId: '2h', queriedAt: 10 });
+    const late = createHistoryEntry({ rangeId: '3h', queriedAt: 1 });
+
+    expect(mergeMetricsQueryHistory([newest, duplicate, distinct], late, 2)).toEqual([
+      newest,
+      distinct,
+    ]);
   });
 
   // The unavailable-storage fallbacks are covered by browserStorage.test.ts, which is where
