@@ -124,6 +124,29 @@ describe('AiAssistantTab', () => {
     expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
   });
 
+  it('preserves a newly typed key while clearing the stored key Test', async () => {
+    let resolveSave!: (result: { status: number }) => void;
+    llmApiMocks.saveLlmConfig.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /清除密钥/ }));
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    const apiKey = screen.getByLabelText('API Key');
+    await user.type(apiKey, 'sk-new-key');
+    await act(async () => resolveSave({ status: 0 }));
+
+    expect(apiKey).toHaveValue('sk-new-key');
+    expect(screen.queryByText('密钥已配置')).not.toBeInTheDocument();
+  });
+
   it('submits the Azure deployment fields required by the backend', async () => {
     const user = userEvent.setup();
     const { container } = renderPage();
