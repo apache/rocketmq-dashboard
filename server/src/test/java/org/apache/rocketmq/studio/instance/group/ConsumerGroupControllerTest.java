@@ -37,10 +37,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -82,6 +84,30 @@ class ConsumerGroupControllerTest extends WebMvcAuthTestSupport {
                 .andExpect(jsonPath("$.data").isArray());
 
         verify(metadataService).listConsumerGroups("instance-a", "cluster-a", "orders");
+    }
+
+    @Test
+    void listConsumerGroupsShouldSerializeTimestampsAsUtcWallTimeTest() throws Exception {
+        // rmq_group timestamps are stored as zone-less server-local wall clocks and the page
+        // renders them in the viewer's zone, so the JSON wire carries UTC — the conversion
+        // lives on the controller exits because the write paths consume the service methods
+        // internally and must keep the server-local base.
+        TimeZone original = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+        try {
+            ConsumerGroupVO group = new ConsumerGroupVO();
+            group.setName("tz-group");
+            group.setGmtCreate(LocalDateTime.of(2026, 8, 1, 10, 0, 0));
+
+            when(metadataService.listConsumerGroups(isNull(), isNull(), isNull()))
+                    .thenReturn(List.of(group));
+
+            mockMvc.perform(get("/api/groups"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[0].gmtCreate").value("2026-08-01T02:00:00"));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

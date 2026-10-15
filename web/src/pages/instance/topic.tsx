@@ -85,7 +85,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv, localExportDateStamp } from '../../utils/download';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import { formatNumber, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeMessagePayloadPreview,
@@ -752,7 +752,7 @@ const TopicPageContent = ({
       key: 'gmtCreate',
       width: 170,
       sorter: (a, b) => (a.gmtCreate ?? '').localeCompare(b.gmtCreate ?? ''),
-      render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
+      render: (d: string) => <Text type="secondary">{formatUtcDateTime(d)}</Text>,
     },
     {
       title: '修改时间',
@@ -760,7 +760,7 @@ const TopicPageContent = ({
       key: 'gmtModified',
       width: 170,
       sorter: (a, b) => (a.gmtModified ?? '').localeCompare(b.gmtModified ?? ''),
-      render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
+      render: (d: string) => <Text type="secondary">{formatUtcDateTime(d)}</Text>,
     },
     {
       title: '操作',
@@ -983,7 +983,7 @@ const TopicPageContent = ({
         <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
         <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
         <Descriptions.Item label="创建时间" span={2}>
-          {formatDateTime(topic.gmtCreate)}
+          {formatUtcDateTime(topic.gmtCreate)}
         </Descriptions.Item>
       </Descriptions>
     );

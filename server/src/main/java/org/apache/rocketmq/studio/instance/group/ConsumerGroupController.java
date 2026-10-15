@@ -48,7 +48,8 @@ public class ConsumerGroupController {
             @RequestParam(required = false) String instanceId,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String search) {
-        return Result.ok(metadataService.listConsumerGroups(instanceId, clusterId, search));
+        return Result.ok(metadataService.listConsumerGroups(instanceId, clusterId, search).stream()
+                .map(MetadataService::toUtcWire).toList());
     }
 
     @GetMapping("/page")
@@ -58,7 +59,11 @@ public class ConsumerGroupController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(metadataService.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize));
+        PageResult<ConsumerGroupVO> stored =
+                metadataService.listConsumerGroupsPage(instanceId, clusterId, search, page, pageSize);
+        return Result.ok(PageResult.of(
+                stored.getItems().stream().map(MetadataService::toUtcWire).toList(),
+                stored.getTotal(), stored.getPage(), stored.getSize()));
     }
 
     @GetMapping("/{name}")

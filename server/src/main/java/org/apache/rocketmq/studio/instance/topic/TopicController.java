@@ -47,7 +47,8 @@ public class TopicController {
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String search) {
-        return Result.ok(metadataService.listTopics(instanceId, clusterId, type, search));
+        return Result.ok(metadataService.listTopics(instanceId, clusterId, type, search).stream()
+                .map(MetadataService::toUtcWire).toList());
     }
 
     @GetMapping("/page")
@@ -58,7 +59,10 @@ public class TopicController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return Result.ok(metadataService.listTopicsPage(instanceId, clusterId, type, search, page, pageSize));
+        PageResult<TopicVO> stored = metadataService.listTopicsPage(instanceId, clusterId, type, search, page, pageSize);
+        return Result.ok(PageResult.of(
+                stored.getItems().stream().map(MetadataService::toUtcWire).toList(),
+                stored.getTotal(), stored.getPage(), stored.getSize()));
     }
 
     @GetMapping("/export")
