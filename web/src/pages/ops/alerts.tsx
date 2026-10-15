@@ -661,28 +661,24 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
       minWidth: 170,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
       width: 110,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
       render: (metric: string) => metricLabel(metric),
     },
     {
       title: t('alerts.threshold'),
       width: 120,
       ellipsis: { showTitle: true },
-      sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
     },
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
       width: 80,
-      sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
     },
     {
       title: t('alerts.reminderInterval'),
@@ -708,7 +704,6 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
       title: t('common.status'),
       width: 64,
       align: 'center',
-      sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
       render: (_, record) => (
         <Switch
           checked={record.enabled}
@@ -721,7 +716,6 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.lastTriggered'),
       width: 156,
-      sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
           // The backend stamps lastTriggered with ZoneOffset.UTC without an offset suffix;
