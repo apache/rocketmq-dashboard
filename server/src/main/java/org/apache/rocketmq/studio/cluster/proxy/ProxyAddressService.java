@@ -171,7 +171,13 @@ public class ProxyAddressService {
         return buildTopology(addrs);
     }
 
-    private List<ProxyTopologyVO> buildTopology(List<String> addrs) {
+    /**
+     * Builds the topology snapshot for exactly the given addresses. Callers that already know
+     * which proxies belong to one cluster (the MCP config view resolves them per instance) must
+     * not be answered from the global registry, which can hold the addresses of every managed
+     * instance at once.
+     */
+    public List<ProxyTopologyVO> buildTopology(List<String> addrs) {
         List<ProbeTask> tasks = new ArrayList<>();
         for (String addr : addrs) {
             Matcher matcher = PROXY_ADDR_PATTERN.matcher(addr);
