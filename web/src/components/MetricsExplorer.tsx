@@ -547,6 +547,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   // each other's in-flight results and leave every panel stuck on its spinner.
   const panelRequestIdRef = useRef(0);
   const customRequestIdRef = useRef(0);
+  // Clearing history invalidates prior queries only for history, not their chart results.
+  const historyGenerationRef = useRef(0);
   // Keeps the latest data source readable from the stable callbacks so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
@@ -649,6 +651,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     async (profile: MetricProfile | undefined, range: RangeOption) => {
       if (!profile) return;
       const currentRequest = ++panelRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       const loadingPatch = Object.fromEntries(
         profile.metrics.map((metric) => [metric.semanticMetric, { loading: true } as PanelState]),
       );
@@ -691,6 +694,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 [metric.semanticMetric]: { loading: false, data: execution.data, query },
               }));
               setHistory((currentHistory) => {
+                if (historyGeneration !== historyGenerationRef.current) return currentHistory;
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
                 saveMetricsQueryHistory(nextHistory);
                 return nextHistory;
@@ -758,6 +762,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       const trimmed = promql.trim();
       if (!trimmed) return;
       const currentRequest = ++customRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       setCustomPanel({ loading: true });
       setAppliedCustomPromql(trimmed);
       try {
@@ -801,6 +806,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           });
           setCustomPanel({ loading: false, data: execution.data, query });
           setHistory((currentHistory) => {
+            if (historyGeneration !== historyGenerationRef.current) return currentHistory;
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
             saveMetricsQueryHistory(nextHistory);
             return nextHistory;
@@ -1120,6 +1126,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleClearHistory = () => {
+    historyGenerationRef.current += 1;
     clearMetricsQueryHistory();
     setHistory([]);
   };
