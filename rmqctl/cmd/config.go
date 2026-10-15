@@ -8,6 +8,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/config"
@@ -37,6 +38,15 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 		Short: "Create or update a complete Studio access context",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("server") {
+				parsed, err := url.Parse(server)
+				if err != nil {
+					return invalidArgument("--server must be a valid Studio Server URL")
+				}
+				if parsed.User != nil {
+					return invalidArgument("--server must not contain user info; use environment credential references")
+				}
+			}
 			path, cfg, err := runtime.configForWrite()
 			if err != nil {
 				return err
