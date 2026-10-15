@@ -156,6 +156,26 @@ describe('Audit page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
   });
 
+  it('clears the previous filter rows when a filtered reload fails', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findAllByText('topic-a')).not.toHaveLength(0);
+    vi.mocked(opsService.listAuditRecords).mockRejectedValueOnce(
+      new Error('backend unavailable'),
+    );
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'missing');
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'missing' }),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByText('topic-a')).not.toBeInTheDocument(),
+    );
+  });
+
   it('renders control-plane audit labels and parsed detail values', async () => {
     vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
       items: [
