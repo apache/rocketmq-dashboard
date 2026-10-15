@@ -23,6 +23,18 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.common.message.MessageAccessor;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.instance.InstanceResolver;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.MessageService;
+import org.apache.rocketmq.studio.instance.topic.MetadataService;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicFilterType;
@@ -67,6 +79,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -79,6 +93,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 import java.util.Set;
 
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
@@ -97,6 +113,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -1962,6 +1979,157 @@ class RocketMQAdminClientImplTest {
         assertThat(decoded).containsAllEntriesOf(userProperties)
                 .containsEntry(MessageConst.PROPERTY_TAGS, "tagA")
                 .containsEntry(MessageConst.PROPERTY_KEYS, "keyA");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "orders,,stale-topic,orders",
+        "orders,%RETRY%group-a,stale-topic,orders",
+        "orders,%RETRY%group-b,stale-topic,orders",
+        "orders,orders-copy,stale-topic,orders-copy",
+        "%RETRY%group-a,,orders,orders",
+        "%DLQ%group-a,,orders,orders"
+    })
+    void redeliveryPreservesBusinessTopicForSdkRetryConsumptionTest(
+            String sourceTopic, String targetTopic, String previousRetryTopic, String consumerTopic) throws Exception {
+        MetadataService service = redeliveryService();
+        MessageRecordVO original = MessageRecordVO.builder().msgId("original-id").topic(sourceTopic)
+                .body("payload").tag("paid").key("order-1")
+                .properties(Map.of("tenant", "alpha", MessageConst.PROPERTY_RETRY_TOPIC, previousRetryTopic,
+                        MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, "original-id"))
+                .build();
+        SendResult result = new SendResult();
+        result.setSendStatus(SendStatus.SEND_OK);
+        result.setMsgId("new-id");
+        when(sendProducer.send(any(Message.class))).thenReturn(result);
+
+        service.redeliverMessage("instance-a", "group-a", original, targetTopic);
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        Message sent = captor.getValue();
+        String destination = targetTopic == null ? "%RETRY%group-a" : targetTopic;
+        assertThat(sent.getTopic()).isEqualTo(destination);
+        var destinationResource = ownershipGuard.topicResource(destination);
+        verify(ownershipGuard, org.mockito.Mockito.atLeastOnce()).check(any(), eq(destinationResource), eq(true));
+        MessageExt delivered = new MessageExt();
+        delivered.setTopic(sent.getTopic());
+        delivered.setBody(sent.getBody());
+        MessageAccessor.setProperties(delivered, MessageDecoder.string2messageProperties(
+                MessageDecoder.messageProperties2String(sent.getProperties())));
+        String consumerGroup = destination.startsWith("%RETRY%")
+                ? destination.substring("%RETRY%".length()) : "group-a";
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(consumerGroup);
+        consumer.getDefaultMQPushConsumerImpl().resetRetryAndNamespace(List.of(delivered), consumerGroup);
+
+        assertThat(delivered.getTopic()).isEqualTo(consumerTopic);
+        assertThat(delivered.getBody()).isEqualTo("payload".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(delivered.getTags()).isEqualTo("paid");
+        assertThat(delivered.getKeys()).isEqualTo("order-1");
+        assertThat(delivered.getUserProperty("tenant")).isEqualTo("alpha");
+        assertThat(sent.getProperties()).doesNotContainKey(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        if (!destination.startsWith("%RETRY%")) {
+            assertThat(sent.getProperties()).doesNotContainKey(MessageConst.PROPERTY_RETRY_TOPIC).hasSize(4);
+        } else {
+            assertThat(sent.getProperties()).containsEntry(MessageConst.PROPERTY_RETRY_TOPIC, consumerTopic).hasSize(5);
+        }
+        assertThat(original.getProperties()).containsEntry(MessageConst.PROPERTY_RETRY_TOPIC, previousRetryTopic);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "%RETRY%group-a,", "%DLQ%group-a,",
+        "%RETRY%group-a,%RETRY%group-b", "%DLQ%group-a,%DLQ%group-b"
+    })
+    void retryRedeliveryRejectsMissingBusinessTopicBeforeSendingTest(String sourceTopic, String retryTopic) {
+        Map<String, String> sourceProperties = new HashMap<>();
+        sourceProperties.put("tenant", "alpha");
+        if (retryTopic != null) {
+            sourceProperties.put(MessageConst.PROPERTY_RETRY_TOPIC, retryTopic);
+        }
+        MessageRecordVO original = MessageRecordVO.builder().topic(sourceTopic).msgId("original-id")
+                .body("payload").properties(sourceProperties).build();
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", original, null))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("no original business topic");
+        verifyNoInteractions(sendProducer);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%RETRY%group-a", "%DLQ%group-a"})
+    void explicitBusinessRedeliveryDoesNotRequireRetryMetadataTest(String sourceTopic) throws Exception {
+        MessageRecordVO original = MessageRecordVO.builder().topic(sourceTopic).msgId("original-id")
+                .body("payload").properties(Map.of("tenant", "alpha")).build();
+        SendResult result = new SendResult();
+        result.setSendStatus(SendStatus.SEND_OK);
+        result.setMsgId("new-id");
+        when(sendProducer.send(any(Message.class))).thenReturn(result);
+
+        redeliveryService().redeliverMessage("instance-a", "group-a", original, "orders-copy");
+
+        ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+        verify(sendProducer).send(captor.capture());
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders-copy");
+        assertThat(captor.getValue().getProperties()).containsOnlyKeys("tenant", MessageConst.PROPERTY_WAIT_STORE_MSG_OK);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidRetrySourceTopics")
+    void retryRedeliveryRejectsInvalidOrAbbreviatedOriginalTopicTest(String retryTopic) {
+        MessageRecordVO original = MessageRecordVO.builder().topic("%DLQ%group-a").msgId("original-id")
+                .body("payload").properties(Map.of(MessageConst.PROPERTY_RETRY_TOPIC, retryTopic))
+                .propertiesTruncated(true).build();
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", original, null))
+                .isInstanceOf(org.apache.rocketmq.studio.common.exception.BusinessException.class)
+                .hasMessageContaining("invalid original business topic");
+        verifyNoInteractions(sendProducer);
+    }
+
+    private static Stream<String> invalidRetrySourceTopics() {
+        return Stream.of("orders bad", "orders" + MessageDecoder.PROPERTY_SEPARATOR + "other", "SCHEDULE_TOPIC_XXXX",
+                "x".repeat(org.apache.rocketmq.studio.common.util.MessagePropertyDisplay.MAX_PROPERTY_VALUE_CODE_POINTS)
+                        + org.apache.rocketmq.studio.common.util.MessagePropertyDisplay.ABBREVIATION_SUFFIX);
+    }
+
+    @Test
+    void retryRedeliveryChecksRecoveredBusinessTopicBeforeSendingTest() {
+        var source = MessageRecordVO.builder().topic("%DLQ%group-a").msgId("original-id")
+                .body("payload").properties(Map.of(MessageConst.PROPERTY_RETRY_TOPIC, "orders")).build();
+        var logicalTopic = new org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Resource(
+                org.apache.rocketmq.studio.instance.ResourceOwnershipGuard.Kind.TOPIC, "orders");
+        when(ownershipGuard.check(any(), eq(logicalTopic), eq(true)))
+                .thenThrow(new org.apache.rocketmq.studio.common.exception.BusinessException(409, "Topic scope mismatch"));
+
+        assertThatThrownBy(() -> redeliveryService().redeliverMessage("instance-a", "group-a", source, null))
+                .hasMessage("Topic scope mismatch");
+        verifyNoInteractions(sendProducer);
+    }
+
+    @Test
+    void defaultRedeliveryContractsDelegateToExistingSendTest() {
+        SendMessageDTO request = SendMessageDTO.builder().instanceId("instance-a").topic("orders").body("payload").build();
+        SendMessageVO result = SendMessageVO.builder().msgId("new-id").build();
+        InstanceProvider fallbackProvider = mock(InstanceProvider.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        AdminClient fallbackAdmin = mock(AdminClient.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        org.mockito.Mockito.doReturn(result).when(fallbackProvider).sendMessage(request);
+        when(fallbackAdmin.sendMessage(request)).thenReturn(result);
+
+        assertThat(fallbackProvider.redeliverMessage(request, "source-topic")).isSameAs(result);
+        assertThat(fallbackAdmin.redeliverMessage(request, "source-topic")).isSameAs(result);
+        verify(fallbackProvider).sendMessage(request);
+        verify(fallbackAdmin).sendMessage(request);
+    }
+
+    private MetadataService redeliveryService() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = new ApacheInstanceProvider(mock(MetadataProvider.class), adminClient,
+                mock(MessageProvider.class), mock(InstanceRepository.class));
+        lenient().when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(provider));
+        return new MetadataService(mock(MetadataProvider.class), adminClient, registry,
+                mock(InstanceResolver.class), mock(OperationAuditService.class), mock(MessageService.class),
+                runtimeAdminClientResolver, ownershipGuard);
     }
 
     @Test
