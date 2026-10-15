@@ -80,6 +80,7 @@ import type {
 } from '../../api/acl';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import { tableScrollX } from '../../utils/table';
+import { parseUtcDateTime } from '../../utils/format';
 import { analyzeAclRisk, type AclRiskIssue } from '../../utils/aclRiskDiagnostics';
 
 type AclEntityId = AclRule['id'];
@@ -736,8 +737,11 @@ const AclPageContent = ({
 
   const formatDate = (iso?: string | null) => {
     if (!iso) return '-';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '-';
+    // gmtCreate arrives as a UTC wall clock without an offset; a plain Date parse would read the
+    // server's clock as the viewer's own and shift every creation time by the zone difference.
+    const millis = parseUtcDateTime(iso);
+    if (Number.isNaN(millis)) return '-';
+    const d = new Date(millis);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 

@@ -93,6 +93,21 @@ export function formatUtcDateTime(
 }
 
 /**
+ * Parse a UTC timestamp serialized without an offset into epoch milliseconds. Same guard as
+ * {@link formatUtcDateTime}: a value that already names its zone is parsed as-is, a zone-less
+ * one is read as UTC — without the suffix Date would treat it as browser-local instead.
+ */
+export function parseUtcDateTime(date: string | null | undefined): number {
+  if (date === null || date === undefined || !date.trim()) return Number.NaN;
+  const trimmed = date.trim();
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+    ? trimmed
+    : `${trimmed.replace(' ', 'T')}Z`;
+  const parsed = new Date(normalized).getTime();
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+/**
  * Format a date string or Date object to 'YYYY-MM-DD'.
  */
 export function formatDate(date: string | Date | null | undefined): string {

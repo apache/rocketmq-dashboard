@@ -251,6 +251,38 @@ describe('ACL page', () => {
     );
   });
 
+  it('renders creation times in the viewer timezone from the offset-less UTC wire format', async () => {
+    // gmtCreate arrives as a UTC wall clock without an offset; a plain Date parse would read
+    // the server's clock as the viewer's own and shift every creation time by the difference.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(aclService.listAclRules).mockResolvedValue({
+        items: [
+          {
+            id: 21,
+            principal: 'remote-user',
+            resource: 'remote-topic',
+            resourcePattern: 'LITERAL',
+            actions: ['PUB'],
+            decision: 'ALLOW',
+            scope: 'cluster',
+            aclVersion: 2,
+            gmtCreate: '2026-07-23T02:00:00',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+
+      renderWithProviders(<AclPage />);
+
+      expect(await screen.findByText('2026-07-23 10:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('reloads the server rule page after deleting one ACL rule', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {

@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -57,8 +58,19 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        return findPage(search, operationType, resourceType, target, clusterId, clusterIdMissing,
-                startDate, endDate, result, page, pageSize);
+        PageResult<AuditRecordVO> stored = findPage(search, operationType, resourceType, target,
+                clusterId, clusterIdMissing, startDate, endDate, result, page, pageSize);
+        if (stored == null || stored.getItems() == null) {
+            return stored;
+        }
+        // The page renders these timestamps in the viewer's zone, so the JSON wire carries a UTC
+        // wall clock like the alert / K8s-cert family; a zone-less server-local value would be
+        // parsed as browser-local and shift by the server-viewer offset. The stored base and the
+        // CSV export keep the server-local wall clock, and the CSV header keeps naming the
+        // server's offset.
+        return PageResult.of(
+                stored.getItems().stream().map(AuditService::toUtcWire).toList(),
+                stored.getTotal(), stored.getPage(), stored.getSize());
     }
 
     public AuditFilterOptionsVO getFilterOptions() {
@@ -113,6 +125,15 @@ public class AuditService {
     private String serverZoneLabel() {
         ZoneOffset offset = OffsetDateTime.now().getOffset();
         return "UTC" + (offset.getTotalSeconds() == 0 ? "" : offset.getId());
+    }
+
+    private static AuditRecordVO toUtcWire(AuditRecordVO record) {
+        if (record == null || record.getTimestamp() == null) {
+            return record;
+        }
+        record.setTimestamp(record.getTimestamp().atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
+        return record;
     }
 
 
