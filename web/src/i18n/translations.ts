@@ -1863,6 +1863,7 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'What message types does RocketMQ have, and what scenarios is each one for?',
   },
   'ai.tool.input': { zh: '输入参数', en: 'Input' },
+  'ai.tool.unknownName': { zh: '未知工具', en: 'Unknown tool' },
   'ai.tool.output': { zh: '执行结果', en: 'Result' },
   'ai.tool.running': { zh: '执行中', en: 'Running' },
   'ai.tool.success': { zh: '成功', en: 'Success' },
