@@ -242,6 +242,26 @@ class AlertServiceTest {
                 .contains("severity: critical");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles = {
+        1e20, -1e20, 0x1.0p63, -0x1.0000000000001p63, Double.MAX_VALUE,
+        -Double.MAX_VALUE, 0x1.fffffffffffffp62, -0x1.0p63, 5000, 0.25})
+    void exportedThresholdRetainsItsFiniteNumericValueTest(double threshold) throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder().name("Large threshold")
+                .metric("rocketmq_consumer_lag_messages").operator(">").threshold(threshold)
+                .duration("3m").enabled(true).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode yaml = new ObjectMapper(new YAMLFactory()).readTree(alertService.exportPrometheusRulesYaml());
+        String expression = yaml.path("groups").get(0).path("rules").get(0).path("expr").asText();
+        String literal = expression.substring(expression.lastIndexOf(' ') + 1);
+
+        assertThat(Double.parseDouble(literal)).isEqualTo(threshold);
+        if (threshold == 0x1.0p63) {
+            assertThat(literal).isNotEqualTo(Long.toString(Long.MAX_VALUE));
+        }
+    }
+
     @Test
     void exportPrometheusRulesYamlShouldConvertConfiguredRulesTest() {
         AlertRuleVO rule = AlertRuleVO.builder()

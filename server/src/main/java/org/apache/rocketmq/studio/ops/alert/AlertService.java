@@ -801,7 +801,8 @@ public class AlertService {
         if (!Double.isFinite(threshold)) {
             return "0";
         }
-        if (threshold == Math.rint(threshold)) {
+        // Long.MAX_VALUE rounds up to 2^63 as a double; the upper cast bound is exclusive.
+        if (threshold == Math.rint(threshold) && threshold >= Long.MIN_VALUE && threshold < 0x1.0p63) {
             return Long.toString((long) threshold);
         }
         return Double.toString(threshold);
