@@ -215,6 +215,20 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
   });
 
+  it('reports a failed instance discovery with a retry that recovers the topology', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+
+    expect(await screen.findByText('实例列表加载失败，请稍后重试')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重试' }));
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(2));
+    await screen.findAllByText('broker-api-a');
+    expect(screen.queryByText('实例列表加载失败，请稍后重试')).not.toBeInTheDocument();
+  });
+
   it('should display broker status tags', async () => {
     renderWithProviders(<BrokerCluster />);
     await screen.findAllByText('broker-api-a');
