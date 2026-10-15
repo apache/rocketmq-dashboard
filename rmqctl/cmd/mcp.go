@@ -17,10 +17,11 @@
 package cmd
 
 import (
+	"path/filepath"
+
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
 	"github.com/apache/rocketmq-dashboard/rmqctl/internal/studio"
 	"github.com/spf13/cobra"
-	"path/filepath"
 )
 
 func (a *App) newMCPCommand(runtime commandRuntime) *cobra.Command {
