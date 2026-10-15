@@ -17,6 +17,7 @@
 package studio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -77,7 +78,10 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 	_, hasID := fields["id"]
 	if hasMethod && hasID {
 		var request mcptransport.JSONRPCRequest
-		if err := json.Unmarshal(payload, &request); err != nil {
+		// Params contains arbitrary JSON, including long offsets beyond float64 precision.
+		decoder := json.NewDecoder(bytes.NewReader(payload))
+		decoder.UseNumber()
+		if err := decoder.Decode(&request); err != nil {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC request: %w", err)
 		}
 		return decodedMCPMessage{request: &request}, nil
