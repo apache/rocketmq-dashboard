@@ -83,6 +83,64 @@ describe('consumer service mock data', () => {
     }
   });
 
+  it('roundTripsMockConsumptionTogglesPerGroupAndInstanceTest', async () => {
+    const name = 'settings-toggles';
+    await createConsumerGroup({ name, instanceId: 'toggles-a' });
+    await createConsumerGroup({ name, instanceId: 'toggles-b' });
+    try {
+      const expectedA = {
+        groupName: name,
+        retryQueueNums: 2,
+        retryMaxTimes: 5,
+        consumeEnable: false,
+        consumeMessageOrderly: true,
+        consumeBroadcastEnable: true,
+      };
+      expect(
+        await updateConsumerGroupSettings({
+          name,
+          instanceId: 'toggles-a',
+          retryQueueNums: 2,
+          retryMaxTimes: 5,
+          consumeEnable: false,
+          consumeMessageOrderly: true,
+          consumeBroadcastEnable: true,
+        }),
+      ).toEqual(expectedA);
+      // Re-opening the dialog must show what was saved, including the explicit `false`.
+      expect(await getConsumerGroupSettings(name, 'toggles-a')).toEqual(expectedA);
+
+      const expectedB = {
+        groupName: name,
+        retryQueueNums: 1,
+        retryMaxTimes: 16,
+        consumeEnable: true,
+        consumeMessageOrderly: false,
+        consumeBroadcastEnable: false,
+      };
+      expect(
+        await updateConsumerGroupSettings({
+          name,
+          instanceId: 'toggles-b',
+          retryQueueNums: 1,
+          retryMaxTimes: 16,
+          consumeEnable: true,
+          consumeMessageOrderly: false,
+          consumeBroadcastEnable: false,
+        }),
+      ).toEqual(expectedB);
+      expect(await getConsumerGroupSettings(name, 'toggles-b')).toEqual(expectedB);
+      // A same-named group under another instance keeps its own toggles.
+      expect((await getConsumerGroupSettings(name, 'toggles-a')).consumeEnable).toBe(false);
+      expect((await getConsumerGroupSettings(name, 'toggles-b')).consumeEnable).toBe(true);
+      expect((await getConsumerGroupSettings(name, 'toggles-a')).consumeMessageOrderly).toBe(true);
+      expect((await getConsumerGroupSettings(name, 'toggles-b')).consumeMessageOrderly).toBe(false);
+    } finally {
+      await deleteConsumerGroup(name, 'toggles-a');
+      await deleteConsumerGroup(name, 'toggles-b');
+    }
+  });
+
   it('doesNotResurrectSettingsAfterDeletingAndRecreatingAMockGroupTest', async () => {
     const name = 'settings-recreated';
     const instanceId = 'settings-instance';

@@ -22,6 +22,9 @@ import { buildCsv, type CsvColumn } from '../utils/download';
 
 const consumerGroupsState = mockConsumerGroups as unknown as (ConsumerGroup & {
   retryQueueNums?: number;
+  consumeEnable?: boolean;
+  consumeMessageOrderly?: boolean;
+  consumeBroadcastEnable?: boolean;
 })[];
 const EXPORT_PAGE_SIZE = 100;
 const MAX_EXPORT_PAGES = 100;
@@ -204,6 +207,9 @@ export async function getConsumerGroupSettings(
       groupName: name,
       retryQueueNums: group.retryQueueNums ?? 1,
       retryMaxTimes: group.retryMaxTimes ?? 16,
+      consumeEnable: group.consumeEnable,
+      consumeMessageOrderly: group.consumeMessageOrderly,
+      consumeBroadcastEnable: group.consumeBroadcastEnable,
     };
   }
   return metadataApi.getConsumerGroupSettings(name, instanceId);
@@ -219,11 +225,17 @@ export async function updateConsumerGroupSettings(
     if (!group) throw new Error(`Consumer group not found: ${data.name}`);
     group.retryQueueNums = data.retryQueueNums;
     group.retryMaxTimes = data.retryMaxTimes;
+    group.consumeEnable = data.consumeEnable;
+    group.consumeMessageOrderly = data.consumeMessageOrderly;
+    group.consumeBroadcastEnable = data.consumeBroadcastEnable;
     group.gmtModified = new Date().toISOString();
     return {
       groupName: data.name,
       retryQueueNums: data.retryQueueNums,
       retryMaxTimes: data.retryMaxTimes,
+      consumeEnable: data.consumeEnable,
+      consumeMessageOrderly: data.consumeMessageOrderly,
+      consumeBroadcastEnable: data.consumeBroadcastEnable,
     };
   }
   return metadataApi.updateConsumerGroupSettings(data);
