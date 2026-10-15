@@ -455,14 +455,14 @@ export const createMetricsQueryHistoryEntry = ({
   instanceId,
   summary,
 }: MetricsQueryHistoryInput): MetricsQueryHistoryEntry => ({
-  id: [
+  id: JSON.stringify([
     profileId,
     metric.semanticMetric,
     rangeId,
-    dataSourceKey || 'default',
-    instanceId || 'global',
+    dataSourceKey,
+    instanceId ?? null,
     queriedAt,
-  ].join(':'),
+  ]),
   profileId,
   profileName,
   metricId: metric.semanticMetric,
@@ -482,14 +482,14 @@ export const createMetricsQueryHistoryEntry = ({
 });
 
 const historyIdentity = (entry: MetricsQueryHistoryEntry) =>
-  [
+  JSON.stringify([
     entry.profileId,
     entry.metricId,
     entry.rangeId,
-    entry.dataSourceKey || 'default',
-    entry.instanceId || 'global',
+    entry.dataSourceKey,
+    entry.instanceId ?? null,
     entry.promql,
-  ].join('\n');
+  ]);
 
 export const mergeMetricsQueryHistory = (
   entries: MetricsQueryHistoryEntry[],
