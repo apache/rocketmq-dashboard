@@ -324,7 +324,8 @@ export async function deleteConsumerGroup(name: string, instanceId?: string): Pr
     const idx = consumerGroupsState.findIndex(
       (group) => group.name === name && (!instanceId || group.instanceId === instanceId),
     );
-    if (idx >= 0) consumerGroupsState.splice(idx, 1);
+    if (idx < 0) throw new Error(`Consumer group not found: ${name}`);
+    consumerGroupsState.splice(idx, 1);
     return;
   }
   return metadataApi.deleteConsumerGroup(name, instanceId);

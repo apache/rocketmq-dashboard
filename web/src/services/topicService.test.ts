@@ -16,7 +16,9 @@
  */
 
 import {
+  batchDeleteTopics,
   createTopic,
+  deleteTopic,
   getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
@@ -31,6 +33,29 @@ vi.mock('../config', () => ({
 }));
 
 describe('topic service mock data', () => {
+  it('rejects missing topic deletes without changing the store Test', async () => {
+    const before = await listTopics();
+
+    await expect(deleteTopic('__missing_topic__', 'instance-proxy-1')).rejects.toThrow(
+      'Topic not found: __missing_topic__',
+    );
+    expect(await listTopics()).toEqual(before);
+  });
+
+  it('reports missing and repeated topic deletes as batch failures Test', async () => {
+    const name = 'topic-delete-contract-test';
+    await createTopic({ name, instanceId: 'instance-proxy-1' });
+
+    try {
+      await expect(
+        batchDeleteTopics(['__missing_topic__', name, name], 'instance-proxy-1'),
+      ).resolves.toEqual({ deleted: [name], failed: ['__missing_topic__', name] });
+      expect((await listTopics()).some((topic) => topic.name === name)).toBe(false);
+    } finally {
+      if ((await listTopics()).some((topic) => topic.name === name)) await deleteTopic(name);
+    }
+  });
+
   it('returns copied topic rows', async () => {
     const first = await listTopics({ search: 'order-create' });
     expect(first[0].name).toBe('order-create');

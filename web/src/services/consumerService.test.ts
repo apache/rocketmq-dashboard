@@ -18,6 +18,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mockConsumerGroups } from '../mock/consumers';
 import {
+  batchDeleteConsumerGroups,
   createConsumerGroup,
   deleteConsumerGroup,
   exportConsumerGroups,
@@ -49,6 +50,44 @@ vi.mock('../config', () => ({
 vi.mock('../api/metadata', () => metadataApi);
 
 describe('consumer service mock data', () => {
+  it('rejects missing consumer group deletes without changing the store Test', async () => {
+    const before = await listConsumerGroups();
+
+    await expect(deleteConsumerGroup('__missing_group__', 'instance-proxy-1')).rejects.toThrow(
+      'Consumer group not found: __missing_group__',
+    );
+    expect(await listConsumerGroups()).toEqual(before);
+  });
+
+  it('rejects consumer group deletes in the wrong instance Test', async () => {
+    const group = (await listConsumerGroups())[0];
+    const before = await listConsumerGroups();
+
+    await expect(deleteConsumerGroup(group.name, '__missing_instance__')).rejects.toThrow(
+      `Consumer group not found: ${group.name}`,
+    );
+    expect(await listConsumerGroups()).toEqual(before);
+  });
+
+  it('reports missing and repeated consumer group deletes as batch failures Test', async () => {
+    const name = 'cg-delete-contract-test';
+    const instanceId = 'instance-delete-contract-test';
+    await createConsumerGroup({ name, instanceId });
+
+    try {
+      await expect(
+        batchDeleteConsumerGroups(['__missing_group__', name, name], instanceId),
+      ).resolves.toEqual({ deleted: [name], failed: ['__missing_group__', name] });
+      expect((await listConsumerGroups({ instanceId })).some((group) => group.name === name)).toBe(
+        false,
+      );
+    } finally {
+      if ((await listConsumerGroups({ instanceId })).some((group) => group.name === name)) {
+        await deleteConsumerGroup(name, instanceId);
+      }
+    }
+  });
+
   it('returns copied consumer group rows', async () => {
     const first = await listConsumerGroups({ search: 'cg-order-notify' });
     expect(first[0].name).toBe('cg-order-notify');
@@ -308,8 +347,11 @@ describe('consumer service mock data', () => {
         instanceId: 'instance-b',
       });
     } finally {
-      await deleteConsumerGroup(name, 'instance-a');
-      await deleteConsumerGroup(name, 'instance-b');
+      for (const instanceId of ['instance-a', 'instance-b']) {
+        if ((await listConsumerGroups({ instanceId })).some((group) => group.name === name)) {
+          await deleteConsumerGroup(name, instanceId);
+        }
+      }
     }
   });
 
