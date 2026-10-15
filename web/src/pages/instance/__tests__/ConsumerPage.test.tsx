@@ -312,6 +312,27 @@ describe('Consumer page', () => {
     expect(screen.getByText(/^\d+ groups in total$/)).toBeInTheDocument();
   });
 
+  it('loads the group page once when the instance list lands after it', async () => {
+    let releaseInstances: (instances: unknown[]) => void = () => {};
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<unknown[]>((resolve) => {
+          releaseInstances = resolve;
+        }),
+    );
+    renderWithProviders(<ConsumerPage />, '/instance/instance-1/consumer');
+
+    // The route already names the instance, so the page must not wait for the instance list…
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1));
+
+    // …and the list landing afterwards must not fire a second, identical request.
+    await act(async () => {
+      releaseInstances([]);
+    });
+    await screen.findByText('remote-cg');
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1);
+  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 

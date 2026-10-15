@@ -134,22 +134,29 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
-    expect(instanceService.listInstances).toHaveBeenCalledWith({});
+    expect(instanceService.listInstances).toHaveBeenCalledWith({ withCounts: true });
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: 'proxy-hz' },
     });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'proxy-hz' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'proxy-hz',
+          withCounts: true,
+        }),
       { timeout: 1000 },
     );
 
     fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: '' },
     });
-    await waitFor(() => expect(instanceService.listInstances).toHaveBeenLastCalledWith({}), {
-      timeout: 1000,
-    });
+    await waitFor(
+      () => expect(instanceService.listInstances).toHaveBeenLastCalledWith({ withCounts: true }),
+      {
+        timeout: 1000,
+      },
+    );
 
     const typeSelect = screen.getByRole('combobox');
     fireEvent.mouseDown(typeSelect.parentElement!);
@@ -158,7 +165,10 @@ describe('InstancePage', () => {
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
   });
 
@@ -227,7 +237,11 @@ describe('InstancePage', () => {
     const searchInput = screen.getByPlaceholderText('搜索实例 ID 或地址');
     fireEvent.change(searchInput, { target: { value: 'old' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'old' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'old',
+          withCounts: true,
+        }),
       {
         timeout: 1000,
       },
@@ -235,7 +249,11 @@ describe('InstancePage', () => {
 
     fireEvent.change(searchInput, { target: { value: 'latest' } });
     await waitFor(
-      () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'latest' }),
+      () =>
+        expect(instanceService.listInstances).toHaveBeenCalledWith({
+          search: 'latest',
+          withCounts: true,
+        }),
       { timeout: 1000 },
     );
 
@@ -283,7 +301,10 @@ describe('InstancePage', () => {
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
 
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
@@ -305,7 +326,10 @@ describe('InstancePage', () => {
         endpoint: 'proxy-new:8080',
       }),
     );
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+      type: 'DIRECT',
+      withCounts: true,
+    });
   });
 
   it('creates an Apache instance with an explicit Proxy Local deployment type', async () => {
@@ -507,13 +531,19 @@ describe('InstancePage', () => {
       await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
     );
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
 
     await act(async () => pendingDelete.resolve());
 
     await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
-    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+      type: 'DIRECT',
+      withCounts: true,
+    });
     confirmSpy.mockRestore();
   });
 
@@ -1059,7 +1089,10 @@ describe('InstancePage', () => {
     await user.type(screen.getByPlaceholderText('搜索实例 ID 或地址'), 'visible');
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ search: 'visible' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        search: 'visible',
+        withCounts: true,
+      }),
     );
     await waitFor(() => expect(screen.queryByText('search-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();
@@ -1087,7 +1120,10 @@ describe('InstancePage', () => {
     );
 
     await waitFor(() =>
-      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({
+        type: 'DIRECT',
+        withCounts: true,
+      }),
     );
     await waitFor(() => expect(screen.queryByText('proxy-selected')).not.toBeInTheDocument());
     expect(deleteButton).toBeDisabled();

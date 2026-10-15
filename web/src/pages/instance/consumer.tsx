@@ -380,6 +380,17 @@ const ConsumerPageContent = ({
     await loadConsumerGroupPage(page, pageSize);
   }, [loadConsumerGroupPage, page, pageSize]);
 
+  // While no instance is selected the table has nothing to fetch, so its spinner simply mirrors the
+  // instance list. Kept in its own effect: putting instancesLoading in the deps of the load below
+  // would re-run it when the list lands and fetch the same page a second time.
+  useEffect(() => {
+    if (selectedInstanceId) return undefined;
+    const spinnerTimer = window.setTimeout(() => setLoading(instancesLoading), 0);
+    return () => {
+      window.clearTimeout(spinnerTimer);
+    };
+  }, [selectedInstanceId, instancesLoading]);
+
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
@@ -387,7 +398,6 @@ const ConsumerPageContent = ({
         setGroups([]);
         setTotalGroups(0);
         setSelectedRowKeys([]);
-        setLoading(instancesLoading);
       }, 0);
       return () => {
         window.clearTimeout(resetTimer);
@@ -401,7 +411,7 @@ const ConsumerPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, page, pageSize, instancesLoading, refreshKey, loadConsumerGroupPage]);
+  }, [selectedInstanceId, page, pageSize, refreshKey, loadConsumerGroupPage]);
 
   useEffect(() => {
     if (!autoRefresh || !selectedInstanceId) {
