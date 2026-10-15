@@ -162,4 +162,63 @@ describe('useVisiblePolling', () => {
     });
     expect(newPoll).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['disable', 'unmount', 'hidden', 'replace'] as const)(
+    'discardsAQueuedPollAfter%sTest',
+    async (change) => {
+      const poll = vi.fn().mockResolvedValue(undefined);
+      const replacement = vi.fn().mockResolvedValue(undefined);
+      const { rerender, unmount } = renderHook(
+        ({ enabled, callback }) => useVisiblePolling(enabled, 1_000, callback),
+        { initialProps: { enabled: true, callback: poll } },
+      );
+
+      // Queue the poll synchronously, then change the effect's world before its microtask runs.
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      if (change === 'disable') rerender({ enabled: false, callback: poll });
+      if (change === 'replace') rerender({ enabled: true, callback: replacement });
+      if (change === 'unmount') unmount();
+      if (change === 'hidden') visibilityState = 'hidden';
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(poll).not.toHaveBeenCalled();
+
+      if (change !== 'unmount') {
+        visibilityState = 'visible';
+        rerender({ enabled: true, callback: replacement });
+        await act(async () => {
+          vi.advanceTimersByTime(1_000);
+          await Promise.resolve();
+        });
+        expect(replacement).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
+  it('keeps polling after a hidden poll is discardedTest', async () => {
+    const poll = vi.fn().mockResolvedValue(undefined);
+    renderHook(() => useVisiblePolling(true, 1_000, poll));
+
+    // A queued poll whose page went hidden before the microtask ran must be dropped...
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    visibilityState = 'hidden';
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(poll).not.toHaveBeenCalled();
+
+    // ...and it must release the shared in-flight guard, or polling never resumes.
+    visibilityState = 'visible';
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
 });

@@ -26,12 +26,20 @@ export function useVisiblePolling(
 
   useEffect(() => {
     if (!enabled) return;
+    // The cleanup clears the timer and the listener, but it cannot cancel a poll already queued as
+    // a microtask: disabling live refresh, unmounting or hiding the page between the trigger and
+    // that microtask used to start an obsolete request anyway. The queue therefore re-checks the
+    // effect's liveness and the visibility right before invoking poll, while a request that has
+    // already started keeps holding the shared in-flight guard.
+    let active = true;
 
     const pollWhenVisible = () => {
       if (document.visibilityState !== 'visible' || pollInFlightRef.current) return;
 
       const inFlight = Promise.resolve()
-        .then(poll)
+        .then(() => {
+          if (active && document.visibilityState === 'visible') return poll();
+        })
         .catch(() => undefined)
         .finally(() => {
           if (pollInFlightRef.current === inFlight) {
@@ -44,6 +52,7 @@ export function useVisiblePolling(
     document.addEventListener('visibilitychange', pollWhenVisible);
 
     return () => {
+      active = false;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
