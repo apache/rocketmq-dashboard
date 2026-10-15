@@ -87,7 +87,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 return unavailableTopologyDashboard();
             }
             return adminFactory.execute(namesrvAddr, null,
-                    admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER, countEndpoints(namesrvAddr)));
+                    admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER,
+                            countEndpoints(namesrvAddr), null));
         }
         return aggregateInstances(apacheInstances);
     }
@@ -190,12 +191,14 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         InstanceVO instance = runtimeAdminClientResolver.resolveInstance(instanceId);
         Integer configuredNameServers = instance.getType() == InstanceType.DIRECT
                 ? countEndpoints(instance.getEndpoint()) : null;
+        String configuredCluster = runtimeAdminClientResolver.configuredClusterName(instanceId);
         return runtimeAdminClientResolver.execute(instance,
-                admin -> collectDashboardData(admin, clusterTypeFor(instance), configuredNameServers));
+                admin -> collectDashboardData(admin, clusterTypeFor(instance), configuredNameServers,
+                        configuredCluster));
     }
 
     private DashboardDataVO collectDashboardData(
-            MQAdminExt admin, ClusterType clusterType, Integer configuredNameServers) {
+            MQAdminExt admin, ClusterType clusterType, Integer configuredNameServers, String configuredCluster) {
         int totalClusters = 0;
         int totalBrokers = 0;
         int totalTopics = 0;
@@ -214,12 +217,14 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // The NameServer topology is decoded from JSON; a payload missing either
             // table yields null here. Treat it as empty so a partial topology degrades
             // instead of throwing and zeroing the whole dashboard.
-            Map<String, Set<String>> clusterAddrTable =
+            Map<String, Set<String>> clusterAddrTable = scopeClusterTable(
                     clusterInfo.getClusterAddrTable() == null
-                            ? Map.of() : clusterInfo.getClusterAddrTable();
-            Map<String, BrokerData> brokerAddrTable =
+                            ? Map.of() : clusterInfo.getClusterAddrTable(),
+                    configuredCluster);
+            Map<String, BrokerData> brokerAddrTable = scopeBrokerTable(
                     clusterInfo.getBrokerAddrTable() == null
-                            ? Map.of() : clusterInfo.getBrokerAddrTable();
+                            ? Map.of() : clusterInfo.getBrokerAddrTable(),
+                    clusterAddrTable, configuredCluster);
 
             totalClusters = clusterAddrTable.size();
             totalBrokers = brokerAddrTable.size();
@@ -445,6 +450,38 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .stats(stats)
                 .clusters(clusters)
                 .build();
+    }
+
+    /**
+     * Narrows the NameServer topology to the cluster a default-cluster instance is configured for,
+     * the way {@code discoverClusters} and {@code discoverBrokers} already narrow their reads: a
+     * shared NameServer must not mix another cluster's brokers, topics, groups and TPS into this
+     * instance's dashboard. A configured cluster the topology does not contain keeps its (empty)
+     * entry so the row degrades to a warning instead of disappearing.
+     */
+    private static Map<String, Set<String>> scopeClusterTable(
+            Map<String, Set<String>> clusterAddrTable, String configuredCluster) {
+        if (configuredCluster == null) {
+            return clusterAddrTable;
+        }
+        Set<String> members = clusterAddrTable.get(configuredCluster);
+        return Map.of(configuredCluster, members == null ? Set.of() : members);
+    }
+
+    private static Map<String, BrokerData> scopeBrokerTable(
+            Map<String, BrokerData> brokerAddrTable, Map<String, Set<String>> clusterAddrTable,
+            String configuredCluster) {
+        if (configuredCluster == null) {
+            return brokerAddrTable;
+        }
+        Map<String, BrokerData> scoped = new HashMap<>();
+        for (String brokerName : clusterAddrTable.getOrDefault(configuredCluster, Set.of())) {
+            BrokerData brokerData = brokerAddrTable.get(brokerName);
+            if (brokerData != null) {
+                scoped.put(brokerName, brokerData);
+            }
+        }
+        return scoped;
     }
 
     private ClusterType clusterTypeFor(InstanceVO instance) {
