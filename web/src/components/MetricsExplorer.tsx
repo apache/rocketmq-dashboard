@@ -70,6 +70,7 @@ import {
   saveMetricsQueryHistory,
   summarizeMetricData,
   toMetricSeriesSamples,
+  toMetricSeriesChartSegments,
   type MetricCsvContext,
   type MetricResultSummary,
   type MetricSeriesDetailRow,
@@ -142,6 +143,7 @@ const MetricChart = ({
           label: isMixed ? `${baseLabel} (${kindSuffix})` : baseLabel,
           tooltip: isMixed ? `${baseTooltip} (${kindSuffix})` : baseTooltip,
           samples: samples.filter((sample) => sample.kind === kind),
+          segments: toMetricSeriesChartSegments(series, kind),
           fromHistogram: kind === 'histogram',
         };
       });
@@ -234,19 +236,31 @@ const MetricChart = ({
             </g>
           );
         })}
-        {chartSeries.map((series) => (
-          <polyline
-            key={series.key}
-            fill="none"
-            stroke={series.color}
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            points={series.samples
-              .map((sample) => `${x(sample.timestamp)},${y(sample.value)}`)
-              .join(' ')}
-          />
-        ))}
+        {chartSeries.flatMap((series) =>
+          series.segments.map((segment, index) =>
+            segment.length === 1 ? (
+              <circle
+                key={`${series.key}-${index}`}
+                cx={x(segment[0].timestamp)}
+                cy={y(segment[0].value)}
+                r="3"
+                fill={series.color}
+              />
+            ) : (
+              <polyline
+                key={`${series.key}-${index}`}
+                fill="none"
+                stroke={series.color}
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                points={segment
+                  .map((sample) => `${x(sample.timestamp)},${y(sample.value)}`)
+                  .join(' ')}
+              />
+            ),
+          ),
+        )}
         <text
           x={CHART_PADDING.left}
           y={CHART_HEIGHT - 8}

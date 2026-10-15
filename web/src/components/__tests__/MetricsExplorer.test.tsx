@@ -810,11 +810,13 @@ describe('MetricsExplorer', () => {
 
     expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
     // The mixed broker-a line is split into a scalar and a histogram trend; the broker-b
-    // line follows. Every drawn polyline must keep its own stroke so legend swatches
-    // stay matchable.
+    // line follows. Lines and singleton markers must keep distinct colors so legend
+    // swatches stay matchable.
     const strokes = Array.from(
-      screen.getByRole('img', { name: 'Message In TPS time series' }).querySelectorAll('polyline'),
-    ).map((line) => line.getAttribute('stroke'));
+      screen
+        .getByRole('img', { name: 'Message In TPS time series' })
+        .querySelectorAll('polyline, circle'),
+    ).map((shape) => shape.getAttribute(shape.tagName === 'circle' ? 'fill' : 'stroke'));
     expect(strokes.length).toBe(3);
     expect(new Set(strokes).size).toBe(strokes.length);
   });
@@ -1800,4 +1802,64 @@ describe('custom PromQL keyboard submission', () => {
     await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(queryCount + 2));
     expect(queryMetrics).toHaveBeenLastCalledWith(expect.objectContaining({ metric: 'sum(up)' }));
   });
+});
+
+describe('metrics chart availability regressions', () => {
+  it('doesNotJoinAcrossExplicitUnavailableScalarSamplesTest', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_799_996_400, value: '10' },
+            { timestamp: 1_799_996_430, value: '11' },
+            { timestamp: 1_799_996_460, value: 'NaN' },
+            { timestamp: 1_799_996_490, value: '12' },
+            { timestamp: 1_799_996_520, value: '13' },
+          ],
+        },
+      ],
+    });
+    renderWithProviders(<MetricsExplorer />);
+    const chart = await screen.findByRole('img', { name: 'Message In TPS time series' });
+    const lines = [...chart.querySelectorAll('polyline')];
+    // Both valid runs remain visible, but no line crosses the known NaN at mid-window.
+    expect(lines).toHaveLength(2);
+    const midpoint = (76 + 822) / 2;
+    for (const line of lines) {
+      const xs = (line.getAttribute('points') ?? '')
+        .split(' ')
+        .map((point) => Number(point.split(',')[0]));
+      expect(Math.min(...xs) < midpoint && Math.max(...xs) > midpoint).toBe(false);
+    }
+    expect(await screen.findByText('13 messages/s')).toBeInTheDocument();
+  });
+
+  it.each(['scalar', 'histogram'] as const)(
+    'rendersAnIsolatedSampleAsAVisiblePointTest (%s)',
+    async (kind) => {
+      vi.mocked(queryMetrics).mockResolvedValue({
+        ...metricData,
+        series: [
+          {
+            ...metricData.series[0],
+            values: kind === 'scalar' ? [{ timestamp: 1_800_000_000, value: '42' }] : [],
+            histograms:
+              kind === 'histogram'
+                ? [{ timestamp: 1_800_000_000, histogram: { count: '4', sum: '42', buckets: [] } }]
+                : [],
+          },
+        ],
+      });
+      renderWithProviders(<MetricsExplorer />);
+      const chart = await screen.findByRole('img', { name: 'Message In TPS time series' });
+      // A one-coordinate polyline is only an SVG moveto and draws no stroke.
+      expect(chart.querySelectorAll('circle')).toHaveLength(1);
+      expect(chart.querySelector('circle')).toHaveAttribute('cx', '449');
+      expect(chart.querySelector('circle')).toHaveAttribute('cy', '111');
+      expect(chart.querySelectorAll('polyline')).toHaveLength(0);
+      expect(screen.getByText('42 messages/s')).toBeInTheDocument();
+    },
+  );
 });
