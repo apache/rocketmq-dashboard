@@ -84,15 +84,29 @@ export async function getInstanceCapabilities(instanceId: string): Promise<Insta
   };
 }
 
+// InstanceService.createApacheInstance registers a manually created instance through
+// requireInstanceName/requireValidEndpoint: neither field may be blank and both are stored
+// trimmed. The registration dialog's `required` rules accept whitespace, so the mock store has
+// to run the same checks instead of keeping the raw value.
+function requireMockInstanceText(value: string | undefined, field: 'name' | 'endpoint'): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    throw new Error(`InstanceVO ${field} is required`);
+  }
+  return trimmed;
+}
+
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
     const cloudManaged = data.vendor === 'ALIYUN' || data.vendor === 'TENCENT';
     const instance: Instance = {
       id: Date.now(),
       ...data,
-      name: data.name || '',
+      name: cloudManaged ? data.name || '' : requireMockInstanceText(data.name, 'name'),
       type: cloudManaged ? 'CLOUD' : data.type || 'PROXY_CLUSTER',
-      endpoint: data.endpoint || '',
+      endpoint: cloudManaged
+        ? data.endpoint || ''
+        : requireMockInstanceText(data.endpoint, 'endpoint'),
       vendor: data.vendor || 'APACHE',
       remark: data.remark || '',
       topicCount: 0,

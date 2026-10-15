@@ -115,6 +115,34 @@ describe('instanceService mock instances', () => {
     await expect(listInstances()).resolves.toEqual(before);
   });
 
+  it('rejects the blank name and endpoint the API requires', async () => {
+    // The registration dialog's `required` rules do not reject whitespace, so both fields can
+    // arrive blank; InstanceService.createApacheInstance answers 400 for them (requireInstanceName
+    // -> "InstanceVO name is required", requireValidEndpoint -> "InstanceVO endpoint is required").
+    const before = await listInstances();
+
+    await expect(
+      createInstance({ name: '   ', type: 'DIRECT', endpoint: '10.0.1.90:9876' }),
+    ).rejects.toThrow('InstanceVO name is required');
+    await expect(
+      createInstance({ name: 'mock-blank-endpoint', type: 'DIRECT', endpoint: '  ' }),
+    ).rejects.toThrow('InstanceVO endpoint is required');
+
+    await expect(listInstances()).resolves.toEqual(before);
+  });
+
+  it('stores the trimmed name and endpoint the API stores', async () => {
+    const created = await createInstance({
+      name: '  mock-trimmed-create  ',
+      type: 'DIRECT',
+      endpoint: '  10.0.1.91:9876  ',
+      remark: 'trimmed',
+    });
+
+    expect(created.name).toBe('mock-trimmed-create');
+    expect(created.endpoint).toBe('10.0.1.91:9876');
+  });
+
   it('returns provider-specific mock capabilities without sharing mutable arrays', async () => {
     const first = await getInstanceCapabilities('instance-direct-1');
     expect(first.instanceId).toBe('instance-direct-1');
