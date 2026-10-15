@@ -398,3 +398,62 @@ func TestRunRejectsPropertyNameDerivingAnUnusableFlag(t *testing.T) {
 		t.Fatalf("err = %v, want derived-flag failure", err)
 	}
 }
+
+// TestRunRejectsCLIResourceViolatingTheSchemaPattern pins the cli.resource pattern
+// rmq-tools.schema.json declares (^[a-z][a-z0-9-]*$), so a resource token that the
+// schema would reject cannot reach the generated catalog.
+func TestRunRejectsCLIResourceViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"      resource: topic",
+		"      resource: Topic",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "has a CLI resource that does not match the schema pattern") {
+		t.Fatalf("err = %v, want CLI resource pattern failure", err)
+	}
+}
+
+// TestRunRejectsCLIVerbViolatingTheSchemaPattern pins the cli.verb pattern
+// rmq-tools.schema.json declares (^[a-z][a-z0-9-]*$).
+func TestRunRejectsCLIVerbViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"      verb: list",
+		"      verb: List",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "has a CLI verb that does not match the schema pattern") {
+		t.Fatalf("err = %v, want CLI verb pattern failure", err)
+	}
+}
+
+// TestRunRejectsVersionViolatingTheSchemaPattern pins the fifth pattern the schema
+// declares: $defs/semanticVersion, which both version and minimumClientVersion $ref.
+// Without it the "schema and validator cannot drift" invariant covers only four fields.
+func TestRunRejectsVersionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"version: 1.0.0\n",
+		"version: \"1.0\"\n",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), `version "1.0" does not match the schema semantic-version pattern`) {
+		t.Fatalf("err = %v, want version pattern failure", err)
+	}
+}
+
+// TestRunRejectsMinimumClientVersionViolatingTheSchemaPattern pins the same
+// $defs/semanticVersion pattern on the minimumClientVersion field, which the
+// version check above cannot reach because validate() returns on the first failure.
+func TestRunRejectsMinimumClientVersionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"minimumClientVersion: 1.0.0\n",
+		"minimumClientVersion: \"1.0\"\n",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), `minimumClientVersion "1.0" does not match`) {
+		t.Fatalf("err = %v, want minimumClientVersion pattern failure", err)
+	}
+}

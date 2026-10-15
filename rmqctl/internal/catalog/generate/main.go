@@ -471,15 +471,23 @@ func writeGenerated(outputPath string, content []byte) error {
 // hand. Enforcing them here is what keeps the JSON schema and this validator from drifting
 // apart: a document the schema would reject must not be able to reach the generated catalog.
 var (
-	toolNamePattern   = regexp.MustCompile(`^rmq\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
-	lowerTokenPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	permissionPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$`)
-	capabilityPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+	toolNamePattern        = regexp.MustCompile(`^rmq\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+	lowerTokenPattern      = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	permissionPattern      = regexp.MustCompile(`^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$`)
+	capabilityPattern      = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 )
 
 func validate(document catalogDocument) error {
 	if strings.TrimSpace(document.Version) == "" || strings.TrimSpace(document.MinimumClientVersion) == "" {
 		return fmt.Errorf("version and minimumClientVersion are required")
+	}
+	if !semanticVersionPattern.MatchString(document.Version) {
+		return fmt.Errorf("version %q does not match the schema semantic-version pattern", document.Version)
+	}
+	if !semanticVersionPattern.MatchString(document.MinimumClientVersion) {
+		return fmt.Errorf("minimumClientVersion %q does not match the schema semantic-version pattern",
+			document.MinimumClientVersion)
 	}
 	if len(document.Tools) == 0 {
 		return fmt.Errorf("at least one tool is required")
