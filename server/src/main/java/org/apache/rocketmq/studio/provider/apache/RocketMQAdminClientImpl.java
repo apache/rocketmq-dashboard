@@ -206,7 +206,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
             vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
-                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                // An old last-message timestamp measures inactivity once every queue is caught up.
+                long delaySeconds = !lagUnknown && totalLag == 0 ? 0
+                        : (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
                 vo.setConsumptionTimestampAvailable(true);
             }

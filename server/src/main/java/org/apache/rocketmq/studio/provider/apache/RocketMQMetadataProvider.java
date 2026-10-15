@@ -423,7 +423,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             int delaySeconds = 0;
             boolean timestampAvailable = false;
             if (newestConsumedTimestamp > 0) {
-                long elapsedSeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                // An old last-message timestamp measures inactivity once every queue is caught up.
+                long elapsedSeconds = !lagUnknown && totalLag == 0 ? 0
+                        : (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 delaySeconds = (int) Math.max(elapsedSeconds, 0);
                 timestampAvailable = true;
             }

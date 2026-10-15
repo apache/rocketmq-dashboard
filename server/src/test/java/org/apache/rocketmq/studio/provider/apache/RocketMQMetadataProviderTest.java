@@ -21,6 +21,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.cluster.metrics.collectors.ApacheRocketMqBusinessMetricsCollector;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.ops.alert.AlertRuleVO;
+import org.apache.rocketmq.studio.ops.alert.AlertRuleEvaluator;
+import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -62,6 +69,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -995,6 +1003,64 @@ class RocketMQMetadataProviderTest {
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getTotalLag()).isEqualTo(40);
         assertThat(groups.get(0).getDelaySeconds()).isBetween(4, 30);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"100,100,3600000,0", "100,99,3600000,3600", "99,100,3600000,3600", "100,100,0,0"})
+    void listConsumerGroupsDoesNotTreatCaughtUpIdleQueuesAsDelayedTest(
+            long brokerOffset, long consumerOffset, long ageMillis, int minimumDelay) throws Exception {
+        ConsumerGroupVO group = groupWithIdleQueueStats(brokerOffset, consumerOffset, ageMillis);
+
+        assertThat(group.isConsumeStatsAvailable()).isTrue();
+        assertThat(group.isConsumptionTimestampAvailable()).isEqualTo(ageMillis > 0);
+        assertThat(group.getTotalLag()).isEqualTo(brokerOffset - consumerOffset);
+        if (minimumDelay == 0) {
+            assertThat(group.getDelaySeconds()).isZero();
+        } else {
+            assertThat(group.getDelaySeconds()).isBetween(minimumDelay, minimumDelay + 30);
+        }
+    }
+
+    @Test
+    void caughtUpIdleGroupDoesNotTriggerNativeDelayAlertTest() throws Exception {
+        ConsumerGroupVO group = groupWithIdleQueueStats(100, 100, 3_600_000L);
+        var registry = mock(InstanceProviderRegistry.class);
+        var instanceProvider = mock(InstanceProvider.class);
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(instanceProvider));
+        when(instanceProvider.listConsumerGroups("instance-a", null)).thenReturn(List.of(group));
+        var collector = new ApacheRocketMqBusinessMetricsCollector(registry);
+        var instance = InstanceVO.builder().name("instance-a").build();
+        var sample = collector.collect(instance).stream()
+                .filter(item -> "consumer.delay.seconds".equals(item.metricKey())).findFirst().orElseThrow();
+        var rule = AlertRuleVO.builder()
+                .metric("consumer.delay.seconds").operator(">").threshold(300).build();
+
+        assertThat(sample.availability()).isEqualTo(MetricAvailability.AVAILABLE);
+        assertThat(new AlertRuleEvaluator().evaluate(rule, sample).conditionMet()).isFalse();
+        assertThat(sample.value()).isZero();
+    }
+
+    private ConsumerGroupVO groupWithIdleQueueStats(long brokerOffset, long consumerOffset, long ageMillis)
+            throws Exception {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("cg-idle");
+        entity.setInstanceId("instance-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        ConsumeStats stats = new ConsumeStats();
+        OffsetWrapper wrapper = offset(brokerOffset, consumerOffset);
+        wrapper.setLastTimestamp(ageMillis == 0 ? 0 : System.currentTimeMillis() - ageMillis);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-a", 0), wrapper);
+        stats.getOffsetTable().put(new MessageQueue("orders-topic", "broker-b", 1), offset(50, 50));
+        when(admin.examineConsumeStats("cg-idle")).thenReturn(stats);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1).apply(admin));
+        RocketMQMetadataProvider provider = newLiveProvider(admin);
+        try {
+            return provider.listConsumerGroups("instance-a", null, null).getFirst();
+        } finally {
+            provider.shutdownOnlineEnrichmentExecutor();
+        }
     }
 
     @Test
