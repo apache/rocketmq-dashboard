@@ -27,6 +27,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListRegionsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListRegionsResponseBody;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.AliyunResponseValidator;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
@@ -63,8 +64,11 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         requireId(credentialId, "credentialId");
         ListRegionsResponse response = clientFactory.call(credentialId, DEFAULT_REGION,
                 client -> client.listRegions(ListRegionsRequest.builder().build()));
-        ListRegionsResponseBody body = response == null ? null : response.getBody();
-        List<ListRegionsResponseBody.Data> data = body == null ? null : body.getData();
+        ListRegionsResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "region listing", response == null ? null : response.getBody(),
+                ListRegionsResponseBody::getSuccess, ListRegionsResponseBody::getCode,
+                ListRegionsResponseBody::getMessage);
+        List<ListRegionsResponseBody.Data> data = body.getData();
         List<CloudRegionVO> regions = new ArrayList<>();
         if (data == null) {
             return regions;
@@ -109,8 +113,11 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         GetInstanceRequest request = GetInstanceRequest.builder().instanceId(normalizedCloudInstanceId).build();
         GetInstanceResponse response = clientFactory.call(credentialId, normalizedRegionId,
                 client -> client.getInstance(request));
-        GetInstanceResponseBody body = response == null ? null : response.getBody();
-        GetInstanceResponseBody.Data data = body == null ? null : body.getData();
+        GetInstanceResponseBody body = AliyunResponseValidator.requireReadableBody(
+                "instance lookup", response == null ? null : response.getBody(),
+                GetInstanceResponseBody::getSuccess, GetInstanceResponseBody::getCode,
+                GetInstanceResponseBody::getMessage);
+        GetInstanceResponseBody.Data data = body.getData();
         if (data == null) {
             throw new BusinessException(404, "Aliyun instance not found: " + normalizedCloudInstanceId);
         }
@@ -126,8 +133,11 @@ public class AliyunCatalogService implements CloudCatalogProvider {
                     .build();
             ListInstancesResponse response = clientFactory.call(credentialId, regionId,
                     client -> client.listInstances(request));
-            ListInstancesResponseBody body = response == null ? null : response.getBody();
-            ListInstancesResponseBody.Data data = body == null ? null : body.getData();
+            ListInstancesResponseBody body = AliyunResponseValidator.requireReadableBody(
+                    "instance listing", response == null ? null : response.getBody(),
+                    ListInstancesResponseBody::getSuccess, ListInstancesResponseBody::getCode,
+                    ListInstancesResponseBody::getMessage);
+            ListInstancesResponseBody.Data data = body.getData();
             List<ListInstancesResponseBody.List> list = data == null ? null : data.getList();
             if (list == null || list.isEmpty()) {
                 break;
