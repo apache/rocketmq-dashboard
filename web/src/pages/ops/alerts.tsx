@@ -100,6 +100,16 @@ const aggregationLabelKeys: Record<string, string> = {
   SUM: 'alerts.aggregation.SUM',
 };
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
+/**
+ * The rule runtime states that are not a firing/pending count (`AlertStateStatus`: OK, PENDING,
+ * FIRING, RESOLVED, ACKED). FIRING and PENDING render their sample count through
+ * `alerts.firingCount` / `alerts.pendingCount`; the other three used to print the raw enum.
+ */
+const runtimeStateLabels: Record<string, { labelKey: string; color: string }> = {
+  OK: { labelKey: 'alerts.runtimeOk', color: 'success' },
+  RESOLVED: { labelKey: 'sysAlerts.resolved', color: 'default' },
+  ACKED: { labelKey: 'alerts.runtimeAcknowledged', color: 'gold' },
+};
 const availabilityMetrics = new Set([
   'nameserver.availability',
   'broker.availability',
@@ -740,13 +750,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
           return <span style={{ color: '#999' }}>{t('alerts.notCollected')}</span>;
         const firing = states.filter((state) => state.status === 'FIRING').length;
         const pending = states.filter((state) => state.status === 'PENDING').length;
+        const namedState = runtimeStateLabels[states[0].status];
         return (
-          <Tag color={firing ? 'error' : pending ? 'warning' : 'default'}>
+          <Tag color={firing ? 'error' : pending ? 'warning' : (namedState?.color ?? 'default')}>
             {firing
               ? t('alerts.firingCount', { count: firing })
               : pending
                 ? t('alerts.pendingCount', { count: pending })
-                : states[0].status}
+                : namedState
+                  ? t(namedState.labelKey)
+                  : states[0].status}
           </Tag>
         );
       },
