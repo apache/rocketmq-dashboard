@@ -24,6 +24,7 @@ import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminProperties;
@@ -41,6 +42,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -384,6 +386,39 @@ class RocketMQClusterProviderTest {
         // discovery must agree, so both views list the same clusters in the same order.
         assertThat(clusters).extracting(ClusterVO::getId)
                 .containsExactly("alpha-cluster", "zeta-cluster");
+    }
+
+    @Test
+    void discoverClustersShouldOrderBrokersByNameRegardlessOfSetOrderTest() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+
+        HashMap<Long, String> firstAddrs = new HashMap<>();
+        firstAddrs.put(0L, "10.0.0.11:10911");
+        HashMap<Long, String> secondAddrs = new HashMap<>();
+        secondAddrs.put(0L, "10.0.0.12:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("DefaultCluster", "broker-a", firstAddrs));
+        brokerAddrTable.put("broker-b", new BrokerData("DefaultCluster", "broker-b", secondAddrs));
+        // A LinkedHashSet keeps this insertion order, which is the reverse of name order, so the
+        // assertion below can only hold when buildBrokerList walks a name-sorted copy.
+        Set<String> brokerNames = new LinkedHashSet<>(List.of("broker-b", "broker-a"));
+        HashMap<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("DefaultCluster", brokerNames);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(adminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(runtimeStats());
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        // RealClusterProvider lists a cluster's brokers by name; the instance-backed discovery
+        // must agree, so both views render the same broker order.
+        assertThat(clusters).hasSize(1);
+        assertThat(clusters.get(0).getBrokers())
+                .extracting(BrokerVO::getName)
+                .containsExactly("broker-a", "broker-b");
     }
 
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {

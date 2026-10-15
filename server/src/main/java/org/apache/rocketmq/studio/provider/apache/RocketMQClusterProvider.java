@@ -249,7 +249,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
         // brokerNames is a deserialised HashSet, so its iteration order is hash order while
         // RealClusterProvider lists a cluster's brokers by name; walk a sorted copy so the views agree.
-        for (String brokerName : new java.util.TreeSet<>(brokerNames)) {
+        for (String brokerName : new TreeSet<>(brokerNames)) {
             BrokerData brokerData = brokerAddrTable.get(brokerName);
             if (brokerData == null || brokerData.getBrokerAddrs() == null) {
                 continue;
