@@ -30,7 +30,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { StrictMode } from 'react';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { QueueBrowserControls, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { LangProvider } from '../../i18n/LangContext';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -501,5 +502,48 @@ describe('QueueBrowser request ownership', () => {
     expect(
       within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('QueueBrowser localization', () => {
+  // The queue browser hardcoded Chinese strings regardless of the display language (#4941 fixed
+  // the composer font size; this panel regressed the other way). The strings now go through the
+  // translation table like every other surface.
+  it('renders the controls and empty states in the display language', () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+
+    // The hook itself consumes the language context, so it must render inside the provider.
+    const Inner = () => {
+      const state = useQueueBrowser(undefined);
+      return (
+        <>
+          <QueueBrowserControls
+            instanceId={undefined}
+            state={state}
+            topicOptions={[]}
+            topicLoading={false}
+          />
+          <QueueBrowserResults state={state} />
+        </>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+
+    // The search icon contributes to the accessible name, so match on the label text.
+    expect(screen.getByRole('button', { name: /Load Queues/ })).toBeInTheDocument();
+    expect(
+      screen.getByText('Select a topic and click "Load Queues" to browse messages by queue'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Select a topic')).toBeInTheDocument();
+    // The empty queue list renders before the detail pane, so only its hint is visible here;
+    // the point is that no hardcoded Chinese remains on the rendered surface.
+    expect(screen.queryByText('加载队列')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('选择 Topic 并点击「加载队列」，按队列浏览消息'),
+    ).not.toBeInTheDocument();
   });
 });
