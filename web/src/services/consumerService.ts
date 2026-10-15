@@ -161,8 +161,11 @@ export async function listAllConsumerGroups(
     });
     groups.push(...result.items);
     const total = result.total ?? groups.length;
-    if (result.items.length === 0 || groups.length >= total) {
+    if (groups.length >= total) {
       return groups.map(normalizeConsumerGroup);
+    }
+    if (result.items.length === 0) {
+      throw new Error(`Incomplete consumer group list: received ${groups.length} of ${total}`);
     }
     page += 1;
   }
