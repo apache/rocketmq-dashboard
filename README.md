@@ -110,6 +110,12 @@ the cluster at `nameserver:9876` over the shared network (the backend default).
 | **AI Assistant** | Hosted-agent chat over SSE with server-side conversation history, visible chain of thought, and RocketMQ tool calls through the `rmqctl` MCP bridge; query / diagnose / manage / general modes |
 | **Settings** | General preferences, LLM config, datasource management |
 
+Topic and consumer-group CSV imports accept at most 100 nonblank data records.
+The parser stops when the first excess record completes, before reading the
+remaining CSV; blank rows and newlines inside quoted cells do not count as
+additional records. This record limit does not impose a file-byte or cell-size
+limit: the browser still reads the selected file before parsing it.
+
 ## AI Assistant
 
 Studio **hosts** a general-purpose agent CLI — Claude Code or Qoder, plus a plain OpenAI-compatible
