@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// Configuration changes are saved before confirmation output. Report output errors without
+// rolling back or replaying the successful change.
 func newConfigCommand(runtime commandRuntime) *cobra.Command {
 	root := &cobra.Command{Use: "config", Short: "Manage local rmqctl contexts"}
 	root.AddCommand(newConfigSetContextCommand(runtime))
@@ -66,8 +68,8 @@ func newConfigSetContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]any{"context": name, "created": !exists})
 			}
-			fmt.Fprintf(out, "updated context %s\n", name)
-			return nil
+			_, err = fmt.Fprintf(out, "updated context %s\n", name)
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&server, "server", "", "Studio Server URL")
@@ -98,8 +100,8 @@ func newConfigUseContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]string{"currentContext": args[0]})
 			}
-			fmt.Fprintf(out, "current context: %s\n", args[0])
-			return nil
+			_, err = fmt.Fprintf(out, "current context: %s\n", args[0])
+			return err
 		},
 	}
 }
@@ -130,8 +132,8 @@ func newConfigDeleteContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]any{"deleted": name})
 			}
-			fmt.Fprintf(out, "deleted context %s\n", name)
-			return nil
+			_, err = fmt.Fprintf(out, "deleted context %s\n", name)
+			return err
 		},
 	}
 }
@@ -172,8 +174,8 @@ func newConfigCurrentContextCommand(runtime commandRuntime) *cobra.Command {
 			if output.IsStructured(runtime.options.output) {
 				return output.Structured(out, runtime.options.output, map[string]string{"currentContext": cfg.CurrentContext})
 			}
-			fmt.Fprintln(out, cfg.CurrentContext)
-			return nil
+			_, err = fmt.Fprintln(out, cfg.CurrentContext)
+			return err
 		},
 	}
 }
