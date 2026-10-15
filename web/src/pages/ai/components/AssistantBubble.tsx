@@ -233,6 +233,7 @@ const AssistantBubble = ({
                     key={`tool-${index}-${block.tcId}`}
                     block={block}
                     toolCatalog={toolCatalog}
+                    runStatus={bubble.runStatus}
                   />
                 );
               case 'notice':

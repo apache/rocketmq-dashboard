@@ -70,6 +70,45 @@ const TOOL_RESULT = {
   success: true,
 };
 
+describe('terminal tool rendering', () => {
+  it.each(['STOPPED', 'FAILED', 'COMPLETED'] as const)(
+    'doesNotClaimAnUnfinishedToolIsStillRunningAfter%sTest',
+    (runStatus) => {
+      const pendingTool = runningToolBlock('pending', 'rmq.topic.list', { instanceId: 'prod' });
+      const { rerender } = render(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([pendingTool])} streaming />
+        </LangProvider>,
+      );
+      expect(screen.getByTestId('ai-tool-progress')).toBeInTheDocument();
+      rerender(
+        <LangProvider>
+          <AssistantBubble bubble={bubble([pendingTool], { runStatus })} />
+        </LangProvider>,
+      );
+      expect(screen.queryByTestId('ai-tool-progress')).not.toBeInTheDocument();
+      const card = screen.getByTestId('ai-tool-block');
+      expect(within(card).queryByText('执行中')).not.toBeInTheDocument();
+      expect(within(card).queryByText('成功')).not.toBeInTheDocument();
+      expect(within(card).queryByText('失败')).not.toBeInTheDocument();
+      expect(within(card).getByText('未返回结果')).toBeInTheDocument();
+      expect(within(card).getByTestId('tool-input')).toHaveTextContent('prod');
+      expect(pendingTool.status).toBe('running');
+    },
+  );
+
+  it('keepsAnObservedResultOnATerminalRunTest', () => {
+    renderBubble({
+      blocks: withToolResult([], TOOL_RESULT),
+      bubbleExtra: { runStatus: 'STOPPED' },
+    });
+    const card = screen.getByTestId('ai-tool-block');
+    expect(within(card).getByText('成功')).toBeInTheDocument();
+    expect(within(card).getByTestId('tool-result')).toHaveTextContent('TopicA');
+    expect(within(card).queryByText('未返回结果')).not.toBeInTheDocument();
+  });
+});
+
 function bubble(blocks: RenderBlock[], extra: Partial<Bubble> = {}): Bubble {
   return { role: 'assistant', blocks, ...extra };
 }

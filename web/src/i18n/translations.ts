@@ -1866,6 +1866,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.tool.unknownName': { zh: '未知工具', en: 'Unknown tool' },
   'ai.tool.output': { zh: '执行结果', en: 'Result' },
   'ai.tool.running': { zh: '执行中', en: 'Running' },
+  'ai.tool.missingResult': { zh: '未返回结果', en: 'No result' },
+  'ai.tool.outputMissing': {
+    zh: '本次运行已结束，未收到工具结果',
+    en: 'The run ended without a tool result',
+  },
   'ai.tool.success': { zh: '成功', en: 'Success' },
   'ai.tool.failed': { zh: '失败', en: 'Failed' },
   'ai.tool.truncated': { zh: '已截断（{size}）', en: 'Truncated ({size})' },
