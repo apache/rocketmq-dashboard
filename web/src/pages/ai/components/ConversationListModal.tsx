@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useMemo, useState, type Key } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
 import {
   Alert,
   Button,
@@ -163,8 +163,10 @@ export interface ConversationListModalProps {
 const ConversationListPanel = ({
   activeConversationId,
   onSelect,
-  onActiveDeleted,
-}: Omit<ConversationListModalProps, 'open' | 'onClose'>) => {
+  onDeleted,
+}: Pick<ConversationListModalProps, 'activeConversationId' | 'onSelect'> & {
+  onDeleted: (ids: readonly number[]) => boolean;
+}) => {
   const { t } = useLang();
   const list = useConversationList();
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
@@ -175,6 +177,13 @@ const ConversationListPanel = ({
   // depending on it would rebuild `columns` — and with it every cell — on each one.
   const { items, page, setPage, reload, archived } = list;
   const rowCount = items.length;
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   /**
    * Flips the row's archived flag (PATCH) and reloads the scope: an archived conversation leaves
@@ -220,6 +229,9 @@ const ConversationListPanel = ({
         }
       }
       const deletedCount = ids.length - failed.length;
+      // The modal shell survives closing its panel and knows which conversation is
+      // active now. Notify it even when the panel was closed during deletion.
+      const activeDeleted = onDeleted(ids.filter((id) => !failed.includes(id)));
       setDeletingIds([]);
       setSelectedRowKeys((keys) => keys.filter((key) => failed.includes(Number(key))));
       if (failed.length === 0) {
@@ -233,14 +245,14 @@ const ConversationListPanel = ({
       }
       // Only a delete that SUCCEEDED ends the open conversation: deletion may have failed, and then
       // the conversation is still on screen, so the caller must stay put and the list still refresh.
-      const activeDeleted =
-        activeConversationId != null &&
-        ids.includes(activeConversationId) &&
-        !failed.includes(activeConversationId);
       if (activeDeleted) {
-        onActiveDeleted?.();
         return;
       }
+      // The toasts above are global — antd mounts them at document level, not inside this panel — so
+      // closing the panel mid-delete must not swallow the outcome, least of all a failure. What does
+      // belong to the panel is the refresh below: re-querying a list nobody renders any more wastes a
+      // request and drives this hook's state from a component that is already gone.
+      if (!mountedRef.current) return;
       // A page emptied by the delete has to fall back one, or the pager keeps offering a page that
       // no longer exists; `setPage` re-queries through the hook, `reload` covers every other case.
       if (deletedCount > 0 && deletedCount >= rowCount && page > 1) {
@@ -249,7 +261,7 @@ const ConversationListPanel = ({
         reload();
       }
     },
-    [activeConversationId, onActiveDeleted, page, reload, rowCount, setPage, t],
+    [onDeleted, page, reload, rowCount, setPage, t],
   );
 
   const columns = useMemo<ColumnsType<AiConversationListItemVO>>(
@@ -351,9 +363,7 @@ const ConversationListPanel = ({
         dataIndex: 'updatedAt',
         key: 'updatedAt',
         width: COLUMN_WIDTHS.updatedAt,
-        // No zone name: it is the viewer's own and identical on every row, so it would only make
-        // this the widest column in the table to say something the reader already knows.
-        render: (updatedAt: string) => formatUtcDateTime(updatedAt, undefined, { zone: false }),
+        render: (updatedAt: string) => formatUtcDateTime(updatedAt),
       },
       {
         title: t('ai.list.columnAction'),
@@ -509,6 +519,23 @@ const ConversationListModal = ({
   onActiveDeleted,
 }: ConversationListModalProps) => {
   const { t } = useLang();
+  const deletionContextRef = useRef<{
+    activeId: number | null;
+    notify: (() => void) | undefined;
+  } | null>(null);
+  useEffect(() => {
+    deletionContextRef.current = { activeId: activeConversationId, notify: onActiveDeleted };
+    return () => {
+      deletionContextRef.current = null;
+    };
+  }, [activeConversationId, onActiveDeleted]);
+
+  const handleDeleted = useCallback((ids: readonly number[]) => {
+    const context = deletionContextRef.current;
+    if (context?.activeId == null || !ids.includes(context.activeId)) return false;
+    context.notify?.();
+    return true;
+  }, []);
 
   return (
     <Modal
@@ -523,7 +550,7 @@ const ConversationListModal = ({
       <ConversationListPanel
         activeConversationId={activeConversationId}
         onSelect={onSelect}
-        onActiveDeleted={onActiveDeleted}
+        onDeleted={handleDeleted}
       />
     </Modal>
   );

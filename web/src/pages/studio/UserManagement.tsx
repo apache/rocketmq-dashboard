@@ -16,10 +16,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
-  Drawer,
   Flex,
   Form,
   Input,
@@ -131,9 +131,10 @@ const UserManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>();
   const [loading, setLoading] = useState(false);
   const [sessionOverview, setSessionOverview] = useState<StudioUserSessionOverview | null>(null);
-  const [sessionDrawerUser, setSessionDrawerUser] = useState<StudioUser | null>(null);
+  const [sessionModalUser, setSessionModalUser] = useState<StudioUser | null>(null);
   const [sessionDetails, setSessionDetails] = useState<StudioUserSessionDetail[]>([]);
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
+  const [sessionDetailsFailed, setSessionDetailsFailed] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<StudioUser | null>(null);
   const [userExporting, setUserExporting] = useState(false);
@@ -142,6 +143,7 @@ const UserManagementPage = () => {
   const [passwordForm] = Form.useForm<PasswordFormValues>();
   const requestSeqRef = useRef(0);
   const sessionDetailsRequestSeqRef = useRef(0);
+  const sessionModalUserIdRef = useRef<number | null>(null);
   const mutatingUserIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
@@ -155,7 +157,8 @@ const UserManagementPage = () => {
       setUsers([]);
       setTotal(0);
       setSessionOverview(null);
-      setSessionDrawerUser(null);
+      sessionModalUserIdRef.current = null;
+      setSessionModalUser(null);
       setSessionDetails([]);
       return;
     }
@@ -203,6 +206,7 @@ const UserManagementPage = () => {
     () => () => {
       requestSeqRef.current += 1;
       sessionDetailsRequestSeqRef.current += 1;
+      sessionModalUserIdRef.current = null;
     },
     [],
   );
@@ -215,12 +219,16 @@ const UserManagementPage = () => {
         const details = await listStudioUserSessions(record.id);
         if (requestId !== sessionDetailsRequestSeqRef.current) return;
         setSessionDetails(details);
-        setSessionDrawerUser((current) =>
+        setSessionDetailsFailed(false);
+        setSessionModalUser((current) =>
           current?.id === record.id ? { ...current, activeSessionCount: details.length } : current,
         );
       } catch {
         if (requestId === sessionDetailsRequestSeqRef.current) {
+          // An empty list would read as "this account has no sessions" in the drawer, which is a
+          // claim the failed request cannot support (and a security-relevant one).
           setSessionDetails([]);
+          setSessionDetailsFailed(true);
           message.error(t('userMgmt.loadSessionsFailed'));
         }
       } finally {
@@ -232,29 +240,37 @@ const UserManagementPage = () => {
     [t],
   );
 
-  const openSessionDrawer = (record: StudioUser) => {
-    setSessionDrawerUser(record);
+  const openSessionModal = (record: StudioUser) => {
+    sessionModalUserIdRef.current = record.id;
+    setSessionModalUser(record);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     void loadSessionDetails(record);
   };
 
-  const closeSessionDrawer = () => {
+  const closeSessionModal = () => {
+    sessionModalUserIdRef.current = null;
     sessionDetailsRequestSeqRef.current += 1;
-    setSessionDrawerUser(null);
+    setSessionModalUser(null);
     setSessionDetails([]);
+    setSessionDetailsFailed(false);
     setSessionDetailsLoading(false);
   };
 
   const createUser = async () => {
-    const values = await createForm.validateFields();
     try {
+      const values = await createForm.validateFields();
       await createStudioUser(values);
       message.success(t('userMgmt.userCreated'));
       setCreateOpen(false);
       createForm.resetFields();
       if (page === 1) await loadUsers();
       else setPage(1);
-    } catch {
+    } catch (error) {
+      // Validation failures are surfaced by antd as field errors; only report
+      // request failures here. Either way the rejection must not escape this
+      // handler, since the modal wiring calls it fire-and-forget.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.createFailed'));
     }
   };
@@ -295,8 +311,8 @@ const UserManagementPage = () => {
 
   const updatePassword = async () => {
     if (!passwordTarget) return;
-    const values = await passwordForm.validateFields();
     try {
+      const values = await passwordForm.validateFields();
       if (passwordTarget.id === userId) {
         await changePassword(values.currentPassword ?? '', values.newPassword);
         clearAuth();
@@ -308,7 +324,9 @@ const UserManagementPage = () => {
       }
       setPasswordTarget(null);
       passwordForm.resetFields();
-    } catch {
+    } catch (error) {
+      // See createUser: validation rejections must stay handled here.
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
       message.error(t('userMgmt.changePasswordFailed'));
     }
   };
@@ -328,7 +346,9 @@ const UserManagementPage = () => {
           navigate('/login', { replace: true });
           return;
         }
-        if (sessionDrawerUser?.id === record.id) {
+        // The operator may have closed or changed drawers while revocation was pending.
+        // Do not let its follow-up read take ownership of another user's session details.
+        if (sessionModalUserIdRef.current === record.id) {
           await loadSessionDetails({ ...record, activeSessionCount: 0 });
         }
         await loadUsers();
@@ -406,7 +426,8 @@ const UserManagementPage = () => {
   // horizontal scrollbar by default. Columns whose text can be longer than that truncate with
   // the full value on hover instead of wrapping.
   const columns: ColumnsType<StudioUser> = [
-    { title: t('userMgmt.username'), dataIndex: 'username', width: 120, ellipsis: true },
+    // 用户名实测最长 50px（`reader1`）+ 32px padding = 82px；96 留有余量，省下的 24px 给操作列。
+    { title: t('userMgmt.username'), dataIndex: 'username', width: 96, ellipsis: true },
     { title: t('userMgmt.userId'), dataIndex: 'id', width: 80 },
     {
       title: t('userMgmt.role'),
@@ -442,28 +463,36 @@ const UserManagementPage = () => {
     {
       title: t('userMgmt.lastActive'),
       dataIndex: 'lastSessionSeenAt',
-      width: 132,
+      // The `YYYY-MM-DD HH:mm:ss` label measures 129px in this table (Chromium with this app's font
+      // stack), so the cell needs 129 + 32px of default-size padding = 161px. 177 keeps that margin
+      // and frees 5px per time column for the action column below, whose buttons did not fit.
+      // The earlier 182 assumed a 149px label; the small-table equivalent used elsewhere is 156.
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.nearestExpiry'),
       dataIndex: 'nearestSessionExpiresAt',
-      width: 132,
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('userMgmt.createdAt'),
       dataIndex: 'gmtCreate',
-      width: 132,
+      width: 177,
       ellipsis: true,
       render: dateTime,
     },
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 264,
+      // 改密 / 会话 / 注销 三个小按钮实测各 66px + 启用禁用开关 57px + 3×4px 间距 = 267px，
+      // 加默认尺寸表格左右各 16px padding = 299px。原来声明 264px（内容盒 235px），开关整体
+      // 右溢 31.6px 冲出表格右缘（实测于本地 Chromium + Noto Sans CJK，1600 视口）。
+      // 多出的 35px 由用户名列（120 → 96，内容实测 50px）与三个时间列（各 -5px）收回。
+      width: 299,
       render: (_, record) => (
         <Space size={4}>
           <Button size="small" icon={<Key size={14} />} onClick={() => setPasswordTarget(record)}>
@@ -472,7 +501,7 @@ const UserManagementPage = () => {
           <Button
             size="small"
             icon={<ListBullets size={14} />}
-            onClick={() => openSessionDrawer(record)}
+            onClick={() => openSessionModal(record)}
           >
             {t('userMgmt.sessions')}
           </Button>
@@ -650,111 +679,137 @@ const UserManagementPage = () => {
         </Card>
       )}
 
-      <Drawer
+      <Modal
         title={
-          sessionDrawerUser
-            ? t('userMgmt.sessionsOf', { username: sessionDrawerUser.username })
+          sessionModalUser
+            ? t('userMgmt.sessionsOf', { username: sessionModalUser.username })
             : t('userMgmt.userSessions')
         }
-        width={1040}
-        open={sessionDrawerUser !== null}
-        onClose={closeSessionDrawer}
+        width="min(1040px, calc(100vw - 32px))"
+        open={sessionModalUser !== null}
+        onCancel={closeSessionModal}
         destroyOnHidden
-        extra={
-          sessionDrawerUser ? (
-            <Space>
-              <Button
-                icon={<ArrowClockwise size={16} />}
-                loading={sessionDetailsLoading}
-                onClick={() => void loadSessionDetails(sessionDrawerUser)}
-              >
-                {t('common.refresh')}
-              </Button>
-              <Popconfirm
-                title={t('userMgmt.revokeConfirm', { username: sessionDrawerUser.username })}
-                description={t('userMgmt.revokeDescription')}
-                okText={t('userMgmt.revoke')}
-                cancelText={t('common.cancel')}
-                okButtonProps={{ danger: true }}
-                disabled={sessionDetails.length === 0}
-                onConfirm={() => void revokeSessions(sessionDrawerUser)}
-              >
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
+        footer={
+          sessionModalUser ? (
+            <Flex justify="flex-end">
+              <Space>
                 <Button
-                  danger
-                  icon={<SignOut size={16} />}
-                  disabled={sessionDetails.length === 0}
-                  loading={mutatingUserIds.has(sessionDrawerUser.id)}
+                  icon={<ArrowClockwise size={16} />}
+                  loading={sessionDetailsLoading}
+                  onClick={() => void loadSessionDetails(sessionModalUser)}
                 >
-                  {t('userMgmt.revokeAll')}
+                  {t('common.refresh')}
                 </Button>
-              </Popconfirm>
-            </Space>
-          ) : undefined
+                <Popconfirm
+                  title={t('userMgmt.revokeConfirm', { username: sessionModalUser.username })}
+                  description={t('userMgmt.revokeDescription')}
+                  okText={t('userMgmt.revoke')}
+                  cancelText={t('common.cancel')}
+                  okButtonProps={{ danger: true }}
+                  disabled={sessionDetails.length === 0}
+                  onConfirm={() => void revokeSessions(sessionModalUser)}
+                >
+                  <Button
+                    danger
+                    icon={<SignOut size={16} />}
+                    disabled={sessionDetails.length === 0}
+                    loading={mutatingUserIds.has(sessionModalUser.id)}
+                  >
+                    {t('userMgmt.revokeAll')}
+                  </Button>
+                </Popconfirm>
+              </Space>
+            </Flex>
+          ) : null
         }
       >
-        {sessionDrawerUser && (
+        {sessionModalUser && (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Descriptions
               bordered
               size="small"
               column={2}
               items={[
-                { key: 'userId', label: t('userMgmt.userId'), children: sessionDrawerUser.id },
+                { key: 'userId', label: t('userMgmt.userId'), children: sessionModalUser.id },
                 {
                   key: 'role',
                   label: t('userMgmt.role'),
-                  children: sessionDrawerUser.admin
+                  children: sessionModalUser.admin
                     ? t('userMgmt.roleAdmin')
                     : t('userMgmt.roleUser'),
                 },
                 {
                   key: 'activeSessionCount',
                   label: t('userMgmt.activeSessions'),
-                  children: sessionDetailsLoading ? '-' : sessionDetails.length,
+                  children:
+                    sessionDetailsLoading || sessionDetailsFailed ? '-' : sessionDetails.length,
                 },
                 {
                   key: 'status',
                   label: t('userMgmt.accountStatus'),
-                  children: sessionDrawerUser.enabled ? t('common.enabled') : t('common.disabled'),
+                  children: sessionModalUser.enabled ? t('common.enabled') : t('common.disabled'),
                 },
                 {
                   key: 'lastSessionSeenAt',
                   label: t('userMgmt.lastActive'),
-                  children: dateTime(sessionDrawerUser.lastSessionSeenAt),
+                  children: dateTime(sessionModalUser.lastSessionSeenAt),
                 },
                 {
                   key: 'nearestSessionExpiresAt',
                   label: t('userMgmt.nearestExpiry'),
-                  children: dateTime(sessionDrawerUser.nearestSessionExpiresAt),
+                  children: dateTime(sessionModalUser.nearestSessionExpiresAt),
                 },
                 {
                   key: 'passwordChangedAt',
                   label: t('userMgmt.passwordChangedAt'),
-                  children: dateTime(sessionDrawerUser.passwordChangedAt),
+                  children: dateTime(sessionModalUser.passwordChangedAt),
                 },
               ]}
             />
-            <Table
-              rowKey="id"
-              loading={sessionDetailsLoading}
-              columns={sessionDetailColumns}
-              dataSource={sessionDetails}
-              tableLayout="fixed"
-              pagination={false}
-              scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
-              locale={{ emptyText: t('userMgmt.noActiveSessions') }}
-            />
+            {sessionDetailsFailed ? (
+              <Alert
+                type="error"
+                showIcon
+                message={t('userMgmt.loadSessionsFailed')}
+                action={
+                  <Button
+                    size="small"
+                    onClick={() => sessionModalUser && void loadSessionDetails(sessionModalUser)}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                }
+              />
+            ) : (
+              <Table
+                rowKey="id"
+                loading={sessionDetailsLoading}
+                columns={sessionDetailColumns}
+                dataSource={sessionDetails}
+                tableLayout="fixed"
+                pagination={false}
+                scroll={{ x: tableScrollX(sessionDetailColumns), y: 420 }}
+                locale={{ emptyText: t('userMgmt.noActiveSessions') }}
+              />
+            )}
           </Space>
         )}
-      </Drawer>
+      </Modal>
 
       <Modal
         title={t('userMgmt.createTitle')}
         open={createOpen}
         onOk={() => void createUser()}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false);
+          createForm.resetFields();
+        }}
+        destroyOnHidden
       >
-        <Form form={createForm} layout="vertical" initialValues={{ admin: false }}>
+        <Form form={createForm} layout="vertical" initialValues={{ admin: false }} preserve={false}>
           <Form.Item
             name="username"
             label={t('userMgmt.username')}

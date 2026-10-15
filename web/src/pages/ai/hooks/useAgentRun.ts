@@ -45,7 +45,7 @@ import { describeThrownMessage } from '../../../utils/apiError';
  * - `generationRef` identifies the (re)attach. Every callback compares against it, so frames from a
  *   conversation the user navigated away from are dropped instead of repainting another
  *   transcript.
- * - `streamRequestIdRef` identifies the request, the `MessageQueryHistoryDrawer` idiom: it is
+ * - `streamRequestIdRef` identifies the request, the `MessageQueryHistoryModal` idiom: it is
  *   re-read after every await, so a superseded stream can neither flip `isStreaming` nor clear the
  *   blocks that the current run owns.
  *
@@ -268,6 +268,9 @@ export function useAgentRun(
       // instead of flashing an empty transcript. It is also what makes a run that died mid-stream
       // render correctly after a reload: whatever reached the database comes back.
       await persistRunSpeed();
+      // Reporting can outlive navigation or a newer send. Re-check before invoking the
+      // current page's callback, which may now belong to a different conversation.
+      if (requestId !== streamRequestIdRef.current) return;
       try {
         await optionsRef.current.refetchTimeline();
       } catch (refetchError) {

@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -129,7 +129,6 @@ describe('LiteTopic Page', () => {
       sessionId: 'session-1',
       totalMessages: 100,
       consumedMessages: 0,
-      popProgress: 96,
     });
     instanceApiMocks.listInstances.mockResolvedValue([]);
   });
@@ -187,15 +186,54 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
-  it('displays the session POP progress returned by the API as a percentage', async () => {
+  it('does not offer a POP progress panel the API never fills', async () => {
+    // PopConsumeProgress was never written by any provider, so `popProgress` was always absent and
+    // the panel could only ever render from a fixture: the drawer no longer offers it.
     const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      popProgress: 96,
+    });
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    await screen.findByText('session-1');
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
+    // The percentage is the load-bearing half: the panel's title came from an i18n key this change
+    // deletes, so asserting on its text would pass with or without the panel. `96%` only ever came
+    // from the panel's Progress, so a re-added panel turns this red.
+    expect(screen.queryByText('96%')).not.toBeInTheDocument();
+  });
+
+  it('reports a consumed count that only covers part of the session', async () => {
+    // The consumed-offset scan reads at most MAX_SESSION_LITE_TOPIC_SCAN lite topics, so a session
+    // with more of them only gets a lower bound. The drawer must not present it as a measured total
+    // and must not derive a consumption percentage from it.
+    const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      totalMessages: 1500,
+      consumedMessages: 1000,
+      pendingMessages: 500,
+      consumedScanTruncated: true,
+    });
     renderPage();
 
     await user.click(await screen.findByText('查看会话'));
 
-    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
-    const popProgressLabel = await screen.findByText('Pop 进度');
-    expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
+    expect(await screen.findByTestId('lite-topic-consumed-truncated')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1500')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1000')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    // The ratio is the part that has to disappear: 1000/1500 would render as 67%, and swapping the
+    // `consumedTruncated ? InfoBanner : Progress` branch back leaves every assertion above green.
+    expect(screen.queryByText('67%')).not.toBeInTheDocument();
   });
 
   it('allows viewing every session linked to the same LiteTopic row', async () => {

@@ -369,8 +369,12 @@ func defaultConfirm(ctx context.Context, in io.Reader, out io.Writer, commandPat
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		return riskConfirmationRequired(commandPath, riskLevel)
 	}
-	fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel)
-	fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server)
+	if _, err := fmt.Fprintf(out, "WARNING: %q is a %s operation.\n", commandPath, riskLevel); err != nil {
+		return fmt.Errorf("write confirmation warning: %w", err)
+	}
+	if _, err := fmt.Fprintf(out, "Arguments will be sent to %s. Type \"yes\" to continue: ", server); err != nil {
+		return fmt.Errorf("write confirmation prompt: %w", err)
+	}
 
 	// The stdin read itself cannot be interrupted, so run it alongside the context: a canceled
 	// context always wins over an answer that may already have been typed, and the buffered

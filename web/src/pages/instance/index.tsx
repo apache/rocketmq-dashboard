@@ -158,7 +158,7 @@ const InstancePage = () => {
 
     setLoading(true);
     try {
-      const nextInstances = await listInstances(query);
+      const nextInstances = await listInstances({ ...query, withCounts: true });
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
         const availableNames = new Set(nextInstances.map((instance) => instance.name));

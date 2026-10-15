@@ -322,7 +322,12 @@ describe('SystemAlertsPage', () => {
     renderPage();
     await screen.findByText('Mixed-case error');
 
-    await user.click(screen.getByRole('button', { name: /严重/ }));
+    // 级别筛选是 Segmented：里面的 radio input 带 pointer-events: none，user.click 点不动，
+    // 要点它外层的 .ant-segmented-item label。不能用 getByText('严重')——告警卡片里也渲染同一个词。
+    const severeFilter = screen
+      .getByRole('radio', { name: /严重/ })
+      .closest('.ant-segmented-item') as HTMLElement;
+    await user.click(severeFilter);
 
     await waitFor(() => {
       expect(screen.getByText('Mixed-case error')).toBeInTheDocument();
@@ -344,12 +349,14 @@ describe('SystemAlertsPage', () => {
 
     await user.type(screen.getByLabelText('实例 ID 筛选'), 'local');
     await user.type(screen.getByLabelText('资源标签筛选'), 'brokerName=broker-a');
-    fireEvent.change(screen.getByLabelText('开始时间筛选'), {
-      target: { value: '2026-08-01T00:00' },
-    });
-    fireEvent.change(screen.getByLabelText('结束时间筛选'), {
-      target: { value: '2026-08-02T00:00' },
-    });
+    await user.click(screen.getByPlaceholderText('开始时间'));
+    await user.keyboard('2026-08-01 00:00');
+    await user.tab();
+    await user.keyboard('2026-08-02 00:00');
+    // showTime 的时间面板要点确定才提交；「清除已确认」按钮的名字里也带「确」，只能按类名取
+    const okButton = document.querySelector('.ant-picker-ok button');
+    if (!(okButton instanceof HTMLElement)) throw new Error('range picker ok button not found');
+    await user.click(okButton);
 
     await waitFor(() => {
       expect(listSystemAlertsPage).toHaveBeenLastCalledWith(

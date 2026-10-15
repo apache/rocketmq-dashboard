@@ -104,6 +104,13 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+// antd's Spin keys `.ant-spin-blur` (pointer-events: none over the table) on state that lags the
+// Table's loading prop by a commit; clicking a row button inside that window is rejected. Same
+// helper as ConsumerPage.test.tsx.
+async function expectInteractive(element: Element) {
+  await waitFor(() => expect(getComputedStyle(element).pointerEvents).not.toBe('none'));
+}
+
 describe('DLQ page', () => {
   let createObjectURL: ReturnType<typeof vi.fn>;
   let revokeObjectURL: ReturnType<typeof vi.fn>;
@@ -272,7 +279,7 @@ describe('DLQ page', () => {
 
       const row = (await screen.findByText('cg-order')).closest('tr');
       if (!row) throw new Error('DLQ group row not found');
-      expect(within(row).getByText('2026-07-24 18:00:00 GMT+8')).toBeInTheDocument();
+      expect(within(row).getByText('2026-07-24 18:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -286,6 +293,7 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: /消息明细/ }));
 
     expect(await screen.findByText('DLQ 消息明细 · cg-order')).toBeInTheDocument();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
     expect(screen.getAllByText('%DLQ%cg-order').length).toBeGreaterThanOrEqual(2);
     expect(messageService.listDLQMessages).toHaveBeenCalledWith(
       expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
@@ -673,6 +681,7 @@ describe('DLQ page', () => {
     if (!orderRow) throw new Error('DLQ group row not found');
 
     await user.click(within(orderRow).getByRole('checkbox'));
+    await expectInteractive(within(orderRow).getByRole('button', { name: '重投消息' }));
     await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
     await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
     await user.click(screen.getByRole('button', { name: '确认重投' }));

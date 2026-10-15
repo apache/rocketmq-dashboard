@@ -40,7 +40,6 @@ import {
   Spin,
   message,
   App,
-  Progress,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
@@ -54,15 +53,12 @@ import {
   SyncOutlined,
   PlusCircleOutlined,
   MinusCircleOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  WarningOutlined,
   DiffOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
 import { InstanceSelect } from '../../components/InstanceSelect';
-import TopicConfigComparisonDrawer from '../../components/TopicConfigComparisonDrawer';
+import TopicConfigComparisonModal from '../../components/TopicConfigComparisonModal';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -89,19 +85,10 @@ import {
 } from '../../utils/resourceCsvImport';
 import { isLagAvailable } from '../../utils/consumerLag';
 import { downloadCsv } from '../../utils/download';
-import { formatBytes, formatDateTime, formatNumber } from '../../utils/format';
+import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
-  analyzeTopicRoutes,
-  type RouteDiagnosticIssue,
-  type RouteDiagnosticStatus,
-  type RouteDistribution,
-} from '../../utils/topicRouteDiagnostics';
-import {
   analyzeMessagePayloadPreview,
-  type MessageBodyFormat,
-  type MessagePayloadIssue,
-  type MessagePayloadPreviewStatus,
   type MessagePropertyInput,
 } from '../../utils/messagePayloadPreview';
 
@@ -291,45 +278,6 @@ const RANDOM_BODY_GENERATORS = [
   { label: '监控指标', fn: randomMetricsBody },
 ];
 
-const ROUTE_STATUS_META: Record<
-  RouteDiagnosticStatus,
-  { color: string; label: string; icon: React.ReactNode }
-> = {
-  healthy: { color: 'success', label: '健康', icon: <CheckCircleOutlined /> },
-  warning: { color: 'warning', label: '关注', icon: <WarningOutlined /> },
-  critical: { color: 'error', label: '异常', icon: <ExclamationCircleOutlined /> },
-};
-
-const ISSUE_SEVERITY_COLOR: Record<RouteDiagnosticIssue['severity'], string> = {
-  warning: 'warning',
-  critical: 'error',
-};
-
-const formatPercent = (value: number) => `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
-
-const BODY_FORMAT_LABEL: Record<MessageBodyFormat, string> = {
-  empty: '空 Body',
-  'json-object': 'JSON Object',
-  'json-array': 'JSON Array',
-  'json-scalar': 'JSON 标量',
-  'plain-text': '文本',
-};
-
-const PAYLOAD_STATUS_META: Record<
-  MessagePayloadPreviewStatus,
-  { label: string; color: string; alertType: 'success' | 'warning' | 'error' }
-> = {
-  ready: { label: '可以发送', color: 'success', alertType: 'success' },
-  warning: { label: '建议检查', color: 'warning', alertType: 'warning' },
-  error: { label: '阻止发送', color: 'error', alertType: 'error' },
-};
-
-const PAYLOAD_ISSUE_COLOR: Record<MessagePayloadIssue['severity'], string> = {
-  info: 'blue',
-  warning: 'warning',
-  error: 'error',
-};
-
 // ═══════════════════════════════════════════════════════════════════
 type TopicPageContentProps = ReturnType<typeof useInstanceFilter>;
 
@@ -391,14 +339,15 @@ const TopicPageContent = ({
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
-  const sendTagValue = Form.useWatch('tag', sendForm);
-  const sendKeyValue = Form.useWatch('key', sendForm);
-  const sendBodyValue = Form.useWatch('body', sendForm);
-  const sendPropsTextValue = Form.useWatch('propsText', sendForm);
-  const sendPropertiesValue = Form.useWatch('properties', sendForm) as
-    MessagePropertyInput[] | undefined;
   const { modal } = App.useApp();
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importReadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      importReadIdRef.current += 1;
+    },
+    [],
+  );
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
   const [importRows, setImportRows] = useState<ResourceImportRow<Partial<Topic>>[]>([]);
@@ -418,28 +367,6 @@ const TopicPageContent = ({
       syncRequestIdRef.current += 1;
     },
     [],
-  );
-
-  const sendPayloadPreview = useMemo(
-    () =>
-      analyzeMessagePayloadPreview({
-        topic: sendTopic?.name,
-        tag: sendTagValue,
-        key: sendKeyValue,
-        body: sendBodyValue,
-        propsMode,
-        propsText: sendPropsTextValue,
-        properties: sendPropertiesValue,
-      }),
-    [
-      propsMode,
-      sendBodyValue,
-      sendKeyValue,
-      sendPropertiesValue,
-      sendPropsTextValue,
-      sendTagValue,
-      sendTopic?.name,
-    ],
   );
 
   const loadTopicPage = useCallback(
@@ -478,6 +405,17 @@ const TopicPageContent = ({
     await loadTopicPage(tablePage, tablePageSize);
   }, [loadTopicPage, tablePage, tablePageSize]);
 
+  // While no instance is selected the table has nothing to fetch, so its spinner simply mirrors the
+  // instance list. Kept in its own effect: putting instancesLoading in the deps of the load below
+  // would re-run it when the list lands and fetch the same page a second time.
+  useEffect(() => {
+    if (selectedInstanceId) return undefined;
+    const spinnerTimer = window.setTimeout(() => setLoading(instancesLoading), 0);
+    return () => {
+      window.clearTimeout(spinnerTimer);
+    };
+  }, [selectedInstanceId, instancesLoading]);
+
   useEffect(() => {
     if (!selectedInstanceId) {
       topicRequestIdRef.current += 1;
@@ -485,7 +423,6 @@ const TopicPageContent = ({
         setTopics([]);
         setTotalTopics(0);
         setSelectedRowKeys([]);
-        setLoading(instancesLoading);
       }, 0);
       return () => {
         window.clearTimeout(resetTimer);
@@ -498,7 +435,7 @@ const TopicPageContent = ({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [selectedInstanceId, tablePage, tablePageSize, instancesLoading, loadTopicPage]);
+  }, [selectedInstanceId, tablePage, tablePageSize, loadTopicPage]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -789,7 +726,8 @@ const TopicPageContent = ({
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      width: 100,
+      // 类型标签实测 38px + 左右 padding 16px；余量让给操作列（见该列注释）。
+      width: 92,
       sorter: (a, b) => (a.type ?? '').localeCompare(b.type ?? ''),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
@@ -821,10 +759,13 @@ const TopicPageContent = ({
     {
       title: '操作',
       key: 'action',
-      // 4 个小按钮实测 274px + 单元格左 padding 8px = 282px；按钮右对齐贴住表格右缘，
-      // 与 Group 管理页操作列样式保持一致。勿随意改小：列宽不足时按钮溢出产生横向滚动条。
+      // 4 个小按钮实测 274px + 3×6px gap 已含在内，再加单元格左右 padding 各 8px = 290px；
+      // 按钮右对齐贴住表格右缘，与 Group 管理页操作列样式保持一致。
+      // 原来写 282px（只加了左 padding 8px），内容盒 266px 装不下 274px 的按钮组，
+      // 第一个按钮左溢 8px 压住「修改时间」列（实测于本地 Chromium + Noto Sans CJK，1600 视口）。
+      // 多出的 8px 从「类型」列（100 → 92，内容实测 38px）收回，声明总宽不变。
       // 宽度由 TopicPage.test.tsx 「keeps the action column wide enough」用例守护。
-      width: 282,
+      width: 290,
       render: (_: unknown, record: Topic) => (
         <Flex gap={6} justify="flex-end" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -838,7 +779,7 @@ const TopicPageContent = ({
           <Button
             size="small"
             icon={<EditOutlined />}
-            style={{ borderColor: '#1677ff', color: '#1677ff' }}
+            style={{ borderColor: '#722ed1', color: '#722ed1' }}
             onClick={() => handleAction('config', record)}
           >
             配置
@@ -866,114 +807,28 @@ const TopicPageContent = ({
     },
   ];
 
-  const renderRouteStatusTag = (status: RouteDiagnosticStatus) => {
-    const meta = ROUTE_STATUS_META[status];
-    return (
-      <Tag color={meta.color} icon={meta.icon}>
-        {meta.label}
-      </Tag>
-    );
-  };
-
-  const renderRouteIssueTags = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return <Text type="secondary">无</Text>;
-    return (
-      <Space size={[4, 4]} wrap>
-        {issues.slice(0, 3).map((item) => (
-          <Tag key={item.id} color={ISSUE_SEVERITY_COLOR[item.severity]}>
-            {item.title}
-          </Tag>
-        ))}
-        {issues.length > 3 && <Tag>+{issues.length - 3}</Tag>}
-      </Space>
-    );
-  };
-
   // ─── Route table columns ──────────────────────────────────────
-  const routeColumns: TableColumnsType<RouteDistribution> = [
+  const routeColumns: TableColumnsType<BrokerRoute> = [
+    { title: 'Broker 名称', dataIndex: 'brokerName', key: 'brokerName', width: 180 },
     {
-      title: 'Broker',
-      dataIndex: 'brokerName',
-      key: 'brokerName',
-      width: 170,
-      render: (_: string, record) => (
-        <Space direction="vertical" size={2}>
-          <Text strong>{record.brokerName}</Text>
-          {renderRouteStatusTag(record.status)}
-        </Space>
-      ),
-    },
-    {
-      title: '地址拓扑',
+      title: 'Broker 地址',
+      dataIndex: 'brokerAddr',
       key: 'brokerAddr',
-      width: 260,
-      render: (_: unknown, record) => (
-        <Space direction="vertical" size={2} style={{ width: '100%' }}>
-          <Text code copyable style={{ fontSize: 14 }}>
-            {record.brokerAddr}
-          </Text>
-          {record.masterAddr && record.masterAddr !== record.brokerAddr && (
-            <Text type="secondary" style={{ fontSize: 14 }}>
-              Master {record.masterAddr}
-            </Text>
-          )}
-          <Space size={4} wrap>
-            {record.brokerIds.length > 0 ? (
-              record.brokerIds.map((id) => (
-                <Tag key={id} color={id === '0' ? 'blue' : undefined}>
-                  {id === '0' ? 'Master' : `Replica ${id}`}
-                </Tag>
-              ))
-            ) : (
-              <Tag color="warning">地址未知</Tag>
-            )}
-          </Space>
-        </Space>
+      width: 200,
+      render: (addr: string) => (
+        <Text code copyable style={{ fontSize: 14 }}>
+          {addr}
+        </Text>
       ),
     },
-    {
-      title: '队列分布',
-      key: 'queues',
-      width: 220,
-      render: (_: unknown, record) => (
-        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-          <div>
-            <Flex justify="space-between">
-              <Text>写队列 {record.writeQueues}</Text>
-              <Text type="secondary">{formatPercent(record.writeShare)}</Text>
-            </Flex>
-            <Progress percent={record.writeShare} showInfo={false} size="small" />
-          </div>
-          <div>
-            <Flex justify="space-between">
-              <Text>读队列 {record.readQueues}</Text>
-              <Text type="secondary">{formatPercent(record.readShare)}</Text>
-            </Flex>
-            <Progress percent={record.readShare} showInfo={false} size="small" />
-          </div>
-        </Space>
-      ),
-    },
+    { title: '写队列', dataIndex: 'writeQueues', key: 'writeQueues', width: 100 },
+    { title: '读队列', dataIndex: 'readQueues', key: 'readQueues', width: 100 },
     {
       title: '权限',
       dataIndex: 'perm',
       key: 'perm',
-      width: 130,
-      render: (_: string, record) => (
-        <Space direction="vertical" size={4}>
-          <Tag>{PERM_LABEL[record.perm] || record.perm}</Tag>
-          <Space size={4}>
-            <Tag color={record.readable ? 'success' : 'error'}>读</Tag>
-            <Tag color={record.writable ? 'success' : 'error'}>写</Tag>
-          </Space>
-        </Space>
-      ),
-    },
-    {
-      title: '诊断',
-      key: 'diagnostics',
-      width: 220,
-      render: (_: unknown, record) => renderRouteIssueTags(record.issues),
+      width: 120,
+      render: (perm: string) => <Tag>{PERM_LABEL[perm] || perm}</Tag>,
     },
   ];
 
@@ -1035,87 +890,8 @@ const TopicPageContent = ({
     },
   ];
 
-  const renderRouteMetric = (label: string, value: React.ReactNode, extra?: React.ReactNode) => (
-    <Col xs={12} md={6}>
-      <div
-        style={{
-          border: '1px solid #f0f0f0',
-          borderRadius: 6,
-          padding: '10px 12px',
-          minHeight: 78,
-          background: '#fafafa',
-        }}
-      >
-        <Text type="secondary" style={{ display: 'block', fontSize: 14 }}>
-          {label}
-        </Text>
-        <Text strong style={{ fontSize: 20, fontVariantNumeric: 'tabular-nums' }}>
-          {value}
-        </Text>
-        {extra && (
-          <div style={{ marginTop: 2 }}>
-            <Text type="secondary" style={{ fontSize: 14 }}>
-              {extra}
-            </Text>
-          </div>
-        )}
-      </div>
-    </Col>
-  );
-
-  const renderRouteIssues = (issues: RouteDiagnosticIssue[]) => {
-    if (issues.length === 0) return null;
-    return (
-      <div
-        data-testid="topic-route-issues"
-        style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: 12 }}
-      >
-        <Text strong style={{ display: 'block', marginBottom: 8 }}>
-          诊断项
-        </Text>
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          {issues.map((item) => (
-            <Flex key={item.id} align="flex-start" gap={8}>
-              <Tag color={ISSUE_SEVERITY_COLOR[item.severity]} style={{ marginTop: 1 }}>
-                {item.severity === 'critical' ? '异常' : '关注'}
-              </Tag>
-              <div>
-                <Text strong>
-                  {item.brokerName ? `${item.brokerName}：${item.title}` : item.title}
-                </Text>
-                <Text type="secondary" style={{ display: 'block' }}>
-                  {item.description}
-                </Text>
-              </div>
-            </Flex>
-          ))}
-        </Space>
-      </div>
-    );
-  };
-
-  const renderRouteRecommendations = (recommendations: string[]) => {
-    if (recommendations.length === 0) return null;
-    return (
-      <InfoBanner
-        title="建议处理"
-        description={
-          <Space direction="vertical" size={2}>
-            {recommendations.map((item) => (
-              <Text key={item} style={{ fontSize: 14 }}>
-                {item}
-              </Text>
-            ))}
-          </Space>
-        }
-      />
-    );
-  };
-
   const renderRouteSection = (topic: Topic) => {
     const routes = getRoutes(topic.name);
-    const diagnostics = analyzeTopicRoutes(routes);
-    const summary = diagnostics.summary;
     const routeLoadFailed = routeLoadFailedTopics[topic.name] === true;
 
     return (
@@ -1123,68 +899,43 @@ const TopicPageContent = ({
         <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
           路由信息
         </Text>
-        {!detailLoading && (
-          <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 12 }}>
-            <Alert
-              type={routeLoadFailed ? 'error' : diagnostics.statusColor}
-              showIcon
-              message={`路由诊断：${routeLoadFailed ? '加载失败' : diagnostics.statusText}`}
-              description={
-                routeLoadFailed
-                  ? '路由信息获取失败，下面的结论与重建操作暂不可用，请重试。'
-                  : diagnostics.status === 'healthy'
-                    ? `共 ${summary.brokerCount} 个 Broker，写队列 ${summary.totalWriteQueues} 个，读队列 ${summary.totalReadQueues} 个。`
-                    : `发现 ${diagnostics.issues.length} 个诊断项，优先处理异常标记的 Broker。`
-              }
-              action={
-                routeLoadFailed ? (
-                  <Button size="small" onClick={() => void openDetail(topic)}>
-                    重试
-                  </Button>
-                ) : routes.length === 0 ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    loading={rebuilding}
-                    onClick={() => void rebuildTopic(topic)}
-                  >
-                    在 Broker 上重建
-                  </Button>
-                ) : undefined
-              }
-            />
-            <Row gutter={[12, 12]}>
-              {renderRouteMetric(
-                'Broker 数',
-                summary.brokerCount,
-                `${summary.addressCount} 个地址`,
-              )}
-              {renderRouteMetric(
-                '可写 Broker',
-                summary.writableBrokerCount,
-                `${summary.totalWriteQueues} 个写队列`,
-              )}
-              {renderRouteMetric(
-                '可读 Broker',
-                summary.readableBrokerCount,
-                `${summary.totalReadQueues} 个读队列`,
-              )}
-              {renderRouteMetric(
-                'Replica 数',
-                summary.replicaCount,
-                summary.writeSkew.gap > 0 || summary.readSkew.gap > 0
-                  ? `队列差距 写 ${summary.writeSkew.gap} / 读 ${summary.readSkew.gap}`
-                  : '队列均衡',
-              )}
-            </Row>
-            {renderRouteIssues(diagnostics.issues)}
-            {renderRouteRecommendations(diagnostics.recommendations)}
-          </Space>
+        {!detailLoading && routeLoadFailed && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="路由信息加载失败"
+            description="Broker 没有返回该 Topic 的路由，下面的列表因此为空，请重试。"
+            action={
+              <Button size="small" onClick={() => void openDetail(topic)}>
+                重试
+              </Button>
+            }
+          />
         )}
-        <Table<RouteDistribution>
+        {!detailLoading && !routeLoadFailed && routes.length === 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Broker 上没有该 Topic 的路由"
+            description="元数据库中存在这条记录，但 Broker 未返回路由信息，可能尚未在 Broker 上创建或已被删除。可按库中记录的队列数重建。"
+            action={
+              <Button
+                size="small"
+                type="primary"
+                loading={rebuilding}
+                onClick={() => void rebuildTopic(topic)}
+              >
+                在 Broker 上重建
+              </Button>
+            }
+          />
+        )}
+        <Table<BrokerRoute>
           columns={routeColumns}
-          dataSource={detailLoading ? [] : diagnostics.distributions}
-          rowKey="key"
+          dataSource={detailLoading ? [] : routes}
+          rowKey={(route) => `${route.brokerName}-${route.brokerAddr}`}
           pagination={false}
           size="small"
           loading={detailLoading}
@@ -1291,19 +1042,25 @@ const TopicPageContent = ({
       message.error('请先选择实例');
       return;
     }
+    const readId = ++importReadIdRef.current;
+    // Clear the previous preview before the file read yields: those rows must not be imported
+    // under this file's name while its contents are still loading.
+    setImportRows([]);
+    setImportErrors([]);
+    if (importInputRef.current) importInputRef.current.value = '';
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
     try {
       const records = parseCsvTable(await file.text());
+      if (readId !== importReadIdRef.current) return;
       const validation = validateTopicCsvImport(records, selectedInstanceId || undefined);
       setImportRows(validation.rows);
       setImportErrors(validation.errors);
     } catch (error) {
+      if (readId !== importReadIdRef.current) return;
       setImportRows([]);
       setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = '';
     }
   };
 
@@ -1394,99 +1151,6 @@ const TopicPageContent = ({
       render: (text?: string) => text || '-',
     },
   ];
-
-  const renderPayloadIssues = (issues: MessagePayloadIssue[]) => {
-    if (issues.length === 0) {
-      return <Text type="secondary">未发现阻止发送的问题</Text>;
-    }
-    return (
-      <Space direction="vertical" size={6} style={{ width: '100%' }}>
-        {issues.map((item, index) => (
-          <Flex
-            key={`${item.code}-${item.names?.join(',') ?? index}`}
-            align="flex-start"
-            gap={8}
-            wrap="nowrap"
-          >
-            <Tag color={PAYLOAD_ISSUE_COLOR[item.severity]} style={{ marginTop: 1 }}>
-              {item.severity === 'error' ? '阻止' : item.severity === 'warning' ? '关注' : '提示'}
-            </Tag>
-            <div style={{ minWidth: 0 }}>
-              <Text strong>{item.title}</Text>
-              <Text type="secondary" style={{ display: 'block' }}>
-                {item.description}
-              </Text>
-            </div>
-          </Flex>
-        ))}
-      </Space>
-    );
-  };
-
-  const renderSendPayloadPreview = () => {
-    const statusMeta = PAYLOAD_STATUS_META[sendPayloadPreview.status];
-    const propertyPreview = sendPayloadPreview.propertyEntries.slice(0, 6);
-    const hiddenPropertyCount = sendPayloadPreview.propertyEntries.length - propertyPreview.length;
-
-    return (
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Alert
-          showIcon
-          type={statusMeta.alertType}
-          message={
-            <Flex gap={8} align="center" wrap>
-              <span>发送前预检</span>
-              <Tag color={statusMeta.color}>{statusMeta.label}</Tag>
-              <Tag>{BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]}</Tag>
-            </Flex>
-          }
-          description={
-            sendPayloadPreview.blockingIssues.length > 0
-              ? `发现 ${sendPayloadPreview.blockingIssues.length} 个阻止发送的问题。`
-              : '将按下方摘要发送到 RocketMQ，发送前可继续调整 Body、Tag、Key 和自定义属性。'
-          }
-        />
-
-        <Flex gap={8} wrap>
-          <Tag>Body {formatBytes(sendPayloadPreview.summary.bodyBytes)}</Tag>
-          <Tag>属性 {sendPayloadPreview.summary.propertyCount}</Tag>
-          <Tag>属性大小 {formatBytes(sendPayloadPreview.summary.propertyBytes)}</Tag>
-          <Tag color={sendPayloadPreview.normalized.tag ? 'blue' : undefined}>
-            Tag {sendPayloadPreview.normalized.tag || '-'}
-          </Tag>
-          <Tag color={sendPayloadPreview.normalized.key ? 'blue' : undefined}>
-            Key {sendPayloadPreview.normalized.key || '-'}
-          </Tag>
-        </Flex>
-
-        <Descriptions bordered size="small" column={1}>
-          <Descriptions.Item label="Topic">
-            <Text code>{sendPayloadPreview.normalized.topic || sendTopic?.name || '-'}</Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="Body 类型">
-            {BODY_FORMAT_LABEL[sendPayloadPreview.summary.bodyFormat]} /{' '}
-            {formatBytes(sendPayloadPreview.summary.bodyBytes)}
-          </Descriptions.Item>
-          <Descriptions.Item label="自定义属性">
-            {propertyPreview.length === 0 ? (
-              <Text type="secondary">无</Text>
-            ) : (
-              <Space size={[4, 4]} wrap>
-                {propertyPreview.map((entry) => (
-                  <Tag key={entry.key} color={entry.reserved ? 'warning' : undefined}>
-                    {entry.key}={entry.value || '""'}
-                  </Tag>
-                ))}
-                {hiddenPropertyCount > 0 && <Tag>+{hiddenPropertyCount}</Tag>}
-              </Space>
-            )}
-          </Descriptions.Item>
-        </Descriptions>
-
-        {renderPayloadIssues(sendPayloadPreview.issues)}
-      </Space>
-    );
-  };
 
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
@@ -1756,7 +1420,7 @@ const TopicPageContent = ({
       </Card>
 
       {comparisonOpen && (
-        <TopicConfigComparisonDrawer
+        <TopicConfigComparisonModal
           open
           instances={instances}
           currentInstanceId={selectedInstanceId}
@@ -1928,7 +1592,10 @@ const TopicPageContent = ({
         title={`导入 Topic${importFilename ? `：${importFilename}` : ''}`}
         open={importModalOpen}
         onCancel={() => {
-          if (!importing) setImportModalOpen(false);
+          if (!importing) {
+            importReadIdRef.current += 1;
+            setImportModalOpen(false);
+          }
         }}
         onOk={() => void handleImportTopics()}
         okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
@@ -2111,11 +1778,6 @@ const TopicPageContent = ({
               )}
             </Form.List>
           )}
-
-          <Divider style={{ margin: '20px 0 16px' }} orientation="left" plain>
-            发送前预检
-          </Divider>
-          {renderSendPayloadPreview()}
         </Form>
       </Modal>
 

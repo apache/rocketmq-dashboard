@@ -23,7 +23,6 @@ import {
   Select,
   Tag,
   Modal,
-  Drawer,
   Card,
   Row,
   Col,
@@ -48,6 +47,7 @@ import {
   DownloadSimple,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
+import InfoBanner from '../../components/InfoBanner';
 import { useLang } from '../../i18n/LangContext';
 import {
   queryLiteTopicList,
@@ -139,7 +139,7 @@ const LiteTopicPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
 
   // Session drawer
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
   const [sessionData, setSessionData] = useState<LiteTopicSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [availableSessionIds, setAvailableSessionIds] = useState<string[]>([]);
@@ -290,7 +290,7 @@ const LiteTopicPage: React.FC = () => {
     const requestId = ++sessionRequestId.current;
     if (sessionIds) setAvailableSessionIds(sessionIds);
     setSelectedSessionId(sessionId);
-    setSessionDrawerOpen(true);
+    setSessionModalOpen(true);
     setSessionLoading(true);
     setSessionData(null);
     try {
@@ -614,7 +614,7 @@ const LiteTopicPage: React.FC = () => {
     );
   };
 
-  // ─── Session Drawer Content ──────────────────────────────────
+  // ─── Session Modal Content ───────────────────────────────────
 
   const renderSessionContent = () => {
     if (sessionLoading) {
@@ -628,6 +628,9 @@ const LiteTopicPage: React.FC = () => {
       sessionData.totalMessages != null && sessionData.totalMessages > 0
         ? Math.round(((sessionData.consumedMessages ?? 0) / sessionData.totalMessages) * 100)
         : 0;
+    // The consumed-offset scan is capped, so on a session with more lite topics than one scan
+    // covers the consumed and total counts are lower bounds: prefix them and drop the ratio.
+    const consumedTruncated = sessionData.consumedScanTruncated === true;
 
     return (
       <div>
@@ -689,7 +692,11 @@ const LiteTopicPage: React.FC = () => {
               <div style={{ fontSize: 14, color: '#8c8c8c', marginBottom: 4 }}>
                 {t('liteTopic.totalMessages')}
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{sessionData.totalMessages ?? 0}</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>
+                {consumedTruncated
+                  ? `≥ ${sessionData.totalMessages ?? 0}`
+                  : (sessionData.totalMessages ?? 0)}
+              </div>
             </Card>
           </Col>
           <Col span={8}>
@@ -701,7 +708,9 @@ const LiteTopicPage: React.FC = () => {
                 {t('liteTopic.consumedMessages')}
               </div>
               <div style={{ fontSize: 24, fontWeight: 700 }}>
-                {sessionData.consumedMessages ?? 0}
+                {consumedTruncated
+                  ? `≥ ${sessionData.consumedMessages ?? 0}`
+                  : (sessionData.consumedMessages ?? 0)}
               </div>
             </Card>
           </Col>
@@ -722,23 +731,20 @@ const LiteTopicPage: React.FC = () => {
 
         <div style={{ marginTop: 16 }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.consumptionRate')}</div>
-          <Progress
-            percent={consumptionPercent}
-            status={consumptionPercent >= 100 ? 'success' : 'active'}
-            strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
-          />
-        </div>
-
-        {sessionData.popProgress != null && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('liteTopic.popProgress')}</div>
-            <Progress
-              percent={Math.round(sessionData.popProgress)}
-              status="active"
-              strokeColor="#722ed1"
+          {consumedTruncated ? (
+            <InfoBanner
+              data-testid="lite-topic-consumed-truncated"
+              title={t('liteTopic.consumedTruncated.title')}
+              description={t('liteTopic.consumedTruncated.description')}
             />
-          </div>
-        )}
+          ) : (
+            <Progress
+              percent={consumptionPercent}
+              status={consumptionPercent >= 100 ? 'success' : 'active'}
+              strokeColor={consumptionPercent >= 100 ? '#52c41a' : '#1677ff'}
+            />
+          )}
+        </div>
 
         {sessionData.liteTopics && sessionData.liteTopics.length > 0 && (
           <>
@@ -894,26 +900,29 @@ const LiteTopicPage: React.FC = () => {
         />
       </Card>
 
-      {/* Session Detail Drawer */}
-      <Drawer
+      {/* Session Detail Modal */}
+      <Modal
         title={
           <span>
             <ClockCounterClockwise size={16} style={{ marginRight: 8, color: '#1677ff' }} />
             {t('liteTopic.sessionDetail')}
           </span>
         }
-        placement="right"
-        width={680}
-        open={sessionDrawerOpen}
-        onClose={() => {
+        width="min(680px, calc(100vw - 32px))"
+        open={sessionModalOpen}
+        onCancel={() => {
           sessionRequestId.current += 1;
-          setSessionDrawerOpen(false);
+          setSessionModalOpen(false);
           setSessionLoading(false);
           setSessionData(null);
           setAvailableSessionIds([]);
           setSelectedSessionId(undefined);
         }}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {availableSessionIds.length > 1 && (
           <Select
@@ -930,7 +939,7 @@ const LiteTopicPage: React.FC = () => {
           />
         )}
         {renderSessionContent()}
-      </Drawer>
+      </Modal>
 
       {/* Extend TTL Modal */}
       <Modal

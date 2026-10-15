@@ -187,6 +187,29 @@ class ApacheRocketMqBusinessMetricsCollectorTest {
                 });
     }
 
+    @Test
+    void reportsUnavailableDelayWhenTheConsumptionTimestampIsMissingTest() {
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        InstanceProvider provider = mock(InstanceProvider.class);
+        ConsumerGroupVO orders = group("orders", "cluster-a", 42);
+        orders.setConsumptionTimestampAvailable(false);
+        when(registry.byInstanceId("local")).thenReturn(Optional.of(provider));
+        when(provider.listConsumerGroups("local", null)).thenReturn(List.of(orders));
+        when(provider.getGroupProgress("local", "orders")).thenReturn(List.of(QueueProgressVO.builder()
+                .topic("orders-topic").diffTotal(17).build()));
+
+        List<MetricSample> samples = new ApacheRocketMqBusinessMetricsCollector(registry).collect(apacheInstance());
+
+        assertThat(samples).filteredOn(sample -> sample.metricKey().equals(
+                ApacheRocketMqBusinessMetricsCollector.CONSUMER_DELAY_SECONDS))
+                .singleElement().satisfies(sample -> {
+                    assertThat(sample.availability()).isEqualTo(MetricAvailability.UNAVAILABLE);
+                    assertThat(sample.value()).isNull();
+                    assertThat(sample.clusterId()).isEqualTo("cluster-a");
+                    assertThat(sample.unavailableReason()).isEqualTo("CONSUMER_TIMESTAMP_UNAVAILABLE");
+                });
+    }
+
     private static ConsumerGroupVO group(String name, String clusterId, long lag) {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName(name);
