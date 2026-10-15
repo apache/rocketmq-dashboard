@@ -5,6 +5,7 @@ import {
   formatDate,
   formatDateTime,
   formatUtcDateTime,
+  parseUtcDate,
   formatDelay,
   formatNumber,
   formatPercent,
@@ -82,6 +83,24 @@ describe('formatBytes', () => {
     expect(formatNumber(Number.NaN)).toBe('-');
     expect(formatDelay(Number.POSITIVE_INFINITY, 'en')).toBe('-');
     expect(formatPercent(Number.NEGATIVE_INFINITY)).toBe('-');
+  });
+
+  it('parses timezone-less alert timestamps as UTC', () => {
+    expect(parseUtcDate('2026-08-23T10:35:38')?.toISOString()).toBe('2026-08-23T10:35:38.000Z');
+    expect(parseUtcDate('2026-08-23T10:35:38Z')?.getTime()).toBe(
+      parseUtcDate('2026-08-23T10:35:38')?.getTime(),
+    );
+    expect(parseUtcDate('2026-08-23T10:35:38+00:00')?.getTime()).toBe(
+      parseUtcDate('2026-08-23T10:35:38')?.getTime(),
+    );
+  });
+
+  it('returns null instead of an invalid date for empty or unparseable input', () => {
+    expect(parseUtcDate(null)).toBeNull();
+    expect(parseUtcDate(undefined)).toBeNull();
+    expect(parseUtcDate('')).toBeNull();
+    expect(parseUtcDate('   ')).toBeNull();
+    expect(parseUtcDate('not-a-date')).toBeNull();
   });
 
   it('treats timezone-less alert timestamps as UTC', () => {

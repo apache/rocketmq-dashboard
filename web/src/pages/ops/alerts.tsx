@@ -66,7 +66,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, parseUtcDate } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -399,9 +399,12 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const triggered24h = rules.filter(
-    (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
-  ).length;
+  // lastTriggered is a UTC wall clock without an offset (see the column render below);
+  // parsing it as browser-local would shift the window by the viewer's zone.
+  const triggered24h = rules.filter((r) => {
+    const triggeredAt = parseUtcDate(r.lastTriggered);
+    return triggeredAt !== null && triggeredAt.getTime() > dayAgo;
+  }).length;
 
   const openCreateModal = () => {
     setEditingRule(null);
