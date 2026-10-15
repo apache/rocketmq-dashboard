@@ -15,6 +15,14 @@
 
 .DEFAULT_GOAL := build
 GO ?= go
+# `build` compiles a native executable and every helper the recipes run (the license gate, the
+# catalog generator) is a host program, so an exported GOOS/GOARCH must not reach them: with a
+# cross target left in the environment bin/rmqctl comes out as a foreign binary and the license
+# gate exits with `license gate: exec: "go": executable file not found in %PATH%`. build-all
+# stays the cross-compilation entry point and sets each target per command.
+# build-windows.ps1 pins GOHOSTOS/GOHOSTARCH for the same reason.
+HOST_OS = $(shell $(GO) env GOHOSTOS)
+HOST_ARCH = $(shell $(GO) env GOHOSTARCH)
 VERSION ?= 3.0.0
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -69,9 +77,9 @@ ci: fmt test-race vet build-all
 
 build: catalog-verify
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl main.go
-	$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native
-	$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native -check
+	CGO_ENABLED=0 GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) $(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/rmqctl main.go
+	GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) $(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native
+	GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) $(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl -output $(LEGAL_DIR)/native -check
 
 build-all: catalog-verify
 	@mkdir -p $(BUILD_DIR)
@@ -85,8 +93,8 @@ build-all: catalog-verify
 	@set -e; for target in $(TARGETS); do \
 		os=$${target%%_*}; arch=$${target##*_}; suffix=; \
 		if [ "$$os" = "windows" ]; then suffix=.exe; fi; \
-		$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target; \
-		$(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target -check; \
+		GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) $(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target; \
+		GOOS=$(HOST_OS) GOARCH=$(HOST_ARCH) $(GO) run scripts/license-binary.go -go "$(GO)" -binary $(BUILD_DIR)/rmqctl-$$os-$$arch$$suffix -output $(LEGAL_DIR)/$$target -check; \
 	done
 
 license-binary: build-all
