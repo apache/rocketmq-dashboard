@@ -120,7 +120,9 @@ public class AclService {
     public AclRuleVO createRule(AclRuleVO rule, String instanceId) {
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.createRule(instanceId, rule);
+            AclRuleVO saved = tencentAclService.createRule(instanceId, rule);
+            auditRule("CREATE_ACL_RULE", instanceId, saved);
+            return saved;
         }
         log.info("Creating ACL rule for principal={}", rule.getPrincipal());
         if (!StringUtils.hasText(rule.getPrincipal())) {
@@ -131,7 +133,7 @@ public class AclService {
         }
         rule.setGmtCreate(LocalDateTime.now());
         AclRuleVO saved = aclRepository.saveRule(rule);
-        auditRule("CREATE_ACL_RULE", saved);
+        auditRule("CREATE_ACL_RULE", instanceId, saved);
         return saved;
     }
 
@@ -164,7 +166,9 @@ public class AclService {
     public AclRuleVO updateRule(AclRuleVO rule, String instanceId) {
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.updateRule(instanceId, rule);
+            AclRuleVO saved = tencentAclService.updateRule(instanceId, rule);
+            auditRule("UPDATE_ACL_RULE", instanceId, saved);
+            return saved;
         }
         if (rule.getId() == null) {
             throw new BusinessException(400, "ACL rule id is required");
@@ -172,7 +176,7 @@ public class AclService {
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
         AclRuleVO saved = aclRepository.replaceRule(rule)
                 .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + rule.getId()));
-        auditRule("UPDATE_ACL_RULE", saved);
+        auditRule("UPDATE_ACL_RULE", instanceId, saved);
         return saved;
     }
 
@@ -180,13 +184,14 @@ public class AclService {
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
             tencentAclService.deleteRule(instanceId, id);
+            recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, instanceId, null);
             return;
         }
         log.info("Deleting ACL rule id={}", id);
         if (!aclRepository.deleteRule(EntityIds.parseId(id))) {
             throw new BusinessException(404, "ACL rule not found: " + id);
         }
-        recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, null, null);
+        recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, instanceId, null);
     }
 
 
@@ -231,7 +236,9 @@ public class AclService {
     public AclUserVO createUser(AclUserVO user, String instanceId) {
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.createUser(instanceId, user);
+            AclUserVO saved = tencentAclService.createUser(instanceId, user);
+            auditUser("CREATE_ACL_USER", instanceId, saved);
+            return saved;
         }
         log.info("Creating ACL user username={}", user.getUsername());
         if (!StringUtils.hasText(user.getUsername())) {
@@ -241,14 +248,16 @@ public class AclService {
         user.setSecretKey(randomCredentialToken());
         user.setGmtCreate(LocalDateTime.now());
         AclUserVO saved = aclRepository.saveUser(user);
-        auditUser("CREATE_ACL_USER", saved);
+        auditUser("CREATE_ACL_USER", instanceId, saved);
         return saved;
     }
 
     public AclUserVO updateUser(UpdateAclUserDTO user, String instanceId) {
         requireAcl2Supported(instanceId);
         if (isTencentInstance(instanceId)) {
-            return tencentAclService.updateUser(instanceId, user.toAclUserVO());
+            AclUserVO saved = tencentAclService.updateUser(instanceId, user.toAclUserVO());
+            auditUser("UPDATE_ACL_USER", instanceId, saved);
+            return saved;
         }
         if (!StringUtils.hasText(user.getId())) {
             throw new BusinessException(400, "ACL user id is required");
@@ -272,7 +281,7 @@ public class AclService {
                 .build();
         AclUserVO saved = aclRepository.replaceUser(merged)
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
-        auditUser("UPDATE_ACL_USER", saved);
+        auditUser("UPDATE_ACL_USER", instanceId, saved);
         return maskCredentials(saved);
     }
 
@@ -281,13 +290,14 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             // For Tencent roles the id is the role name.
             tencentAclService.deleteUser(instanceId, id);
+            recordAudit("DELETE_ACL_USER", "ACL_USER", id, instanceId, null);
             return;
         }
         log.info("Deleting ACL user id={}", id);
         if (!aclRepository.deleteUser(EntityIds.parseId(id))) {
             throw new BusinessException(404, "ACL user not found: " + id);
         }
-        recordAudit("DELETE_ACL_USER", "ACL_USER", id, null, null);
+        recordAudit("DELETE_ACL_USER", "ACL_USER", id, instanceId, null);
     }
 
     /**
@@ -572,7 +582,7 @@ public class AclService {
                     .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
         }
         // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
-        recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
+        recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), instanceId,
                 "instanceId=" + instanceId);
         return user;
     }
@@ -802,13 +812,18 @@ public class AclService {
         return PageResult.of(rules.subList(fromIndex, toIndex), total, page, pageSize);
     }
 
-    private void auditRule(String operation, AclRuleVO rule) {
-        recordAudit(operation, "ACL_RULE", String.valueOf(rule.getId()), null,
+    private void auditRule(String operation, String instanceId, AclRuleVO rule) {
+        // Apache rules are audited by their numeric id; Tencent ACL rules have no database row
+        // (TencentAclService keeps the role name in the principal), so fall back to the role name.
+        recordAudit(operation, "ACL_RULE",
+                rule.getId() == null ? rule.getPrincipal() : String.valueOf(rule.getId()), instanceId,
                 "principal=" + rule.getPrincipal());
     }
 
-    private void auditUser(String operation, AclUserVO user) {
-        recordAudit(operation, "ACL_USER", String.valueOf(user.getId()), null,
+    private void auditUser(String operation, String instanceId, AclUserVO user) {
+        // Same fallback as auditRule: a Tencent role carries the role name instead of a numeric id.
+        recordAudit(operation, "ACL_USER",
+                user.getId() == null ? user.getUsername() : String.valueOf(user.getId()), instanceId,
                 "username=" + user.getUsername() + ", admin=" + user.isAdmin());
     }
 
@@ -830,7 +845,10 @@ public class AclService {
     private void recordAudit(String operation, String resourceType, String resourceName,
                              String clusterId, String detail) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+            var instance = clusterId == null ? null : instanceResolver.findByIdentifier(clusterId).orElse(null);
+            String auditClusterId = instance == null ? clusterId : instance.getName();
+            operationAuditService.record(operation, resourceType, resourceName, auditClusterId,
+                    detail, "SUCCESS", null);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());
