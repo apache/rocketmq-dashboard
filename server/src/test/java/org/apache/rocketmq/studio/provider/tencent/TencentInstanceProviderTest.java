@@ -1211,6 +1211,42 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldAdvanceByConsumedRowsWhenAPageSkipsAnAbsentEntryTest() throws Exception {
+        // The SDK maps a JSON null array element to a null element and the provider skips it, but
+        // the next page must still start after every row the API already returned.
+        when(client.DescribeMessageList(any())).thenAnswer(invocation -> {
+            DescribeMessageListRequest request = invocation.getArgument(0);
+            int start = request.getOffset().intValue();
+            int size = Math.min(request.getLimit().intValue(), Math.max(150 - start, 0));
+            MessageItem[] items = new MessageItem[size];
+            for (int i = 0; i < size; i++) {
+                MessageItem item = new MessageItem();
+                item.setMsgId("MSG-" + (start + i + 1));
+                item.setProduceTime("2024-09-12 14:06:55,591");
+                items[i] = item;
+            }
+            if (start == 0) {
+                items[50] = null;
+            }
+            DescribeMessageListResponse response = new DescribeMessageListResponse();
+            response.setData(items);
+            response.setTotalCount(150L);
+            return response;
+        });
+
+        List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
+                null, null, 1600000000000L, 1600001000000L);
+
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        assertThat(captor.getAllValues().get(0).getOffset()).isZero();
+        assertThat(captor.getAllValues().get(1).getOffset())
+                .isEqualTo((long) TencentInstanceProvider.MESSAGE_LIMIT);
+        assertThat(messages).extracting(MessageRecordVO::getMsgId).doesNotHaveDuplicates();
+        assertThat(messages).hasSize(149);
+    }
+
+    @Test
     void queryMessagesShouldReportCompleteWhenTencentReturnsAShortPage() throws Exception {
         MessageItem one = new MessageItem();
         one.setMsgId("MSG-1");
