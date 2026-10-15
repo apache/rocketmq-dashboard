@@ -22,6 +22,32 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
+// @types/node is deliberately not a dependency of the web package, so node:fs is reached through a
+// dynamic import with an opaque specifier and `declare const` types the __dirname vitest injects.
+declare const __dirname: string;
+
+interface NodeFs {
+  readFileSync(path: string, encoding: string): string;
+}
+
+/**
+ * The comparison scope of NameServerConfigDiffService lives in this server resource and nowhere
+ * else: the service loads SAFE_CONFIG_KEYS from it and returns those names as comparedKeys, and the
+ * resource itself documents that adding or removing a key there is the only change needed.
+ * web/src/services -> repo root is three levels up.
+ */
+const NAMESERVER_SAFE_CONFIG_KEYS_PATH = `${__dirname}/../../../server/src/main/resources/cluster/nameserver-safe-config-keys.yml`;
+
+async function readNameserverSafeConfigKeys(): Promise<string[]> {
+  const fs = (await import('node:fs' as string)) as unknown as NodeFs;
+  return fs
+    .readFileSync(NAMESERVER_SAFE_CONFIG_KEYS_PATH, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim());
+}
+
 import {
   createNameServer,
   createK8sCert,
@@ -90,6 +116,17 @@ describe('clusterService mock clusters', () => {
         ]),
       }),
     ]);
+  });
+
+  it('advertises the NameServer comparison scope the endpoint reports', async () => {
+    const safeConfigKeys = await readNameserverSafeConfigKeys();
+
+    // A short list here is not harmless: the drift panel renders comparedKeys as chips next to the
+    // differences, so a mock list the service never compares claims a comparison the product does
+    // not perform. This pins the mock to the server resource instead of a hand-copied subset.
+    expect(safeConfigKeys.length).toBeGreaterThan(2);
+    const result = await getNameServerConfigDiff('cluster-prod');
+    expect(result.comparedKeys).toEqual(safeConfigKeys);
   });
 
   it('previews mock config updates without mutating the cluster', async () => {
