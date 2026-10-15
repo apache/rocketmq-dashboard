@@ -206,7 +206,7 @@ specs.append((
     "Consumer group egress, lag and client footprint.",
     [
         stat_panel(1, "Consumer Count", "max(rocketmq_consumer_count{cluster=\"$cluster\"})", 6, 0),
-        ts_panel(2, "Messages Out TPS by Group", "sum by (group) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",group=\"$group\"}[1m]))", 12, 0, "{{group}}", "ops"),
+        ts_panel(2, "Messages Out TPS by Group", "sum by (consumer_group) (rate(rocketmq_messages_out_total{cluster=\"$cluster\",consumer_group=\"$group\"}[1m]))", 12, 0, "{{consumer_group}}", "ops"),
         ts_panel(3, "Consumer Message Size", "rocketmq_consumer_message_size{cluster=\"$cluster\"}", 12, 8, "{{group}}", "bytes"),
     ],
 ))
@@ -303,7 +303,19 @@ def generate_dashboards(out_dir=OUT_DIR):
     os.makedirs(out_dir, exist_ok=True)
     for uid, title, desc, panels in specs:
         laid_out = layout_panels(panels)
-        doc = dashboard(uid, title, desc, laid_out)
+        vars_ = None
+        if uid == "rocketmq-consumer":
+            vars_ = template_vars([{
+                "name": "group",
+                "type": "query",
+                "label": "Consumer Group",
+                "datasource": {"type": "prometheus", "uid": DS},
+                "query": "label_values(rocketmq_messages_out_total{cluster=\"$cluster\"}, consumer_group)",
+                "refresh": 2,
+                "current": {},
+                "hide": 0,
+            }])
+        doc = dashboard(uid, title, desc, laid_out, vars_)
         path = os.path.join(out_dir, f"{uid}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=2, ensure_ascii=False)
