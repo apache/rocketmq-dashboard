@@ -28,8 +28,8 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.MockedConstruction;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
@@ -191,6 +191,9 @@ class ProxyConsumerResolverTest {
 
     @Test
     void firstStartFailureShouldNotBeCachedAndTheNextQueryShouldStartAFreshClientTest() throws Exception {
+        // The cooldown is disabled here: this test pins the publication contract (a failed start is
+        // disposed, never reused), and the retry must be allowed immediately once it expires.
+        resolver.startFailureRetryCooldownMillis = 0L;
         AtomicInteger constructions = new AtomicInteger();
         try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
                 (client, context) -> {
@@ -224,6 +227,28 @@ class ProxyConsumerResolverTest {
     }
 
     @Test
+    void aFailedStartIsNotRetriedWithinTheCooldownWindowTest() {
+        // One group-list request would otherwise pay a full construct/start/shutdown Netty
+        // lifecycle per proxy address per consumer group; within the window the memoized failure
+        // is rethrown instead, and no second client is ever constructed.
+        resolver.startFailureRetryCooldownMillis = 30_000L;
+        AtomicInteger constructions = new AtomicInteger();
+        try (MockedConstruction<NettyRemotingClient> construction = mockConstruction(NettyRemotingClient.class,
+                (client, context) -> {
+                    constructions.getAndIncrement();
+                    doThrow(new IllegalStateException(PROXY_START_FAILURE)).when(client).start();
+                })) {
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage(PROXY_START_FAILURE);
+            assertThatThrownBy(() -> resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage(PROXY_START_FAILURE);
+            assertThat(construction.constructed()).hasSize(1);
+        }
+    }
+
+    @Test
     void concurrentFirstUseShouldWaitUntilTheRemotingClientStartupFinishedTest() throws Exception {
         CountDownLatch startEntered = new CountDownLatch(1);
         CountDownLatch concurrentAttempt = new CountDownLatch(1);
@@ -237,7 +262,8 @@ class ProxyConsumerResolverTest {
                         startEntered.countDown();
                         // Let the concurrent caller reach the resolver while this startup is pending,
                         // then give it a bounded allowance to act.
-                        concurrentAttempt.await(5, TimeUnit.SECONDS);
+                        assertThat(concurrentAttempt.await(5, TimeUnit.SECONDS))
+                                .as("the concurrent caller reached the resolver").isTrue();
                         Thread.sleep(500L);
                         startupFinished.set(true);
                         events.add("start-finished");
@@ -257,7 +283,8 @@ class ProxyConsumerResolverTest {
             try {
                 Future<?> concurrent = pool.submit(() -> {
                     try {
-                        startEntered.await(5, TimeUnit.SECONDS);
+                        assertThat(startEntered.await(5, TimeUnit.SECONDS))
+                                .as("the first caller entered start()").isTrue();
                         concurrentAttempt.countDown();
                         resolver.queryProxy(PROXY_ADDR, CONSUMER_GROUP);
                     } catch (Throwable t) {
@@ -270,6 +297,9 @@ class ProxyConsumerResolverTest {
 
                 assertThat(concurrentFailure.get()).isNull();
                 assertThat(construction.constructed()).hasSize(1);
+                // Both invokeSync labels are the same string on purpose: whichever caller loses the
+                // initialisation race still records "invokeSync", so the exact sequence holds either
+                // way. Differentiating the labels by caller would make this test flaky.
                 assertThat(events).containsExactly("start-entered", "start-finished", "invokeSync", "invokeSync");
             } finally {
                 pool.shutdownNow();

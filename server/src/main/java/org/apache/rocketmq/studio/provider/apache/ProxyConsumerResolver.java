@@ -41,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Resolves consumer connection info from the cluster proxies.
@@ -71,6 +73,20 @@ public class ProxyConsumerResolver {
     private final RocketMQProperties properties;
 
     private final Map<String, CachedProxyAddresses> proxyAddressCache = new ConcurrentHashMap<>();
+    // Guards remotingClient initialisation. Shutdown takes the same lock through a bounded try: a
+    // NettyRemotingClient.start() that hangs holds the lock across its whole startup, and blocking
+    // Spring's @PreDestroy on it without a timeout would stall context close until SIGKILL.
+    private final ReentrantLock remotingClientLock = new ReentrantLock();
+    private static final long SHUTDOWN_LOCK_TIMEOUT_SECONDS = 5L;
+    // After a failed start() the candidate is disposed, but the failure itself is usually persistent
+    // (a bad address does not heal between two requests). One attempt per cooldown window keeps a
+    // broken proxy from paying a full construct/start/shutdown Netty lifecycle on every call, while
+    // a genuinely transient failure still retries once the window passes.
+    private static final long START_FAILURE_RETRY_COOLDOWN_MILLIS = 30_000L;
+    private volatile RuntimeException lastStartFailure;
+    private volatile long lastStartFailureAtMillis;
+    /** Package-private and mutable so a test can disable or extend the window. */
+    volatile long startFailureRetryCooldownMillis = START_FAILURE_RETRY_COOLDOWN_MILLIS;
     // The remoting client is published only after its start() returned, so a reader either sees no
     // client (and initializes one itself) or a fully started one. A failed start publishes nothing,
     // which lets the next request initialise a fresh client instead of reusing an unstarted one.
@@ -226,40 +242,81 @@ public class ProxyConsumerResolver {
         if (client != null) {
             return client;
         }
-        synchronized (this) {
+        RuntimeException failure = lastStartFailure;
+        if (failure != null
+                && System.currentTimeMillis() - lastStartFailureAtMillis < startFailureRetryCooldownMillis) {
+            // The cooldown is what keeps a persistently failing start cheap:
+            // resolveConsumerConnectionStatus calls this once per proxy address per consumer group,
+            // and without it one group-list request pays a full construct/start/shutdown Netty
+            // lifecycle for every such combination, on every request.
+            throw failure;
+        }
+        remotingClientLock.lock();
+        try {
             if (remotingClient != null) {
                 return remotingClient;
+            }
+            failure = lastStartFailure;
+            if (failure != null
+                    && System.currentTimeMillis() - lastStartFailureAtMillis < startFailureRetryCooldownMillis) {
+                throw failure;
             }
             NettyRemotingClient candidate = new NettyRemotingClient(new NettyClientConfig());
             try {
                 candidate.start();
             } catch (RuntimeException e) {
                 // A client that did not finish starting must never be published: dispose of it so
-                // the next request starts a fresh one instead of reusing a half-initialised client.
-                shutdownFailedCandidateQuietly(candidate);
+                // the next attempt starts a fresh one instead of reusing a half-initialised client.
+                try {
+                    shutdownFailedCandidateQuietly(candidate);
+                } catch (RuntimeException shutdownFailure) {
+                    e.addSuppressed(shutdownFailure);
+                }
+                lastStartFailure = e;
+                lastStartFailureAtMillis = System.currentTimeMillis();
                 throw e;
             }
-            // Concurrent first-use callers wait on this monitor, so they only ever observe a client
+            lastStartFailure = null;
+            // Concurrent first-use callers wait on this lock, so they only ever observe a client
             // whose start() has returned.
             remotingClient = candidate;
             return candidate;
+        } finally {
+            remotingClientLock.unlock();
         }
     }
 
     private static void shutdownFailedCandidateQuietly(NettyRemotingClient client) {
         try {
             client.shutdown();
-        } catch (Exception e) {
-            log.warn("Failed to shut down the proxy remoting client whose start failed", e);
+        } catch (RuntimeException e) {
+            // The caller chains this onto the start failure via addSuppressed: a disposal failure
+            // must not vanish into a log line while the original cause is all the caller sees.
+            throw e;
         }
     }
 
     @PreDestroy
     public void shutdownRemotingClient() {
-        synchronized (this) {
+        boolean locked = false;
+        try {
+            locked = remotingClientLock.tryLock(SHUTDOWN_LOCK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (!locked) {
+            // A hung NettyRemotingClient.start() holds the initialisation lock without a timeout;
+            // blocking context close on it would stall until SIGKILL. Skipping the shutdown of a
+            // client that never finished starting is acceptable: the JVM is going away either way.
+            log.warn("Skipped proxy remoting client shutdown: initialisation still holds the lock");
+            return;
+        }
+        try {
             if (remotingClient != null) {
                 remotingClient.shutdown();
             }
+        } finally {
+            remotingClientLock.unlock();
         }
     }
 
