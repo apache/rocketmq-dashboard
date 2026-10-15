@@ -1083,6 +1083,15 @@ public class TencentInstanceProvider implements InstanceProvider {
         if (group == null || !StringUtils.hasText(group.getName())) {
             throw new BusinessException(400, "Consumer group name is required");
         }
+        // CreateConsumerGroupRequest has no consume-model field: the OpenAPI always creates a
+        // clustering group, so a requested broadcast model cannot be applied. Answer that instead of
+        // echoing the request back and letting DescribeConsumerGroup report the vendor's real model
+        // later - InstanceProvider#updateConsumerGroup's contract asks a provider never to report a
+        // change it cannot apply.
+        if (group.getConsumeType() == ConsumeType.BROADCASTING) {
+            throw new BusinessException(400, "Tencent consumer groups always consume in clustering mode; "
+                    + "consumeType BROADCASTING cannot be applied");
+        }
     }
 
     private static void requireGroupName(String groupName) {

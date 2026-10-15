@@ -382,12 +382,19 @@ public class AliyunInstanceProvider implements InstanceProvider {
         } else {
             retryPolicy.retryPolicy(DEFAULT_RETRY_POLICY);
         }
-        CreateConsumerGroupRequest request = CreateConsumerGroupRequest.builder()
+        CreateConsumerGroupRequest.Builder requestBuilder = CreateConsumerGroupRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
                 .consumerGroupId(group.getName())
                 .deliveryOrderType(deliveryOrderType)
-                .consumeRetryPolicy(retryPolicy.build())
-                .build();
+                .consumeRetryPolicy(retryPolicy.build());
+        // A requested broadcast model used to be dropped here while the response echoed it back and
+        // the group page read the vendor's real (clustering) model afterwards - the same silent
+        // downgrade #4816 fixed for the delivery order type.
+        String messageModel = AliyunConverters.toMessageModel(group.getConsumeType());
+        if (messageModel != null) {
+            requestBuilder.messageModel(messageModel);
+        }
+        CreateConsumerGroupRequest request = requestBuilder.build();
         clientFactory.call(ctx.credentialId(), ctx.regionId(), client -> client.createConsumerGroup(request));
         group.setInstanceId(instanceId);
         group.setDeliveryOrderType(deliveryOrderType);

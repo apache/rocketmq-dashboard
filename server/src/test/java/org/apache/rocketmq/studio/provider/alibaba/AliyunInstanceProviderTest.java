@@ -815,6 +815,56 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldApplyTheRequestedBroadcastingModelTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_broadcast");
+        // what the AI tool's group-create input and any API caller can send
+        group.setConsumeType(ConsumeType.BROADCASTING);
+        group.setRetryMaxTimes(5);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        // The vendor's spelling, the one the group page reads back through
+        // AliyunConverters.toConsumeType(data.getMessageModel()).
+        assertThat(captor.getValue().getMessageModel()).isEqualTo("Broadcasting");
+        assertThat(created.getConsumeType()).isEqualTo(ConsumeType.BROADCASTING);
+    }
+
+    @Test
+    void createConsumerGroupShouldLeaveTheConsumeModelToTheVendorWhenClusteringTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.createConsumerGroup(any()))
+                .thenReturn(CompletableFuture.completedFuture(CreateConsumerGroupResponse.create()
+                        .toBuilder()
+                        .statusCode(200)
+                        .body(CreateConsumerGroupResponseBody.builder().data(true).build())
+                        .build()));
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_clustered");
+        group.setConsumeType(ConsumeType.CLUSTERING);
+
+        provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor =
+                ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(asyncClient).createConsumerGroup(captor.capture());
+        // Only a requested broadcast is sent: the clustering default keeps the request byte-identical.
+        assertThat(captor.getValue().getMessageModel()).isNull();
+    }
+
+    @Test
     void resetOffsetShouldUseSpecifiedTimeTest() {
         stubInstance();
         stubCallThrough();

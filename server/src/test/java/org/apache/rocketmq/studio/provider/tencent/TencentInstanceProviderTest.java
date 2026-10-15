@@ -713,6 +713,39 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void createConsumerGroupShouldRejectABroadcastingModelTheOpenApiCannotApplyTest() throws Exception {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_broadcast");
+        // what the AI tool's group-create input and any API caller can send
+        group.setConsumeType(ConsumeType.BROADCASTING);
+
+        assertThatThrownBy(() -> provider.createConsumerGroup(STUDIO_INSTANCE_ID, group))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(400);
+                    assertThat(error.getMessage()).contains("clustering");
+                });
+        // CreateConsumerGroupRequest has no consume-model field, so nothing may be sent.
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void createConsumerGroupShouldStillApplyTheOrderedAndRetrySettingsTest() throws Exception {
+        when(client.CreateConsumerGroup(any())).thenReturn(null);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_ordered");
+        group.setDeliveryOrderType("MESSAGES_ORDER");
+        group.setRetryMaxTimes(20);
+
+        provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor = ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(client).CreateConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getConsumeMessageOrderly()).isTrue();
+        assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
+        assertThat(captor.getValue().getConsumeEnable()).isTrue();
+    }
+
+    @Test
     void deleteConsumerGroupShouldCallTencentOpenApiTest() throws Exception {
         when(client.DeleteConsumerGroup(any())).thenReturn(null);
 
