@@ -186,6 +186,40 @@ describe('Audit page', () => {
     expect(screen.getByText('timestamp: 1784246400000')).toBeInTheDocument();
   });
 
+  it('renders the audit timestamp in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes audit timestamps as UTC wall clocks without an offset (the stored
+    // base stays server-local). Parsing them as browser-local would shift every audit time by
+    // the server-viewer offset while the CSV export of the same rows stays correct.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(opsService.listAuditRecords).mockResolvedValueOnce({
+        items: [
+          {
+            id: 3,
+            timestamp: '2026-08-01T02:00:00',
+            operator: 'ops-chen',
+            operationType: 'RELOAD_PROXY_CONFIG',
+            resourceType: 'PROXY',
+            target: '10.0.30.10:8081',
+            clusterId: 'prod-cn',
+            detail: '',
+            result: 'SUCCESS',
+            errorMessage: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      });
+
+      renderWithProviders(<AuditPage />);
+
+      expect(await screen.findByText('2026-08-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens a resource timeline from a non-empty audit target', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
