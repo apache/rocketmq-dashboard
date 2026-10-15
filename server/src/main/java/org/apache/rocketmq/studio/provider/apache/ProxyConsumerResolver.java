@@ -36,6 +36,7 @@ import org.apache.rocketmq.remoting.protocol.header.GetConsumerRunningInfoReques
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.util.MqResponseCodes;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -143,21 +144,42 @@ public class ProxyConsumerResolver {
      * answer, letting the caller fall back to the broker for directly connected clients.
      */
     public ConsumerRunningInfo resolveConsumerRunningInfo(String instanceId, String group, String clientId) {
-        for (String addr : discoverProxyAddresses(instanceId)) {
+        return resolveConsumerRunningInfoStatus(instanceId, group, clientId).runningInfo();
+    }
+
+    public ConsumerRunningInfoResolution resolveConsumerRunningInfoStatus(
+            String instanceId, String group, String clientId) {
+        ProxyAddressResolution discovery = discoverProxyAddressesStatus(instanceId);
+        if (!discovery.available()) {
+            return ConsumerRunningInfoResolution.unavailable();
+        }
+        boolean queryUnavailable = false;
+        for (String addr : discovery.addresses()) {
             try {
-                ConsumerRunningInfo runningInfo = queryProxyRunningInfo(addr, group, clientId);
-                if (runningInfo != null) {
-                    return runningInfo;
+                ConsumerRunningInfoResolution result = queryProxyRunningInfoStatus(addr, group, clientId);
+                if (result.runningInfo() != null) {
+                    return result;
                 }
+                queryUnavailable |= !result.available();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BusinessException(503, "Consumer stack query interrupted");
             } catch (Exception e) {
+                queryUnavailable = true;
                 log.debug("Proxy consumer running info query failed for {}/{} via {}: {}",
                         group, clientId, addr, e.getMessage());
             }
         }
-        return null;
+        return queryUnavailable ? ConsumerRunningInfoResolution.unavailable()
+                : ConsumerRunningInfoResolution.available(null);
     }
 
     ConsumerRunningInfo queryProxyRunningInfo(String proxyAddr, String group, String clientId) throws Exception {
+        return queryProxyRunningInfoStatus(proxyAddr, group, clientId).runningInfo();
+    }
+
+    private ConsumerRunningInfoResolution queryProxyRunningInfoStatus(
+            String proxyAddr, String group, String clientId) throws Exception {
         GetConsumerRunningInfoRequestHeader header = new GetConsumerRunningInfoRequestHeader();
         header.setConsumerGroup(group);
         header.setClientId(clientId);
@@ -167,14 +189,19 @@ public class ProxyConsumerResolver {
         RemotingCommand response =
                 remotingClient().invokeSync(proxyAddr, request, PROXY_RUNNING_INFO_TIMEOUT_MILLIS);
         if (response == null) {
-            return null;
+            return ConsumerRunningInfoResolution.unavailable();
+        }
+        if (response.getCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+            return ConsumerRunningInfoResolution.available(null);
         }
         if (response.getCode() != ResponseCode.SUCCESS || response.getBody() == null) {
             log.info("Proxy {} cannot report running info for {}/{}: code={} remark={}",
                     proxyAddr, group, clientId, response.getCode(), response.getRemark());
-            return null;
+            return ConsumerRunningInfoResolution.unavailable();
         }
-        return ConsumerRunningInfo.decode(response.getBody(), ConsumerRunningInfo.class);
+        ConsumerRunningInfo info = ConsumerRunningInfo.decode(response.getBody(), ConsumerRunningInfo.class);
+        return info == null ? ConsumerRunningInfoResolution.unavailable()
+                : ConsumerRunningInfoResolution.available(info);
     }
 
     List<String> discoverProxyAddresses(String instanceId) {
@@ -270,6 +297,16 @@ public class ProxyConsumerResolver {
     public record ConsumerConnectionResolution(ConsumerConnection connection, boolean available) {
         static ConsumerConnectionResolution available(ConsumerConnection connection) { return new ConsumerConnectionResolution(connection, true); }
         static ConsumerConnectionResolution unavailable() { return new ConsumerConnectionResolution(null, false); }
+    }
+
+    public record ConsumerRunningInfoResolution(ConsumerRunningInfo runningInfo, boolean available) {
+        static ConsumerRunningInfoResolution available(ConsumerRunningInfo runningInfo) {
+            return new ConsumerRunningInfoResolution(runningInfo, true);
+        }
+
+        static ConsumerRunningInfoResolution unavailable() {
+            return new ConsumerRunningInfoResolution(null, false);
+        }
     }
 
     private record ProxyAddressResolution(List<String> addresses, boolean available) {

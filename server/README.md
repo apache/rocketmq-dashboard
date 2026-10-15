@@ -117,3 +117,13 @@ mvn -B -ntp -Dtest=AuthServiceTest test  # 运行指定测试类；可替换为�
 禁止内部/商业版本号；禁用 `com.aliyun.openservices:ons-client`，客户端收发用开源
 `rocketmq-client`；云厂商管控面走 OpenAPI SDK（`alibabacloud-rocketmq20220801` /
 `tencentcloud-sdk-java-trocket`）。
+
+
+## 消费者线程栈诊断
+
+线程栈查询优先尝试所选实例的 Proxy，并保留直连客户端的 Broker 回退。
+只有查询路径明确未找到客户端时才返回 404；若 Proxy 查询失败且 Broker 未找到客户端，
+返回 502，表示无法确定诊断结果。该 502 只描述栈查询本身；实例解析等前置错误（例如实例不存在）
+在拿到 AdminClient 之前发生，保留各自的状态码与消息，实例不存在仍返回 404。
+取消查询保留线程中断并返回 503。
+成功响应中的空线程栈只表示客户端没有提供线程栈，不代表所有 Proxy 客户端都不支持采集。
