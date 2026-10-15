@@ -48,7 +48,7 @@ import {
 } from '../../api/aliyunCatalog';
 import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { describeApiError } from '../../utils/apiError';
-import { formatDateTime } from '../../utils/format';
+import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
   createInstance,
@@ -628,9 +628,11 @@ const InstancePage = () => {
       key: 'gmtCreate',
       width: 150,
       sorter: (a, b) => a.gmtCreate.localeCompare(b.gmtCreate),
+      // gmtCreate arrives as an offset-less UTC wall clock; a browser-local parse would shift
+      // every creation time by the server-viewer offset.
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(d)}
+          {formatUtcDateTime(d)}
         </Text>
       ),
     },
@@ -642,7 +644,7 @@ const InstancePage = () => {
       sorter: (a, b) => a.gmtModified.localeCompare(b.gmtModified),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatDateTime(d)}
+          {formatUtcDateTime(d)}
         </Text>
       ),
     },
