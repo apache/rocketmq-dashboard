@@ -298,7 +298,7 @@ public class AiRunService {
                 continue;
             }
             terminalReplayed = terminalReplayed || event.get() instanceof TimelineEvent.RunStatus;
-            projector.replay(event.get()).ifPresent(session::sendReplayed);
+            projector.replay(event.get(), run.getDurationMs()).ifPresent(session::sendReplayed);
         }
         boolean live = registry.attach(run.getId(), session);
         session.finishReplay();

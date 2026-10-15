@@ -34,6 +34,8 @@ import org.apache.rocketmq.studio.persistence.entity.RmqAiRun;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Clock;
@@ -529,6 +531,7 @@ class AiRunServiceTest {
         // reduce to the same transcript.
         assertThat(text).contains("\"type\":\"text_delta\"").contains("group A is 4000 behind");
         assertThat(text).contains("\"type\":\"run_finished\"").contains("event:done");
+        assertThat(text).doesNotContain("\"durationMs\"");
         // The user's own turn has no live counterpart: the client renders it from what it sent.
         assertThat(text).doesNotContain("what is lagging");
         assertThat(emitters.get(0).completed()).isTrue();
@@ -551,6 +554,28 @@ class AiRunServiceTest {
         verifyCursor(2);
         String text = emitters.get(0).eventText();
         assertThat(text).contains("tail").contains("\"type\":\"run_finished\"").contains("FAILED");
+        assertThat(text).contains("\"durationMs\":1234");
+        assertThat(emitters.get(0).completed()).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"COMPLETED,8123", "STOPPED,0", "FAILED,1234"})
+    void attachShouldReplayTheRecordedRunDurationTest(RunStatus status, long durationMs) {
+        RmqAiRun finished = AiRunTestSupport.run(RUN_ID, CONVERSATION_ID, 1, status);
+        finished.setDurationMs(durationMs);
+        when(runRepository.findById(RUN_ID)).thenReturn(Optional.of(finished));
+        when(eventRepository.findByConversationIdAfterSeq(CONVERSATION_ID, 2, 200))
+                .thenReturn(List.of(event(3, "run_status",
+                        "{\"type\":\"run_status\",\"status\":\"" + status.name() + "\"}")));
+
+        service.attach(RUN_ID, 2);
+
+        verifyCursor(2);
+        String text = emitters.get(0).eventText();
+        assertThat(text).containsOnlyOnce("\"type\":\"run_finished\"")
+                .contains("\"runId\":" + RUN_ID)
+                .contains("\"status\":\"" + status.name() + "\"")
+                .contains("\"durationMs\":" + durationMs);
         assertThat(emitters.get(0).completed()).isTrue();
     }
 
