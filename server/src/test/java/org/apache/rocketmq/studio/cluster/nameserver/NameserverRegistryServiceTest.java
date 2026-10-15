@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.persistence.entity.RmqNameserver;
 import org.apache.rocketmq.studio.persistence.mapper.RmqNameserverMapper;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,9 @@ class NameserverRegistryServiceTest {
 
     @Mock
     private RmqNameserverMapper nameserverMapper;
+
+    @Mock
+    private OperationAuditService operationAuditService;
 
     @InjectMocks
     private NameserverRegistryService service;
@@ -490,5 +494,76 @@ class NameserverRegistryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("not found");
         verify(nameserverMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void createShouldRecordARegistryAuditEntryTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.insert(any(RmqNameserver.class))).thenAnswer(invocation -> {
+            RmqNameserver entity = invocation.getArgument(0);
+            entity.setId(20L);
+            return 1;
+        });
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(20L);
+        stored.setName("prod");
+        stored.setNamesrvAddr("prod-nameserver:9876");
+        when(nameserverMapper.selectById(20L)).thenReturn(stored);
+
+        service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("prod-nameserver:9876")
+                .build());
+
+        verify(operationAuditService).record("CREATE_NAMESERVER_REGISTRY", "NAMESERVER_REGISTRY", "prod", null,
+                "name=prod, namesrvAddr=prod-nameserver:9876", "SUCCESS", null);
+    }
+
+    @Test
+    void updateShouldRecordARegistryAuditEntryTest() {
+        RmqNameserver existing = new RmqNameserver();
+        existing.setId(21L);
+        existing.setName("prod");
+        when(nameserverMapper.selectById(21L)).thenReturn(existing);
+        when(nameserverMapper.selectCount(any())).thenReturn(0L);
+        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+
+        service.update(UpdateNameserverRegistryDTO.builder()
+                .id(21L)
+                .name("prod")
+                .namesrvAddr("10.0.0.9:9876")
+                .build());
+
+        verify(operationAuditService).record("UPDATE_NAMESERVER_REGISTRY", "NAMESERVER_REGISTRY", "prod", null,
+                "name=prod, namesrvAddr=10.0.0.9:9876", "SUCCESS", null);
+    }
+
+    @Test
+    void deleteShouldRecordARegistryAuditEntryTest() {
+        RmqNameserver stored = new RmqNameserver();
+        stored.setId(22L);
+        stored.setName("prod");
+        stored.setNamesrvAddr("prod-nameserver:9876");
+        when(nameserverMapper.selectById(22L)).thenReturn(stored);
+        when(nameserverMapper.deleteById(22L)).thenReturn(1);
+
+        service.delete(22L);
+
+        verify(operationAuditService).record("DELETE_NAMESERVER_REGISTRY", "NAMESERVER_REGISTRY", "22", null,
+                "name=prod, namesrvAddr=prod-nameserver:9876", "SUCCESS", null);
+    }
+
+    @Test
+    void rejectedWritesRecordNoRegistryAuditEntryTest() {
+        when(nameserverMapper.selectCount(any())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.create(CreateNameserverRegistryDTO.builder()
+                .name("prod")
+                .namesrvAddr("10.0.0.1:9876")
+                .build()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("already exists");
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 }
