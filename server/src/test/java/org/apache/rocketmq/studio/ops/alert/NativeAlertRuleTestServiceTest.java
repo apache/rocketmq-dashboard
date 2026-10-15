@@ -151,4 +151,20 @@ class NativeAlertRuleTestServiceTest {
         return new MetricSample(metric, AlertDomain.BUSINESS, "local", null,
                 Map.of("consumerGroup", group), value, MetricAvailability.AVAILABLE, Instant.now());
     }
+    @Test
+    void rejectsNonFiniteThresholdBeforeCollectingMetricsTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
+        AlertRuleEvaluator evaluator = mock(AlertRuleEvaluator.class);
+        NativeAlertRuleTestService service = new NativeAlertRuleTestService(instances, List.of(),
+                List.of(collector), evaluator);
+        for (double threshold : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).metric("consumer.lag.total")
+                    .instanceId("local").threshold(threshold).build();
+            assertThatThrownBy(() -> service.test(rule)).isInstanceOf(BusinessException.class)
+                    .hasMessage("threshold must be finite");
+        }
+        org.mockito.Mockito.verifyNoInteractions(instances, collector, evaluator);
+    }
+
 }

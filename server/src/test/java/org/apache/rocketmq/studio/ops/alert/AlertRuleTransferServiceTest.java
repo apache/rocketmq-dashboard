@@ -135,4 +135,18 @@ class AlertRuleTransferServiceTest {
         request.setEnabled(true);
         return request;
     }
+    @Test
+    void rejectsNonFiniteThresholdInLaterCandidateBeforeCreatingAnyRuleTest() {
+        for (double threshold : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            AlertRuleRequestDTO invalid = request("Invalid");
+            invalid.setThreshold(threshold);
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> transferService.importRules(AlertDomain.CLUSTER,
+                            transfer(AlertDomain.CLUSTER, request("Valid"), invalid)));
+            assertEquals(400, error.getCode());
+            assertEquals("threshold must be finite", error.getMessage());
+        }
+        verifyNoInteractions(alertService);
+    }
+
 }

@@ -91,4 +91,51 @@ class AlertRuleRequestDTOTest {
 
         assertThat(request.toAlertRuleVO().getMetric()).isEqualTo("consumer.lag.total");
     }
+    @Test
+    void rejectsNonFiniteThresholdsTest() {
+        for (double threshold : new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY}) {
+            AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+            request.setName("Invalid threshold");
+            request.setThreshold(threshold);
+            assertThat(validator.validate(request)).extracting(violation -> violation.getMessage())
+                    .containsExactly("threshold must be finite");
+        }
+    }
+
+    @Test
+    void rejectsOverflowingJsonNumbersTest() throws Exception {
+        tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.json.JsonMapper();
+        for (String number : List.of("1e309", "-1e309")) {
+            AlertRuleRequestDTO request = mapper.readValue(
+                    "{\"name\":\"Overflow\",\"threshold\":" + number + "}", AlertRuleRequestDTO.class);
+            assertThat(validator.validate(request)).extracting(violation -> violation.getMessage())
+                    .containsExactly("threshold must be finite");
+        }
+    }
+
+    @Test
+    void rejectsExplicitNullButKeepsOmittedThresholdDefaultTest() throws Exception {
+        tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.json.JsonMapper();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> mapper.readValue(
+                "{\"name\":\"Invalid\",\"threshold\":null}", AlertRuleRequestDTO.class))
+                .isInstanceOf(tools.jackson.databind.DatabindException.class);
+        AlertRuleRequestDTO omitted = mapper.readValue("{\"name\":\"Default\"}", AlertRuleRequestDTO.class);
+        assertThat(omitted.getThreshold()).isZero();
+        assertThat(validator.validate(omitted)).isEmpty();
+    }
+
+    @Test
+    void preservesAllFiniteThresholdsWithoutAddingAJsonPropertyTest() throws Exception {
+        tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.json.JsonMapper();
+        for (double threshold : new double[]{0.0, -0.0, -12.5, 1e308, Double.MAX_VALUE}) {
+            AlertRuleRequestDTO request = new AlertRuleRequestDTO();
+            request.setName("Finite");
+            request.setThreshold(threshold);
+            assertThat(validator.validate(request)).isEmpty();
+            assertThat(Double.doubleToRawLongBits(request.toAlertRuleVO().getThreshold()))
+                    .isEqualTo(Double.doubleToRawLongBits(threshold));
+            assertThat(mapper.readTree(mapper.writeValueAsString(request)).has("thresholdFinite")).isFalse();
+        }
+    }
+
 }
