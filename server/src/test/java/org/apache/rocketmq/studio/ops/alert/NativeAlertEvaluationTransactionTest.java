@@ -86,6 +86,7 @@ class NativeAlertEvaluationTransactionTest {
         AlertRuleVO rule = AlertRuleVO.builder().id(1L).domain(AlertDomain.BUSINESS).name("Orders")
                 .metric("consumer.lag.total").operator(">").threshold(10).enabled(true).instanceId("local")
                 .consumerGroup("orders").build();
+        when(alertRepository.findRuleByIdForUpdate(rule.getId())).thenReturn(Optional.of(rule));
         MetricSample sample = new MetricSample("consumer.lag.total", AlertDomain.BUSINESS, "local", null,
                 Map.of("consumerGroup", "orders"), 20D, MetricAvailability.AVAILABLE, Instant.now());
 
