@@ -25,6 +25,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -524,21 +526,26 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).isEqualTo("Connection successful");
     }
 
-    @Test
-    void connectionShouldResolveVictoriaMetricsAliasesToItsOwnQueryPathTest() {
-        // The DTO accepts victoria_metrics / victoria-metrics / VictoriaMetrics spellings; the
-        // probe must reach VictoriaMetrics' own query path, not fall back to Prometheus'.
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "victoria_metrics", " VICTORIA_METRICS ", "victoria-metrics", "VictoriaMetrics",
+        "Victoria Metrics", "victoria"})
+    void connectionShouldResolveVictoriaMetricsAliasesToItsOwnQueryPathTest(String type) {
+        // The DTO accepts every alias spelling of VictoriaMetrics, including the bare "victoria"
+        // short form; the probe must reach VictoriaMetrics' own query path for all of them rather
+        // than fall back to Prometheus'.
         prometheusServer.expect(requestTo(VICTORIA_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url(PROMETHEUS_BASE_URL)
-                .type("victoria_metrics")
+                .type(type)
                 .build();
 
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("Connection successful");
     }
 
     @Test

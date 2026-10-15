@@ -365,10 +365,6 @@ public class SettingsService {
         };
     }
 
-    private boolean isPrometheusCompatible(String type) {
-        return resolveBackendType(type) != null;
-    }
-
     private String normalizeDataSourceKey(String key) {
         if (!StringUtils.hasText(key)) {
             throw new BusinessException(400, "Data source key is required");
