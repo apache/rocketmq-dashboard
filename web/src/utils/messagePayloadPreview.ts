@@ -109,7 +109,7 @@ export const DEFAULT_MAX_MESSAGE_BODY_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_MESSAGE_PROPERTIES = 32;
 export const DEFAULT_MAX_MESSAGE_PROPERTY_BYTES = 16 * 1024;
 
-const RESERVED_PROPERTY_NAMES = new Set(nativePropertyContract.reservedPropertyNames);
+const RESERVED_PROPERTY_NAMES = new Set(nativePropertyContract.reservedProperties);
 
 const nativeReservedProperties = new Set(nativePropertyContract.reservedProperties);
 const isNativeSystemProperty = (key: string) =>
