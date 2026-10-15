@@ -333,6 +333,21 @@ describe('Consumer page', () => {
     expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1);
   });
 
+  it('renders creation times in the viewer timezone from the offset-less UTC wire format', async () => {
+    // gmtCreate arrives as an offset-less UTC wall clock; a browser-local parse would shift every
+    // creation time by the server-viewer offset.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
+        groupPage([{ ...group, name: 'tz-cg', gmtCreate: '2026-01-01T02:00:00' }]),
+      );
+      renderWithProviders(<ConsumerPage />);
+
+      expect(await screen.findByText('2026-01-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 

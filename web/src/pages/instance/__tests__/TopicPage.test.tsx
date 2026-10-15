@@ -265,6 +265,22 @@ describe('TopicPage', () => {
     expect(new Set(colors).size).toBe(colors.length);
   });
 
+  it('renders creation times in the viewer timezone from the offset-less UTC wire format', async () => {
+    // gmtCreate arrives as an offset-less UTC wall clock; a browser-local parse would shift every
+    // creation time by the server-viewer offset.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      mockTopicsList([
+        { ...buildTopics(1)[0], name: 'tz-topic', gmtCreate: '2026-01-01T02:00:00' },
+      ]);
+      renderWithProviders('/instance/instance-proxy-1/topic');
+
+      expect(await screen.findByText('2026-01-01 10:00:00')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('reloads the authoritative server page after creating a topic', async () => {
     const existingTopic = { ...buildTopics(1)[0], name: 'topic-b' };
     const createdTopic = {
