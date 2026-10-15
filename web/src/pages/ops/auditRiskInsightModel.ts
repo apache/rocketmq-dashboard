@@ -17,6 +17,7 @@
 
 import type { AuditSummary } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
+import { roundPercent } from '../../utils/format';
 import {
   getAuditOperationPresentation,
   isControlPlaneAuditRecord,
@@ -130,8 +131,6 @@ const highRiskOperationCodes = new Set([
   'RENEW_K8S_CERTIFICATE',
   'DELETE_K8S_CERTIFICATE',
 ]);
-
-const roundPercent = (value: number): number => Math.round(value * 10) / 10;
 
 const percent = (count: number, total: number): number => {
   if (total <= 0) return 0;

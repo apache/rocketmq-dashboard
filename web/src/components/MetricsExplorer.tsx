@@ -22,7 +22,6 @@ import {
   Button,
   Card,
   Descriptions,
-  Drawer,
   Empty,
   Flex,
   Form,
@@ -859,6 +858,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleAuthSubmit = (values: AuthFormValues) => {
     if (!pendingDataSource) return;
+    if (!availableDataSources.some((source) => source.key === pendingDataSource.key)) {
+      handleAuthCancel();
+      return;
+    }
     const authMode = getDataSourceAuthMode(pendingDataSource.auth);
     const credentials =
       authMode === 'basic'
@@ -877,7 +880,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     authForm.resetFields();
   };
 
-  const handleAuthCancel = () => {
+  const handleAuthCancel = useCallback(() => {
     const replay = pendingAuthReplayRef.current;
     pendingAuthReplayRef.current = null;
     if (replay) {
@@ -886,6 +889,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       // previous source's data and nothing ever queries them.
       setProfileId(replay.checkpoint.profileId);
       setRangeId(replay.checkpoint.rangeId);
+      rangeIdRef.current = replay.checkpoint.rangeId;
       setCustomPromql(replay.checkpoint.customPromql);
       if (replay.checkpoint.storedProfileId === null) {
         localStorage.removeItem(PROFILE_STORAGE_KEY);
@@ -895,7 +899,17 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     }
     setPendingDataSource(null);
     authForm.resetFields();
-  };
+  }, [authForm]);
+
+  useEffect(() => {
+    if (
+      pendingDataSource &&
+      !availableDataSources.some((source) => source.key === pendingDataSource.key)
+    ) {
+      // A pending source is separate from the activated key checked by the fallback below.
+      handleAuthCancel();
+    }
+  }, [availableDataSources, handleAuthCancel, pendingDataSource]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1501,16 +1515,25 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           </div>
         </>
       )}
-      <Drawer
+      <Modal
         title={copy.historyTitle}
-        width={820}
+        width="min(820px, calc(100vw - 32px))"
         open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
+        onCancel={() => setHistoryOpen(false)}
         destroyOnHidden
-        extra={
-          <Button size="small" disabled={visibleHistory.length === 0} onClick={handleClearHistory}>
-            {copy.clearHistory}
-          </Button>
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
+        footer={
+          <Flex justify="flex-end">
+            <Button
+              size="small"
+              disabled={visibleHistory.length === 0}
+              onClick={handleClearHistory}
+            >
+              {copy.clearHistory}
+            </Button>
+          </Flex>
         }
       >
         {visibleHistory.length === 0 ? (
@@ -1565,18 +1588,22 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
             )}
           />
         )}
-      </Drawer>
-      <Drawer
+      </Modal>
+      <Modal
         title={
           <Flex gap={8} wrap="wrap" align="center">
             <span>{copy.detailsTitle}</span>
             {detailsPanel?.metric.name ? <Tag>{detailsPanel.metric.name}</Tag> : null}
           </Flex>
         }
-        width={1080}
+        width="min(1080px, calc(100vw - 32px))"
         open={detailsPanel !== null}
-        onClose={() => setDetailsPanel(null)}
+        onCancel={() => setDetailsPanel(null)}
+        footer={null}
         destroyOnHidden
+        styles={{
+          body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+        }}
       >
         {detailsPanel?.query ? (
           <Descriptions
@@ -1613,7 +1640,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           tableLayout="fixed"
           scroll={{ x: tableScrollX(detailColumns) }}
         />
-      </Drawer>
+      </Modal>
       <Modal
         title={copy.authTitle}
         open={pendingDataSource !== null}

@@ -268,6 +268,14 @@ Email delivery uses Spring's standard SMTP configuration. Configure `STUDIO_ALER
 `STUDIO_ALERTING_SMTP_AUTH`, and `STUDIO_ALERTING_SMTP_STARTTLS`; recipient addresses are configured in
 General Settings. Missing SMTP configuration leaves the outbox row retryable and records the delivery failure.
 
+Socket timeouts are bounded by default and tunable through `STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT` (5000 ms),
+`STUDIO_ALERTING_SMTP_READ_TIMEOUT` (10000 ms) and `STUDIO_ALERTING_SMTP_WRITE_TIMEOUT` (10000 ms). They matter
+because `@Scheduled` work runs on the single scheduler thread Spring Boot uses by default (`spring.task.scheduling.pool.size`
+is not raised in `application.yml`), and that thread also drives metrics collection, authentication session cleanup,
+query-history pruning, conversation cleanup and outbox retention. An unreachable SMTP peer that never resets the
+connection would otherwise hold it for as long as the OS socket timeout allows, freezing every other scheduled task
+with it. A timed-out send leaves the outbox row retryable, which is the same path a missing configuration takes.
+
 ```text
 PENDING -> SENDING -> DELIVERED
                   -> RETRY_WAIT -> FAILED
