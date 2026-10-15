@@ -66,7 +66,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, ratioToPercent } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -131,7 +131,7 @@ export const formatThresholdCondition = (
     return unavailableLabel;
   }
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
-    return `${rule.operator} ${rule.threshold * 100}%`;
+    return `${rule.operator} ${ratioToPercent(rule.threshold)}%`;
   }
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
@@ -466,7 +466,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         nativeRatioMetrics.has(form.getFieldValue('metric')) &&
         !form.getFieldValue('thresholdUnit')
       ) {
-        form.setFieldValue('threshold', Number(form.getFieldValue('threshold')) * 100);
+        form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
       }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
     } catch {
