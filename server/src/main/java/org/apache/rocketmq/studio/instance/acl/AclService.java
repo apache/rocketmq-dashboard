@@ -582,7 +582,7 @@ public class AclService {
                     .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
         }
         // Both vendor paths reveal a secret, so both are audited; the detail never carries it.
-        recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), null,
+        recordAudit("REVEAL_ACL_USER_CREDENTIALS", "ACL_USER", String.valueOf(id), instanceId,
                 "instanceId=" + instanceId);
         return user;
     }
@@ -845,7 +845,10 @@ public class AclService {
     private void recordAudit(String operation, String resourceType, String resourceName,
                              String clusterId, String detail) {
         try {
-            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+            var instance = clusterId == null ? null : instanceResolver.findByIdentifier(clusterId).orElse(null);
+            String auditClusterId = instance == null ? clusterId : instance.getName();
+            operationAuditService.record(operation, resourceType, resourceName, auditClusterId,
+                    detail, "SUCCESS", null);
         } catch (Exception auditFailure) {
             log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
                     auditFailure.getMessage());

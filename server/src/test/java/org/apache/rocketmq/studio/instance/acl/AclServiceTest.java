@@ -630,7 +630,7 @@ class AclServiceTest {
 
         assertThat(revealed.getSecretKey()).isEqualTo("secret-key-987654");
         verify(operationAuditService).record(eq("REVEAL_ACL_USER_CREDENTIALS"), eq("ACL_USER"), eq("1"),
-                eq(null), argThat((String detail) -> detail.contains("tencent-instance")
+                eq("tencent-instance"), argThat((String detail) -> detail.contains("tencent-instance")
                         && !detail.contains("secret-key-987654")),
                 eq("SUCCESS"), eq(null));
     }
@@ -935,6 +935,23 @@ class AclServiceTest {
         assertThat(result).isSameAs(input);
         verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"), eq("tencent-1"),
                 eq("principal=role-a"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createRuleShouldUseTheResolvedInstanceNameForAuditTest() {
+        when(instanceResolver.findByIdentifier("tencent-alias"))
+                .thenReturn(Optional.of(tencentInstance("tencent-cluster")));
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("role-a")
+                .resource("topic-1")
+                .decision("ALLOW")
+                .build();
+        when(tencentAclService.createRule("tencent-alias", input)).thenReturn(input);
+
+        aclService.createRule(input, "tencent-alias");
+
+        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq("role-a"),
+                eq("tencent-cluster"), eq("principal=role-a"), eq("SUCCESS"), eq(null));
     }
 
     @Test
