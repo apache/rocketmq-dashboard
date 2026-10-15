@@ -1,3 +1,4 @@
+import { parseSilenceLabels } from '../systemAlerts';
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -25,7 +26,7 @@ import {
   listAlertSilencesPage,
   listSystemAlertsPage,
 } from '../../../services/opsService';
-import SystemAlertsPage from '../systemAlerts';
+import SystemAlertsPage, { parseSilenceLabels } from '../systemAlerts';
 
 vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
@@ -79,6 +80,24 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
+
+describe('parseSilenceLabels', () => {
+  it('keeps every valid selector, including object-property names', () => {
+    const parsed = parseSilenceLabels('broker=broker-a,__proto__=broker-b', 'invalid');
+    expect(parsed?.broker).toBe('broker-a');
+    expect(Object.keys(parsed ?? {})).toContain('__proto__');
+    expect(Object.getOwnPropertyDescriptor(parsed, '__proto__')?.value).toBe('broker-b');
+  });
+
+  it('rejects duplicate normalized keys instead of keeping the last one', () => {
+    expect(() => parseSilenceLabels('broker=a, broker=b', 'invalid')).toThrow('invalid');
+  });
+
+  it('rejects malformed pairs with the localized message', () => {
+    expect(() => parseSilenceLabels('broker', 'invalid')).toThrow('invalid');
+    expect(() => parseSilenceLabels('broker=', 'invalid')).toThrow('invalid');
+  });
+});
 
 describe('SystemAlertsPage', () => {
   beforeEach(() => {

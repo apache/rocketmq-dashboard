@@ -198,6 +198,12 @@ public class AlertSilenceService {
                     || normalizedValue.length() > 512) {
                 throw new BusinessException(400, "Silence labels must have non-empty bounded keys and values");
             }
+            if (normalized.containsKey(normalizedKey)) {
+                // {"broker":"a"," broker ":"b"} trims to the same key twice: keeping the latter
+                // would silently change the requested scope, so the window is refused instead.
+                throw new BusinessException(400, "Silence labels contain a duplicate key after trimming: "
+                        + normalizedKey);
+            }
             normalized.put(normalizedKey, normalizedValue);
         });
         return Map.copyOf(normalized);
