@@ -15,16 +15,23 @@ Studio. Open the agent at the repository root and paste the prompt below:
 Set up and run RocketMQ Studio locally from this repository:
 1. Check that Docker and Docker Compose are installed. If not, tell me how to install them and stop.
 2. Create the shared network if it does not exist: `docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net`.
-3. Build and start Studio: `docker compose -f deploy/docker-compose.yml up -d --build`.
-4. Wait for the backend to become healthy, then open http://127.0.0.1:6789 and confirm the page loads.
+3. If deploy/.env does not exist, copy deploy/.env.example to it. Before starting with an empty database, ask me to configure STUDIO_AUTH_ADMIN_USERNAME and a unique STUDIO_AUTH_ADMIN_PASSWORD; do not print the password. Set STUDIO_AUTH_LOGIN_REQUIRED=true explicitly. For this local HTTP setup only, set STUDIO_AUTH_SESSION_COOKIE_SECURE=false. Preserve existing configuration and users.
+4. Build and start Studio: `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`.
+5. Wait for the backend to become healthy, then open http://127.0.0.1:6789 and confirm the page loads. Have me verify the first login.
 Report the running containers and any errors. Do not modify source code or create commits.
 ```
 
 To also start the optional bundled RocketMQ demo cluster, insert
-`docker compose -f deploy/rocketmq/docker-compose.yml up -d` before step 3 and wait until its
+`docker compose -f deploy/rocketmq/docker-compose.yml up -d` before step 4 and wait until its
 `ps` output is healthy.
 
 ## Quick Start
+
+Before the first start, copy `deploy/.env.example` to `deploy/.env` if it does not already
+exist. Set both `STUDIO_AUTH_ADMIN_USERNAME` and a unique `STUDIO_AUTH_ADMIN_PASSWORD`.
+Set `STUDIO_AUTH_LOGIN_REQUIRED=true` explicitly; the copied example currently opts out of
+login protection. For the local HTTP URL below only, set `STUDIO_AUTH_SESSION_COOKIE_SECURE=false`. Keep it `true` when browsers
+use HTTPS, including behind a TLS-terminating reverse proxy. Preserve an existing `.env`.
 
 Run from the repository root:
 
@@ -33,7 +40,7 @@ Run from the repository root:
 docker network inspect rocketmq_net >/dev/null 2>&1 || docker network create rocketmq_net
 
 # 2. Build and start RocketMQ Studio (mysql + rocketmq-server + rocketmq-web)
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
 Then visit **http://127.0.0.1:6789**.
@@ -51,15 +58,21 @@ and should never be imported into a production database.
 
 **Studio ports:** Frontend 6789 (Nginx, also proxies `/api`), Backend 8888 (Spring Boot, container-internal — published only when the backend runs outside compose)
 
-To enable login protection for a shared environment, copy `deploy/.env.example` to
-`deploy/.env`, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and configure
-`STUDIO_AUTH_ADMIN_USERNAME` / `STUDIO_AUTH_ADMIN_PASSWORD`. These configured credentials are a
+The application and Compose fallback enable login protection by default, but
+`deploy/.env.example` currently sets `STUDIO_AUTH_LOGIN_REQUIRED=false`. Set it to `true`
+for a protected deployment. Compose forwards empty bootstrap values when they are missing,
+so configure `STUDIO_AUTH_ADMIN_USERNAME` / `STUDIO_AUTH_ADMIN_PASSWORD` before first use
+with an empty database. The standalone server retains the `admin` / `admin` fallback when
+these environment variables are unset; override it before exposing the server. These credentials are a
 bootstrap seed: on the first login against an empty database Studio creates the configured users
 in the `rmq_studio_user` table, and the database becomes the source of truth afterwards.
 Administrators manage accounts (create users, enable/disable, reset passwords) on the
 user-management page; browsers authenticate with an `HttpOnly` session cookie, and API clients can
-request a bearer token explicitly. Disabling login protection only skips API interception for local
-development.
+request a bearer token explicitly. First login seeds the account while login protection remains
+enabled; do not temporarily disable it to initialize users. Blank bootstrap credentials make an
+empty database reject login. Existing database users continue to work, and changing bootstrap
+variables does not reset their passwords. Disabling login is an explicit local-development-only
+option; the application does not verify network isolation. See [deployment setup](deploy/README.md).
 
 ## Bundled RocketMQ Cluster (Optional)
 
