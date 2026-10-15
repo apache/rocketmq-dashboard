@@ -22,6 +22,7 @@ import {
   Tag,
   Flex,
   Typography,
+  Alert,
   Badge,
   Button,
   message,
@@ -36,7 +37,7 @@ import {
   theme,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
+import { ArrowClockwise, CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -153,6 +154,7 @@ const SystemAlertsPage = () => {
   };
 
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [transitionFilter, setTransitionFilter] = useState<string>('all');
@@ -218,10 +220,16 @@ const SystemAlertsPage = () => {
         if (!cancelled) {
           setAlerts(data.items);
           setTotal(data.total);
+          setLoadFailed(false);
         }
       })
       .catch(() => {
-        if (!cancelled) message.error(t('sysAlerts.loadFailed'));
+        if (!cancelled) {
+          // A failed read must not leave the page reporting "0 unacknowledged" for a store it
+          // never reached, and the alert surfaces below must offer a retry.
+          message.error(t('sysAlerts.loadFailed'));
+          setLoadFailed(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -486,7 +494,7 @@ const SystemAlertsPage = () => {
     <div style={{ padding: 24 }}>
       <PageHeader
         title={t('sysAlerts.title')}
-        subtitle={t('sysAlerts.subtitle', { n: unackCount })}
+        subtitle={t('sysAlerts.subtitle', { n: loadFailed ? '-' : unackCount })}
         extra={
           <Flex gap={8} align="center">
             {collectorStatus && (
@@ -536,6 +544,24 @@ const SystemAlertsPage = () => {
         }
       />
 
+      {loadFailed && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ArrowClockwise size={16} />}
+              onClick={() => setRefreshNonce((value) => value + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
       {/* 筛选条：全部控件统一默认尺寸（32px 高）。时间范围用单个 RangePicker 而不是两个
           datetime-local：368px 是填了值之后两段 `YYYY-MM-DD HH:mm` 加箭头和日历图标的实测宽，
           再窄会裁字。整条约 1292px，在 1600 视口（容器 1332px）下保持一行。 */}
@@ -551,7 +577,7 @@ const SystemAlertsPage = () => {
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
-                {level !== 'all' && (
+                {!loadFailed && level !== 'all' && (
                   <Badge
                     count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
                     style={{
