@@ -16,11 +16,12 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { LiteTopicItem, LiteTopicQuota } from '../../../api/liteTopic';
+import type { Instance } from '../../../api/instance';
 import { downloadCsv } from '../../../utils/download';
 import LiteTopic, { formatTime } from '../LiteTopic';
 
@@ -33,6 +34,17 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../api/liteTopic', () => apiMocks);
+
+const instanceApiMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
+
+vi.mock('../../../api/instance', async () => {
+  const instanceModule =
+    await vi.importActual<typeof import('../../../api/instance')>('../../../api/instance');
+  return {
+    ...instanceModule,
+    listInstances: instanceApiMocks.listInstances,
+  };
+});
 
 vi.mock('../../../utils/download', async () => {
   const downloadModule =
@@ -117,7 +129,36 @@ describe('LiteTopic Page', () => {
       sessionId: 'session-1',
       totalMessages: 100,
       consumedMessages: 0,
-      popProgress: 96,
+    });
+    instanceApiMocks.listInstances.mockResolvedValue([]);
+  });
+
+  it('sends the owning instance id when extending TTL', async () => {
+    // LiteTopicTTLUpdateDTO requires a non-blank instanceId; only the
+    // Apache-vendor instance is a candidate for the ownership-checked write.
+    instanceApiMocks.listInstances.mockResolvedValue([
+      { id: 1, name: 'apache-main', vendor: 'APACHE' },
+      { id: 2, name: 'cloud-1', vendor: 'ALIYUN' },
+    ] as unknown as Instance[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('order-*');
+    await user.click(await screen.findByText('延长 TTL'));
+
+    // exactly one Apache-vendor instance -> auto-selected in the modal
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).not.toHaveBeenCalled();
+      const selected = document.querySelector('.ant-modal .ant-select-selection-item');
+      expect(selected?.textContent).toBe('apache-main');
+    });
+
+    await user.type(screen.getByRole('spinbutton'), '7200');
+    // antd inserts a space between the two CJK chars of the confirm button
+    await user.click(await screen.findByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(apiMocks.extendLiteTopicTTL).toHaveBeenCalledWith('apache-main', 'order-*', 7200);
     });
   });
 
@@ -145,15 +186,80 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('active-00*')).toBeInTheDocument();
   });
 
-  it('displays the session POP progress returned by the API as a percentage', async () => {
+  it('does not offer a POP progress panel the API never fills', async () => {
+    // PopConsumeProgress was never written by any provider, so `popProgress` was always absent and
+    // the panel could only ever render from a fixture: the drawer no longer offers it.
     const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      popProgress: 96,
+    });
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    await screen.findByText('session-1');
+    expect(document.querySelector('.ant-drawer')).toBeNull();
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
+    // The percentage is the load-bearing half: the panel's title came from an i18n key this change
+    // deletes, so asserting on its text would pass with or without the panel. `96%` only ever came
+    // from the panel's Progress, so a re-added panel turns this red.
+    expect(screen.queryByText('96%')).not.toBeInTheDocument();
+  });
+
+  it('reports a consumed count that only covers part of the session', async () => {
+    // The consumed-offset scan reads at most MAX_SESSION_LITE_TOPIC_SCAN lite topics, so a session
+    // with more of them only gets a lower bound. The drawer must not present it as a measured total
+    // and must not derive a consumption percentage from it.
+    const user = userEvent.setup();
+    apiMocks.queryLiteTopicSession.mockResolvedValue({
+      sessionId: 'session-1',
+      status: 'ACTIVE',
+      liteTopics: [],
+      totalMessages: 1500,
+      consumedMessages: 1000,
+      pendingMessages: 500,
+      consumedScanTruncated: true,
+    });
     renderPage();
 
     await user.click(await screen.findByText('查看会话'));
 
-    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-1');
-    const popProgressLabel = await screen.findByText('Pop 进度');
-    expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
+    expect(await screen.findByTestId('lite-topic-consumed-truncated')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1500')).toBeInTheDocument();
+    expect(screen.getByText('≥ 1000')).toBeInTheDocument();
+    expect(screen.getByText('500')).toBeInTheDocument();
+    // The ratio is the part that has to disappear: 1000/1500 would render as 67%, and swapping the
+    // `consumedTruncated ? InfoBanner : Progress` branch back leaves every assertion above green.
+    expect(screen.queryByText('67%')).not.toBeInTheDocument();
+  });
+
+  it('allows viewing every session linked to the same LiteTopic row', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'order-*', sessionIds: ['session-1', 'session-2'] },
+    ]);
+    apiMocks.queryLiteTopicSession.mockImplementation(async (sessionId: string) => ({
+      sessionId,
+      clientId: sessionId === 'session-1' ? 'first-client' : 'second-client',
+      totalMessages: 100,
+      consumedMessages: 0,
+    }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('查看会话'));
+    expect(await screen.findByText('first-client')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '会话 ID' }));
+    await user.click(
+      await screen.findByText('session-2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(apiMocks.queryLiteTopicSession).toHaveBeenCalledWith('session-2');
+    expect(await screen.findByText('second-client')).toBeInTheDocument();
+    expect(screen.queryByText('first-client')).not.toBeInTheDocument();
   });
 
   it('keeps the latest session detail when an earlier request resolves last', async () => {

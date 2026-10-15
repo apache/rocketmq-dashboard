@@ -52,9 +52,6 @@ public class AlertNotificationSuppressionService {
                     windowStart, event.getTime(), page, CANDIDATE_PAGE_SIZE));
             List<SystemAlertVO> candidates = result.getItems();
             for (SystemAlertVO candidate : candidates) {
-                if (!AlertCorrelationScope.matches(event, candidate)) {
-                    continue;
-                }
                 String incident = candidate.getFingerprint() == null
                         ? legacyIncidentKey(candidate)
                         : candidate.getFingerprint();
@@ -67,6 +64,9 @@ public class AlertNotificationSuppressionService {
             page++;
         }
         return latestByIncident.values().stream()
+                // A newer scoped event supersedes an older unscoped event for the same incident,
+                // including events written before cluster identity was carried into alert labels.
+                .filter(candidate -> AlertCorrelationScope.matches(event, candidate))
                 // REMINDER is emitted only while the state stays FIRING, so an incident whose
                 // latest in-window event is a REMINDER is still active; only RESOLVED ends it.
                 .filter(candidate -> "FIRING".equalsIgnoreCase(candidate.getTransition())

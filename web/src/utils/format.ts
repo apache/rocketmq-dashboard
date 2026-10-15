@@ -45,27 +45,22 @@ export function formatTimeMs(value: number | string | null | undefined): string 
   const timestamp = typeof value === 'string' ? Date.parse(value) : value;
   if (!Number.isFinite(timestamp)) return '-';
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
   return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
-}
-
-export interface FormatUtcDateTimeOptions {
-  /**
-   * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
-   * column noise rather than information — a compact list whose every row would repeat the viewer's
-   * own zone, and whose width that suffix would otherwise dictate.
-   */
-  zone?: boolean;
 }
 
 /**
  * Format a UTC timestamp for alert events in the viewer's timezone. Alert APIs
  * serialize UTC LocalDateTime values without an offset, so normal Date parsing
  * would incorrectly treat them as browser-local timestamps.
+ *
+ * The zone name is deliberately not appended: every timestamp on a page renders in the viewer's own
+ * zone, so a `GMT+8` suffix repeats the reader's own setting on every row and forces every time
+ * column wider.
  */
 export function formatUtcDateTime(
   date: string | Date | null | undefined,
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
-  options: FormatUtcDateTimeOptions = {},
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const utcDate =
@@ -83,7 +78,6 @@ export function formatUtcDateTime(
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-    timeZoneName: 'short',
   }).formatToParts(utcDate);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
@@ -93,9 +87,8 @@ export function formatUtcDateTime(
   const hour = value('hour');
   const minute = value('minute');
   const second = value('second');
-  const zone = options.zone === false ? '' : value('timeZoneName');
   return year && month && day && hour && minute && second
-    ? `${year}-${month}-${day} ${hour}:${minute}:${second}${zone ? ` ${zone}` : ''}`
+    ? `${year}-${month}-${day} ${hour}:${minute}:${second}`
     : '-';
 }
 
@@ -121,6 +114,9 @@ export function formatRelativeTime(
   now = Date.now(),
 ): string {
   if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  if (Number.isNaN(updatedAt.getTime()) || Number.isNaN(current.getTime())) return '-';
   if (!timestamp) return t('ai.history.justNow');
 
   const elapsed = Math.max(0, now - timestamp);
@@ -128,8 +124,6 @@ export function formatRelativeTime(
   if (minutes < 1) return t('ai.history.justNow');
   if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
 
-  const updatedAt = new Date(timestamp);
-  const current = new Date(now);
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   if (updatedAt.toDateString() === current.toDateString()) {
     return new Intl.DateTimeFormat(locale, {
@@ -227,4 +221,15 @@ export function formatDelay(totalSeconds: number, lang: 'zh' | 'en' = 'zh'): str
 export function formatPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) return '-';
   return `${value.toFixed(safeDecimals(decimals))}%`;
+}
+
+/**
+ * Round a percentage to the one decimal the UI shows.
+ *
+ * Ratios scaled to percentage points carry binary floating point noise — a broker reporting
+ * `commitLogDiskRatio=0.29` becomes `28.999999999999996` — and an antd `Progress` reserves room
+ * for its label inside the bar, so a label that long squeezes the bar down to zero width.
+ */
+export function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
 }

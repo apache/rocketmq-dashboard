@@ -267,6 +267,7 @@ describe('UserManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '会话' }));
 
     const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    expect(document.querySelector('.ant-drawer')).toBeNull();
     expect(listStudioUserSessions).toHaveBeenCalledWith(7);
     expect(within(drawer).getAllByText('会话 ID').length).toBeGreaterThan(0);
     expect(within(drawer).getByText('19')).toBeInTheDocument();
@@ -305,12 +306,12 @@ describe('UserManagementPage', () => {
 
       await screen.findByText('operator');
       // 09:30 UTC is 17:30 in Asia/Shanghai; a browser-local misparse shows 09:30.
-      expect(screen.getByText('2026-08-22 17:30:00 GMT+8')).toBeInTheDocument();
+      expect(screen.getByText('2026-08-22 17:30:00')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: '会话' }));
       const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
-      expect(within(drawer).getByText('2026-08-22 17:45:00 GMT+8')).toBeInTheDocument();
-      expect(within(drawer).getByText('2026-08-22 18:00:00 GMT+8')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 17:45:00')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 18:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -333,6 +334,93 @@ describe('UserManagementPage', () => {
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
     await waitFor(() => expect(listStudioUserSessions).toHaveBeenCalledTimes(2));
     expect(within(drawer).getByText('暂无活跃会话')).toBeInTheDocument();
+  });
+
+  it('does not replace another user session drawer when a previous revocation completes', async () => {
+    vi.mocked(listStudioUsers).mockResolvedValue({
+      ...studioUserPage,
+      items: [
+        studioUserPage.items[0],
+        { ...studioUserPage.items[0], id: 8, username: 'second-user' },
+      ],
+    });
+    const secondSessions = [{ ...sessionDetails[0], id: 99, userId: 8 }];
+    vi.mocked(listStudioUserSessions).mockImplementation(async (id) =>
+      id === 8 ? secondSessions : sessionDetails,
+    );
+    let completeRevoke!: () => void;
+    vi.mocked(revokeStudioUserSessions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeRevoke = () => resolve({ userId: 7, revokedSessionCount: 2 });
+        }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    const firstRow = await screen.findByRole('row', { name: /operator/ });
+    await user.click(within(firstRow).getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    await user.click(within(drawer).getByRole('button', { name: '注销全部' }));
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+    await user.click(within(drawer).getByRole('button', { name: /close/i }));
+    const secondRow = screen.getByRole('row', { name: /second-user/ });
+    await user.click(within(secondRow).getByRole('button', { name: '会话' }));
+    const secondDialog = await screen.findByRole('dialog', { name: 'second-user 的会话' });
+    expect(await within(secondDialog).findByText('99')).toBeInTheDocument();
+    await act(async () => completeRevoke());
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+    expect(within(secondDialog).getByText('99')).toBeInTheDocument();
+    expect(within(secondDialog).queryByText('19')).not.toBeInTheDocument();
+  });
+
+  it('does not reload session details after their drawer is closed during revocation', async () => {
+    let completeRevoke!: () => void;
+    vi.mocked(revokeStudioUserSessions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeRevoke = () => resolve({ userId: 7, revokedSessionCount: 2 });
+        }),
+    );
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    await user.click(within(drawer).getByRole('button', { name: '注销全部' }));
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+    await user.click(within(drawer).getByRole('button', { name: /close/i }));
+    await act(async () => completeRevoke());
+    await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
+    expect(listStudioUserSessions).toHaveBeenCalledTimes(1);
+    // antd's modal keeps the dialog node in the a11y tree until its exit motion finishes, and
+    // under jsdom that motion never completes, so the repo's convention is to assert the leave
+    // class instead of removal (same pattern as ClusterPage / InstancePage).
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
+  });
+
+  it('does not present a failed session read as an account without sessions', async () => {
+    vi.mocked(listStudioUserSessions).mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await screen.findByText('operator');
+    await user.click(screen.getByRole('button', { name: '会话' }));
+    const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+
+    // The rows never arrived, so the drawer must not report zero active sessions or claim the
+    // account has none - a transient toast is the only other hint and it fades.
+    await waitFor(() => expect(within(drawer).queryByText('暂无活跃会话')).not.toBeInTheDocument());
+    expect(
+      within(drawer).getByText('活跃会话').closest('th,td')?.nextElementSibling?.textContent,
+    ).toBe('-');
+
+    await user.click(within(drawer).getByRole('button', { name: /重\s*试/ }));
+
+    await waitFor(() => expect(listStudioUserSessions).toHaveBeenCalledTimes(2));
+    expect(await within(drawer).findByText('5分钟')).toBeInTheDocument();
   });
 
   it('refreshes the open session detail drawer', async () => {

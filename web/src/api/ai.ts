@@ -285,6 +285,13 @@ async function consumeEventStream(
     // A server that closes without a trailing blank line still delivered its last frame.
     buffer += decoder.decode();
     if (buffer && dispatch(buffer)) return;
+    // A run outlives its HTTP observer. Only the explicit terminal control frame
+    // establishes normal stream completion; EOF can leave the server run active.
+    throw new AiStreamError(
+      'AI stream ended before the done event',
+      'llm.stream.unexpected_eof',
+      'Reload the conversation to recover the persisted run and reconnect if it is still active.',
+    );
   } finally {
     await reader.cancel().catch(() => undefined);
   }
@@ -417,9 +424,9 @@ export async function attachRunStream(
   await consumeRunStream(response, handlers, 'AI run stream failed');
 }
 
-export async function listTools(cluster?: string) {
+export async function listTools(instanceId?: string) {
   const res = await client.get<{ data: McpTool[] }>('/ai/tools', {
-    params: cluster ? { cluster } : undefined,
+    params: instanceId ? { instanceId } : undefined,
   });
   return res.data.data;
 }

@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Flex, Input, Statistic, Table, Tabs, Tag } from 'antd';
+import { Alert, Button, Flex, Input, Modal, Statistic, Table, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   getQueryHistorySummary,
@@ -31,7 +31,7 @@ const PAGE_SIZE = 20;
 // formatUtcDateTime appends Z so the viewer's timezone is applied correctly.
 const formatTime = (value?: string) => formatUtcDateTime(value);
 
-const MessageQueryHistoryDrawer = ({
+const MessageQueryHistoryModal = ({
   open,
   clusterId,
   onClose,
@@ -153,12 +153,18 @@ const MessageQueryHistoryDrawer = ({
   ];
 
   return (
-    <Drawer
+    <Modal
       title={t('messageHistory.title')}
       width={900}
       open={open}
-      onClose={onClose}
+      onCancel={onClose}
+      footer={null}
       destroyOnHidden
+      styles={{
+        // Two statistics rows, a search field and a paginated table: cap the body so a long
+        // history scrolls inside the modal instead of growing it past the viewport.
+        body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' },
+      }}
     >
       <Flex gap={32} style={{ marginBottom: 16 }}>
         <Statistic
@@ -210,6 +216,7 @@ const MessageQueryHistoryDrawer = ({
             children: (
               <Table
                 rowKey="id"
+                size="small"
                 loading={loading}
                 columns={messageColumns}
                 dataSource={messageRows}
@@ -231,6 +238,7 @@ const MessageQueryHistoryDrawer = ({
             children: (
               <Table
                 rowKey="id"
+                size="small"
                 loading={loading}
                 columns={traceColumns}
                 dataSource={traceRows}
@@ -248,8 +256,8 @@ const MessageQueryHistoryDrawer = ({
           },
         ]}
       />
-    </Drawer>
+    </Modal>
   );
 };
 
-export default MessageQueryHistoryDrawer;
+export default MessageQueryHistoryModal;
