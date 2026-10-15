@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.acl;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.ToString;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
@@ -39,6 +40,7 @@ import java.util.List;
 public class PlainAccessConfigVO {
 
     /** Unique access key identifying the account. */
+    @ToString.Exclude
     private String accessKey;
 
     /**
@@ -46,6 +48,7 @@ public class PlainAccessConfigVO {
      * when it was just provided. Read-back views return a masked value, and the plaintext is
      * available solely through the explicit per-user credentials endpoint.
      */
+    @ToString.Exclude
     private String secretKey;
 
     /** IP whitelist pattern for this account; persisted, empty/null means no restriction. */
