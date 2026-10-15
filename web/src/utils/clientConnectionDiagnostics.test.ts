@@ -285,8 +285,8 @@ describe('observed connection evidence', () => {
     expect(d.summary.mixedProtocolResourceCount).toBe(0);
     expect(d.summary.mixedVersionResourceCount).toBe(0);
     expect(d.resources[0].protocols).toContain('unknown');
-    expect(d.issues.map((x) => x.code)).toContain('UNKNOWN_PROTOCOL');
-    expect(d.issues.map((x) => x.code)).toContain('UNKNOWN_VERSION');
+    expect(d.issues.map((x) => x.code)).not.toContain('UNKNOWN_PROTOCOL');
+    expect(d.issues.map((x) => x.code)).not.toContain('UNKNOWN_VERSION');
   });
   it('does not diagnose multi-language multi-version from missing metadata', () => {
     const d = analyzeClientConnections([

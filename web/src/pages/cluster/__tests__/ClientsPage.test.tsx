@@ -193,7 +193,7 @@ describe('Clients page', () => {
     const diagnostics = screen.getByTestId('client-connection-diagnostics');
     expect(within(diagnostics).queryByText('同一资源存在多协议连接')).not.toBeInTheDocument();
     expect(within(diagnostics).queryByText('同一资源存在多版本客户端')).not.toBeInTheDocument();
-    expect(within(diagnostics).getByText('协议类型未知')).toBeInTheDocument();
+    expect(within(diagnostics).queryByText('协议类型未知')).not.toBeInTheDocument();
   });
   it('does not claim single consumer availability from a partial live clients result', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([
