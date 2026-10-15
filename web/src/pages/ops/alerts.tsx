@@ -150,7 +150,10 @@ export const formatThresholdCondition = (
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
   if (metric && nativeRatioMetrics.has(metric)) {
     const value = Number(threshold);
-    return Number.isFinite(value) ? `${Math.min(100, value + 6)}%` : '91%';
+    // The server renders ${value} without a unit (the percent sign lives in
+    // ${thresholdUnit}); embedding it here produced "91%%" in previews of
+    // templates like "${value}${thresholdUnit}".
+    return Number.isFinite(value) ? `${Math.min(100, value + 6)}` : '91';
   }
   if (metric === 'consumer.delay.seconds') return '420';
   if (metric === 'consumer.lag.total' || metric === 'topic.backlog.total') return '12000';
@@ -294,7 +297,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             ? previewDescription.trim()
             : t('alerts.notificationTemplateSampleDescription'),
         transition: 'FIRING',
-        metric: metricText,
+        // The server substitutes the raw metric key; a translated label here
+        // made the preview disagree with what delivery actually sends.
+        metric: metricKey,
         instanceId,
         value: previewValueForMetric(metricKey, threshold),
         threshold,
