@@ -44,9 +44,6 @@ tools:
               - name
               - writeQueues
               - readQueues
-              - messageCount
-              - tps
-              - consumerGroupCount
             additionalProperties: false
             properties:
               name:
@@ -70,12 +67,6 @@ tools:
                   - RW
                   - RO
                   - WO
-              messageCount:
-                type: integer
-              tps:
-                type: number
-              consumerGroupCount:
-                type: integer
     viewHint: table
     deprecated: false
   - name: rmq.topic.detail
@@ -108,9 +99,6 @@ tools:
         - name
         - writeQueues
         - readQueues
-        - messageCount
-        - tps
-        - consumerGroupCount
         - consumerGroups
         - routes
       additionalProperties: false
@@ -138,12 +126,6 @@ tools:
             - RW
             - RO
             - WO
-        messageCount:
-          type: integer
-        tps:
-          type: number
-        consumerGroupCount:
-          type: integer
         remark:
           type: string
         consumerGroups:

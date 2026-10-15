@@ -25,9 +25,6 @@ const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
   { header: 'Write Queues', value: (topic) => topic.writeQueues },
   { header: 'Read Queues', value: (topic) => topic.readQueues },
   { header: 'Permission', value: (topic) => topic.perm },
-  { header: 'Message Count', value: (topic) => topic.messageCount },
-  { header: 'TPS', value: (topic) => topic.tps },
-  { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
   { header: 'Remark', value: (topic) => topic.remark },
   { header: 'Created At', value: (topic) => topic.gmtCreate },
   { header: 'Updated At', value: (topic) => topic.gmtModified },
@@ -113,9 +110,6 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
       ...data,
       gmtCreate: new Date().toISOString(),
       gmtModified: new Date().toISOString(),
-      messageCount: 0,
-      tps: 0,
-      consumerGroupCount: 0,
     } as unknown as Topic;
     mockTopics.unshift(topic as never);
     return cloneTopic(topic);
