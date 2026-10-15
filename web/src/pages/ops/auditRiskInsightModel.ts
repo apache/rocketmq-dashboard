@@ -70,7 +70,9 @@ export interface AuditRiskOperator {
 export interface AuditRiskRecord {
   id: number;
   timestamp: string;
-  operator: string;
+  // Mirrors AuditRecord.operator: the source column is nullable, and the operator
+  // tally deliberately groups missing operators apart from a literal 'system'.
+  operator: string | null;
   operationType: string;
   resourceType: string;
   target: string;

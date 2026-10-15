@@ -175,7 +175,9 @@ export type CreateAlertSilence = Omit<AlertSilence, 'id' | 'createdBy'>;
 export interface AuditRecord {
   id: number;
   timestamp: string;
-  operator: string;
+  // The server column is a nullable Java String; the audit sorter and the risk model
+  // already treat a missing operator defensively (#6367 groups them under 'system').
+  operator: string | null;
   operationType: string;
   resourceType: string;
   target: string | null;
