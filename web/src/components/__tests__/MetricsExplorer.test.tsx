@@ -435,6 +435,28 @@ describe('MetricsExplorer', () => {
     expect(await screen.findAllByText('cluster=prod / node_id=broker-a')).not.toHaveLength(0);
   });
 
+  it('renders metric instants through the shared formatter instead of the locale string', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer />);
+    await screen.findByRole('img', { name: 'Message In TPS time series' });
+
+    await user.type(screen.getByLabelText('自定义查询'), 'sum(rocketmq_topic_number)');
+    await user.click(screen.getByRole('button', { name: '查询' }));
+    await screen.findAllByText('cluster=prod / node_id=broker-a');
+
+    // The panel condenses its metadata into an info popover: query window, query time and the
+    // first/last sample instants. They must read as the stable `YYYY-MM-DD HH:mm:ss` every other
+    // timestamp surface prints, not Date.toLocaleString's locale-dependent string
+    // (`2027/1/15 07:00:00` in zh, `1/15/2027, 7:00:00 AM` in en) - the format is the assertion, so
+    // it holds in any viewer time zone.
+    await user.hover(screen.getByRole('button', { name: '自定义查询 查询窗口' }));
+
+    const instants = await screen.findAllByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(instants.length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\d{4}\/\d{1,2}\/\d{1,2}/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d{1,2}\/\d{1,2}\/\d{4}/)).not.toBeInTheDocument();
+  });
+
   it('re-runs the committed custom query when the dashboard instance changes', async () => {
     const user = userEvent.setup();
     const view = renderWithProviders(<MetricsExplorer instanceId="instance-11" />);
