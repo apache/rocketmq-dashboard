@@ -17,6 +17,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -49,7 +50,10 @@ func DecodeMutationOutput(value any) (MutationOutput, error) {
 		return MutationOutput{}, fmt.Errorf("encode mutation output: %w", err)
 	}
 	var mutation MutationOutput
-	if err := json.Unmarshal(payload, &mutation); err != nil {
+	// Plan and Result contain arbitrary JSON; preserve long offsets when inspecting them.
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(&mutation); err != nil {
 		return MutationOutput{}, fmt.Errorf("decode mutation output: %w", err)
 	}
 	if mutation.Status != MutationPlanned && mutation.Status != MutationExecuted {
