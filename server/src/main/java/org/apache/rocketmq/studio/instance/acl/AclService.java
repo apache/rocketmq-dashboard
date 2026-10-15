@@ -197,12 +197,12 @@ public class AclService {
     public List<AclUserVO> listUsers(String instanceId) {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.listUsers(instanceId).stream()
-                    .map(this::maskCredentials)
+                    .map(this::forWire)
                     .toList();
         }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
-                .map(this::maskCredentials)
+                .map(this::forWire)
                 .toList();
     }
 
@@ -222,12 +222,12 @@ public class AclService {
             int from = (int) Math.min(Pagination.pageOffset(page, pageSize), users.size());
             int to = Math.min(from + pageSize, users.size());
             return PageResult.of(
-                    users.subList(from, to).stream().map(this::maskCredentials).toList(),
+                    users.subList(from, to).stream().map(this::forWire).toList(),
                     users.size(), page, pageSize);
         }
         PageResult<AclUserVO> result = aclRepository.findUserPage(
                 StringUtils.hasText(keyword) ? keyword.trim() : null, page, pageSize);
-        return PageResult.of(result.getItems().stream().map(this::maskCredentials).toList(),
+        return PageResult.of(result.getItems().stream().map(this::forWire).toList(),
                 result.getTotal(), result.getPage(), result.getSize());
     }
 
@@ -744,6 +744,7 @@ public class AclService {
         };
     }
 
+    /** Write paths echo the stored row, so masking must not also shift its creation stamp. */
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
@@ -755,8 +756,18 @@ public class AclService {
                 .permWrite(user.getPermWrite())
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
-                .gmtCreate(toUtcWire(user.getGmtCreate()))
+                .gmtCreate(user.getGmtCreate())
                 .build();
+    }
+
+    /**
+     * The read-path wire shape: a masked copy whose creation stamp is UTC. maskCredentials already
+     * builds a fresh row, so the shift lands on the copy and the stored base stays server-local.
+     */
+    private AclUserVO forWire(AclUserVO user) {
+        AclUserVO masked = maskCredentials(user);
+        masked.setGmtCreate(toUtcWire(masked.getGmtCreate()));
+        return masked;
     }
 
     /**

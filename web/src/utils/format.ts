@@ -63,10 +63,7 @@ export function formatUtcDateTime(
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): string {
   if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
-  const utcDate =
-    typeof date === 'string' && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(date.trim())
-      ? new Date(`${date}Z`)
-      : new Date(date);
+  const utcDate = typeof date === 'string' ? new Date(parseUtcDateTime(date)) : new Date(date);
   if (Number.isNaN(utcDate.getTime())) return '-';
 
   const parts = new Intl.DateTimeFormat('en-US', {
