@@ -32,8 +32,7 @@ export type ClientConnectionIssueCode =
   | 'ADDRESS_CONCENTRATION'
   | 'UNKNOWN_PROTOCOL'
   | 'UNKNOWN_LANGUAGE'
-  | 'UNKNOWN_VERSION'
-  | 'INVALID_CONNECTION_TIME';
+  | 'UNKNOWN_VERSION';
 
 export interface ClientConnectionIssue {
   id: string;
@@ -185,13 +184,6 @@ const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] =>
     (left, right) =>
       left.type.localeCompare(right.type) || left.resource.localeCompare(right.resource),
   );
-};
-
-const parseTime = (value?: string | null): number | null => {
-  if (!value) return null;
-  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
-  const timestamp = Date.parse(normalized);
-  return Number.isFinite(timestamp) ? timestamp : null;
 };
 
 const resourceSeverity = (issues: ClientConnectionIssue[]): ClientConnectionHealthStatus => {
@@ -348,24 +340,6 @@ const addUnknownFieldIssues = (
             resource,
             evidence: [`version=${version}`],
             id: `${index}:UNKNOWN_VERSION`,
-          },
-        ),
-      );
-    }
-
-    if (connection.connectedAt && parseTime(connection.connectedAt) === null) {
-      issues.push(
-        issue(
-          'INVALID_CONNECTION_TIME',
-          'info',
-          '连接时间无法解析',
-          '该连接的时间字段无法被浏览器解析，排序和人工判断可能受影响。',
-          '统一连接时间格式，优先返回 ISO-8601 或 yyyy-MM-dd HH:mm:ss。',
-          {
-            clientId,
-            resource,
-            evidence: [connection.connectedAt],
-            id: `${index}:INVALID_CONNECTION_TIME`,
           },
         ),
       );

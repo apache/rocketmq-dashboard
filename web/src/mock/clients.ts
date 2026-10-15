@@ -25,7 +25,6 @@ export interface ClientConnection {
   address: string;
   language: 'Java' | 'Go' | 'Python' | 'Rust';
   version: string;
-  connectedAt: string;
   clusterName: string;
 }
 
@@ -49,7 +48,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.1.12:49152',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:30:00',
     clusterName: 'ns-prod',
   },
   {
@@ -60,7 +58,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.1.13:49200',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:30:05',
     clusterName: 'ns-prod',
   },
   {
@@ -71,7 +68,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.2.10:50100',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:32:10',
     clusterName: 'ns-prod',
   },
   {
@@ -82,7 +78,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.1.12:49160',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:31:00',
     clusterName: 'ns-prod',
   },
   {
@@ -93,7 +88,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.1.13:49210',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:31:05',
     clusterName: 'ns-prod',
   },
   {
@@ -104,7 +98,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.2.10:50110',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:33:00',
     clusterName: 'ns-prod',
   },
   {
@@ -115,7 +108,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.3.20:51100',
     language: 'Go',
     version: '5.0.3',
-    connectedAt: '2026-07-01 09:00:00',
     clusterName: 'ns-prod',
   },
   {
@@ -126,7 +118,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.3.20:51110',
     language: 'Go',
     version: '5.0.3',
-    connectedAt: '2026-07-01 09:00:30',
     clusterName: 'ns-prod',
   },
   {
@@ -137,7 +128,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.5.40:53100',
     language: 'Rust',
     version: '5.0.2',
-    connectedAt: '2026-07-01 07:00:00',
     clusterName: 'ns-prod',
   },
   {
@@ -148,7 +138,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.5.41:53200',
     language: 'Rust',
     version: '5.0.2',
-    connectedAt: '2026-07-01 07:00:10',
     clusterName: 'ns-prod',
   },
   {
@@ -159,7 +148,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.6.50:54100',
     language: 'Python',
     version: '5.0.1',
-    connectedAt: '2026-07-01 08:45:00',
     clusterName: 'ns-prod',
   },
   {
@@ -170,7 +158,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.6.50:54110',
     language: 'Python',
     version: '5.0.1',
-    connectedAt: '2026-07-01 08:45:30',
     clusterName: 'ns-prod',
   },
   {
@@ -181,7 +168,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.7.60:55100',
     language: 'Python',
     version: '5.0.1',
-    connectedAt: '2026-07-01 10:00:00',
     clusterName: 'ns-prod',
   },
   {
@@ -192,7 +178,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.7.70:55200',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 10:00:15',
     clusterName: 'ns-prod',
   },
   {
@@ -203,7 +188,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.8.70:56100',
     language: 'Go',
     version: '5.0.3',
-    connectedAt: '2026-07-01 06:00:00',
     clusterName: 'ns-pre',
   },
   {
@@ -214,7 +198,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.8.70:56110',
     language: 'Go',
     version: '5.0.3',
-    connectedAt: '2026-07-01 06:00:30',
     clusterName: 'ns-pre',
   },
   {
@@ -225,7 +208,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.9.80:57100',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 08:00:00',
     clusterName: 'ns-prod',
   },
   {
@@ -236,7 +218,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.10.90:58100',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 06:30:00',
     clusterName: 'ns-pre',
   },
   {
@@ -247,7 +228,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.10.90:58110',
     language: 'Java',
     version: '5.0.7',
-    connectedAt: '2026-07-01 06:30:30',
     clusterName: 'ns-pre',
   },
   {
@@ -258,7 +238,6 @@ export const mockClients: ClientConnection[] = [
     address: '10.0.11.100:59100',
     language: 'Rust',
     version: '5.0.2',
-    connectedAt: '2026-07-01 09:15:00',
     clusterName: 'ns-pre',
   },
 ];

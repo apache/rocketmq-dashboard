@@ -31,7 +31,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -61,7 +60,6 @@ class ClientControllerTest extends WebMvcAuthTestSupport {
                 .address("10.0.0.1:8081")
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
-                .connectedAt(LocalDateTime.of(2026, 1, 1, 12, 0))
                 .clusterName("production-cluster")
                 .build();
         ClientConnectionVO remotingClient = ClientConnectionVO.builder()
@@ -72,7 +70,6 @@ class ClientControllerTest extends WebMvcAuthTestSupport {
                 .address("10.0.0.2:10911")
                 .language(ClientLanguage.Go)
                 .version("4.9.8")
-                .connectedAt(LocalDateTime.of(2026, 1, 1, 12, 5))
                 .clusterName("production-cluster")
                 .build();
         when(clientService.listConnectionsAt("10.0.1.31:9876", null, null)).thenReturn(List.of(grpcClient, remotingClient));
