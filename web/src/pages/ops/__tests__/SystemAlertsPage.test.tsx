@@ -342,6 +342,85 @@ describe('SystemAlertsPage', () => {
     );
   });
 
+  it.each([
+    { placeholder: '开始时间', key: 'from', absent: 'to' },
+    { placeholder: '结束时间', key: 'to', absent: 'from' },
+  ])('applies and exports a single $key time boundary', async ({ placeholder, key, absent }) => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+    await user.click(screen.getByPlaceholderText(placeholder));
+    await user.keyboard('2026-08-01 00:00');
+    const ok = document.querySelector('.ant-picker-ok button');
+    if (!(ok instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await waitFor(() => expect(ok).toBeEnabled());
+    await user.click(ok);
+    await user.click(screen.getByLabelText('实例 ID 筛选'));
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          [key]: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+          [absent]: undefined,
+        }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        [key]: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+        [absent]: undefined,
+        page: 1,
+        pageSize: 100,
+      }),
+    );
+  });
+
+  it('clears a bounded range before applying an end-only filter', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+    const start = screen.getByPlaceholderText('开始时间');
+    await user.click(start);
+    await user.keyboard('2026-08-01 00:00');
+    await user.tab();
+    await user.keyboard('2026-08-02 00:00');
+    const ok = document.querySelector('.ant-picker-ok button');
+    if (!(ok instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await user.click(ok);
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+          to: new Date('2026-08-02T00:00:00').toISOString().replace('Z', ''),
+        }),
+      ),
+    );
+    await user.hover(start);
+    const clear = document.querySelector('.ant-picker-clear');
+    if (!(clear instanceof HTMLElement)) throw new Error('range picker clear control missing');
+    await user.click(clear);
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: undefined, to: undefined }),
+      ),
+    );
+    await user.click(screen.getByPlaceholderText('结束时间'));
+    await user.keyboard('2026-08-02 00:00');
+    const endOk = document.querySelector('.ant-picker-ok button');
+    if (!(endOk instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await user.click(endOk);
+    await user.click(screen.getByLabelText('实例 ID 筛选'));
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: undefined,
+          to: new Date('2026-08-02T00:00:00').toISOString().replace('Z', ''),
+        }),
+      ),
+    );
+  });
+
   it('forwards instance, resource label, and time filters to the event feed', async () => {
     const user = userEvent.setup();
     renderPage();
