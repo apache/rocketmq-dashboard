@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerConfigOutput
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerDescribeOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.cluster.ClusterListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ScanOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicListItem;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicQuotaOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.litetopic.LiteTopicSessionOutput;
@@ -206,7 +207,8 @@ class ToolOutputSchemaContractTest {
                 .getMessagesYesterday(70)
                 .runtimeStatsAvailable(true)
                 .build();
-        samples.put("rmq.broker.list", List.of(new ListOutput<>(List.of(broker))));
+        samples.put("rmq.broker.list",
+                List.of(ScanOutput.of(List.of(broker), List.of())));
         samples.put("rmq.broker.describe", List.of(new BrokerDescribeOutput(
                 "broker-a", "127.0.0.1:10911", "V5_5_0", BrokerStatus.running,
                 0.25, 10L, 9L, 100L, 90L, 80L, 70L, true)));
@@ -232,13 +234,13 @@ class ToolOutputSchemaContractTest {
                 true,
                 List.of("127.0.0.1:9877"))));
 
-        samples.put("rmq.proxy.list", List.of(new ListOutput<>(List.of(ProxyVO.builder()
+        samples.put("rmq.proxy.list", List.of(ScanOutput.of(List.of(ProxyVO.builder()
                 .addr("127.0.0.1:8081")
                 .status(ClusterStatus.healthy)
                 .connections(3)
                 .grpcPort(8081)
                 .remotingPort(8080)
-                .build()))));
+                .build()), List.of())));
         samples.put("rmq.proxy.config", List.of(new ListOutput<>(List.of(
                 new ProxyConfigItem("127.0.0.1:8081", "healthy", 3, 8081, 8080,
                         true, true, "V5_5_0")))));

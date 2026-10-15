@@ -20,7 +20,7 @@ import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerListInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ScanOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,14 +39,15 @@ import java.util.Set;
 /**
  * Platform-level Broker replica-group list (decision 26). With {@code clusterName} the resolver
  * pins the owning instance and only that physical cluster's brokers are returned; otherwise every
- * Apache instance is aggregated and deduplicated. Runtime statistics (tps/disk) come from
- * {@link ClusterProvider#discoverBrokers}. No instanceId.
+ * Apache instance is aggregated and deduplicated, and an instance whose discovery fails is named in
+ * {@code failedInstances} instead of being dropped silently. Runtime statistics (tps/disk) come
+ * from {@link ClusterProvider#discoverBrokers}. No instanceId.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class BrokerListToolHandler
-        implements ToolHandler<BrokerListInput, ListOutput<BrokerVO>> {
+        implements ToolHandler<BrokerListInput, ScanOutput<BrokerVO>> {
 
     private final PlatformClusterResolver clusterResolver;
     private final ClusterProvider clusterProvider;
@@ -61,8 +63,9 @@ public class BrokerListToolHandler
     }
 
     @Override
-    public ListOutput<BrokerVO> execute(BrokerListInput input, ToolExecutionContext context) {
+    public ScanOutput<BrokerVO> execute(BrokerListInput input, ToolExecutionContext context) {
         Map<String, BrokerVO> unique = new LinkedHashMap<>();
+        List<String> failedInstances = new ArrayList<>();
         if (StringUtils.hasText(input.clusterName())) {
             PlatformClusterResolver.ManagedCluster cluster = clusterResolver.require(input.clusterName());
             Set<String> names = cluster.brokerNames();
@@ -75,12 +78,15 @@ public class BrokerListToolHandler
                     clusterProvider.discoverBrokers(instance.getName(), null)
                             .forEach(broker -> unique.putIfAbsent(key(broker), broker));
                 } catch (Exception e) {
+                    // The caller has to know which instances are missing from items, or an
+                    // unreachable instance reads as one without brokers.
+                    failedInstances.add(instance.getName());
                     log.warn("Skipping instance {} during broker aggregation: {}",
                             instance.getName(), e.getMessage());
                 }
             }
         }
-        return new ListOutput<>(List.copyOf(unique.values()));
+        return ScanOutput.of(List.copyOf(unique.values()), failedInstances);
     }
 
     private static String key(BrokerVO broker) {

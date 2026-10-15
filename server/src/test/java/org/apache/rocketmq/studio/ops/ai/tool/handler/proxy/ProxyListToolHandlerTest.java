@@ -21,10 +21,11 @@ import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceVO;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyListInput;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedCluster;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -57,8 +59,7 @@ class ProxyListToolHandlerTest {
         when(clusterProvider.discoverProxies("instance-a"))
                 .thenReturn(List.of(proxy("10.0.0.1:8081")));
 
-        ListOutput<ProxyVO> result = handler.execute(
-                new ProxyListInput("rmq-a"), context("instance-a"));
+        var result = handler.execute(new ProxyListInput("rmq-a"), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(ProxyVO::getAddr)
@@ -74,12 +75,13 @@ class ProxyListToolHandlerTest {
         when(clusterProvider.discoverProxies("instance-b"))
                 .thenReturn(List.of(proxy("10.0.0.1:8081"), proxy("10.0.0.2:8081")));
 
-        ListOutput<ProxyVO> result = handler.execute(
-                new ProxyListInput(null), context("instance-a"));
+        var result = handler.execute(new ProxyListInput(null), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(ProxyVO::getAddr)
                 .containsExactly("10.0.0.1:8081", "10.0.0.2:8081");
+        assertThat(wireForm(result)).containsEntry("scan",
+                Map.of("complete", true, "failedInstances", List.of()));
     }
 
     @Test
@@ -91,13 +93,23 @@ class ProxyListToolHandlerTest {
         when(clusterProvider.discoverProxies("instance-up"))
                 .thenReturn(List.of(proxy("10.0.0.3:8081")));
 
-        ListOutput<ProxyVO> result = handler.execute(
-                new ProxyListInput(null), context("instance-a"));
+        var result = handler.execute(new ProxyListInput(null), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(ProxyVO::getAddr)
                 .containsExactly("10.0.0.3:8081");
+        // The wire form is what a caller reads: an instance whose discovery failed has to be named,
+        // because a list that silently omits it is indistinguishable from one without proxies.
+        assertThat(wireForm(result)).containsEntry("scan",
+                Map.of("complete", false, "failedInstances", List.of("instance-down")));
     }
+
+    /** The serialized shape ToolSchemaValidator and every caller observe, not the Java record. */
+    private static Map<String, Object> wireForm(Object output) {
+        return OBJECT_MAPPER.convertValue(output, new TypeReference<Map<String, Object>>() { });
+    }
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static InstanceVO instance(String name) {
         return InstanceVO.builder().name(name).vendor(InstanceVendor.APACHE).build();

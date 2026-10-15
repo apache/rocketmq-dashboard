@@ -4,7 +4,7 @@ tools:
     cli:
       resource: broker
       verb: list
-    description: "List Broker replica groups across Studio, optionally filtered by physical cluster name."
+    description: "List Broker replica groups across Studio, optionally filtered by physical cluster name. Aggregation is best-effort: the scan block names the Instances whose discovery failed and marks the result incomplete, so a partial list is never read as the full inventory."
     riskLevel: L1
     permission: broker:read
     requiredCapabilities:
@@ -22,6 +22,7 @@ tools:
       type: object
       required:
         - items
+        - scan
       additionalProperties: false
       properties:
         items:
@@ -67,6 +68,22 @@ tools:
                 type: integer
               runtimeStatsAvailable:
                 type: boolean
+        scan:
+          type: object
+          description: Status of the platform-level aggregation this list was collected by.
+          required:
+            - complete
+            - failedInstances
+          additionalProperties: false
+          properties:
+            complete:
+              type: boolean
+              description: Whether every scanned Instance answered; false when some are missing from items.
+            failedInstances:
+              type: array
+              description: Instances whose Broker discovery failed; their brokers are absent from items.
+              items:
+                type: string
     viewHint: table
     deprecated: false
   - name: rmq.broker.describe
