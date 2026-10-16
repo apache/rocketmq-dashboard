@@ -20,9 +20,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -97,14 +100,25 @@ public class ProducerConnectionSummaryVO {
                 .toList();
     }
 
+    /**
+     * The client ids that appear at more than one address. A client registers once per producer
+     * group - its own plus the shared inner producer group, for instance - and this summary keeps one
+     * row per group, so counting rows would call every multi-group client a duplicate. An id seen at
+     * several addresses is the collision the console's client diagnostics report as
+     * {@code CLIENT_ID_COLLISION}, and that is what this list means.
+     */
     private static List<String> duplicateClientIds(List<ProducerConnectionVO> connections) {
-        return connections.stream()
-                .map(ProducerConnectionVO::getClientId)
-                .filter(ProducerConnectionSummaryVO::hasText)
-                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
-                .entrySet()
-                .stream()
-                .filter(entry -> entry.getValue() > 1)
+        Map<String, Set<String>> addressesByClientId = new LinkedHashMap<>();
+        for (ProducerConnectionVO connection : connections) {
+            if (connection == null || !hasText(connection.getClientId())) {
+                continue;
+            }
+            addressesByClientId
+                    .computeIfAbsent(connection.getClientId(), clientId -> new LinkedHashSet<>())
+                    .add(Objects.toString(connection.getClientAddr(), ""));
+        }
+        return addressesByClientId.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
                 .map(Map.Entry::getKey)
                 .sorted()
                 .toList();
