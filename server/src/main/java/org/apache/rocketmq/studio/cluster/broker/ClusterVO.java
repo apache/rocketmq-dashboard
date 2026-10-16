@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
@@ -39,6 +40,10 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+// The list's contract (docs/api-spec.md, ClusterInfo) has no bookkeeping columns, and nothing ever
+// fills these two on this view - every cluster is discovered from the NameServer, not read from a
+// registry row - so without this they reach the wire as an always-null gmtCreate / gmtModified pair.
+@JsonIgnoreProperties({"gmtCreate", "gmtModified"})
 public class ClusterVO {
     private String id;
     private LocalDateTime gmtCreate;
