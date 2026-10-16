@@ -30,7 +30,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -109,18 +108,7 @@ public class NativeAlertEvaluationService {
         }
         List<MetricSample> window = snapshotRepository.findRecent(sample,
                 sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
-        if (window.isEmpty()) {
-            return sample;
-        }
-        double value = switch (rule.getAggregation() == null ? "LAST" : rule.getAggregation().toUpperCase(Locale.ROOT)) {
-            case "MAX" -> window.stream().mapToDouble(item -> item.value()).max().orElse(sample.value());
-            case "MIN" -> window.stream().mapToDouble(item -> item.value()).min().orElse(sample.value());
-            case "AVG" -> window.stream().mapToDouble(item -> item.value()).average().orElse(sample.value());
-            case "SUM" -> window.stream().mapToDouble(item -> item.value()).sum();
-            default -> window.get(window.size() - 1).value();
-        };
-        return new MetricSample(sample.metricKey(), sample.domain(), sample.instanceId(), sample.clusterId(),
-                sample.labels(), value, MetricAvailability.AVAILABLE, sample.collectedAt());
+        return NativeAlertWindowAggregation.aggregate(rule, sample, window);
     }
 
     private void applyNotificationSuppression(SystemAlertVO event, AlertDomain domain,

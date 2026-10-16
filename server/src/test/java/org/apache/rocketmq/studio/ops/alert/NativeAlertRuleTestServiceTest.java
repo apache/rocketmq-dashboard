@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -48,7 +51,7 @@ class NativeAlertRuleTestServiceTest {
                 .instanceId("local").consumerGroup("orders").operator(">").threshold(10).enabled(false).build();
 
         AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
-                new AlertRuleEvaluator()).test(rule);
+                new AlertRuleEvaluator(), mock(MetricSnapshotRepository.class)).test(rule);
 
         assertThat(result.samples()).singleElement().satisfies(sample -> {
             assertThat(sample.labels()).containsEntry("consumerGroup", "orders");
@@ -72,7 +75,7 @@ class NativeAlertRuleTestServiceTest {
                 .instanceId("local").consumerGroup("orders").operator(">").threshold(10).build();
 
         AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
-                new AlertRuleEvaluator()).test(rule);
+                new AlertRuleEvaluator(), mock(MetricSnapshotRepository.class)).test(rule);
 
         assertThat(result.samples()).singleElement().satisfies(sample -> {
             assertThat(sample.currentValue()).isEqualTo(20);
@@ -96,7 +99,7 @@ class NativeAlertRuleTestServiceTest {
                 .build();
 
         AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
-                new AlertRuleEvaluator()).test(rule);
+                new AlertRuleEvaluator(), mock(MetricSnapshotRepository.class)).test(rule);
 
         assertThat(result.samples()).singleElement().satisfies(sample -> {
             assertThat(sample.currentValue()).isEqualTo(20);
@@ -119,7 +122,7 @@ class NativeAlertRuleTestServiceTest {
                 .instanceId("local").consumerGroup("orders").operator(">").threshold(10).build();
 
         AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(),
-                List.of(failing, healthy), new AlertRuleEvaluator()).test(rule);
+                List.of(failing, healthy), new AlertRuleEvaluator(), mock(MetricSnapshotRepository.class)).test(rule);
 
         assertThat(result.samples()).singleElement()
                 .satisfies(sample -> assertThat(sample.currentValue()).isEqualTo(20));
@@ -137,10 +140,37 @@ class NativeAlertRuleTestServiceTest {
                 .operator(">").threshold(10).build();
 
         assertThatThrownBy(() -> new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
-                new AlertRuleEvaluator()).test(rule))
+                new AlertRuleEvaluator(), mock(MetricSnapshotRepository.class)).test(rule))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("metric is required")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void aggregatesTheStoredWindowBeforeEvaluatingARuleTest() {
+        InstanceRepository instances = mock(InstanceRepository.class);
+        BusinessMetricsCollector collector = mock(BusinessMetricsCollector.class);
+        MetricSnapshotRepository snapshots = mock(MetricSnapshotRepository.class);
+        InstanceVO instance = InstanceVO.builder().name("local").build();
+        when(instances.findByIdentifier("local")).thenReturn(Optional.of(instance));
+        when(collector.supports(instance)).thenReturn(true);
+        MetricSample current = sample("orders", 10);
+        when(collector.collect(instance)).thenReturn(List.of(current));
+        // The window the live evaluation reads: its AVG is above the threshold although the sample
+        // collected right now is not, so a test run over the raw sample answers another question.
+        when(snapshots.findRecent(any(MetricSample.class), any(Instant.class)))
+                .thenReturn(List.of(sample("orders", 500), sample("orders", 500), current));
+        AlertRuleVO rule = AlertRuleVO.builder().domain(AlertDomain.BUSINESS).metric("consumer.lag.total")
+                .instanceId("local").consumerGroup("orders").operator(">").threshold(100)
+                .aggregation("AVG").windowSeconds(300).enabled(false).build();
+
+        AlertRuleTestResultVO result = new NativeAlertRuleTestService(instances, List.of(), List.of(collector),
+                new AlertRuleEvaluator(), snapshots).test(rule);
+
+        assertThat(result.samples()).singleElement().satisfies(sample -> {
+            assertThat(sample.currentValue()).isCloseTo(336.67, within(0.01));
+            assertThat(sample.conditionMet()).isTrue();
+        });
     }
 
     private static MetricSample sample(String group, double value) {
