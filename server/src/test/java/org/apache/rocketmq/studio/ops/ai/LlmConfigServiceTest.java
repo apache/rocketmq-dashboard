@@ -171,6 +171,67 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigAllowsClearingTheStoredApiKeyForHttpEngines() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("http")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .clearApiKey(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isEmpty();
+        assertThat(captor.getValue().isClearApiKey()).isTrue();
+
+        when(settingsService.getGeneralSettings()).thenReturn(captor.getValue());
+        LlmConfigVO reloaded = llmConfigService.getConfig();
+        assertThat(reloaded.getApiKey()).isEmpty();
+        assertThat(reloaded.isEnabled()).isFalse();
+        assertThat(reloaded.isReady()).isFalse();
+    }
+
+    @Test
+    void testConfigStillRequiresAnApiKeyForHttpEngines() {
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("http")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .clearApiKey(true)
+                .build());
+
+        assertThat(result.getStatus()).isNotZero();
+        assertThat(result.getCode()).isEqualTo("llm.config.missing_api_key");
+    }
+
+    @Test
+    void saveConfigStillRejectsAMissingApiKeyWithoutTheClearIntent() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("openai")
+                .apiKey("")
+                .model("gpt-4o")
+                .baseUrl("https://api.openai.com/v1")
+                .build());
+
+        assertThatThrownBy(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("http")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .build()))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("API key");
+    }
+
+    @Test
     void saveConfigShouldPreserveGeneralSettingsAndStoreLlmFields() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("deepseek")

@@ -109,7 +109,10 @@ public class LlmConfigService {
     public synchronized void saveConfig(LlmConfigVO config) {
         settingsService.updateGeneralSettings(current -> {
             LlmConfigVO normalized = normalizeWithStoredApiKey(config, current);
-            LlmOperationResultVO validation = validate(normalized);
+            // Saving honours an explicit clear of the stored API key: the configuration is
+            // persisted in a not-ready state until a new key is provided, while the connection
+            // test below keeps requiring a usable key.
+            LlmOperationResultVO validation = validate(normalized, !normalized.isClearApiKey());
             if (validation.getStatus() != 0) {
                 throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
             }
@@ -176,6 +179,10 @@ public class LlmConfigService {
     }
 
     private LlmOperationResultVO validate(LlmConfigVO normalized) {
+        return validate(normalized, true);
+    }
+
+    private LlmOperationResultVO validate(LlmConfigVO normalized, boolean enforceApiKeyRequirement) {
         String provider = normalized.getProvider();
         if (!isValidApiBase(normalized.getApiBase())) {
             return LlmOperationResultVO.failure(
@@ -198,7 +205,7 @@ public class LlmConfigService {
         }
         boolean keyRequired = !"ollama".equals(provider)
                 && LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine());
-        if (keyRequired && !StringUtils.hasText(normalized.getApiKey())) {
+        if (enforceApiKeyRequirement && keyRequired && !StringUtils.hasText(normalized.getApiKey())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_api_key",
                     "LLM API key is required",
