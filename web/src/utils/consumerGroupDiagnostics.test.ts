@@ -115,6 +115,7 @@ describe('consumer group diagnostics', () => {
     );
 
     expect(diagnostics.status).toBe('critical');
+    expect(diagnostics.statusKey).toBe('consumerHealth.statusCritical');
     expect(diagnostics.summary.healthScore).toBeLessThan(50);
     expect(diagnostics.issues.map((item) => item.code)).toEqual(
       expect.arrayContaining([
@@ -125,10 +126,10 @@ describe('consumer group diagnostics', () => {
         'HIGH_CONSUME_DELAY',
       ]),
     );
-    expect(diagnostics.recommendations).toEqual(
+    expect(diagnostics.recommendationKeys).toEqual(
       expect.arrayContaining([
-        '先确认消费者进程、Proxy/Broker 网络连通性和客户端心跳是否恢复。',
-        '检查热点 Queue 的分配、消费者线程池和单分区顺序消费阻塞情况。',
+        'consumerHealth.recommendation.connectivity',
+        'consumerHealth.recommendation.skew',
       ]),
     );
   });
