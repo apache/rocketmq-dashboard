@@ -281,7 +281,7 @@ describe('AssistantBubble', () => {
 
   it('rendersMarkdownAndRepairsTheMarkersModelsEmitTest', () => {
     // Carried over from AiMessage.test.tsx: `##结论` without a space is not a heading in
-    // CommonMark, and a fence whose info string runs into the code swallows the block.
+    // CommonMark. Well-formed code examples must retain their content.
     const text = [
       '# 扩缩容评估',
       '',
@@ -297,7 +297,9 @@ describe('AssistantBubble', () => {
       '',
       '##结论',
       '-第一项',
-      '```bashmqadmin topicList',
+      '```bash',
+      'mqadmin topicList',
+      '```',
     ].join('\n');
 
     renderBubble({ blocks: appendText([], text) });
@@ -310,6 +312,18 @@ describe('AssistantBubble', () => {
     expect(listItems[listItems.length - 1]).toHaveTextContent('第一项');
     expect(screen.getAllByText('mqadmin clusterList')[0].closest('pre')).toBeInTheDocument();
     expect(screen.getByText('mqadmin topicList').closest('pre')).toBeInTheDocument();
+  });
+
+  it.each(
+    ['shell', 'jsonc', 'json5', 'shell-session', 'shell linenums'].flatMap((info) =>
+      [false, true].map((streaming) => ({ info, streaming })),
+    ),
+  )('keepsRenderedCodeAndLanguageTest: $info / streaming=$streaming', ({ info, streaming }) => {
+    const text = ['```' + info, 'printf ok', '#comment', '```'].join('\n');
+    const view = renderBubble({ blocks: appendText([], text), streaming });
+    const code = view.container.querySelector('pre code');
+    expect(code).toHaveClass('language-' + info.split(' ')[0]);
+    expect(code?.textContent).toBe('printf ok\n#comment\n');
   });
 
   it.each(['COMPLETED', 'STOPPED', 'FAILED'] as const)(
