@@ -20,13 +20,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.metrics.BusinessMetricsCollector;
 import org.apache.rocketmq.studio.cluster.metrics.ClusterMetricsCollector;
+import org.apache.rocketmq.studio.cluster.metrics.MetricAvailability;
 import org.apache.rocketmq.studio.cluster.metrics.MetricSample;
+import org.apache.rocketmq.studio.cluster.metrics.MetricSnapshotRepository;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,6 +42,7 @@ public class NativeAlertRuleTestService {
     private final List<ClusterMetricsCollector> clusterCollectors;
     private final List<BusinessMetricsCollector> businessCollectors;
     private final AlertRuleEvaluator evaluator;
+    private final MetricSnapshotRepository snapshotRepository;
 
     public AlertRuleTestResultVO test(AlertRuleVO rule) {
         normalizeRule(rule);
@@ -78,12 +82,26 @@ public class NativeAlertRuleTestService {
                 .filter(sample -> rule.getMetric().equals(sample.metricKey()))
                 .filter(sample -> NativeAlertRuleScopeMatcher.matches(rule, sample))
                 .map(sample -> {
-                    AlertEvaluationResult evaluation = evaluator.evaluate(rule, sample);
+                    AlertEvaluationResult evaluation = evaluator.evaluate(rule, aggregate(rule, sample));
                     return AlertRuleTestResultVO.Sample.builder().labels(sample.labels())
                             .availability(sample.availability().name()).currentValue(evaluation.currentValue())
                             .conditionMet(evaluation.conditionMet())
                             .unavailableReason(sample.unavailableReason()).build();
                 }).toList()).build();
+    }
+
+    /**
+     * The sample this rule would actually be evaluated against. Like the live evaluation, a rule with
+     * a window aggregates the samples stored for the same series; testing the freshly collected
+     * sample instead would report on a condition the evaluator never applies.
+     */
+    private MetricSample aggregate(AlertRuleVO rule, MetricSample sample) {
+        if (sample.availability() != MetricAvailability.AVAILABLE || rule.getWindowSeconds() <= 0) {
+            return sample;
+        }
+        List<MetricSample> window = snapshotRepository.findRecent(sample,
+                sample.collectedAt().minus(Duration.ofSeconds(rule.getWindowSeconds())));
+        return NativeAlertWindowAggregation.aggregate(rule, sample, window);
     }
 
     /**
