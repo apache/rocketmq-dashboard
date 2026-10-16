@@ -35,6 +35,7 @@ import {
 } from '../../services/opsService';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { localizeDeliveryError } from '../../utils/deliveryResult';
 
 const statusColors: Record<NotificationDeliveryRecord['status'], string> = {
   PENDING: 'default',
@@ -225,8 +226,11 @@ const NotificationDeliveriesPage = () => {
       width: 240,
       render: (_, record) =>
         record.lastError ? (
-          <Typography.Text type="danger" ellipsis={{ tooltip: record.lastError }}>
-            {record.lastError}
+          <Typography.Text
+            type="danger"
+            ellipsis={{ tooltip: localizeDeliveryError(record.lastError, t) }}
+          >
+            {localizeDeliveryError(record.lastError, t)}
           </Typography.Text>
         ) : record.deliveredAt ? (
           t('deliveries.delivered')
@@ -437,7 +441,7 @@ const NotificationDeliveriesPage = () => {
               {selectedDelivery.lastError && (
                 <Descriptions.Item label={t('deliveries.result')}>
                   <Typography.Text type="danger" style={{ overflowWrap: 'anywhere' }}>
-                    {selectedDelivery.lastError}
+                    {localizeDeliveryError(selectedDelivery.lastError, t)}
                   </Typography.Text>
                 </Descriptions.Item>
               )}
