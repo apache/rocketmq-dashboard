@@ -87,13 +87,17 @@ public class NameserverRegistryService {
         if (duplicates != null && duplicates > 0) {
             throw duplicateName(name);
         }
-        entity.setName(name);
-        entity.setNamesrvAddr(NamesrvAddrParser.normalize(command.getNamesrvAddr()));
-        entity.setK8sNamespace(command.getK8sNamespace());
-        entity.setK8sId(command.getK8sId());
-        entity.setDescription(command.getDescription());
+        // Replace all editable fields in one statement, including null optional values.
+        // A second clearing UPDATE could overwrite a replacement committed in between.
+        UpdateWrapper<RmqNameserver> replacement = new UpdateWrapper<RmqNameserver>()
+                .eq("id", command.getId())
+                .set("name", name)
+                .set("namesrv_addr", NamesrvAddrParser.normalize(command.getNamesrvAddr()))
+                .set("k8s_namespace", command.getK8sNamespace())
+                .set("k8s_id", command.getK8sId())
+                .set("description", command.getDescription());
         try {
-            int updated = nameserverMapper.updateById(entity);
+            int updated = nameserverMapper.update(null, replacement);
             if (updated == 0) {
                 throw concurrentlyDeleted(command.getId());
             }
@@ -101,7 +105,6 @@ public class NameserverRegistryService {
             // The unique index is the final guard against concurrent rename collisions.
             throw duplicateName(name);
         }
-        clearOmittedOptionalColumns(entity);
         RmqNameserver stored = nameserverMapper.selectById(entity.getId());
         if (stored == null) {
             // The row vanished between the update and the reload; do not convert null to a VO.
@@ -152,32 +155,5 @@ public class NameserverRegistryService {
                 .gmtCreate(entity.getGmtCreate())
                 .gmtModified(entity.getGmtModified())
                 .build();
-    }
-
-    /**
-     * The registry update replaces every editable field of the entry, but MyBatis-Plus
-     * {@code updateById} omits null entity fields. An omitted k8s namespace, k8s id or
-     * description would therefore silently keep its previous value even though the request
-     * submitted no value for it; assign those columns explicitly so the stored entry matches
-     * what the request asked for.
-     */
-    private void clearOmittedOptionalColumns(RmqNameserver entity) {
-        UpdateWrapper<RmqNameserver> cleared = new UpdateWrapper<>();
-        boolean anyCleared = false;
-        if (entity.getK8sNamespace() == null) {
-            cleared.set("k8s_namespace", null);
-            anyCleared = true;
-        }
-        if (entity.getK8sId() == null) {
-            cleared.set("k8s_id", null);
-            anyCleared = true;
-        }
-        if (entity.getDescription() == null) {
-            cleared.set("description", null);
-            anyCleared = true;
-        }
-        if (anyCleared) {
-            nameserverMapper.update(null, cleared.eq("id", entity.getId()));
-        }
     }
 }
