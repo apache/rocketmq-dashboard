@@ -116,6 +116,12 @@ remaining CSV; blank rows and newlines inside quoted cells do not count as
 additional records. This record limit does not impose a file-byte or cell-size
 limit: the browser still reads the selected file before parsing it.
 
+Alert-rule backups with more than 200 rules are downloaded as numbered JSON parts,
+each within the existing import limit. Download every part, then import each file
+separately on the matching alert domain page. Each import completes independently;
+do not re-import a successful part, because importing creates new rules. Exports of
+up to 200 rules retain the existing single-file format and filename.
+
 ## AI Assistant
 
 Studio **hosts** a general-purpose agent CLI — Claude Code or Qoder, plus a plain OpenAI-compatible
