@@ -35,6 +35,7 @@ import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-de
 import type { ColumnsType } from 'antd/es/table';
 
 import { useLang } from '../../i18n/LangContext';
+import useAuthStore from '../../stores/authStore';
 import StatusBadge from '../../components/StatusBadge';
 import {
   createDataSource,
@@ -117,6 +118,12 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 
 export const DataSourceTab = () => {
   const { t } = useLang();
+  const authUserId = useAuthStore((state) => state.userId);
+  const authAdmin = useAuthStore((state) => state.admin);
+  // Data source writes are admin-only (POST/PUT/DELETE fall through to the admin requirement in
+  // AuthInterceptor), so a reader's test, save or delete could only ever come back 403. The controls
+  // stay disabled instead, the same way the general settings tab treats the writes it owns.
+  const canWriteSettings = !authUserId || authAdmin === true;
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -209,6 +216,7 @@ export const DataSourceTab = () => {
     data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
   ) => {
+    if (!canWriteSettings) return;
     if (key !== 'modal' && authNeedsSecret(data.auth)) {
       message.warning(t('settings.dataSourceAuthTestHint'));
       return;
@@ -243,6 +251,7 @@ export const DataSourceTab = () => {
   };
 
   const handleSubmit = async () => {
+    if (!canWriteSettings) return;
     try {
       // Credentials are supplied per metrics query and are only used here by the
       // connection test. Saving metadata must not require re-entering them.
@@ -276,6 +285,7 @@ export const DataSourceTab = () => {
   };
 
   const handleDelete = async (dataSource: DataSource) => {
+    if (!canWriteSettings) return;
     try {
       await deleteDataSource(dataSource.key);
       // Refresh through the effect so a completed deletion uses the current filters/page,
@@ -363,7 +373,7 @@ export const DataSourceTab = () => {
             size="small"
             icon={<ApiOutlined />}
             loading={testingKeys.has(record.key)}
-            disabled={authNeedsSecret(record.auth)}
+            disabled={authNeedsSecret(record.auth) || !canWriteSettings}
             title={authNeedsSecret(record.auth) ? t('settings.dataSourceAuthTestHint') : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
@@ -373,6 +383,7 @@ export const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<EditOutlined />}
+            disabled={!canWriteSettings}
             onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
@@ -383,7 +394,13 @@ export const DataSourceTab = () => {
             okText={t('settings.confirmAction')}
             cancelText={t('common.cancel')}
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={!canWriteSettings}
+            >
               {t('common.delete')}
             </Button>
           </Popconfirm>
@@ -432,7 +449,7 @@ export const DataSourceTab = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={openCreateModal}
-            disabled={loading}
+            disabled={loading || !canWriteSettings}
           >
             {t('settings.addDataSource')}
           </Button>
@@ -472,6 +489,7 @@ export const DataSourceTab = () => {
           dsForm.resetFields();
         }}
         onOk={() => void handleSubmit()}
+        okButtonProps={{ disabled: !canWriteSettings }}
         confirmLoading={submitting}
         destroyOnHidden
       >
