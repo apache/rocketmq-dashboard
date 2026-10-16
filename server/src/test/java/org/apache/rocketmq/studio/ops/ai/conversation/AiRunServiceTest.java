@@ -157,6 +157,8 @@ class AiRunServiceTest {
     @Test
     void admissionShouldQueueTheRunWithASnapshotOfTheEngineAndModelTest() {
         provider.engineName = LlmConfigVO.ENGINE_QODER;
+        // The shape of a Qoder turn: the CLI's completion arrives as plain text and nothing else.
+        provider.emit(new AgentEvent.TextDelta("broker b1 is lagging"));
         service = serviceWith(AiRunTestSupport.directExecutor());
 
         service.sendMessage(CONVERSATION_ID, new AiRunService.RunRequest(
@@ -172,11 +174,12 @@ class AiRunServiceTest {
         // The worker picked the run up: QUEUED is a real state, not a label the row keeps.
         assertThat(runUpdates.get(0).getStatus()).isEqualTo(RunStatus.RUNNING.name());
         assertThat(runUpdates.get(0).getStartedAt()).isNotNull();
-        // ...and the run really did go on to execute and reach a terminal on the queued engine —
-        // a terminal, not specifically a success: this stub streams no frames, so the turn ends
-        // with the no-result failure instead of a success nothing projected.
-        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.FAILED.name());
-        assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
+        // ...and the run really did go on to execute and finish on the queued engine. Qoder's
+        // provider streams its completion as plain text and never reports a result frame, so a
+        // finished turn without one is a success; the no-result failure belongs to the engines whose
+        // stream carries a result frame.
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(lastRun().getStopReason()).isNull();
         assertThat(emitters.get(0).timeoutMillis()).isEqualTo(AiRunExecutor.CLI_STREAM_TIMEOUT_MILLIS);
     }
 
@@ -353,6 +356,25 @@ class AiRunServiceTest {
         assertThat(lastRun().getStopReason()).isEqualTo(StopReason.PROVIDER_ERROR.name());
         assertThat(lastRun().getErrorCode()).isEqualTo(AiRunExecutor.ERROR_CODE_NO_RESULT);
         assertThat(registry.isLive(RUN_ID)).isFalse();
+    }
+
+    @Test
+    void aTextOnlyEngineTurnMustCompleteWithoutAResultFrameTest() {
+        // The other half of the no-result branch: it is scoped to the engines whose agent stream
+        // carries a result frame. Qoder is not one of them — its provider streams the completion as
+        // plain text (the default AgentProvider.streamEvents adapter) and nothing in the qoder path
+        // ever emits a ResultMeta — so a finished Qoder turn has no frame to end with. Failing it
+        // would report every successful Qoder answer as a provider error.
+        provider.engineName = LlmConfigVO.ENGINE_QODER;
+        provider.emit(new AgentEvent.TextDelta("group G is 1200 messages behind"));
+        service = serviceWith(AiRunTestSupport.directExecutor());
+
+        service.sendMessage(CONVERSATION_ID,
+                new AiRunService.RunRequest("what is lagging", null, LlmConfigVO.ENGINE_QODER, null, false, null));
+
+        assertThat(lastRun().getStatus()).isEqualTo(RunStatus.COMPLETED.name());
+        assertThat(lastRun().getStopReason()).isNull();
+        assertThat(lastRun().getErrorCode()).isNull();
     }
 
     @Test

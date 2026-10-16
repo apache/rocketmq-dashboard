@@ -505,11 +505,12 @@ public class AiRunExecutor {
                     "llm.provider." + outcome.subtype,
                     "agent run ended with subtype: " + outcome.subtype, outcome, false);
         }
-        if (!isHttpEngine(context.getEngine()) && !StringUtils.hasText(outcome.subtype)) {
-            // The agent stream closed without ever delivering a result frame: nothing was projected,
-            // nothing failed with a frame of its own — the provider process simply went away mid-turn.
-            // A turn with no answer is not a successful one. HTTP completion turns never carry a result
-            // frame at all, so their fall through to COMPLETED stays correct — that is the exclusion here.
+        if (expectsResultFrame(context.getEngine()) && !StringUtils.hasText(outcome.subtype)) {
+            // An engine whose stream carries a result frame closed without ever delivering one: nothing
+            // was projected, nothing failed with a frame of its own — the provider process simply went
+            // away mid-turn, and a turn with no answer is not a successful one. Engines whose provider
+            // streams the completion as plain text never carry a frame at all, so for them a missing
+            // frame proves nothing and must not be read as a lost process.
             return new Terminal(RunStatus.FAILED, StopReason.PROVIDER_ERROR, ERROR_CODE_NO_RESULT,
                     "agent stream ended without a result frame", outcome, false);
         }
@@ -645,6 +646,21 @@ public class AiRunExecutor {
     static boolean isHttpEngine(String engine) {
         return !StringUtils.hasText(engine)
                 || LlmConfigVO.ENGINE_HTTP.equals(engine.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Whether an engine's agent stream is expected to end with a result frame, which is what makes a
+     * missing one evidence that the agent went away mid-turn.
+     *
+     * <p>Only {@code claude-code} streams the CLI's frame vocabulary and resolves the terminal
+     * {@code result} frame from it ({@code ClaudeCodeStreamParser}). {@code qoder} streams the
+     * completion as plain text — its provider inherits the default {@code AgentProvider.streamEvents}
+     * adapter, which emits text deltas and nothing else — so a Qoder turn that ended has no frame to
+     * end with, and the HTTP engine has no agent stream at all.
+     */
+    static boolean expectsResultFrame(String engine) {
+        return StringUtils.hasText(engine)
+                && LlmConfigVO.ENGINE_CLAUDE_CODE.equals(engine.trim().toLowerCase(Locale.ROOT));
     }
 
     /**
