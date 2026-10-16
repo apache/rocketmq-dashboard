@@ -40,11 +40,11 @@ export interface AclRiskIssue {
   id: string;
   code: AclRiskIssueCode;
   severity: AclRiskSeverity;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   account?: string;
   evidence: string[];
-  recommendation: string;
+  recommendationKey: string;
 }
 
 export interface AclRiskSummary {
@@ -58,12 +58,12 @@ export interface AclRiskSummary {
 
 export interface AclRiskDiagnostics {
   status: AclRiskStatus;
-  statusText: string;
+  statusKey: string;
   statusColor: 'success' | 'warning' | 'error';
   score: number;
   summary: AclRiskSummary;
   issues: AclRiskIssue[];
-  recommendations: string[];
+  recommendationKeys: string[];
 }
 
 type AclPermission = 'DENY' | 'PUB' | 'SUB' | 'ALL' | 'UNKNOWN';
@@ -76,10 +76,12 @@ interface ParsedPermissionEntry {
 
 type WhitelistClass = 'open' | 'broad' | 'scoped';
 
-const STATUS_TEXT: Record<AclRiskStatus, string> = {
-  healthy: 'ACL 配置健康',
-  warning: 'ACL 配置需要关注',
-  critical: 'ACL 配置存在高风险',
+// The analyzer returns translation keys, not display text: the page resolves them
+// through t(), the same contract as messageTraceDiagnostics.
+const STATUS_KEY: Record<AclRiskStatus, string> = {
+  healthy: 'aclRisk.statusHealthy',
+  warning: 'aclRisk.statusWarning',
+  critical: 'aclRisk.statusCritical',
 };
 
 const STATUS_COLOR: Record<AclRiskStatus, 'success' | 'warning' | 'error'> = {
@@ -182,9 +184,9 @@ const accountKey = (account: PlainAccessConfig, index: number): string =>
 const issue = (
   code: AclRiskIssueCode,
   severity: AclRiskSeverity,
-  title: string,
-  description: string,
-  recommendation: string,
+  titleKey: string,
+  descriptionKey: string,
+  recommendationKey: string,
   options: {
     account?: string;
     evidence?: string[];
@@ -194,11 +196,11 @@ const issue = (
   id: options.id ?? [options.account, code, ...(options.evidence ?? [])].filter(Boolean).join(':'),
   code,
   severity,
-  title,
-  description,
+  titleKey,
+  descriptionKey,
   account: options.account,
   evidence: options.evidence ?? [],
-  recommendation,
+  recommendationKey,
 });
 
 const hasDefaultAllow = (account: PlainAccessConfig): boolean =>
@@ -242,9 +244,9 @@ const addDefaultPermissionIssues = (
       issue(
         'DEFAULT_TOPIC_ALLOW',
         'critical',
-        '默认 Topic 权限过大',
-        '该账号默认允许所有 Topic 操作，新增 Topic 会自动继承高权限。',
-        '将默认 Topic 权限改为 DENY，并为确需访问的 Topic 配置最小权限。',
+        'aclRisk.defaultTopicAllowCritical.title',
+        'aclRisk.defaultTopicAllowCritical.desc',
+        'aclRisk.defaultTopicAllow.recommendation',
         { account: accessKey, evidence: [`defaultTopicPerm=${account.defaultTopicPerm ?? '-'}`] },
       ),
     );
@@ -253,9 +255,9 @@ const addDefaultPermissionIssues = (
       issue(
         'DEFAULT_TOPIC_ALLOW',
         'warning',
-        '默认 Topic 权限非 DENY',
-        '该账号会自动获得新增 Topic 的默认访问能力，权限边界依赖命名规范。',
-        '优先使用 DENY 作为默认 Topic 权限，再通过 Topic 权限列表授权。',
+        'aclRisk.defaultTopicAllowWarning.title',
+        'aclRisk.defaultTopicAllowWarning.desc',
+        'aclRisk.defaultTopicDenyFirst.recommendation',
         { account: accessKey, evidence: [`defaultTopicPerm=${account.defaultTopicPerm ?? '-'}`] },
       ),
     );
@@ -266,9 +268,9 @@ const addDefaultPermissionIssues = (
       issue(
         'DEFAULT_GROUP_ALLOW',
         'critical',
-        '默认 Group 权限过大',
-        '该账号默认允许所有 Consumer Group 操作，新增 Group 会自动继承高权限。',
-        '将默认 Group 权限改为 DENY，并为确需订阅的 Group 配置最小权限。',
+        'aclRisk.defaultGroupAllowCritical.title',
+        'aclRisk.defaultGroupAllowCritical.desc',
+        'aclRisk.defaultGroupAllow.recommendation',
         { account: accessKey, evidence: [`defaultGroupPerm=${account.defaultGroupPerm ?? '-'}`] },
       ),
     );
@@ -277,9 +279,9 @@ const addDefaultPermissionIssues = (
       issue(
         'DEFAULT_GROUP_ALLOW',
         'warning',
-        '默认 Group 权限非 DENY',
-        '该账号会自动获得新增 Consumer Group 的默认访问能力。',
-        '优先使用 DENY 作为默认 Group 权限，再通过 Group 权限列表授权。',
+        'aclRisk.defaultGroupAllowWarning.title',
+        'aclRisk.defaultGroupAllowWarning.desc',
+        'aclRisk.defaultGroupDenyFirst.recommendation',
         { account: accessKey, evidence: [`defaultGroupPerm=${account.defaultGroupPerm ?? '-'}`] },
       ),
     );
@@ -299,9 +301,9 @@ const addWildcardPermissionIssues = (
       issue(
         'WILDCARD_TOPIC_PERMISSION',
         entry.permission === 'ALL' ? 'critical' : 'warning',
-        'Topic 通配授权过大',
-        '该账号通过通配资源获得 Topic 访问能力，可能覆盖未来新增 Topic。',
-        '将通配 Topic 授权收敛为具体 Topic 或业务前缀，并避免 *=ALL。',
+        'aclRisk.wildcardTopicPermission.title',
+        'aclRisk.wildcardTopicPermission.desc',
+        'aclRisk.wildcardTopicPermission.recommendation',
         { account: accessKey, evidence: [entry.raw] },
       ),
     );
@@ -312,9 +314,9 @@ const addWildcardPermissionIssues = (
       issue(
         'WILDCARD_GROUP_PERMISSION',
         entry.permission === 'ALL' ? 'critical' : 'warning',
-        'Group 通配授权过大',
-        '该账号通过通配资源获得 Consumer Group 访问能力，可能覆盖未来新增 Group。',
-        '将通配 Group 授权收敛为具体 Group 或业务前缀，并避免 *=ALL。',
+        'aclRisk.wildcardGroupPermission.title',
+        'aclRisk.wildcardGroupPermission.desc',
+        'aclRisk.wildcardGroupPermission.recommendation',
         { account: accessKey, evidence: [entry.raw] },
       ),
     );
@@ -336,9 +338,9 @@ const addInvalidPermissionEntryIssues = (
       issue(
         'INVALID_PERMISSION_ENTRY',
         'warning',
-        '权限条目格式无法识别',
-        '该权限条目没有明确的 PUB、SUB、ALL 或 DENY 决策，诊断无法判断最终权限。',
-        '按 resource=PUB、resource=SUB、resource=ALL 或 resource=DENY 的格式修正条目。',
+        'aclRisk.invalidPermissionEntry.title',
+        'aclRisk.invalidPermissionEntry.desc',
+        'aclRisk.invalidPermissionEntry.recommendation',
         { account: accessKey, evidence: [entry.raw] },
       ),
     );
@@ -360,9 +362,9 @@ const addAccountIssues = (
       issue(
         'MISSING_ACCESS_KEY',
         'critical',
-        'Access Key 缺失',
-        'Plain Access 账号缺少 Access Key，无法形成可审计的身份边界。',
-        '补全 Access Key，或删除无法识别身份的账号配置。',
+        'aclRisk.missingAccessKey.title',
+        'aclRisk.missingAccessKey.desc',
+        'aclRisk.missingAccessKey.recommendation',
         { account: accessKey, id: `${index}:MISSING_ACCESS_KEY` },
       ),
     );
@@ -373,9 +375,9 @@ const addAccountIssues = (
       issue(
         'DUPLICATE_ACCESS_KEY',
         'critical',
-        'Access Key 重复',
-        '同一个 Access Key 出现在多个 Plain Access 账号中，权限合并结果容易被误判。',
-        '保留唯一账号定义，合并必要权限后删除重复条目。',
+        'aclRisk.duplicateAccessKey.title',
+        'aclRisk.duplicateAccessKey.desc',
+        'aclRisk.duplicateAccessKey.recommendation',
         {
           account: accessKey,
           evidence: [accessKey],
@@ -390,9 +392,9 @@ const addAccountIssues = (
       issue(
         'BROAD_ACCOUNT_WHITELIST',
         whitelistClass === 'open' ? 'critical' : 'warning',
-        '账号 IP 白名单范围过大',
-        '该账号的 IP 白名单覆盖范围过宽，弱化了 ACL 账号和网络来源的双重约束。',
-        '将账号白名单收敛到应用出口地址或可信网段。',
+        'aclRisk.broadAccountWhitelist.title',
+        'aclRisk.broadAccountWhitelist.desc',
+        'aclRisk.broadAccountWhitelist.recommendation',
         { account: accessKey, evidence: whitelist.length ? whitelist : ['<empty>'] },
       ),
     );
@@ -403,9 +405,9 @@ const addAccountIssues = (
       issue(
         'ADMIN_WITH_BROAD_ACCESS',
         'critical',
-        '管理员账号可从宽网段访问',
-        '管理员账号叠加宽松 IP 白名单后，误用或泄露影响范围会扩大到整个集群。',
-        '为管理员账号配置专用 Access Key、强约束 IP 白名单，并尽量减少长期管理员账号。',
+        'aclRisk.adminWithBroadAccess.title',
+        'aclRisk.adminWithBroadAccess.desc',
+        'aclRisk.adminWithBroadAccess.recommendation',
         { account: accessKey, evidence: whitelist.length ? whitelist : ['<empty>'] },
       ),
     );
@@ -458,13 +460,13 @@ const buildRecommendations = (issues: AclRiskIssue[]): string[] => {
   const seen = new Set<string>();
 
   issues.forEach((item) => {
-    if (seen.has(item.recommendation)) return;
-    seen.add(item.recommendation);
-    recommendations.push(item.recommendation);
+    if (seen.has(item.recommendationKey)) return;
+    seen.add(item.recommendationKey);
+    recommendations.push(item.recommendationKey);
   });
 
   if (recommendations.length === 0) {
-    recommendations.push('保持默认权限为 DENY，新增账号时继续按业务资源最小授权。');
+    recommendations.push('aclRisk.recommendation.default');
   }
 
   return recommendations.slice(0, 6);
@@ -481,9 +483,9 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       issue(
         'ACL_DISABLED',
         'critical',
-        'ACL 未启用',
-        '当前集群没有启用 ACL，客户端访问主要依赖网络边界。',
-        '在生产集群启用 ACL，并为管理员和应用账号配置最小权限。',
+        'aclRisk.aclDisabled.title',
+        'aclRisk.aclDisabled.desc',
+        'aclRisk.aclDisabled.recommendation',
         { evidence: [`clusterId=${config.clusterId}`] },
       ),
     );
@@ -494,9 +496,9 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       issue(
         'LEGACY_ACL_VERSION',
         'info',
-        'ACL 版本较旧或未知',
-        '当前版本不是明确的 ACL 2.0，部分细粒度权限能力可能不可用。',
-        '确认集群 ACL 版本，并在升级窗口评估迁移到 ACL 2.0。',
+        'aclRisk.legacyAclVersion.title',
+        'aclRisk.legacyAclVersion.desc',
+        'aclRisk.legacyAclVersion.recommendation',
         { evidence: [config.aclVersion || '<unknown>'] },
       ),
     );
@@ -507,9 +509,9 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       issue(
         'NO_PLAIN_ACCESS_ACCOUNTS',
         config.aclEnabled ? 'critical' : 'warning',
-        '未配置 Plain Access 账号',
-        '集群配置中没有 Plain Access 账号，启用 ACL 后可能导致客户端或运维账号无法认证。',
-        '至少配置一个受控管理员账号和必要的应用账号，再启用严格 ACL 策略。',
+        'aclRisk.noPlainAccessAccounts.title',
+        'aclRisk.noPlainAccessAccounts.desc',
+        'aclRisk.noPlainAccessAccounts.recommendation',
         { evidence: [`accountCount=${config.accountCount ?? 0}`] },
       ),
     );
@@ -520,9 +522,9 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       issue(
         'BROAD_GLOBAL_WHITELIST',
         globalWhitelistClass === 'open' ? 'critical' : 'warning',
-        '全局 IP 白名单范围过大',
-        '全局白名单会绕过账号级权限判断，过宽网段会降低 ACL 的实际隔离效果。',
-        '删除全局通配白名单，改为按账号配置必要的应用出口地址。',
+        'aclRisk.broadGlobalWhitelist.title',
+        'aclRisk.broadGlobalWhitelist.desc',
+        'aclRisk.broadGlobalWhitelist.recommendation',
         { evidence: config.globalWhiteRemoteAddresses },
       ),
     );
@@ -534,9 +536,9 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       issue(
         'MULTIPLE_ADMIN_ACCOUNTS',
         'warning',
-        '管理员账号数量偏多',
-        '多个长期管理员账号会增加凭据轮转和误授权的管理成本。',
-        '保留最少数量的管理员账号，并将日常应用访问改为非管理员账号。',
+        'aclRisk.multipleAdminAccounts.title',
+        'aclRisk.multipleAdminAccounts.desc',
+        'aclRisk.multipleAdminAccounts.recommendation',
         { evidence: adminAccounts.map((account, index) => accountKey(account, index)) },
       ),
     );
@@ -551,7 +553,7 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
 
   return {
     status,
-    statusText: STATUS_TEXT[status],
+    statusKey: STATUS_KEY[status],
     statusColor: STATUS_COLOR[status],
     score,
     summary: buildSummary({
@@ -559,6 +561,6 @@ export const analyzeAclRisk = (config: AclClusterConfig): AclRiskDiagnostics => 
       accounts,
     }),
     issues,
-    recommendations: buildRecommendations(issues),
+    recommendationKeys: buildRecommendations(issues),
   };
 };
