@@ -503,6 +503,33 @@ describe('QueueBrowser request ownership', () => {
       within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
     ).toBeInTheDocument();
   });
+
+  it('discloses a truncated or encoded body of a pulled queue message', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockResolvedValue({
+      ...messageRecord('message-body-flags'),
+      body: 'AAECAwQ=',
+      bodyTruncated: true,
+      bodyEncoding: 'BASE64',
+    });
+    const user = userEvent.setup();
+    render(<QueueBrowserResultsProbe />);
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+    await screen.findByText('broker-a');
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    // The detail modal discloses both flags for the same payload, and the tool that serves this
+    // fetch reports them as first-class fields; this card renders the raw (or cut) body, so without
+    // them it presents a base64 blob or an incomplete body as the message.
+    expect(
+      await screen.findByText('消息体超过服务端展示上限，已被截断；此处展示与下载的内容都不完整。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体不是 UTF-8 文本，服务端以 BASE64 返回；下方展示的是编码后的内容。'),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('QueueBrowser localization', () => {

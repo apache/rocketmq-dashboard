@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -386,6 +387,22 @@ export const QueueBrowserResults = ({ state }: { state: QueueBrowserState }) => 
                         </Descriptions>
                         {entry.message.body && (
                           <Card size="small" title="Body" style={{ marginTop: 12 }}>
+                            {entry.message.bodyTruncated && (
+                              <Alert
+                                showIcon
+                                type="warning"
+                                message={t('messagePage.bodyTruncatedWarning')}
+                                style={{ marginBottom: 8 }}
+                              />
+                            )}
+                            {entry.message.bodyEncoding === 'BASE64' && (
+                              <Alert
+                                showIcon
+                                type="info"
+                                message={t('messagePage.bodyBinaryWarning')}
+                                style={{ marginBottom: 8 }}
+                              />
+                            )}
                             <pre
                               style={{
                                 maxHeight: 160,
