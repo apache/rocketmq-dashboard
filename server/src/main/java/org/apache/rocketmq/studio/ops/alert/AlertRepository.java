@@ -50,6 +50,9 @@ public interface AlertRepository {
 
     PageResult<SystemAlertVO> findAlertsPage(SystemAlertQuery query);
 
+    /** Unacknowledged alerts matching the query's filters, newest first, bounded by {@code limit}. */
+    List<SystemAlertVO> findUnacknowledgedAlerts(SystemAlertQuery query, int limit);
+
     SystemAlertVO saveAlert(SystemAlertVO alert);
 
     boolean acknowledgeAlert(SystemAlertVO alert);

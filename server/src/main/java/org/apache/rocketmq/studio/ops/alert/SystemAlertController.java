@@ -110,6 +110,27 @@ public class SystemAlertController {
         return Result.ok(alertService.acknowledgeAlert(request.getId()));
     }
 
+    /**
+     * Acknowledges every unacknowledged alert matching the same filters as the paged feed —
+     * across pages, not only the loaded one. Mirrors the filter surface of
+     * {@code GET /api/system-alerts/page}.
+     */
+    @PostMapping("/acknowledge-all")
+    public Result<Map<String, Integer>> acknowledgeAllAlerts(
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) AlertDomain domain,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(required = false) String transition,
+            @RequestParam(required = false) String labelKey,
+            @RequestParam(required = false) String labelValue,
+            @RequestParam(required = false) LocalDateTime from,
+            @RequestParam(required = false) LocalDateTime to,
+            @RequestParam(required = false) Boolean notificationSuppressed) {
+        int acknowledged = alertService.acknowledgeAlerts(new SystemAlertQuery(level, domain,
+                instanceId, transition, labelKey, labelValue, from, to, 1, 1, notificationSuppressed));
+        return Result.ok(Map.of("acknowledged", acknowledged));
+    }
+
     @PostMapping("/clear-acknowledged")
     public Result<Map<String, Integer>> clearAcknowledged() {
         int cleared = alertService.clearAcknowledged();
