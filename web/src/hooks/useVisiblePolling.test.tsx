@@ -110,6 +110,53 @@ describe('useVisiblePolling', () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
+  it('does not run a queued poll after unmount', async () => {
+    const poll = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useVisiblePolling(true, 1_000, poll));
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      unmount();
+      await Promise.resolve();
+    });
+
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('does not run a queued poll after polling is disabled', async () => {
+    const poll = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(({ enabled }) => useVisiblePolling(enabled, 1_000, poll), {
+      initialProps: { enabled: true },
+    });
+
+    vi.advanceTimersByTime(1_000);
+    rerender({ enabled: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('does not run a queued poll when the page hides before the queued callback runs', async () => {
+    const poll = vi.fn().mockResolvedValue(undefined);
+    renderHook(() => useVisiblePolling(true, 1_000, poll));
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      visibilityState = 'hidden';
+      await Promise.resolve();
+    });
+    expect(poll).not.toHaveBeenCalled();
+
+    visibilityState = 'visible';
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for a hidden page to become visible', async () => {
     visibilityState = 'hidden';
     const poll = vi.fn().mockResolvedValue(undefined);

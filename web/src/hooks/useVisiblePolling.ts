@@ -27,11 +27,18 @@ export function useVisiblePolling(
   useEffect(() => {
     if (!enabled) return;
 
+    let cancelled = false;
+
     const pollWhenVisible = () => {
       if (document.visibilityState !== 'visible' || pollInFlightRef.current) return;
 
       const inFlight = Promise.resolve()
-        .then(poll)
+        .then(() => {
+          // The queued microtask cannot be cancelled, so re-validate the
+          // effect and visibility right before starting the request.
+          if (cancelled || document.visibilityState !== 'visible') return;
+          return poll();
+        })
         .catch(() => undefined)
         .finally(() => {
           if (pollInFlightRef.current === inFlight) {
@@ -44,6 +51,7 @@ export function useVisiblePolling(
     document.addEventListener('visibilitychange', pollWhenVisible);
 
     return () => {
+      cancelled = true;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', pollWhenVisible);
     };
