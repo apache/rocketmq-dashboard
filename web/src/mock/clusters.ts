@@ -175,8 +175,6 @@ export interface ClusterInfo {
   proxies: ProxyInfo[];
   nameServers: NameServerInfo[];
   config: ClusterConfig;
-  topicCount: number;
-  groupCount: number;
   tpsHistory: number[];
 }
 
@@ -303,8 +301,6 @@ const clusters: ClusterInfo[] = [
       flushDiskType: 'SYNC_FLUSH',
       brokerPermission: 6,
     },
-    topicCount: 256,
-    groupCount: 128,
     tpsHistory: [
       18200, 19800, 21400, 20100, 23680, 24100, 22500, 25800, 24600, 23200, 22800, 24500,
     ],
@@ -387,8 +383,6 @@ const clusters: ClusterInfo[] = [
       flushDiskType: 'ASYNC_FLUSH',
       brokerPermission: 6,
     },
-    topicCount: 48,
-    groupCount: 24,
     tpsHistory: [5200, 5800, 6400, 6000, 7200, 6800, 6200, 7000, 7400, 6800, 7200, 7600],
   },
 ];

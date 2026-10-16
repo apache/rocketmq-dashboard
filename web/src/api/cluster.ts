@@ -32,8 +32,6 @@ export interface ClusterInfo {
   proxies: ProxyInfo[];
   nameServers: NameServerInfo[];
   config: ClusterConfig;
-  topicCount: number;
-  groupCount: number;
   tpsHistory: number[];
 }
 

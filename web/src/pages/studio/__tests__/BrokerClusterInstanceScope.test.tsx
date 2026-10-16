@@ -95,8 +95,6 @@ const buildCluster = (id: string, brokerName: string): ClusterInfo => ({
     brokerPermission: 6,
     deleteWhen: '04',
   },
-  topicCount: 1,
-  groupCount: 1,
   tpsHistory: [],
 });
 

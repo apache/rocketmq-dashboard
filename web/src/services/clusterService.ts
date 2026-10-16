@@ -31,8 +31,6 @@ function copyCluster(cluster: ClusterInfo): ClusterInfo {
     proxies: cluster.proxies.map((proxy) => ({ ...proxy })),
     nameServers: cluster.nameServers.map((nameServer) => ({ ...nameServer })),
     config: { ...cluster.config },
-    topicCount: cluster.topicCount,
-    groupCount: cluster.groupCount,
     tpsHistory: [...cluster.tpsHistory],
   };
 }

@@ -233,8 +233,6 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 .proxies(Collections.emptyList())
                 .nameServers(nameServers != null ? nameServers : Collections.emptyList())
                 .tpsHistory(Collections.emptyList())
-                .topicCount(0)
-                .groupCount(0)
                 .build();
         cluster.setId(clusterName);
         return cluster;

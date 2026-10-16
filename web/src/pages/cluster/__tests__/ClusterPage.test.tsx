@@ -150,8 +150,6 @@ const buildCluster = ({
     brokerPermission: 6,
     deleteWhen: '04',
   },
-  topicCount: 10,
-  groupCount: 5,
   tpsHistory: [tpsIn],
 });
 

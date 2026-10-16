@@ -442,8 +442,6 @@ GET /api/clusters
 | `proxies` | `ProxyInfo[]` | Proxy 节点列表 |
 | `nameServers` | `NameServerInfo[]` | NameServer 节点列表 |
 | `config` | `ClusterConfig` | 集群配置 |
-| `topicCount` | `number` | Topic 数量 |
-| `groupCount` | `number` | 消费组数量 |
 | `tpsHistory` | `number[]` | TPS 历史数据 |
 
 #### BrokerInfo

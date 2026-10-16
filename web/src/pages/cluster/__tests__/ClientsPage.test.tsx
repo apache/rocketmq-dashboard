@@ -47,8 +47,6 @@ const registryClusters: ClusterInfo[] = [
     proxies: [],
     nameServers: [],
     config: {} as ClusterInfo['config'],
-    topicCount: 0,
-    groupCount: 0,
     tpsHistory: [],
   },
   {
@@ -63,8 +61,6 @@ const registryClusters: ClusterInfo[] = [
     proxies: [],
     nameServers: [],
     config: {} as ClusterInfo['config'],
-    topicCount: 0,
-    groupCount: 0,
     tpsHistory: [],
   },
 ];
