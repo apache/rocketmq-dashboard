@@ -70,6 +70,21 @@ class OperationAuditServiceTest {
     }
 
     @Test
+    void recordShouldUseTheExplicitOperatorOutsideAnAuthenticatedRequest() {
+        // Login attempts arrive before any context exists; the attempted username is the actor.
+        OperationAuditService service = new OperationAuditService(auditMapper);
+
+        service.record("attempted-user", "LOGIN", "USER", "attempted-user",
+                null, null, "FAILURE", "Invalid username or password");
+
+        ArgumentCaptor<RmqOperationAudit> captor = ArgumentCaptor.forClass(RmqOperationAudit.class);
+        verify(auditMapper).insert(captor.capture());
+        assertThat(captor.getValue().getOperator()).isEqualTo("attempted-user");
+        assertThat(captor.getValue().getResult()).isEqualTo("FAILURE");
+        assertThat(captor.getValue().getErrorMessage()).isEqualTo("Invalid username or password");
+    }
+
+    @Test
     void recordShouldNotPropagateAuditPersistenceFailures() {
         OperationAuditService service = new OperationAuditService(auditMapper);
         doThrow(new IllegalStateException("audit database unavailable"))
