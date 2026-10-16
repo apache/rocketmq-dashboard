@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.common.util;
 
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.topic.TopicValidator;
 
 import java.util.Set;
@@ -63,5 +64,30 @@ public final class SystemTopicFilter {
      */
     public static boolean isSystem(String topicName) {
         return isSystem(topicName, Set.of());
+    }
+
+    /**
+     * Returns {@code true} for the topics the broker generates for the cluster itself: the
+     * cluster's own topic (named after {@code brokerClusterName}) and its reply topic
+     * ({@code <brokerClusterName>_REPLY_TOPIC}, one queue each). The broker registers both with
+     * {@link TopicValidator#addSystemTopic} when it starts, but that set lives in the broker's own
+     * JVM: a Studio process does not inherit it, so it has to apply the two names itself. Only the
+     * owning cluster's names are matched - a user topic that merely ends in the reply suffix, or
+     * carries another cluster's name, stays a user topic.
+     *
+     * @param topicName   the topic name, may be {@code null}
+     * @param brokerNames optional set of broker names; topics matching a broker name
+     *                    are also considered system topics (may be empty)
+     * @param clusterName the owning cluster, may be {@code null} when it is unknown
+     * @return {@code true} if the topic is a system topic
+     */
+    public static boolean isSystem(String topicName, Set<String> brokerNames, String clusterName) {
+        if (isSystem(topicName, brokerNames)) {
+            return true;
+        }
+        if (clusterName == null || clusterName.isEmpty()) {
+            return false;
+        }
+        return clusterName.equals(topicName) || MixAll.getReplyTopic(clusterName).equals(topicName);
     }
 }
