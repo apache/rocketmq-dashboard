@@ -17,5 +17,6 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 /** Server-side filters for the paged alert-rule feed. */
-public record AlertRuleQuery(AlertDomain domain, String search, Boolean enabled, int page, int pageSize) {
+public record AlertRuleQuery(AlertDomain domain, String search, Boolean enabled, int page, int pageSize,
+        String triggeredSince) {
 }
