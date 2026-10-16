@@ -68,6 +68,20 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    public List<AclRuleVO> findRulesByPrincipal(String principal, int limit) {
+        if (!StringUtils.hasText(principal) || limit <= 0) {
+            return List.of();
+        }
+        QueryWrapper<RmqAclRule> query = new QueryWrapper<RmqAclRule>()
+                .eq("principal", principal)
+                .orderByDesc("gmt_create")
+                .orderByDesc("id");
+        return ruleMapper.selectPage(new Page<>(1, limit), query).getRecords().stream()
+                .map(MybatisPlusAclRepository::toRuleVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public Optional<AclRuleVO> findRuleById(Long id) {
         return Optional.ofNullable(ruleMapper.selectById(id))
                 .map(MybatisPlusAclRepository::toRuleVO);
