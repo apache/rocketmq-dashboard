@@ -18,11 +18,10 @@
 /**
  * Repair the Markdown models actually emit before handing it to `react-markdown`.
  *
- * CommonMark requires a space after an ATX heading marker and after a list bullet, and a fence's
- * info string must be terminated by a newline. Models (especially when answering in Chinese) skip
- * all three, and the result is not a slightly-worse render but NO render: a heading written as
- * `##结论` stays a literal paragraph, `-第一项` stays a literal line, and a bash fence whose info
- * string runs straight into the command swallows the whole code block.
+ * CommonMark requires a space after an ATX heading marker and after a list bullet. Models
+ * sometimes omit these spaces, so repair those markers outside fenced code blocks.
+ * Preserve fence info strings verbatim: a language name such as `shell` or `jsonc` cannot be
+ * distinguished from a supposedly missing newline by matching a shorter language prefix.
  *
  * Purely textual and idempotent: well-formed input comes back unchanged, so this is safe to apply to
  * every assistant text block, live or replayed.
@@ -50,7 +49,7 @@ export function normalizeAiMarkdown(content: string): string {
       // A backtick fence cannot contain backticks in its info string. Tilde fences can.
       if (marker && (marker[1][0] === '~' || !marker[2].includes('`'))) {
         fence = { marker: marker[1][0], length: marker[1].length };
-        return line.replace(/^```(bash|sh|shell|json|ya?ml|sql|text)(?=\S)/i, '```$1\n');
+        return line;
       }
       return line.replace(/^(#{1,6})(?=\S)/, '$1 ').replace(/^([-+*])(?=\S)/, '$1 ');
     })

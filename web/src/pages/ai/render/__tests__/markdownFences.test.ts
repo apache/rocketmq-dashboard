@@ -44,10 +44,38 @@ describe('Markdown fenced code preservation', () => {
     expect(normalizeAiMarkdown(input)).toBe(input.replace('-项目', '- 项目'));
   });
 
-  it('repairsProseAndMalformedOpeningWhilePreservingCodeTest', () => {
+  it('repairsProseWhilePreservingTheWholeFenceInfoTest', () => {
     const input = '##结论\n-项目\n```bashprintf ok\n#comment\n```\n+下一项';
     expect(normalizeAiMarkdown(input)).toBe(
-      '## 结论\n- 项目\n```bash\nprintf ok\n#comment\n```\n+ 下一项',
+      '## 结论\n- 项目\n```bashprintf ok\n#comment\n```\n+ 下一项',
     );
   });
+
+  it.each(
+    [
+      'shell',
+      'jsonc',
+      'json5',
+      'bash-session',
+      'shell-session',
+      'textile',
+      'sh-session',
+      'bashprintf',
+      'SHELL',
+      'shell linenums',
+      'json {1,3}',
+    ].flatMap((info) => ['\n', '\r\n'].map((eol) => ({ info, eol }))),
+  )('preservesCompleteInfoAndBodyTest: $info / $eol', ({ info, eol }) => {
+    const input = ['```' + info, '#comment', '-literal', '```'].join(eol);
+    expect(normalizeAiMarkdown(input)).toBe(input);
+    expect(normalizeAiMarkdown(normalizeAiMarkdown(input))).toBe(input);
+  });
+
+  it.each(['s', 'sh', 'she', 'shell', 'shell-', 'shell-session'])(
+    'preservesAnUnfinishedStreamingInfoStringTest: %s',
+    (info) => {
+      const input = '```' + info;
+      expect(normalizeAiMarkdown(input)).toBe(input);
+    },
+  );
 });
