@@ -312,6 +312,27 @@ describe('Consumer page', () => {
     expect(screen.getByText(/^\d+ groups in total$/)).toBeInTheDocument();
   });
 
+  it('loads the group page once when the instance list lands after it', async () => {
+    let releaseInstances: (instances: unknown[]) => void = () => {};
+    instanceServiceMocks.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<unknown[]>((resolve) => {
+          releaseInstances = resolve;
+        }),
+    );
+    renderWithProviders(<ConsumerPage />, '/instance/instance-1/consumer');
+
+    // The route already names the instance, so the page must not wait for the instance list…
+    await waitFor(() => expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1));
+
+    // …and the list landing afterwards must not fire a second, identical request.
+    await act(async () => {
+      releaseInstances([]);
+    });
+    await screen.findByText('remote-cg');
+    expect(consumerService.listConsumerGroupPage).toHaveBeenCalledTimes(1);
+  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 
@@ -1334,7 +1355,13 @@ describe('Consumer page', () => {
       await user.click(await screen.findByRole('button', { name: /详情/ }));
       await user.click(await screen.findByRole('button', { name: /线程栈/ }));
 
-      expect(await screen.findByText('2026-07-23 08:00:00 GMT+8')).toBeInTheDocument();
+      // Scoped to the stack modal: the 最后心跳 column renders the same wall time, and only the
+      // capture time goes through the UTC-aware formatter.
+      const stackModal = (await screen.findByText('消费者线程栈')).closest<HTMLElement>(
+        '[role="dialog"]',
+      );
+      if (!stackModal) throw new Error('consumer stack modal not found');
+      expect(within(stackModal).getByText('2026-07-23 08:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -1595,6 +1622,38 @@ describe('Consumer page', () => {
     '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type"\n"' +
     name +
     '","Push","CLUSTERING","16","NORMAL"';
+
+  it('rejectsOversizedCsvBeforeReadingTheTailAndRecoversTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<ConsumerPage />);
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroupPage).toHaveBeenCalledWith(
+        expect.objectContaining({ instanceId: 'instance-1' }),
+      ),
+    );
+    const input = screen.getByTestId('consumer-group-import-file');
+    const oversized = [
+      'Name',
+      ...Array.from({ length: 101 }, (_, i) => `over-${i}`),
+      '"unterminated tail',
+    ].join('\n');
+    await user.upload(input, new File([oversized], 'oversized.csv'));
+    expect(await screen.findByText('一次最多导入 100 行')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(consumerService.importConsumerGroups).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /^关\s*闭$/ }));
+    await user.upload(input, new File([previewCsv('current-resource')], 'valid.csv'));
+    await screen.findByText('current-resource');
+    expect(screen.queryByText('一次最多导入 100 行')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+    await waitFor(() =>
+      expect(consumerService.importConsumerGroups).toHaveBeenCalledWith('instance-1', [
+        expect.objectContaining({ name: 'current-resource', instanceId: 'instance-1' }),
+      ]),
+    );
+    expect(consumerService.importConsumerGroups).toHaveBeenCalledTimes(1);
+  });
 
   it('clearsPreviousImportRowsBeforeReadingTheNextFileTest', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });

@@ -9,6 +9,7 @@ import type {
   AclUserPage,
   AclClusterConfig,
   PlainAccessConfig,
+  PushAclToBrokerResult,
 } from '../api/acl';
 import { aclRules as mockRules, aclUsers as mockUsers } from '../mock/acl';
 
@@ -278,4 +279,25 @@ export async function createAndUpdatePlainAccessConfig(
     return { ...saved };
   }
   return aclApi.createAndUpdatePlainAccessConfig(data);
+}
+
+export async function pushAclToBroker(instanceId: string): Promise<PushAclToBrokerResult> {
+  if (isMockMode()) {
+    return {
+      instanceId,
+      brokers: ['broker-a:10911'],
+      pushed: 1,
+      failed: 0,
+      accounts: [
+        {
+          username: 'order-producer',
+          subject: 'User:order-producer',
+          policyCount: 1,
+          skipped: [],
+          brokers: [{ broker: 'broker-a:10911', success: true, error: null }],
+        },
+      ],
+    };
+  }
+  return aclApi.pushAclToBroker(instanceId);
 }

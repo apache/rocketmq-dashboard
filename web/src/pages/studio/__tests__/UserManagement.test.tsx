@@ -106,6 +106,16 @@ const sessionDetails: StudioUserSessionDetail[] = [
   },
 ];
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -267,6 +277,7 @@ describe('UserManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '会话' }));
 
     const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
+    expect(document.querySelector('.ant-drawer')).toBeNull();
     expect(listStudioUserSessions).toHaveBeenCalledWith(7);
     expect(within(drawer).getAllByText('会话 ID').length).toBeGreaterThan(0);
     expect(within(drawer).getByText('19')).toBeInTheDocument();
@@ -294,6 +305,44 @@ describe('UserManagementPage', () => {
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes the query on screen when a revocation finishes after the search changes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingRevoke = deferred<{ userId: number; revokedSessionCount: number }>();
+    vi.mocked(revokeStudioUserSessions).mockReturnValueOnce(pendingRevoke.promise);
+    const narrowedPage = {
+      items: [{ ...studioUserPage.items[0], id: 8, username: 'current-user' }],
+      total: 1,
+      page: 1,
+      size: 20,
+    };
+    vi.mocked(listStudioUsers).mockImplementation(async (params) =>
+      params?.search === 'current' ? narrowedPage : studioUserPage,
+    );
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.click(screen.getByRole('button', { name: '注销' }));
+    await screen.findByText('注销 operator 的活跃会话？');
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+
+    // The operator narrows the list while the revocation is still on the wire. The refresh that
+    // follows must re-query what is on screen, not the search captured when the popover was
+    // confirmed - otherwise the table snaps back to rows the search box no longer selects.
+    await user.type(screen.getByPlaceholderText('搜索用户名'), 'current');
+    await screen.findByText('current-user');
+
+    await act(async () => pendingRevoke.resolve({ userId: 7, revokedSessionCount: 2 }));
+
+    await waitFor(() =>
+      expect(vi.mocked(listStudioUsers).mock.lastCall?.[0]).toEqual(
+        expect.objectContaining({ search: 'current' }),
+      ),
+    );
+    expect(screen.getByText('current-user')).toBeInTheDocument();
+    expect(screen.queryByText('operator')).not.toBeInTheDocument();
+  });
+
   it('renders session timestamps as UTC values in the viewer timezone', async () => {
     // The user/session APIs serialize UTC LocalDateTime values without an offset, so
     // the table and drawer must not parse them as browser-local wall times. Pin the
@@ -305,12 +354,12 @@ describe('UserManagementPage', () => {
 
       await screen.findByText('operator');
       // 09:30 UTC is 17:30 in Asia/Shanghai; a browser-local misparse shows 09:30.
-      expect(screen.getByText('2026-08-22 17:30:00 GMT+8')).toBeInTheDocument();
+      expect(screen.getByText('2026-08-22 17:30:00')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: '会话' }));
       const drawer = await screen.findByRole('dialog', { name: 'operator 的会话' });
-      expect(within(drawer).getByText('2026-08-22 17:45:00 GMT+8')).toBeInTheDocument();
-      expect(within(drawer).getByText('2026-08-22 18:00:00 GMT+8')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 17:45:00')).toBeInTheDocument();
+      expect(within(drawer).getByText('2026-08-22 18:00:00')).toBeInTheDocument();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -365,12 +414,12 @@ describe('UserManagementPage', () => {
     await user.click(within(drawer).getByRole('button', { name: /close/i }));
     const secondRow = screen.getByRole('row', { name: /second-user/ });
     await user.click(within(secondRow).getByRole('button', { name: '会话' }));
-    const secondDrawer = await screen.findByRole('dialog', { name: 'second-user 的会话' });
-    expect(await within(secondDrawer).findByText('99')).toBeInTheDocument();
+    const secondDialog = await screen.findByRole('dialog', { name: 'second-user 的会话' });
+    expect(await within(secondDialog).findByText('99')).toBeInTheDocument();
     await act(async () => completeRevoke());
     await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
-    expect(within(secondDrawer).getByText('99')).toBeInTheDocument();
-    expect(within(secondDrawer).queryByText('19')).not.toBeInTheDocument();
+    expect(within(secondDialog).getByText('99')).toBeInTheDocument();
+    expect(within(secondDialog).queryByText('19')).not.toBeInTheDocument();
   });
 
   it('does not reload session details after their drawer is closed during revocation', async () => {
@@ -393,10 +442,11 @@ describe('UserManagementPage', () => {
     await act(async () => completeRevoke());
     await waitFor(() => expect(listStudioUsers).toHaveBeenCalledTimes(2));
     expect(listStudioUserSessions).toHaveBeenCalledTimes(1);
-    // rc-drawer keeps the dialog node in the a11y tree until its exit motion finishes, and that
-    // motion is timer-driven: asserting synchronously passed in isolation and failed every
-    // full-suite run, where the timers lag behind the awaited reload.
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // antd's modal keeps the dialog node in the a11y tree until its exit motion finishes, and
+    // under jsdom that motion never completes, so the repo's convention is to assert the leave
+    // class instead of removal (same pattern as ClusterPage / InstancePage).
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(dialog).toHaveClass('ant-zoom-leave'));
   });
 
   it('does not present a failed session read as an account without sessions', async () => {

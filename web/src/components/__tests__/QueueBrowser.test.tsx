@@ -30,7 +30,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { StrictMode } from 'react';
 import type { MessageRecord, QueueOffset } from '../../api/message';
 import { getQueueOffsets, pullMessageAtOffset } from '../../api/message';
-import { QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { QueueBrowserControls, QueueBrowserResults, useQueueBrowser } from '../QueueBrowser';
+import { LangProvider } from '../../i18n/LangContext';
 
 vi.mock('../../api/message', () => ({
   getQueueOffsets: vi.fn(),
@@ -501,5 +502,162 @@ describe('QueueBrowser request ownership', () => {
     expect(
       within(properties).getByText('属性过多或单值过长，服务端已截断展示'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('QueueBrowser localization', () => {
+  // The queue browser hardcoded Chinese strings regardless of the display language (#4941 fixed
+  // the composer font size; this panel regressed the other way). The strings now go through the
+  // translation table like every other surface.
+  it('renders the controls and empty states in the display language', () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+
+    // The hook itself consumes the language context, so it must render inside the provider.
+    const Inner = () => {
+      const state = useQueueBrowser(undefined);
+      return (
+        <>
+          <QueueBrowserControls
+            instanceId={undefined}
+            state={state}
+            topicOptions={[]}
+            topicLoading={false}
+          />
+          <QueueBrowserResults state={state} />
+        </>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+
+    // The search icon contributes to the accessible name, so match on the label text.
+    expect(screen.getByRole('button', { name: /Load Queues/ })).toBeInTheDocument();
+    expect(
+      screen.getByText('Select a topic and click "Load Queues" to browse messages by queue'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Select a topic')).toBeInTheDocument();
+    // The empty queue list renders before the detail pane, so only its hint is visible here;
+    // the point is that no hardcoded Chinese remains on the rendered surface.
+    expect(screen.queryByText('加载队列')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('选择 Topic 并点击「加载队列」，按队列浏览消息'),
+    ).not.toBeInTheDocument();
+  });
+
+  // The remaining queueBrowser.* keys only surface once a topic has actually been loaded, so they
+  // need a probe that drives the hook (and therefore the language context) under the en locale.
+  const renderEnglishResults = () => {
+    window.localStorage.setItem('rocketmq-studio-language', 'en');
+    const Inner = () => {
+      const state = useQueueBrowser('instance-a');
+      const firstQueue = state.queues[0];
+      return (
+        <div>
+          <button type="button" onClick={() => state.setTopic('topic-a')}>
+            topic-a
+          </button>
+          <button type="button" onClick={() => void state.loadQueues()}>
+            load
+          </button>
+          <button
+            type="button"
+            disabled={!firstQueue}
+            onClick={() => firstQueue && void state.handlePull(firstQueue)}
+          >
+            pull
+          </button>
+          <QueueBrowserResults state={state} />
+        </div>
+      );
+    };
+    render(
+      <LangProvider>
+        <Inner />
+      </LangProvider>,
+    );
+    const user = userEvent.setup();
+    const loadTopic = async () => {
+      await user.click(screen.getByRole('button', { name: 'topic-a' }));
+      await user.click(screen.getByRole('button', { name: 'load' }));
+      await screen.findByText('broker-a');
+    };
+    return { user, loadTopic };
+  };
+
+  it('renders the loaded queue table and its summary in the display language', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([
+      { brokerName: 'broker-a', queueId: 0, minOffset: 0, maxOffset: 3 },
+      { brokerName: 'broker-b', queueId: 1, minOffset: 5, maxOffset: 12 },
+    ]);
+    const { loadTopic } = renderEnglishResults();
+
+    await loadTopic();
+
+    expect(screen.getByText('Offset Range')).toBeInTheDocument();
+    // The summary interpolates both counters, so assert the substituted numbers: a key missing
+    // from the dictionary would render the raw `{queues} queues, {messages} messages in total`.
+    expect(screen.getByText('2 queues, 10 messages in total')).toBeInTheDocument();
+    expect(
+      screen.getByText('Click "View" on the left; message details appear here'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Offset 范围')).not.toBeInTheDocument();
+    expect(screen.queryByText(/共 \d+ 个队列/)).not.toBeInTheDocument();
+    expect(screen.queryByText('点击左侧「查看」，消息详情将显示在这里')).not.toBeInTheDocument();
+  });
+
+  it('announces a queue load failure in the display language', async () => {
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    // The toast only falls back to the dictionary when the rejection carries no message of its
+    // own, which is what a non-Error provider failure looks like.
+    vi.mocked(getQueueOffsets).mockRejectedValue('provider rejected the request');
+    const { user } = renderEnglishResults();
+
+    await user.click(screen.getByRole('button', { name: 'topic-a' }));
+    await user.click(screen.getByRole('button', { name: 'load' }));
+
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith('Failed to load queue information'),
+    );
+    expect(errorToast).not.toHaveBeenCalledWith('加载队列信息失败');
+    errorToast.mockRestore();
+  });
+
+  it('announces a pull failure in the display language', async () => {
+    const errorToast = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset).mockRejectedValue('provider rejected the pull');
+    const { loadTopic, user } = renderEnglishResults();
+
+    await loadTopic();
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith('Failed to pull the message'));
+    expect(errorToast).not.toHaveBeenCalledWith('拉取消息失败');
+    errorToast.mockRestore();
+  });
+
+  it('renders the pulled message detail in the display language', async () => {
+    vi.mocked(getQueueOffsets).mockResolvedValue([queue('broker-a')]);
+    vi.mocked(pullMessageAtOffset)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...messageRecord('sized-message'), size: 1024 });
+    const { loadTopic, user } = renderEnglishResults();
+
+    await loadTopic();
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    // An offset with nothing behind it renders the placeholder instead of an empty detail card.
+    await screen.findByText('No message at this offset');
+    expect(screen.queryByText('该 offset 处无消息')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'pull' }));
+    await screen.findByText('sized-message');
+    // The size cell goes through the shared byte formatter, so it reads as a scaled unit rather
+    // than a raw byte count.
+    expect(screen.getByText('1.0 KB')).toBeInTheDocument();
+    expect(screen.queryByText('1024 bytes')).not.toBeInTheDocument();
   });
 });

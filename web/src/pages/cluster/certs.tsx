@@ -29,9 +29,10 @@ import {
   Modal,
   Form,
   Popconfirm,
+  Alert,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
@@ -40,6 +41,7 @@ import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clust
 import { describeThrownMessage } from '../../utils/apiError';
 import { formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
+import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -54,8 +56,11 @@ interface CreateCertFormValues {
 }
 
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -67,10 +72,18 @@ const K8sCertsPage = () => {
     let active = true;
     listK8sCerts()
       .then((data) => {
-        if (active) setCerts(data);
+        if (active) {
+          setCerts(data);
+          setLoadFailed(false);
+        }
       })
       .catch((error: unknown) => {
-        if (active) message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+        // Keeping the previous rows and marking the failure: clearing the list made a failed read
+        // look like a cluster without certificates, and nothing offered a retry.
+        if (active) {
+          message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+          setLoadFailed(true);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -78,7 +91,7 @@ const K8sCertsPage = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadNonce]);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
@@ -181,11 +194,11 @@ const K8sCertsPage = () => {
       title: '到期时间',
       dataIndex: 'notAfter',
       key: 'notAfter',
-      width: 170,
+      width: 156,
       sorter: (a, b) => (Date.parse(a.notAfter ?? '') || 0) - (Date.parse(b.notAfter ?? '') || 0),
       render: (iso: string | null) => (
         <Text type="secondary" style={{ fontSize: 14 }}>
-          {formatUtcDateTime(iso, undefined, { zone: false })}
+          {formatUtcDateTime(iso)}
         </Text>
       ),
     },
@@ -250,7 +263,27 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书配置" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader
+        title="K8s 证书配置"
+        subtitle={loadFailed ? t('common.unavailable') : `共 ${filteredCerts.length} 个证书`}
+      />
+      {loadFailed && (
+        <Alert
+          showIcon
+          type="error"
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => setReloadNonce((nonce) => nonce + 1)}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
         title="当前证书记录仅保存为 Studio 本地配置"

@@ -363,9 +363,7 @@ const ConversationListPanel = ({
         dataIndex: 'updatedAt',
         key: 'updatedAt',
         width: COLUMN_WIDTHS.updatedAt,
-        // No zone name: it is the viewer's own and identical on every row, so it would only make
-        // this the widest column in the table to say something the reader already knows.
-        render: (updatedAt: string) => formatUtcDateTime(updatedAt, undefined, { zone: false }),
+        render: (updatedAt: string) => formatUtcDateTime(updatedAt),
       },
       {
         title: t('ai.list.columnAction'),
