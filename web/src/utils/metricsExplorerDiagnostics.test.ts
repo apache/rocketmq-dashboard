@@ -322,6 +322,76 @@ describe('metrics explorer diagnostics', () => {
     expect(csv).toContain('"2027-01-15T07:00:00.000Z"');
   });
 
+  it.each([
+    1e20,
+    -1e20,
+    8_640_000_000_001,
+    -8_640_000_000_001,
+    Number.MAX_VALUE,
+    -Number.MAX_VALUE,
+  ])('preserves scalar and histogram rows with an unrepresentable timestamp %s', (timestamp) => {
+    const data: MetricData = {
+      resultType: 'matrix',
+      warnings: [],
+      series: [
+        {
+          labels: { cluster: 'prod' },
+          values: [
+            { timestamp: 0, value: '42' },
+            { timestamp, value: '99' },
+          ],
+          histograms: [{ timestamp, histogram: { sum: '250', count: '10', buckets: [] } }],
+        },
+      ],
+    };
+    const rows = buildMetricCsvRows(data, metric, { profileName: 'p', sourceName: 's' });
+    expect(rows).toHaveLength(3);
+    expect(rows.find((row) => row.timestamp === 0)?.timestampIso).toBe('1970-01-01T00:00:00.000Z');
+    expect(
+      rows.find((row) => row.timestamp === timestamp && row.sampleType === 'scalar'),
+    ).toMatchObject({
+      timestampIso: '',
+      value: 99,
+      labels: '{"cluster":"prod"}',
+    });
+    expect(
+      rows.find((row) => row.timestamp === timestamp && row.sampleType === 'histogram'),
+    ).toMatchObject({
+      timestampIso: '',
+      value: 250,
+      histogramCount: 10,
+      histogramSum: 250,
+    });
+    const csv = buildMetricCsv(data, metric, { profileName: 'p', sourceName: 's' });
+    expect(csv.split('\n')).toHaveLength(4);
+    expect(csv).toContain(String(timestamp));
+    expect(csv).toContain('"99"');
+    expect(csv).toContain('"250"');
+    expect(csv).not.toContain('Invalid Date');
+  });
+
+  it.each([0, -1, 1_800_000_000.123, 8_640_000_000_000, -8_640_000_000_000])(
+    'retains the ISO timestamp for representable scalar and histogram epochs %s',
+    (timestamp) => {
+      const data: MetricData = {
+        resultType: 'matrix',
+        warnings: [],
+        series: [
+          {
+            labels: {},
+            values: [{ timestamp, value: '42' }],
+            histograms: [{ timestamp, histogram: { sum: '250', count: '10', buckets: [] } }],
+          },
+        ],
+      };
+      const rows = buildMetricCsvRows(data, metric, { profileName: 'p', sourceName: 's' });
+      expect(rows).toHaveLength(2);
+      expect(
+        rows.every((row) => row.timestampIso === new Date(timestamp * 1000).toISOString()),
+      ).toBe(true);
+    },
+  );
+
   it('creates deterministic CSV filenames from metric identity', () => {
     expect(buildMetricCsvFilename(metric, 1_800_000_000_000)).toBe(
       'rocketmq-studio-metrics-message-in-tps-2027-01-15T08-00-00-000Z.csv',
