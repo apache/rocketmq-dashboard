@@ -440,11 +440,7 @@ const HomePage = () => {
                 showModeSelect={false}
                 showTemplates={false}
                 panelBorderless
-                placeholder={
-                  lang === 'zh'
-                    ? '向 RocketMQ Bot 提问，全程加密、安全、可信'
-                    : 'Ask RocketMQ Bot — encrypted, secure, trusted'
-                }
+                placeholder={t('home.placeholder')}
                 toolbarExtra={
                   <button
                     type="button"

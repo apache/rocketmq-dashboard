@@ -38,6 +38,25 @@ const sources = import.meta.glob('../../**/*.{ts,tsx}', {
 const LITERAL_KEY = /\bt\(\s*'([^']+)'/g;
 
 describe('translations dictionary', () => {
+  it.each(['llm.apiKeyEncrypted', 'llm.securityNote'])(
+    'describes server-side storage and API response protection accurately for %s',
+    (key) => {
+      expect(translations[key].zh).toContain('服务端');
+      expect(translations[key].zh).toContain('只写字段');
+      expect(translations[key].zh).toContain('没有应用层静态加密');
+      expect(translations[key].en).toContain('server-side');
+      expect(translations[key].en).toContain('write-only');
+      expect(translations[key].en).toContain('no application-level encryption at rest');
+    },
+  );
+
+  it('keeps both home placeholders free of unsupported security claims', () => {
+    expect(translations['home.placeholder']).toEqual({
+      zh: '向 RocketMQ Bot 提问',
+      en: 'Ask RocketMQ Bot',
+    });
+  });
+
   it('gives every entry a non-empty Chinese and an English value', () => {
     const incomplete = Object.entries(translations)
       .filter(([, value]) => !value.zh.trim() || !value.en.trim())
