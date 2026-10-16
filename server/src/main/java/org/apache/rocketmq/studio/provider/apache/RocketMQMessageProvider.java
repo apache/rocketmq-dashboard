@@ -347,7 +347,17 @@ public class RocketMQMessageProvider implements MessageProvider {
                         || pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
                     return null;
                 }
-                return toRecordVO(pullResult.getMsgFoundList().get(0), brokerName);
+                MessageExt message = pullResult.getMsgFoundList().get(0);
+                if (message.getQueueOffset() != offset) {
+                    // A pull scans forward from the requested offset, so a cleared or compacted
+                    // position yields the next retained message; that is not the message the
+                    // exact-offset lookup promises to return.
+                    log.info("pullMessageAtOffset(topic={}, broker={}, queue={}, offset={}) matched the "
+                            + "next retained message at offset {}; treating the requested offset as empty",
+                            topic, brokerName, queueId, offset, message.getQueueOffset());
+                    return null;
+                }
+                return toRecordVO(message, brokerName);
             } catch (Exception e) {
                 if (isRetryTopicReadBlocked(topic, e)) {
                     log.warn("pullMessageAtOffset(topic={}) skipped: reading a %RETRY% topic requires a "
