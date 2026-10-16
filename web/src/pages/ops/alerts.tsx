@@ -452,10 +452,21 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     if (!file) return;
     setTransferringRules(true);
     try {
-      const transfer = JSON.parse(await file.text()) as AlertRuleTransfer;
-      if (transfer.version !== 1 || transfer.domain !== domain || !Array.isArray(transfer.rules)) {
+      const parsed = JSON.parse(await file.text()) as AlertRuleTransfer;
+      if (parsed.version !== 1 || parsed.domain !== domain || !Array.isArray(parsed.rules)) {
         throw new Error('invalid transfer document');
       }
+      // A rule exported from a store that still holds a pre-canonical duration keeps that label in
+      // the file, and the server validates the uploaded document as a whole: one legacy label turns
+      // the entire import into a 400. The editor maps the same labels when it opens such a rule, so
+      // the upload maps them here too instead of refusing the file the console itself wrote.
+      const transfer: AlertRuleTransfer = {
+        ...parsed,
+        rules: parsed.rules.map((rule) => ({
+          ...rule,
+          duration: normalizeDuration(rule.duration),
+        })),
+      };
       const imported = await importAlertRulesTransfer(transfer, domain);
       setPage(1);
       refreshRules();
