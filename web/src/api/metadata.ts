@@ -172,6 +172,8 @@ export interface ConsumerGroupQuery {
   instanceId?: string;
   clusterId?: string;
   search?: string;
+  /** Subscription mode filter ("Push" / "Pop"); absent or "ALL" means no restriction. */
+  subscriptionMode?: string;
 }
 
 export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
@@ -181,7 +183,6 @@ export interface ConsumerGroupPageQuery extends ConsumerGroupQuery {
 
 export interface ConsumerGroupExportQuery extends ConsumerGroupQuery {
   names?: string[];
-  subscriptionMode?: string;
 }
 
 export interface ImportConsumerGroupsRequest {
