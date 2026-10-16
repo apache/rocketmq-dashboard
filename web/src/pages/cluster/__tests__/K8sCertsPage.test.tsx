@@ -250,4 +250,42 @@ describe('K8sCertsPage', () => {
 
     expect(await screen.findByText('请求失败，请稍后重试')).toBeInTheDocument();
   });
+
+  it('shows a retryable error state instead of an empty inventory when the list fails to load', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValue(new Error('request blocked'));
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // The header must not assert a measured zero for a read that never succeeded.
+    expect(screen.getByText('-')).toBeInTheDocument();
+    expect(screen.queryByText('共 0 个证书')).not.toBeInTheDocument();
+    // The error state replaces the list, and a retry control is offered.
+    expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+    // antd inserts a space between the two CJK characters of a button label.
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument();
+  });
+
+  it('recovers the certificate list when retry succeeds after a failed load', async () => {
+    vi.mocked(listK8sCerts).mockRejectedValueOnce(new Error('request blocked'));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+
+    expect(listK8sCerts).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('rocketmq-prod-tls')).toBeInTheDocument();
+    expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
+    expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument();
+  });
+
+  it('renders the measured certificate count on a successful load', async () => {
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+
+    expect(screen.getByText('共 3 个证书')).toBeInTheDocument();
+    expect(screen.queryByText('共 0 个证书')).not.toBeInTheDocument();
+  });
 });

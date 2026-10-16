@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -29,12 +29,14 @@ import {
   Modal,
   Form,
   Popconfirm,
+  Alert,
   message,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import InfoBanner from '../../components/InfoBanner';
+import { useLang } from '../../i18n/LangContext';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../services/clusterService';
 import { describeThrownMessage } from '../../utils/apiError';
@@ -54,31 +56,47 @@ interface CreateCertFormValues {
 }
 
 const K8sCertsPage = () => {
+  const { t } = useLang();
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [certsLoadFailed, setCertsLoadFailed] = useState(false);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const mountedRef = useRef(true);
   const [createForm] = Form.useForm<CreateCertFormValues>();
 
-  useEffect(() => {
-    let active = true;
-    listK8sCerts()
-      .then((data) => {
-        if (active) setCerts(data);
-      })
-      .catch((error: unknown) => {
-        if (active) message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+  const loadCerts = useCallback(async () => {
+    setLoading(true);
+    setCertsLoadFailed(false);
+    try {
+      const data = await listK8sCerts();
+      if (mountedRef.current) setCerts(data);
+    } catch (error: unknown) {
+      // An empty list would read as "this deployment has no certificates", which a
+      // failed read cannot support; surface a retryable error state instead.
+      if (mountedRef.current) {
+        setCerts([]);
+        setCertsLoadFailed(true);
+        message.error(describeThrownMessage(error) || DEFAULT_REQUEST_ERROR);
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    // Deferred like GrafanaDashboardList so the load's setStates stay out of the
+    // effect's synchronous body (react-hooks/set-state-in-effect).
+    const timeoutId = window.setTimeout(() => void loadCerts());
+    return () => {
+      window.clearTimeout(timeoutId);
+      mountedRef.current = false;
+    };
+  }, [loadCerts]);
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
@@ -250,7 +268,10 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title="K8s 证书配置" subtitle={`共 ${filteredCerts.length} 个证书`} />
+      <PageHeader
+        title="K8s 证书配置"
+        subtitle={loading || certsLoadFailed ? '-' : `共 ${filteredCerts.length} 个证书`}
+      />
       <InfoBanner
         data-testid="k8s-cert-local-metadata-notice"
         title="当前证书记录仅保存为 Studio 本地配置"
@@ -281,18 +302,31 @@ const K8sCertsPage = () => {
           新增证书
         </Button>
       </Flex>
-      <Card styles={{ body: { padding: 0 } }}>
-        <Table
-          columns={certColumns}
-          dataSource={filteredCerts}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 20 }}
-          size="small"
-          tableLayout="fixed"
-          scroll={{ x: tableScrollX(certColumns) }}
+      {certsLoadFailed ? (
+        <Alert
+          type="error"
+          showIcon
+          message={t('common.fetchDataFailed')}
+          action={
+            <Button size="small" onClick={() => void loadCerts()}>
+              {t('common.retry')}
+            </Button>
+          }
         />
-      </Card>
+      ) : (
+        <Card styles={{ body: { padding: 0 } }}>
+          <Table
+            columns={certColumns}
+            dataSource={filteredCerts}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize: 20 }}
+            size="small"
+            tableLayout="fixed"
+            scroll={{ x: tableScrollX(certColumns) }}
+          />
+        </Card>
+      )}
 
       <Modal
         title="新增证书"
