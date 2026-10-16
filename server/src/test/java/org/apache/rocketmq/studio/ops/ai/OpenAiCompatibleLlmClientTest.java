@@ -491,6 +491,40 @@ class OpenAiCompatibleLlmClientTest {
                 });
     }
 
+    @Test
+    void completeShouldRejectARedirectResponse() {
+        server.createContext("/v1/chat/completions", exchange ->
+                respond(exchange, 302, "", "text/html"));
+
+        assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("status 302");
+    }
+
+    @Test
+    void streamShouldRejectARedirectResponse() {
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getResponseHeaders().set("Location", "https://portal.example.com/login");
+            respond(exchange, 307, "", "text/html");
+        });
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, tokens::add))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("status 307");
+        assertThat(tokens).isEmpty();
+    }
+
+    @Test
+    void listModelsShouldRejectARedirectResponse() {
+        server.createContext("/v1/models", exchange ->
+                respond(exchange, 302, "", "text/html"));
+
+        assertThatThrownBy(() -> client.listModels(config("openai", "sk-test")))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessageContaining("status 302");
+    }
+
     private LlmConfigVO config(String provider, String apiKey) {
         return LlmConfigVO.builder()
                 .provider(provider)
