@@ -83,6 +83,11 @@ const MessageQueryHistoryModal = ({
       if (id !== requestId.current) return;
       setSummary(nextSummary);
       setTotal(result.total);
+      const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       if (tab === 'messages') setMessageRows(result.items as MessageQueryHistory[]);
       else setTraceRows(result.items as TraceQueryHistory[]);
     } catch (loadError) {
@@ -220,7 +225,7 @@ const MessageQueryHistoryModal = ({
                 loading={loading}
                 columns={messageColumns}
                 dataSource={messageRows}
-                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage, showSizeChanger: false }}
                 onRow={
                   onSelectMessage
                     ? (record) => ({
@@ -242,7 +247,7 @@ const MessageQueryHistoryModal = ({
                 loading={loading}
                 columns={traceColumns}
                 dataSource={traceRows}
-                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
+                pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage, showSizeChanger: false }}
                 onRow={
                   onSelectTrace
                     ? (record) => ({
