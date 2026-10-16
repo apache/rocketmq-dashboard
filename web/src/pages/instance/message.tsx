@@ -675,8 +675,10 @@ const MessagePageContent = ({
     void executeQuery('msgid', { topic: record.topic, msgId: record.msgId });
   };
 
-  const handleVerifyConsume = () => {
-    message.warning(t('messagePage.verifyNotAvailable'));
+  const handleVerifyConsume = (record: MessageRecord) => {
+    // The verdict comes from the trace's per-group consumerStatus; opening the modal on the
+    // verification tab (which loads the trace) shows it instead of a "not available" warning.
+    openDetail(record, 'consumer');
   };
   const loadMessageTrace = async (record: MessageRecord) => {
     const requestGeneration = traceGenerationRef.current + 1;
@@ -935,7 +937,7 @@ const MessagePageContent = ({
             size="small"
             icon={<CheckCircleOutlined />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={handleVerifyConsume}
+            onClick={() => handleVerifyConsume(record)}
           >
             {t('messagePage.verify')}
           </Button>
@@ -1181,6 +1183,7 @@ const MessagePageContent = ({
           rowKey="_key"
           pagination={false}
           size="small"
+          loading={traceLoading}
         />
       ),
     },

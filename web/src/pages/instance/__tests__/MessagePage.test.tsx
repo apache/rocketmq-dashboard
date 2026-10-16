@@ -227,9 +227,34 @@ describe('Message page query history', () => {
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 
-  it('does not report consume verification success without a backend API', async () => {
+  it('shows the per-group consume verdict when the verify action is used', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Producer 发送',
+          timestamp: '2026-07-31T00:00:00.000Z',
+          costTime: 5,
+          status: 'finish',
+          description: 'producer sent the message',
+        },
+      ],
+      consumerStatus: [
+        {
+          group: 'cg-billing',
+          deliveryStatus: 'success',
+          consumeTime: '2026-07-31T00:00:05.000Z',
+          retryCount: 0,
+        },
+        {
+          group: 'cg-shipping',
+          deliveryStatus: 'failed',
+          consumeTime: '-',
+          retryCount: 2,
+        },
+      ],
+    });
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
@@ -241,10 +266,21 @@ describe('Message page query history', () => {
     expect(await screen.findByText('MID-CONSUME-VERIFY-001')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /验证/ }));
 
+    // The verify action opens the modal on the verification tab and loads the trace that
+    // backs the per-group verdicts — no "not available" warning, no fabricated success.
+    expect(await screen.findByText('cg-billing')).toBeInTheDocument();
+    expect(screen.getByText('cg-shipping')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
     expect(
-      await screen.findByText('消费验证接口尚未接入，无法确认该消息的真实消费状态'),
-    ).toBeInTheDocument();
+      screen.queryByText('消费验证接口尚未接入，无法确认该消息的真实消费状态'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/消费验证成功/)).not.toBeInTheDocument();
+    expect(messageServiceMocks.getMessageTrace).toHaveBeenCalledWith(
+      'MID-CONSUME-VERIFY-001',
+      1,
+      'topic-MID-CONSUME-VERIFY-001',
+      '',
+    );
   });
 
   it('sorts and renders messages without tags or keys', async () => {
