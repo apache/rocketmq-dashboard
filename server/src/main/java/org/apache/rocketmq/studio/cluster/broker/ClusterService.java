@@ -91,8 +91,9 @@ public class ClusterService {
 
     /**
      * Probes every nameserver address registered in rmq_nameserver concurrently and
-     * aggregates the online clusters. A single unreachable or timed-out entry is
-     * logged and skipped without affecting the other entries.
+     * aggregates the online clusters. An entry whose probe fails, times out or cannot be
+     * submitted is reported as a single unavailable row (status warning, no cluster id)
+     * so it stays visible instead of silently disappearing from the result.
      */
     public List<ClusterVO> listRegistryClusters() {
         List<NameserverRegistryVO> probeable = registryService.list().stream()
@@ -105,19 +106,13 @@ public class ClusterService {
     }
 
     private List<ClusterVO> probeRegistryEntry(NameserverRegistryVO entry) {
-        try {
-            List<ClusterVO> clusters = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
-            for (ClusterVO cluster : clusters) {
-                cluster.setNsClusterName(cluster.getName());
-                cluster.setName(entry.getName());
-                cluster.setEndpoint(entry.getNamesrvAddr());
-            }
-            return clusters;
-        } catch (Exception e) {
-            log.warn("Failed to probe NameServer registry entry {} ({}): {}",
-                    entry.getName(), entry.getNamesrvAddr(), e.getMessage());
-            return List.of();
+        List<ClusterVO> clusters = clusterProvider.discoverClustersAt(entry.getNamesrvAddr());
+        for (ClusterVO cluster : clusters) {
+            cluster.setNsClusterName(cluster.getName());
+            cluster.setName(entry.getName());
+            cluster.setEndpoint(entry.getNamesrvAddr());
         }
+        return clusters;
     }
 
     public List<ClusterVO> listClusters(String instanceId) {
