@@ -744,7 +744,6 @@ const DLQPage = () => {
           loading={loading}
           rowSelection={{
             selectedRowKeys: selectedGroupNames,
-            preserveSelectedRowKeys: true,
             onChange: (keys) => setSelectedGroupNames(keys.map(String)),
             getCheckboxProps: (record) => ({
               disabled: record.statsAvailable === false || record.messageCount === 0,
