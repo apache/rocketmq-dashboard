@@ -27,6 +27,7 @@ import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import tools.jackson.databind.json.JsonMapper;
@@ -104,6 +105,33 @@ class ToolCatalogTest {
                         .isInstanceOfSatisfying(ToolExecutionException.class,
                                 error -> assertThat(error.getCode()).isEqualTo(400));
             }
+        }
+    }
+
+    @Test
+    void rejectsPageSizesAboveTheCeilingThePagedServicesEnforceTest() {
+        ToolCatalog catalog = new ToolCatalog(new DefaultResourceLoader());
+        ToolSchemaValidator validator = new ToolSchemaValidator(catalog,
+                new LegacyJackson2Config().jackson2ObjectMapper(), JsonMapper.builder().build());
+        // The audit feed is platform level, the other two are scoped to one instance.
+        Map<String, Map<String, Object>> scopes = Map.of(
+                "rmq.acl.list", Map.of("instanceId", "instance-a"),
+                "rmq.audit.list", Map.of(),
+                "rmq.message.query_dlq", Map.of("instanceId", "instance-a"));
+        for (Map.Entry<String, Map<String, Object>> scoped : scopes.entrySet()) {
+            ToolDefinition definition = catalog.getDefinition(scoped.getKey());
+            Map<String, Object> overLimit = new HashMap<>(scoped.getValue());
+            overLimit.put("page", Map.of("page", 1, "pageSize", 101));
+            Map<String, Object> atLimit = new HashMap<>(scoped.getValue());
+            atLimit.put("page", Map.of("page", 1, "pageSize", 100));
+
+            // The services answer 400 ("pageSize must be between 1 and 100") for anything above the
+            // ceiling, so a schema-valid call must not be able to ask for it in the first place. The
+            // boundary value stays valid: rejecting 100 would invent a ceiling the service does not have.
+            assertThatThrownBy(() -> validator.validateInput(definition, overLimit))
+                    .isInstanceOfSatisfying(ToolExecutionException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(400));
+            validator.validateInput(definition, atLimit);
         }
     }
 
