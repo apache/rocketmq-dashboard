@@ -28,6 +28,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Rewrites a user's message into a structured prompt before the agent run, streaming the rewrite as it
@@ -56,6 +58,8 @@ import java.util.function.Consumer;
 @Slf4j
 @Component
 public class PromptEnhancer {
+
+    private static final Pattern OPENING_FENCE = Pattern.compile("(`{3,})[^`]*");
 
     private static final String TEMPLATE_RESOURCE = "/prompts/enhance-prompt.txt";
     private static final String TEMPLATE = loadTemplate();
@@ -116,17 +120,21 @@ public class PromptEnhancer {
             return null;
         }
         String cleaned = enhanced.trim();
-        // Only a complete outer fence is stripped, and the whole opening fence
-        // line goes: the info string is not limited to letters (```json5,
-        // ```plain-text), and a letters-only pattern left its tail as the
-        // first line of the prompt. Fences embedded in the body and unclosed
-        // fences stay untouched.
+        // The first matching closing fence must end the response. Looking only at
+        // the first and last lines would strip boundaries from separate examples.
+        // Keep the full info-string handling, but reject backticks in that string.
         String[] lines = cleaned.split("\n", -1);
-        if (lines.length >= 2 && lines[0].startsWith("```")
-                && lines[lines.length - 1].startsWith("```")
-                && lines[lines.length - 1].substring(3).trim().isEmpty()) {
-            cleaned = String.join("\n",
-                    java.util.Arrays.copyOfRange(lines, 1, lines.length - 1)).trim();
+        Matcher opening = OPENING_FENCE.matcher(lines[0]);
+        if (lines.length >= 2 && opening.matches()) {
+            Pattern closing = Pattern.compile(" {0,3}`{" + opening.group(1).length() + ",}[ \t\r]*");
+            for (int i = 1; i < lines.length; i++) {
+                if (closing.matcher(lines[i]).matches()) {
+                    if (i == lines.length - 1) {
+                        return String.join("\n", java.util.Arrays.copyOfRange(lines, 1, i)).trim();
+                    }
+                    return cleaned;
+                }
+            }
         }
         return cleaned;
     }
