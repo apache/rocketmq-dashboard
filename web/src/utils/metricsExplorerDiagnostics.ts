@@ -179,7 +179,10 @@ const toScalarSamples = (series: MetricSeries): NumericMetricSample[] =>
   sortMetricSamples(
     series.values.map((sample, index) => ({
       timestamp: sample.timestamp,
-      value: Number(sample.value),
+      // A scalar sample whose value is "" or whitespace is an absent measurement, not a zero:
+      // the same finiteNumber conversion the histogram path uses keeps it out of the chart,
+      // the detail table, the result summary and the CSV rows.
+      value: finiteNumber(sample.value) ?? Number.NaN,
       kind: 'scalar',
       index,
     })),

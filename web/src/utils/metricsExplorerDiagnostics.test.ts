@@ -124,6 +124,37 @@ describe('metrics explorer diagnostics', () => {
     expect(rows.map((row) => row.timestamp)).toEqual([1, 2, 3]);
   });
 
+  it('drops blank scalar samples instead of measuring them as zeroes', () => {
+    // "" and whitespace arrive as text from the backend range query; Number("") is 0, so the old
+    // conversion manufactured a measured zero for an absent value.
+    const data: MetricData = {
+      resultType: 'matrix',
+      warnings: [],
+      series: [{
+        labels: { instance: 'broker-a' },
+        values: [
+          { timestamp: 10, value: '' },
+          { timestamp: 20, value: '   ' },
+          { timestamp: 30, value: '0' },
+          { timestamp: 40, value: '2.5' },
+          { timestamp: 50, value: '1e-3' },
+        ],
+        histograms: [],
+      }],
+    };
+
+    expect(toMetricSeriesSamples(data.series[0]).samples.map(({ timestamp, value }) => ({ timestamp, value })))
+      .toEqual([
+        { timestamp: 30, value: 0 },
+        { timestamp: 40, value: 2.5 },
+        { timestamp: 50, value: 0.001 },
+      ]);
+    expect(summarizeMetricData(data)).toMatchObject({ sampleCount: 3, scalarSampleCount: 3 });
+    expect(buildMetricSeriesDetailRows(data, metric)[0]).toMatchObject({ sampleCount: 3 });
+    const rows = buildMetricCsvRows(data, metric, { profileName: 'test', sourceName: 'test' });
+    expect(rows.map((row) => row.timestamp)).toEqual([30, 40, 50]);
+  });
+
   it('sorts scalar samples and ignores non-numeric values', () => {
     const samples = toMetricSeriesSamples(metricData.series[0]);
 
