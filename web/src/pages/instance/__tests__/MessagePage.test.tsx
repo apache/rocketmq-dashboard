@@ -823,4 +823,42 @@ describe('Message page query history', () => {
     expect(await screen.findByText('消息体')).toBeInTheDocument();
     expect(screen.getAllByText('5.0 GB').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('renders a consumption with no recorded time as the placeholder instead of the Unix epoch', async () => {
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-NO-CONSUME-TIME')]);
+    // A group whose trace records are missing reports 0 here: the API spec defines 0 as "no time"
+    // for consumeTime, and the diagnostics panel of this same dialog reads it the same way, so the
+    // table must not turn it into an instant.
+    messageServiceMocks.getMessageTrace.mockResolvedValue({
+      nodes: [
+        {
+          title: 'Produce A',
+          timestamp: 1785456060000,
+          costTime: 1,
+          status: 'finish',
+          description: 'A',
+        },
+      ],
+      consumerStatus: [
+        { group: 'cg-orders', deliveryStatus: 'pending', consumeTime: 0, retryCount: 0 },
+      ],
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-CONSUME-TIME');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /MID-NO-CONSUME-TIME/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Produce A');
+    await user.click(within(dialog).getByText('验证'));
+
+    const statusRow = await within(dialog).findByRole('row', { name: /cg-orders/ });
+    expect(within(statusRow).getAllByRole('cell')[2]).toHaveTextContent('-');
+    expect(within(statusRow).queryByText(/1970/)).not.toBeInTheDocument();
+  });
 });

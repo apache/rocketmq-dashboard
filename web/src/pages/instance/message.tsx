@@ -142,6 +142,18 @@ const formatDurationMs = (value: number | null): string => {
   return `${value} ms`;
 };
 
+/**
+ * Consumer-status and trace timestamps reach the page as epoch milliseconds, and both endpoints use
+ * 0 for "there is no time to report": the API spec defines consumeTime that way, and a SubAfter trace
+ * record without its optional timestamp column yields 0 as well. The shared formatTimeMs treats 0 as
+ * a real instant - it has to, it also formats stored epochs - so the call sites that receive these
+ * payloads decide which zero they are looking at instead of rendering 1970.
+ */
+const formatOptionalEpoch = (value: number | string | null | undefined): string => {
+  const epoch = typeof value === 'string' ? Number(value) : value;
+  return !epoch ? '-' : formatTimeMs(value);
+};
+
 const getQueryValidationError = (
   mode: QueryMode,
   params: MessageQuery,
@@ -980,12 +992,14 @@ const MessagePageContent = ({
       title: t('messagePage.consumeTime'),
       dataIndex: 'consumeTime',
       key: 'consumeTime',
-      render: (time: string) =>
-        time === '-' ? (
+      render: (time: number | string | null) => {
+        const formatted = formatOptionalEpoch(time);
+        return formatted === '-' ? (
           <span style={{ color: '#9CA3AF' }}>-</span>
         ) : (
-          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatTimeMs(time)}</span>
-        ),
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatted}</span>
+        );
+      },
     },
     {
       title: t('messagePage.retryCount'),
@@ -1153,7 +1167,7 @@ const MessagePageContent = ({
                   description: (
                     <div style={{ fontSize: 14 }}>
                       <div style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
-                        {formatTimeMs(node.timestamp)}
+                        {formatOptionalEpoch(node.timestamp)}
                       </div>
                       <div style={{ marginTop: 2 }}>{node.description}</div>
                       <div style={{ color: '#9CA3AF', fontSize: 14 }}>
