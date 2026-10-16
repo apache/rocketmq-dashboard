@@ -42,8 +42,6 @@ public interface AlertRepository {
 
     boolean deleteRule(Long id);
 
-    List<SystemAlertVO> findAlerts(String level);
-
     PageResult<SystemAlertVO> findAlerts(String level, int page, int pageSize);
 
     Optional<SystemAlertVO> findAlertById(Long id);
