@@ -34,6 +34,10 @@ import java.util.List;
  * Clusters are discovered from live broker state and cached by cluster name; they are not
  * backed by a database table, so the identifier stays a String instead of the numeric
  * auto-increment primary key used by persisted entities.
+ *
+ * <p>Carries no topic or consumer-group count: no cluster path measures them, so a number here
+ * would be read as measured. The measured per-cluster counts are served by GET /api/dashboard,
+ * which walks each master broker for them.
  */
 @Data
 @Builder
@@ -53,7 +57,5 @@ public class ClusterVO {
     private List<ProxyVO> proxies;
     private List<NameServerVO> nameServers;
     private ClusterConfigVO config;
-    private int topicCount;
-    private int groupCount;
     private List<Integer> tpsHistory;
 }

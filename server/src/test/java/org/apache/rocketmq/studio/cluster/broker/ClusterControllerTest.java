@@ -453,8 +453,6 @@ class ClusterControllerTest extends WebMvcAuthTestSupport {
                 .brokers(Collections.emptyList())
                 .proxies(Collections.emptyList())
                 .nameServers(Collections.emptyList())
-                .topicCount(10)
-                .groupCount(5)
                 .build();
         cluster.setId(id);
         return cluster;
