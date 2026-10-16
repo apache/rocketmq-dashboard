@@ -15,13 +15,15 @@
  * limitations under the License.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
 import { listK8sCerts, createK8sCert, deleteK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
+import { LangProvider } from '../../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../../i18n/languagePreference';
 
 vi.mock('../../../services/clusterService', () => ({
   listK8sCerts: vi.fn(),
@@ -91,6 +93,10 @@ describe('K8sCertsPage', () => {
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
   });
 
+  afterEach(() => {
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+  });
+
   const renderPage = () =>
     render(
       <App>
@@ -154,6 +160,44 @@ describe('K8sCertsPage', () => {
     expect(await screen.findByTestId('k8s-cert-local-metadata-notice')).toHaveTextContent(
       '当前证书记录仅保存为 Studio 本地配置',
     );
+  });
+
+  it('shows future-dated certificates as not yet valid', async () => {
+    vi.mocked(listK8sCerts).mockResolvedValue([
+      {
+        ...certs[0],
+        status: 'not_yet_valid',
+      },
+    ]);
+    renderPage();
+
+    expect(await screen.findByText('尚未生效')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['zh', ['有效', '即将过期', '已过期', '尚未生效']],
+    ['en', ['Valid', 'Expiring', 'Expired', 'Not yet valid']],
+  ] as const)('renders all certificate status labels in %s', async (lang, labels) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    vi.mocked(listK8sCerts).mockResolvedValue(
+      (['valid', 'expiring', 'expired', 'not_yet_valid'] as const).map((status, index) => ({
+        ...certs[0],
+        id: index + 10,
+        k8sId: `status-${status}`,
+        status,
+      })),
+    );
+    render(
+      <LangProvider>
+        <App>
+          <K8sCertsPage />
+        </App>
+      </LangProvider>,
+    );
+
+    for (const label of labels) {
+      expect(await screen.findByText(label, { selector: '.ant-tag' })).toBeInTheDocument();
+    }
   });
 
   it.each([
