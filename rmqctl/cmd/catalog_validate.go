@@ -110,7 +110,7 @@ func validateValue(tool toolcatalog.Tool, field toolcatalog.Field, value any) er
 				tool.CommandPath(), field.Flag, strings.Join(field.Enum, ", ")))
 		}
 	}
-	if !field.HasMinimum {
+	if !field.HasMinimum && !field.HasMaximum {
 		return nil
 	}
 	var number float64
@@ -122,9 +122,13 @@ func validateValue(tool toolcatalog.Tool, field toolcatalog.Field, value any) er
 	default:
 		return nil
 	}
-	if number < field.Minimum {
+	if field.HasMinimum && number < field.Minimum {
 		return invalidArgument(fmt.Sprintf(
 			"%s --%s must be at least %g", tool.CommandPath(), field.Flag, field.Minimum))
+	}
+	if field.HasMaximum && number > field.Maximum {
+		return invalidArgument(fmt.Sprintf(
+			"%s --%s must be at most %g", tool.CommandPath(), field.Flag, field.Maximum))
 	}
 	return nil
 }
