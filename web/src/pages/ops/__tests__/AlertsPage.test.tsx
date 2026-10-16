@@ -1043,6 +1043,45 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('导入失败，请选择当前页面导出的规则文件')).not.toBeInTheDocument();
   });
 
+  it('maps the legacy duration of an imported rule document to its canonical value', async () => {
+    vi.mocked(importAlertRulesTransfer).mockResolvedValue([]);
+    const user = userEvent.setup();
+    const { container } = renderPage();
+    await screen.findByText('Broker disk usage');
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('Alert rule import input not found');
+    const file = new File(
+      [
+        JSON.stringify({
+          version: 1,
+          domain: 'CLUSTER',
+          rules: [
+            {
+              name: 'Legacy lag',
+              metric: 'broker.disk.usage',
+              operator: '>',
+              threshold: 85,
+              duration: '5分钟',
+              channels: ['dingtalk'],
+              enabled: true,
+            },
+          ],
+        }),
+      ],
+      'cluster-alert-rules.json',
+      { type: 'application/json' },
+    );
+
+    await user.upload(input, file);
+
+    // A document written before the canonical options existed - the console maps those labels when
+    // it opens such a rule for editing, and a rule exported from a store that still holds one keeps
+    // the label in the file. The server re-validates the whole document, so an upload that kept the
+    // label is rejected as a 400 and nothing at all is imported.
+    await waitFor(() => expect(importAlertRulesTransfer).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(importAlertRulesTransfer).mock.calls[0][0].rules[0].duration).toBe('5m');
+  });
+
   it('disables other alert rule mutations while a bulk action is running', async () => {
     let resolveToggle:
       | ((result: {
