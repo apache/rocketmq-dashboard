@@ -20,8 +20,8 @@ spring:
     username: ${STUDIO_ALERTING_SMTP_USERNAME:}
     password: ${STUDIO_ALERTING_SMTP_PASSWORD:}
     properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
+      mail.smtp.auth: ${STUDIO_ALERTING_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${STUDIO_ALERTING_SMTP_STARTTLS:true}
       mail.smtp.connectiontimeout: ${STUDIO_ALERTING_SMTP_CONNECTION_TIMEOUT:5000}
       mail.smtp.timeout: ${STUDIO_ALERTING_SMTP_READ_TIMEOUT:10000}
       mail.smtp.writetimeout: ${STUDIO_ALERTING_SMTP_WRITE_TIMEOUT:10000}
