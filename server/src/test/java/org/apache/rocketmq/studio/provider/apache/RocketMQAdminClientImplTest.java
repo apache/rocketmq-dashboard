@@ -36,6 +36,7 @@ import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
@@ -751,6 +752,72 @@ class RocketMQAdminClientImplTest {
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
             assertThat(wrapper.getSqlSegment()).contains("name").doesNotContain("cluster_id", "instance_id");
         }
+    }
+
+    @Test
+    void createTopicKeepsTheExistingBrokerSettingsOfAnAlreadyPresentTopicTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        TopicConfig existing = new TopicConfig("orders");
+        existing.setReadQueueNums(6);
+        existing.setWriteQueueNums(6);
+        existing.setPerm(PermName.PERM_READ | PermName.PERM_WRITE);
+        when(adminExt.examineTopicConfig("10.0.0.1:10911", "orders")).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setWriteQueues(2);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> written = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), written.capture());
+        // Create must not reset a live topic to the creation defaults: the request only carries the
+        // write queue count, so the read queues and the permission stay as the broker has them.
+        assertThat(written.getValue().getWriteQueueNums()).isEqualTo(2);
+        assertThat(written.getValue().getReadQueueNums()).isEqualTo(6);
+        assertThat(written.getValue().getPerm()).isEqualTo(PermName.PERM_READ | PermName.PERM_WRITE);
+    }
+
+    @Test
+    void createTopicShouldNotResetAnExistingTopicWithoutCarriedFieldsTest() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        TopicConfig existing = new TopicConfig("orders");
+        existing.setReadQueueNums(6);
+        existing.setWriteQueueNums(6);
+        existing.setPerm(PermName.PERM_READ);
+        when(adminExt.examineTopicConfig("10.0.0.1:10911", "orders")).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setInstanceId("instance-a");
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<TopicConfig> written = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(eq("10.0.0.1:10911"), written.capture());
+        // A form that omits the queue fields must not write the 8/8 and RW creation defaults over a
+        // live 6/6 read-only topic.
+        assertThat(written.getValue().getWriteQueueNums()).isEqualTo(6);
+        assertThat(written.getValue().getReadQueueNums()).isEqualTo(6);
+        assertThat(written.getValue().getPerm()).isEqualTo(PermName.PERM_READ);
+        assertThat(written.getValue().getAttributes()).containsOnlyKeys("+message.type");
+
+        // The studio's record has to describe what the masters now hold, or the console would show the
+        // defaults the request carried instead of the settings the topic kept.
+        ArgumentCaptor<RmqTopic> saved = ArgumentCaptor.forClass(RmqTopic.class);
+        verify(topicMapper).insert(saved.capture());
+        assertThat(saved.getValue().getWriteQueueNums()).isEqualTo(6);
+        assertThat(saved.getValue().getReadQueueNums()).isEqualTo(6);
+        assertThat(saved.getValue().getPerm()).isEqualTo(PermName.PERM_READ);
     }
 
     @Test

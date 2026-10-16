@@ -309,12 +309,27 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
                 applyTopicType(topicConfig, topic.getType());
 
-                boolean physicalExists = importing && verifyTopicImport(admin, brokerAddrs, topicConfig);
-                if (!physicalExists) {
-                    for (String addr : brokerAddrs) {
-                        admin.createAndUpdateTopicConfig(addr, topicConfig);
+                // The config each master ends up with, so the record, the response and the audit line
+                // below can agree with it instead of repeating the request's defaults.
+                Map<String, TopicConfig> pending = new LinkedHashMap<>();
+                if (importing) {
+                    // An import only registers a topic that already matches and refuses to overwrite a
+                    // different config (verifyTopicImport throws 409); it never applies the creation
+                    // defaults to a live topic.
+                    if (!verifyTopicImport(admin, brokerAddrs, topicConfig)) {
+                        for (String addr : brokerAddrs) {
+                            pending.put(addr, topicConfig);
+                        }
+                    }
+                } else {
+                    for (String addr : brokerAddrs.stream().sorted().toList()) {
+                        pending.put(addr, createConfigForMaster(admin, addr, topicConfig, topic));
                     }
                 }
+                for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
+                    admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
+                }
+                TopicConfig applied = pending.isEmpty() ? topicConfig : pending.values().iterator().next();
 
                 // The global reservation was already committed independently before the RPC; here we only update the unique record.
                 RmqTopic entity = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
@@ -332,9 +347,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 } else if (isNew) {
                     entity.setTopicType(TopicType.NORMAL.name());
                 }
-                entity.setReadQueueNums(readQueues);
-                entity.setWriteQueueNums(writeQueues);
-                entity.setPerm(topicConfig.getPerm());
+                entity.setReadQueueNums(applied.getReadQueueNums());
+                entity.setWriteQueueNums(applied.getWriteQueueNums());
+                entity.setPerm(applied.getPerm());
                 if (StringUtils.hasText(topic.getRemark())) {
                     entity.setRemark(topic.getRemark());
                 }
@@ -347,11 +362,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 }
 
                 recordAudit("CREATE_TOPIC", topicName,
-                        "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
+                        "queues=" + applied.getWriteQueueNums() + "/" + applied.getReadQueueNums(), "SUCCESS");
 
                 topic.setId(entity.getId());
-                topic.setWriteQueues(writeQueues);
-                topic.setReadQueues(readQueues);
+                topic.setWriteQueues(applied.getWriteQueueNums());
+                topic.setReadQueues(applied.getReadQueueNums());
                 return topic;
             } catch (BusinessException e) {
                 recordAudit("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
@@ -1312,30 +1327,67 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private boolean verifyTopicImport(MQAdminExt admin, Set<String> masters, TopicConfig requested) throws Exception {
         boolean found = false;
         for (String master : masters) {
-            TopicConfig current;
-            try {
-                current = admin.examineTopicConfig(master, requested.getTopicName());
-            } catch (Exception failure) {
-                if (MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
-                    continue;
-                }
-                throw failure;
-            }
+            TopicConfig current = examineTopicConfigIfPresent(admin, master, requested.getTopicName());
             if (current == null) {
                 continue;
             }
             found = true;
-            if (!requested.getTopicName().equals(current.getTopicName())
-                    || requested.getReadQueueNums() != current.getReadQueueNums()
-                    || requested.getWriteQueueNums() != current.getWriteQueueNums()
-                    || requested.getPerm() != current.getPerm()
-                    // The write protocol's +message.type is not the bare key used when reading config; do not read the request's type default directly.
-                    || !requested.getAttributes().getOrDefault("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(),
-                            requested.getTopicMessageType().name()).equals(current.getTopicMessageType().name())) {
+            if (differsFromExistingTopic(requested, current)) {
                 throw new BusinessException(409, "Import config conflicts with the existing physical topic; refusing to overwrite: " + requested.getTopicName());
             }
         }
         return found;
+    }
+
+    /**
+     * The config to write for one master on a plain create. A topic that already exists there keeps
+     * every setting the request does not carry: create is not a way to reset a live topic to the
+     * creation defaults (queue counts back to 8, permission back to RW, the message type back to
+     * NORMAL), which a resubmitted form or the AI upsert - it calls create whenever the metadata
+     * table has no row, even for a topic that exists on the broker - used to do silently.
+     */
+    private TopicConfig createConfigForMaster(MQAdminExt admin, String addr, TopicConfig creationDefaults,
+                                              TopicVO topic) throws Exception {
+        TopicConfig existing = examineTopicConfigIfPresent(admin, addr, creationDefaults.getTopicName());
+        if (existing == null) {
+            return creationDefaults;
+        }
+        if (topic.getWriteQueues() > 0) {
+            existing.setWriteQueueNums(creationDefaults.getWriteQueueNums());
+        }
+        if (topic.getReadQueues() > 0) {
+            existing.setReadQueueNums(creationDefaults.getReadQueueNums());
+        }
+        if (topic.getPerm() != null) {
+            existing.setPerm(creationDefaults.getPerm());
+        }
+        // Attributes travel as a modification list in the write protocol (AttributeParser requires
+        // the "+" add/alter prefix), so send only the message type and take it from the request when
+        // it carries one - echoing the broker's read-form map back is rejected, and every attribute
+        // the request does not mention stays as the broker has it.
+        String messageType = topic.getType() != null ? topic.getType().name() : existing.getTopicMessageType().name();
+        existing.setAttributes(Map.of("+" + TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName(), messageType));
+        return existing;
+    }
+
+    private TopicConfig examineTopicConfigIfPresent(MQAdminExt admin, String master, String topicName) throws Exception {
+        try {
+            return admin.examineTopicConfig(master, topicName);
+        } catch (Exception failure) {
+            if (MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                return null;
+            }
+            throw failure;
+        }
+    }
+
+    private boolean differsFromExistingTopic(TopicConfig requested, TopicConfig current) {
+        return !requested.getTopicName().equals(current.getTopicName())
+                || requested.getReadQueueNums() != current.getReadQueueNums()
+                || requested.getWriteQueueNums() != current.getWriteQueueNums()
+                || requested.getPerm() != current.getPerm()
+                // The write protocol's +message.type is not the bare key used when reading config; read both sides through the accessor instead of comparing raw attributes.
+                || !requested.getTopicMessageType().name().equals(current.getTopicMessageType().name());
     }
 
     private boolean verifyGroupImport(MQAdminExt admin, Set<String> masters, SubscriptionGroupConfig requested)
