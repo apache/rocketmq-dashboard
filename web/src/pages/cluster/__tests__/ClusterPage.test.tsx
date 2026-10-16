@@ -867,6 +867,36 @@ describe('Cluster page', () => {
     );
   });
 
+  it('marks an unprobed NameServer as warning and keeps its config diff disabled', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    // The probe could not reach this entry, so the backend degrades it to an
+    // unavailable placeholder: warning status and no discovered cluster id.
+    clusterServiceMocks.listRegistryClusters.mockResolvedValue([
+      {
+        ...buildCluster(),
+        id: null,
+        name: 'rocketmq1',
+        nsClusterName: null,
+        endpoint: 'rocketmq1-nameserver:9876',
+        status: 'warning',
+        brokers: [],
+        proxies: [],
+        nameServers: [],
+      } as unknown as ClusterInfo,
+    ]);
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    const row = await screen.findByRole('row', { name: /rocketmq1-nameserver:9876/ });
+
+    // The entry must stay visible with a visible status instead of silently
+    // disappearing or claiming to run.
+    expect(within(row).getByText('告警')).toBeInTheDocument();
+    expect(within(row).queryByText('运行中')).not.toBeInTheDocument();
+    // No cluster was discovered, so there is nothing to diff.
+    expect(within(row).getByRole('button', { name: /配置差异/ })).toBeDisabled();
+  });
+
   it('opens Broker config drift details from a broker row', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     instanceServiceMocks.listInstances.mockResolvedValue([

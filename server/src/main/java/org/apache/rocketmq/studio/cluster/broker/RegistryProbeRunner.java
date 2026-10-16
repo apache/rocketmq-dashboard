@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.cluster.nameserver.NameserverRegistryVO;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -71,7 +72,9 @@ class RegistryProbeRunner implements AutoCloseable {
 
     /**
      * Probes every entry concurrently, bounded by the pool. A rejected (saturated), timed-out
-     * or failing entry contributes an empty result without affecting the others.
+     * or failing entry degrades to a single unavailable row without affecting the others, so it
+     * stays distinguishable from an entry that was never registered. An empty result therefore
+     * always means the probe succeeded and found no clusters.
      */
     List<ClusterVO> probeAll(List<NameserverRegistryVO> entries, ProbeFunction function) {
         List<CompletableFuture<List<ClusterVO>>> probes = entries.stream()
@@ -98,7 +101,7 @@ class RegistryProbeRunner implements AutoCloseable {
             // Queue saturated: degrade this entry to unavailable instead of growing the pool.
             log.warn("NameServer registry probe rejected for {} ({}): executor saturated",
                     entry.getName(), entry.getNamesrvAddr());
-            return CompletableFuture.completedFuture(List.of());
+            return CompletableFuture.completedFuture(List.of(unavailableEntry(entry)));
         }
         return result
                 .orTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
@@ -111,8 +114,28 @@ class RegistryProbeRunner implements AutoCloseable {
                 .exceptionally(error -> {
                     log.warn("NameServer registry probe failed for {} ({}): {}",
                             entry.getName(), entry.getNamesrvAddr(), rootMessage(error));
-                    return List.of();
+                    return List.of(unavailableEntry(entry));
                 });
+    }
+
+    /**
+     * Placeholder row for an entry whose probe could not complete (rejected, timed out or
+     * failed). It carries only what the registry itself knows: the entry's name and address.
+     * The id stays null because no live cluster was discovered — callers must not treat it
+     * as an actionable cluster.
+     */
+    private static ClusterVO unavailableEntry(NameserverRegistryVO entry) {
+        return ClusterVO.builder()
+                .name(entry.getName())
+                .endpoint(entry.getNamesrvAddr())
+                .status(ClusterStatus.warning)
+                .brokers(List.of())
+                .proxies(List.of())
+                .nameServers(List.of())
+                .tpsHistory(List.of())
+                .topicCount(0)
+                .groupCount(0)
+                .build();
     }
 
     int activeCount() {
