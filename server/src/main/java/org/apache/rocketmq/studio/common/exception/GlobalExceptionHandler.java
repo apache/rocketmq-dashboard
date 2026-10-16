@@ -20,6 +20,8 @@ import jakarta.validation.ConstraintViolationException;
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -34,6 +36,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Set;
 
 @Slf4j
 @RestControllerAdvice
@@ -126,14 +130,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Requests with an unsupported HTTP method must be reported as 405, not 500.
+     * Requests with an unsupported HTTP method must be reported as 405, not 500, and the
+     * response must keep the Allow header Spring synthesizes for this exception.
      */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
-    public Result<?> handleHttpRequestMethodNotSupportedException(
+    public ResponseEntity<Result<?>> handleHttpRequestMethodNotSupportedException(
             HttpRequestMethodNotSupportedException ex) {
         log.warn("Method not allowed: {}", ex.getMessage());
-        return Result.error(HttpStatus.METHOD_NOT_ALLOWED.value(), ex.getMessage());
+        HttpHeaders headers = new HttpHeaders();
+        Set<HttpMethod> supportedMethods = ex.getSupportedHttpMethods();
+        if (supportedMethods != null && !supportedMethods.isEmpty()) {
+            headers.setAllow(supportedMethods);
+        }
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .headers(headers)
+                .body(Result.error(HttpStatus.METHOD_NOT_ALLOWED.value(), ex.getMessage()));
     }
 
     /**
