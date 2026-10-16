@@ -318,3 +318,142 @@ func TestRunSingleFileModeDigestMatchesSource(t *testing.T) {
 		t.Fatalf("SDK contract was not rendered from the source: %s", contract)
 	}
 }
+
+// TestRunRejectsCapabilityViolatingTheSchemaPattern pins that the generator
+// enforces the requiredCapabilities item pattern rmq-tools.schema.json declares
+// (^[A-Z][A-Z0-9_]*$), so the JSON schema and this validator cannot drift apart.
+func TestRunRejectsCapabilityViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    requiredCapabilities: []",
+		"    requiredCapabilities: [TOPIC_MANAGEMENT, topic-read]",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema pattern") {
+		t.Fatalf("err = %v, want capability pattern failure", err)
+	}
+}
+
+// TestRunRejectsDuplicateCapability pins the uniqueItems constraint the schema
+// declares for requiredCapabilities.
+func TestRunRejectsDuplicateCapability(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    requiredCapabilities: []",
+		"    requiredCapabilities: [TOPIC_MANAGEMENT, TOPIC_MANAGEMENT]",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "must be unique") {
+		t.Fatalf("err = %v, want duplicate capability failure", err)
+	}
+}
+
+// TestRunRejectsPermissionViolatingTheSchemaPattern pins the permission pattern
+// rmq-tools.schema.json declares (resource:scope, both lower-kebab tokens).
+func TestRunRejectsPermissionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"    permission: topic:read",
+		"    permission: topicRead",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema pattern") {
+		t.Fatalf("err = %v, want permission pattern failure", err)
+	}
+}
+
+// TestRunRejectsToolNameViolatingTheSchemaPattern pins the tool-name pattern
+// rmq-tools.schema.json declares (dotted rmq.* path).
+func TestRunRejectsToolNameViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"  - name: rmq.topic.list",
+		"  - name: topic.list",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "does not match the schema tool-name pattern") {
+		t.Fatalf("err = %v, want tool-name pattern failure", err)
+	}
+}
+
+// TestRunRejectsPropertyNameDerivingAnUnusableFlag pins the derived-flag guard:
+// toFlagName maps _ to -, so a property named _mode derives -mode, which no flag
+// parser accepts. An explicit x-cli-flag is already checked; a name-derived flag
+// must clear the same bar.
+func TestRunRejectsPropertyNameDerivingAnUnusableFlag(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		`        topicName:
+          type: string
+          minLength: 1`,
+		`        topicName:
+          type: string
+          minLength: 1
+        _mode:
+          type: string
+          minLength: 1`,
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "derives an unusable CLI flag") {
+		t.Fatalf("err = %v, want derived-flag failure", err)
+	}
+}
+
+// TestRunRejectsCLIResourceViolatingTheSchemaPattern pins the cli.resource pattern
+// rmq-tools.schema.json declares (^[a-z][a-z0-9-]*$), so a resource token that the
+// schema would reject cannot reach the generated catalog.
+func TestRunRejectsCLIResourceViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"      resource: topic",
+		"      resource: Topic",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "has a CLI resource that does not match the schema pattern") {
+		t.Fatalf("err = %v, want CLI resource pattern failure", err)
+	}
+}
+
+// TestRunRejectsCLIVerbViolatingTheSchemaPattern pins the cli.verb pattern
+// rmq-tools.schema.json declares (^[a-z][a-z0-9-]*$).
+func TestRunRejectsCLIVerbViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"      verb: list",
+		"      verb: List",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), "has a CLI verb that does not match the schema pattern") {
+		t.Fatalf("err = %v, want CLI verb pattern failure", err)
+	}
+}
+
+// TestRunRejectsVersionViolatingTheSchemaPattern pins the fifth pattern the schema
+// declares: $defs/semanticVersion, which both version and minimumClientVersion $ref.
+// Without it the "schema and validator cannot drift" invariant covers only four fields.
+func TestRunRejectsVersionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"version: 1.0.0\n",
+		"version: \"1.0\"\n",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), `version "1.0" does not match the schema semantic-version pattern`) {
+		t.Fatalf("err = %v, want version pattern failure", err)
+	}
+}
+
+// TestRunRejectsMinimumClientVersionViolatingTheSchemaPattern pins the same
+// $defs/semanticVersion pattern on the minimumClientVersion field, which the
+// version check above cannot reach because validate() returns on the first failure.
+func TestRunRejectsMinimumClientVersionViolatingTheSchemaPattern(t *testing.T) {
+	source := strings.Replace(instanceScopedToolSource,
+		"minimumClientVersion: 1.0.0\n",
+		"minimumClientVersion: \"1.0\"\n",
+		1)
+	input, output := writeCatalogSource(t, source)
+	err := run([]string{"-input", input, "-output", output})
+	if err == nil || !strings.Contains(err.Error(), `minimumClientVersion "1.0" does not match`) {
+		t.Fatalf("err = %v, want minimumClientVersion pattern failure", err)
+	}
+}

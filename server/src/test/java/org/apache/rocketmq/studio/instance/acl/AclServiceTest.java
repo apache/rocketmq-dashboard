@@ -25,6 +25,13 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.studio.instance.InstanceResolver;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
@@ -41,9 +48,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +63,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -75,6 +86,9 @@ class AclServiceTest {
 
     @Mock
     private ClusterProvider clusterProvider;
+
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @InjectMocks
     private AclService aclService;
@@ -1138,5 +1152,122 @@ class AclServiceTest {
                 Arguments.of(null, null),
                 Arguments.of("", null),
                 Arguments.of("unknown", null));
+    }
+
+    @Test
+    void pushAclToBrokerUpsertsAccountsAndPoliciesOnEveryMasterTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder()
+                .id(7L)
+                .username("orders")
+                .secretKey("secret-1")
+                .admin(false)
+                .whiteRemoteAddress("10.0.0.0/8, 192.168.1.5")
+                .build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(7L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(
+                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+                                .resourceType("Topic").resourcePattern("LITERAL")
+                                .actions(List.of("PUB")).decision("ALLOW").build(),
+                        AclRuleVO.builder().principal("user:orders").resource("topic-")
+                                .resourceType("Topic").resourcePattern("PREFIXED")
+                                .actions(List.of("SUB")).decision("ALLOW").build()),
+                        2, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(admin.getUser("10.0.0.1:10911", "orders"))
+                .thenThrow(new MQBrokerException(207, "no such user"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isEqualTo(1);
+        assertThat(result.getFailed()).isZero();
+        assertThat(result.getBrokers()).containsExactly("10.0.0.1:10911");
+        PushAclToBrokerResultVO.AccountOutcome account = result.getAccounts().get(0);
+        assertThat(account.getSubject()).isEqualTo("User:orders");
+        assertThat(account.getPolicyCount()).isEqualTo(1);
+        assertThat(account.getSkipped()).hasSize(1);
+        assertThat(account.getBrokers())
+                .allSatisfy(broker -> assertThat(broker.isSuccess()).isTrue());
+        verify(admin).createUser(eq("10.0.0.1:10911"), argThat(info ->
+                "orders".equals(info.getUsername())
+                        && "secret-1".equals(info.getPassword())
+                        && "Normal".equals(info.getUserType())));
+        ArgumentCaptor<AclInfo> aclCaptor = ArgumentCaptor.forClass(AclInfo.class);
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), aclCaptor.capture());
+        AclInfo pushed = aclCaptor.getValue();
+        assertThat(pushed.getSubject()).isEqualTo("User:orders");
+        assertThat(pushed.getPolicies()).hasSize(1);
+        AclInfo.PolicyEntryInfo entry = pushed.getPolicies().get(0).getEntries().get(0);
+        assertThat(entry.getResource()).isEqualTo("Topic:topic-a");
+        assertThat(entry.getActions()).containsExactly("PUB");
+        assertThat(entry.getDecision()).isEqualTo("ALLOW");
+        assertThat(entry.getSourceIps()).containsExactly("10.0.0.0/8", "192.168.1.5");
+    }
+
+    @Test
+    void pushAclToBrokerReportsBrokerFailuresWithoutHidingOtherAccountsTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(8L).username("reader").secretKey("secret-2").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(8L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:reader", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        doThrow(new MQBrokerException(207, "acl disabled")).when(admin)
+                .createUser(eq("10.0.0.1:10911"), any());
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        assertThat(result.getPushed()).isZero();
+        assertThat(result.getFailed()).isEqualTo(1);
+        PushAclToBrokerResultVO.BrokerOutcome broker =
+                result.getAccounts().get(0).getBrokers().get(0);
+        assertThat(broker.isSuccess()).isFalse();
+        assertThat(broker.getError()).contains("acl disabled");
+        verify(admin, never()).updateAcl(any(), any(AclInfo.class));
+    }
+
+    private ClusterInfo clusterInfoWithMaster(String address) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        BrokerData broker = new BrokerData("cluster-a", "broker-a", new HashMap<>(Map.of(0L, address)));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-a", broker)));
+        return clusterInfo;
+    }
+
+    @Test
+    void pushAclToBrokerAnswersWithAnActionableErrorWhenTheBrokerAuthModuleIsOffTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(9L).username("silent").secretKey("secret-3").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(9L)).thenReturn(Optional.of(stored));
+        when(aclRepository.findRulePage("user:silent", null, null, null, null, 1, 200))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        Properties config = new Properties();
+        config.setProperty("authenticationEnabled", "false");
+        config.setProperty("authorizationEnabled", "false");
+        when(admin.getBrokerConfig("10.0.0.1:10911")).thenReturn(config);
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        assertThatThrownBy(() -> aclService.pushAclToBroker("instance-a"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(409);
+                    assertThat(error.getMessage()).contains("authenticationEnabled");
+                });
+        verify(admin, never()).createUser(any(), any());
+        verify(admin, never()).updateAcl(any(), any(AclInfo.class));
     }
 }
