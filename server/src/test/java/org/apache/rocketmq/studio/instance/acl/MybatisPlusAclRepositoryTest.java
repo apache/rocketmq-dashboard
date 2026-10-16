@@ -65,6 +65,46 @@ class MybatisPlusAclRepositoryTest {
     private MybatisPlusAclRepository repository;
 
     @Test
+    void findRulesByPrincipalMatchesThePrincipalExactlyTest() {
+        RmqAclRule entity = new RmqAclRule();
+        entity.setId(31L);
+        entity.setPrincipal("orders");
+        entity.setResource("topic-a");
+        entity.setResourceType("Topic");
+        entity.setResourcePattern("LITERAL");
+        entity.setActions("PUB");
+        entity.setDecision("ALLOW");
+        entity.setScope("cluster");
+        entity.setAclVersion("2.0");
+        entity.setGmtCreate(LocalDateTime.of(2026, 8, 17, 10, 30));
+        Page<RmqAclRule> mapperPage = new Page<RmqAclRule>(1, 200)
+                .setRecords(List.of(entity))
+                .setTotal(1);
+        when(ruleMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
+
+        List<AclRuleVO> rules = repository.findRulesByPrincipal("orders", 200);
+
+        ArgumentCaptor<IPage<RmqAclRule>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
+        ArgumentCaptor<Wrapper<RmqAclRule>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(ruleMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
+        // The console's search box filters principals as substrings; the rules an account owns are
+        // the rows whose principal is exactly its name, so this lookup must not use LIKE.
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("principal =")
+                .doesNotContain("LIKE");
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(200);
+        assertThat(rules).singleElement().satisfies(rule ->
+                assertThat(rule.getPrincipal()).isEqualTo("orders"));
+    }
+
+    @Test
+    void findRulesByPrincipalAnswersEmptyWithoutQueryingWhenThereIsNoNameTest() {
+        assertThat(repository.findRulesByPrincipal("   ", 200)).isEmpty();
+        assertThat(repository.findRulesByPrincipal("orders", 0)).isEmpty();
+        verifyNoInteractions(ruleMapper);
+    }
+
+    @Test
     void upsertShouldRejectMalformedPermissionEntriesBeforeMutatingAccount() {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("svc-x")

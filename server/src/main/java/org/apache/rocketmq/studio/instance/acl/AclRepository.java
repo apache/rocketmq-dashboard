@@ -25,6 +25,16 @@ public interface AclRepository {
     PageResult<AclRuleVO> findRulePage(String principal, String resource, String scope,
             String decision, String aclVersion, int page, int pageSize);
 
+    /**
+     * The rules of exactly this principal, newest first, capped at {@code limit} rows.
+     *
+     * <p>Unlike {@link #findRulePage(String, String, String, String, String, int, int)}, whose
+     * principal filter is a substring match for the console's search box, this is an equality
+     * lookup: an account's own rules are the rows whose principal is its name, not the rows whose
+     * principal merely contains it.
+     */
+    List<AclRuleVO> findRulesByPrincipal(String principal, int limit);
+
     Optional<AclRuleVO> findRuleById(Long id);
 
     AclRuleVO saveRule(AclRuleVO rule);

@@ -59,7 +59,7 @@ public class AclService {
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
-    /** Broker ACL 2.0 subjects are prefixed with {@code User:}; the store uses {@code user:}. */
+    /** Broker ACL 2.0 subjects are prefixed with {@code User:}. */
     private static final String SUBJECT_PREFIX = "User:";
     private static final String USER_TYPE_SUPER = "Super";
     private static final String USER_TYPE_NORMAL = "Normal";
@@ -355,9 +355,11 @@ public class AclService {
         List<PushPlan> plans = new ArrayList<>();
         for (AclUserVO user : aclRepository.findUsers()) {
             AclUserVO credentials = getUserCredentials(String.valueOf(user.getId()), instanceId);
-            List<AclRuleVO> rules = aclRepository.findRulePage(
-                    principalOf(user.getUsername()), null, null, null, null, 1,
-                    MAX_RULES_PER_ACCOUNT).getItems();
+            // The account's own rules, keyed by the name the store writes as their principal. A
+            // substring or subject-prefixed lookup finds nothing, and the account would reach the
+            // broker without a single policy while the push reports success.
+            List<AclRuleVO> rules = aclRepository.findRulesByPrincipal(
+                    user.getUsername(), MAX_RULES_PER_ACCOUNT);
             plans.add(buildPushPlan(user, credentials, rules));
         }
         log.info("Pushing {} ACL account(s) of instance {} to the brokers", plans.size(), instanceId);
@@ -541,10 +543,6 @@ public class AclService {
                 .map(String::trim)
                 .filter(StringUtils::hasText)
                 .toList();
-    }
-
-    private String principalOf(String username) {
-        return "user:" + username;
     }
 
     private static String rootMessage(Throwable failure) {

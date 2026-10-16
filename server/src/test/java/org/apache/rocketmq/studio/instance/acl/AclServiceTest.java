@@ -60,9 +60,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -1165,15 +1167,14 @@ class AclServiceTest {
                 .build();
         when(aclRepository.findUsers()).thenReturn(List.of(stored));
         when(aclRepository.findUserById(7L)).thenReturn(Optional.of(stored));
-        when(aclRepository.findRulePage("user:orders", null, null, null, null, 1, 200))
-                .thenReturn(PageResult.of(List.of(
-                        AclRuleVO.builder().principal("user:orders").resource("topic-a")
+        when(aclRepository.findRulesByPrincipal("orders", 200))
+                .thenReturn(List.of(
+                        AclRuleVO.builder().principal("orders").resource("topic-a")
                                 .resourceType("Topic").resourcePattern("LITERAL")
                                 .actions(List.of("PUB")).decision("ALLOW").build(),
-                        AclRuleVO.builder().principal("user:orders").resource("topic-")
+                        AclRuleVO.builder().principal("orders").resource("topic-")
                                 .resourceType("Topic").resourcePattern("PREFIXED")
-                                .actions(List.of("SUB")).decision("ALLOW").build()),
-                        2, 1, 200));
+                                .actions(List.of("SUB")).decision("ALLOW").build()));
         when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
 
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
@@ -1211,12 +1212,43 @@ class AclServiceTest {
     }
 
     @Test
+    void pushAclToBrokerPushesTheRulesStoredUnderTheAccountNameTest() throws Exception {
+        AclUserVO stored = AclUserVO.builder().id(21L).username("svc-a").secretKey("secret-6").build();
+        when(aclRepository.findUsers()).thenReturn(List.of(stored));
+        when(aclRepository.findUserById(21L)).thenReturn(Optional.of(stored));
+        // Every write path stores a rule's principal as the account name itself: the console's rule
+        // form selects a username, the plain-access upsert stores the access key and the AI tool
+        // writes what it is given. An account's own rules are therefore the rows whose principal
+        // equals that name.
+        when(aclRepository.findRulesByPrincipal("svc-a", 200)).thenReturn(List.of(
+                AclRuleVO.builder().principal("svc-a").resource("topic-a").resourceType("Topic")
+                        .resourcePattern("LITERAL").actions(List.of("PUB")).decision("ALLOW").build()));
+        // The prefixed lookup the push used to make matches nothing in that store; stubbed leniently
+        // so this test states both what the store answers and what the push must do with it.
+        lenient().when(aclRepository.findRulePage(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
+
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        when(admin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster("10.0.0.1:10911"));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any(MqAdminExtFactory.AdminAction.class)))
+                .thenAnswer(call -> call.getArgument(1, MqAdminExtFactory.AdminAction.class).apply(admin));
+
+        PushAclToBrokerResultVO result = aclService.pushAclToBroker("instance-a");
+
+        // An account pushed without its policies carries no permission on the broker, so a success
+        // that reports zero policies is the failure mode this pins.
+        assertThat(result.getAccounts().get(0).getPolicyCount()).isEqualTo(1);
+        verify(admin).createUser(eq("10.0.0.1:10911"), any());
+        verify(admin).updateAcl(eq("10.0.0.1:10911"), any(AclInfo.class));
+    }
+
+    @Test
     void pushAclToBrokerReportsBrokerFailuresWithoutHidingOtherAccountsTest() throws Exception {
         AclUserVO stored = AclUserVO.builder().id(8L).username("reader").secretKey("secret-2").build();
         when(aclRepository.findUsers()).thenReturn(List.of(stored));
         when(aclRepository.findUserById(8L)).thenReturn(Optional.of(stored));
-        when(aclRepository.findRulePage("user:reader", null, null, null, null, 1, 200))
-                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(aclRepository.findRulesByPrincipal("reader", 200)).thenReturn(List.of());
         when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
 
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
@@ -1249,8 +1281,7 @@ class AclServiceTest {
         AclUserVO stored = AclUserVO.builder().id(9L).username("silent").secretKey("secret-3").build();
         when(aclRepository.findUsers()).thenReturn(List.of(stored));
         when(aclRepository.findUserById(9L)).thenReturn(Optional.of(stored));
-        when(aclRepository.findRulePage("user:silent", null, null, null, null, 1, 200))
-                .thenReturn(PageResult.of(List.of(), 0, 1, 200));
+        when(aclRepository.findRulesByPrincipal("silent", 200)).thenReturn(List.of());
         when(clusterProvider.discoverBrokers("instance-a", null)).thenReturn(List.of());
 
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
