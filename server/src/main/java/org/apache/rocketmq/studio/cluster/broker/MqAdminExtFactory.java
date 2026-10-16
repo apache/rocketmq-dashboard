@@ -131,6 +131,11 @@ public class MqAdminExtFactory {
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
+            if (ex instanceof InterruptedException) {
+                // Throwing InterruptedException cleared the flag; restore it so the
+                // cancellation signal survives the BusinessException wrapper.
+                Thread.currentThread().interrupt();
+            }
             log.warn("Admin action failed against namesrv {}: {}", namesrvAddr, ex.getMessage());
             throw new BusinessException(502, "RocketMQ admin call failed: " + rootMessage(ex));
         } finally {

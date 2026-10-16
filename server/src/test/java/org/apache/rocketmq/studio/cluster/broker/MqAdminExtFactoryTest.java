@@ -328,6 +328,77 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void executeShouldRestoreInterruptFlagWhenActionIsInterruptedTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        factory.execute("10.0.0.1:9876", null, ignored -> null);
+        CountDownLatch started = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        Thread caller = Thread.startVirtualThread(() -> {
+            try {
+                factory.execute("10.0.0.1:9876", null, ignored -> {
+                    started.countDown();
+                    // A real interruptible blocking operation, like a remoting semaphore wait.
+                    new CountDownLatch(1).await();
+                    return null;
+                });
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+                interrupted.set(Thread.currentThread().isInterrupted());
+            }
+        });
+        try {
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            caller.interrupt();
+        } finally {
+            caller.join(2000);
+        }
+
+        assertThat(caller.isAlive()).isFalse();
+        assertThat(failure.get())
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("RocketMQ admin call failed")
+                .hasMessageContaining("InterruptedException");
+        // The wrapper must restore the flag the JVM cleared when the action was interrupted.
+        assertThat(interrupted).isTrue();
+        // The lease was still released, so the cached client remains usable.
+        String adminReplay = factory.execute("10.0.0.1:9876", null, ignored -> "ok");
+        assertThat(adminReplay).isEqualTo("ok");
+        assertThat(factory.created.get()).isEqualTo(1);
+        verify(admin, times(1)).start();
+        factory.shutdown();
+    }
+
+    @Test
+    void executeShouldLeaveInterruptFlagUnsetForOrdinaryFailuresTest() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        factory.execute("10.0.0.1:9876", null, ignored -> null);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicBoolean interrupted = new AtomicBoolean();
+        Thread caller = Thread.startVirtualThread(() -> {
+            try {
+                factory.execute("10.0.0.1:9876", null, ignored -> {
+                    throw new IllegalStateException("metadata lookup rejected");
+                });
+            } catch (Throwable throwable) {
+                failure.set(throwable);
+                interrupted.set(Thread.currentThread().isInterrupted());
+            }
+        });
+        caller.join(2000);
+
+        assertThat(caller.isAlive()).isFalse();
+        assertThat(failure.get())
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("metadata lookup rejected");
+        // An ordinary failure is no reason to flag the calling thread as interrupted.
+        assertThat(interrupted).isFalse();
+        factory.shutdown();
+    }
+
+    @Test
     void executeShouldWrapConnectionFailure() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         doThrow(new RuntimeException("connection refused")).when(admin).start();
