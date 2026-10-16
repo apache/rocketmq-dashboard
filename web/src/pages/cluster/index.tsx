@@ -1747,7 +1747,8 @@ const ClusterPage = () => {
         title: t('cluster.remotingPort'),
         dataIndex: 'remotingPort',
         key: 'remotingPort',
-        width: 120,
+        // 「Remoting 端口」= 8 拉丁字符 + 2 汉字 + 排序图标 + padding 实测需 ~130，120 会截断表头
+        width: 140,
         align: 'center',
         sorter: (a, b) => a.remotingPort - b.remotingPort,
       },

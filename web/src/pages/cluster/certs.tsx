@@ -320,7 +320,7 @@ const K8sCertsPage = () => {
           dataSource={filteredCerts}
           rowKey="id"
           loading={loading}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showTotal: (total) => `${t('common.total')} ${total}` }}
           size="small"
           tableLayout="fixed"
           scroll={{ x: tableScrollX(certColumns) }}

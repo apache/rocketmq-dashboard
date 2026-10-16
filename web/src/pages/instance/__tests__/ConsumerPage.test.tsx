@@ -2215,6 +2215,23 @@ describe('Consumer page', () => {
     expect(consumerService.updateConsumerGroupSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('centers the sub type, sub mode and online client columns', async () => {
+    vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(groupPage([group]));
+    renderWithProviders(<ConsumerPage />);
+    const row = await screen.findByRole('row', { name: /remote-cg/ });
+
+    // 用户约定 2026-10-16：这三列的表头与单元格都居中，不要改回 antd 默认的左对齐。
+    const headers = Array.from(row.closest('table')!.querySelectorAll('thead th')).map((th) =>
+      th.textContent?.trim(),
+    );
+    const cells = within(row).getAllByRole('cell');
+    for (const title of ['订阅组类型', '订阅模式', '在线客户端']) {
+      const index = headers.indexOf(title);
+      expect(index).toBeGreaterThan(-1);
+      expect(cells[index].style.textAlign).toBe('center');
+    }
+  });
+
   it('renders an unknown (-1) lag as unavailable in the table and the lag detail', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
@@ -2264,7 +2281,7 @@ describe('Consumer page', () => {
     });
   });
 
-  it('sorts groups with unavailable connections after known client counts', async () => {
+  it('renders an unavailable connection inventory as zero and sorts it as zero', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     vi.mocked(consumerService.listConsumerGroupPage).mockResolvedValue(
       groupPage([
@@ -2273,12 +2290,14 @@ describe('Consumer page', () => {
       ]),
     );
     renderWithProviders(<ConsumerPage />);
-    await screen.findByRole('row', { name: /unknown-conn-cg/ });
+    const unknownRow = await screen.findByRole('row', { name: /unknown-conn-cg/ });
 
-    // The sentinel must never reach the cell as a bare -1 ...
-    expect(screen.getByRole('row', { name: /unknown-conn-cg/ }).textContent).toContain('不可用');
+    // 用户约定 2026-10-16：Group 列表的「在线客户端」不出现「不可用」，查不到连接信息一律按 0 呈现。
+    // 显示与排序必须同口径，否则会出现「显示 0 却排在 12 后面」的自相矛盾。
+    expect(unknownRow.textContent).not.toContain('不可用');
+    expect(unknownRow.textContent).not.toContain('-1');
+    expect(within(unknownRow).getByRole('cell', { name: '0' })).toBeInTheDocument();
 
-    // ... and must not sort as "fewer clients than zero".
     const [clientsHeader] = screen.getAllByText('在线客户端');
     await user.click(clientsHeader);
     await waitFor(() => {
@@ -2293,7 +2312,7 @@ describe('Consumer page', () => {
               : '',
         )
         .filter(Boolean);
-      expect(order).toEqual(['known', 'unknown']);
+      expect(order).toEqual(['unknown', 'known']);
     });
   });
 

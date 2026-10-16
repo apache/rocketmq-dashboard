@@ -654,26 +654,30 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     }),
   };
 
+  // 列宽预算（用户约定 2026-10-16 实测）：1600 视口下卡片内容宽 1330，`tableScrollX` 把声明宽累加
+  // 成 scroll.x，总和超 1330 就出横向滚动并把操作列裁掉（原 1368）。带排序图标的表头至少需要
+  // 「字数×14 + 22(排序) + 16(padding)」：持续时间/重提醒间隔/状态原先比自己的表头还窄而被截断。
+  // 全列合计（含选择列 32）= 1328 ≤ 1330；AlertsPage.test.tsx 有总和守护用例。
   const columns: ColumnsType<AlertRule> = [
     {
       title: t('alerts.ruleName'),
       dataIndex: 'name',
       // 唯一可伸展列：容器比表宽时余量集中在此，其余列保持声明宽度
-      minWidth: 170,
+      minWidth: 150,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
     {
       title: t('alerts.metric'),
       dataIndex: 'metric',
-      width: 110,
+      width: 96,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
       render: (metric: string) => metricLabel(metric),
     },
     {
       title: t('alerts.threshold'),
-      width: 120,
+      width: 96,
       ellipsis: { showTitle: true },
       sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => formatThresholdCondition(record, t('alerts.unavailableCondition')),
@@ -681,13 +685,15 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     {
       title: t('alerts.duration'),
       dataIndex: 'duration',
-      width: 80,
+      width: 94,
+      align: 'right',
       sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
     },
     {
       title: t('alerts.reminderInterval'),
       dataIndex: 'reminderInterval',
-      width: 96,
+      width: 108,
+      align: 'center',
       render: (value) => value ?? '30m',
     },
     {
@@ -706,7 +712,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('common.status'),
-      width: 64,
+      width: 68,
       align: 'center',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
       render: (_, record) => (
@@ -733,7 +739,8 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.runtime'),
-      width: 100,
+      width: 88,
+      align: 'center',
       render: (_, record) => {
         const states = runtime.filter((state) => state.ruleId === record.id);
         if (!states.length)

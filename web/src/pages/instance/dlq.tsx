@@ -594,7 +594,10 @@ const DLQPage = () => {
       title: 'Message ID',
       dataIndex: 'msgId',
       key: 'msgId',
+      // monospace 32 字符 + 复制图标实测 min-content ~306，不加 ellipsis 会把整表撑出弹窗
+      // （实测表 1210 > 弹窗 body 1132，用户约定 2026-10-16 弹窗巡检）
       width: 240,
+      ellipsis: { showTitle: true },
       render: (msgId: string) => (
         <Text copyable style={{ fontFamily: 'monospace', fontSize: 14 }}>
           {msgId}
@@ -629,7 +632,8 @@ const DLQPage = () => {
       title: '入队时间',
       dataIndex: 'storeTime',
       key: 'storeTime',
-      width: 160,
+      // monospace 时间戳 19 字符实测 ~160 + padding，160 会截断
+      width: 176,
       render: (storeTime: number) => (
         <Text style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatDateTime(storeTime)}</Text>
       ),
@@ -871,7 +875,9 @@ const DLQPage = () => {
          ═══════════════════════════════════════════ */}
       <Modal
         title={detailGroup ? `DLQ 消息明细 · ${detailGroup.groupName}` : 'DLQ 消息明细'}
-        width="min(1180px, calc(100vw - 32px))"
+        // 8 列 monospace 数据实测需 ~1146（含 Message ID ellipsis 后），1180 弹窗的 body 只有
+        // 1132 装不下；加宽到 1280（1600 视口仍留 32px 边距）
+        width="min(1280px, calc(100vw - 32px))"
         open={detailOpen}
         onCancel={() => {
           detailRequestIdRef.current += 1;

@@ -230,7 +230,10 @@ export const GeneralSettingsTab = () => {
   };
 
   return (
-    <Flex vertical gap={24} style={{ maxWidth: 860 }}>
+    // 不设 maxWidth：1600 视口下内容区约 1330，860 的上限让卡片只占六成宽、右侧大片留白
+    // （用户约定 2026-10-16 视觉验收）。表单行是「说明左 / 控件右」的 space-between 布局，铺满后
+    // 控件贴右缘，与其它页卡片宽度一致。
+    <Flex vertical gap={24}>
       <Card
         title={
           <Space>

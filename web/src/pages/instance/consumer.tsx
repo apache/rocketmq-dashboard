@@ -104,7 +104,7 @@ import {
 } from '../../utils/resourceCsvImport';
 import { downloadCsv } from '../../utils/download';
 import { formatLag, isLagAvailable, lagSortValue } from '../../utils/consumerLag';
-import { formatOnlineInstances, onlineInstancesSortValue } from '../../utils/consumerConnections';
+import { formatOnlineInstances, onlineInstancesCount } from '../../utils/consumerConnections';
 import { tableScrollX } from '../../utils/table';
 import {
   analyzeConsumerGroupHealth,
@@ -993,6 +993,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 100,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
@@ -1004,6 +1005,7 @@ const ConsumerPageContent = ({
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 84,
+      align: 'center',
       sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
@@ -1014,8 +1016,8 @@ const ConsumerPageContent = ({
       width: 100,
       align: 'center',
       sorter: (a, b) =>
-        onlineInstancesSortValue(a.onlineInstances) - onlineInstancesSortValue(b.onlineInstances),
-      render: (value: number) => formatOnlineInstances(value, UNAVAILABLE_LAG_LABEL),
+        onlineInstancesCount(a.onlineInstances) - onlineInstancesCount(b.onlineInstances),
+      render: (value: number) => onlineInstancesCount(value).toLocaleString(),
     },
     {
       title: '总堆积量',
