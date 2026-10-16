@@ -16,11 +16,19 @@
  */
 package org.apache.rocketmq.studio.ops.ai.conversation.agent;
 
+import org.apache.rocketmq.studio.ops.ai.OpenAiCompatibleLlmClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.function.Consumer;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 
 class PromptEnhancerTest {
 
@@ -54,4 +62,69 @@ class PromptEnhancerTest {
     void cleanReturnsNullForNullInputTest() {
         assertThat(PromptEnhancer.clean(null)).isNull();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n"})
+    void cleanKeepsSeparateCodeExamplesTest(String eol) {
+        String input = String.join(eol,
+                "```json", "{\"key\":1}", "```", "Compare with this command:",
+                "```bash", "printf ok", "```");
+        assertThat(PromptEnhancer.clean(input)).isEqualTo(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n"})
+    void cleanKeepsAWrapperWithoutALegalClosingFenceTest(String eol) {
+        String input = String.join(eol, "````markdown", "Keep this example:", "```");
+        assertThat(PromptEnhancer.clean(input)).isEqualTo(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"```not-a-close", "    ```", "~~~", "```\ttext"})
+    void cleanKeepsInvalidClosingLinesTest(String closing) {
+        String input = "```text\nbody\n" + closing;
+        assertThat(PromptEnhancer.clean(input)).isEqualTo(input);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n"})
+    void cleanRemovesACompleteLongWrapperAroundShorterCodeFencesTest(String eol) {
+        String body = String.join(eol, "Example:", "```sql", "SELECT 1", "```");
+        String input = "````markdown" + eol + body + eol + "  `````\t";
+        assertThat(PromptEnhancer.clean(input)).isEqualTo(body);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n"})
+    void cleanAcceptsIndentedClosingFenceAndRetainsBodyLineEndingsTest(String eol) {
+        String body = "first" + eol + "second";
+        assertThat(PromptEnhancer.clean("```plain-text" + eol + body + eol + "   ```"))
+                .isEqualTo(body);
+    }
+
+    @Test
+    void cleanDoesNotTreatABacktickInTheInfoStringAsAWrapperTest() {
+        String input = "```invalid`info\nbody\n```";
+        assertThat(PromptEnhancer.clean(input)).isEqualTo(input);
+    }
+
+    @Test
+    void cleanHandlesEmptyWrappedContentTest() {
+        assertThat(PromptEnhancer.clean("```\n``` ")).isEmpty();
+        assertThat(PromptEnhancer.clean("  ")).isEmpty();
+    }
+
+    @Test
+    void enhancePreservesSeparateExamplesInTheReturnedPromptTest() {
+        String input = "```text\nread only\n```\nKeep both examples.\n```sql\nSELECT 1\n```";
+        OpenAiCompatibleLlmClient client = mock(OpenAiCompatibleLlmClient.class);
+        doAnswer(call -> {
+            Consumer<String> sink = call.getArgument(3);
+            sink.accept(input);
+            return null;
+        }).when(client).stream(any(), anyString(), isNull(), any());
+        PromptEnhancer enhancer = new PromptEnhancer(client, null);
+        assertThat(enhancer.enhance(null, "http", "Explain the query", null)).isEqualTo(input);
+    }
+
 }

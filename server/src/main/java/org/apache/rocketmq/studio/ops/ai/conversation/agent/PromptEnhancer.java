@@ -28,6 +28,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Rewrites a user's message into a structured prompt before the agent run, streaming the rewrite as it
@@ -56,6 +58,9 @@ import java.util.function.Consumer;
 @Slf4j
 @Component
 public class PromptEnhancer {
+
+    private static final Pattern OPENING_FENCE = Pattern.compile("^ {0,3}(`{3,})([^`\\r\\n]*)\\r?$");
+    private static final Pattern CLOSING_FENCE = Pattern.compile("^ {0,3}(`{3,})[ \\t]*\\r?$");
 
     private static final String TEMPLATE_RESOURCE = "/prompts/enhance-prompt.txt";
     private static final String TEMPLATE = loadTemplate();
@@ -116,17 +121,22 @@ public class PromptEnhancer {
             return null;
         }
         String cleaned = enhanced.trim();
-        // Only a complete outer fence is stripped, and the whole opening fence
-        // line goes: the info string is not limited to letters (```json5,
-        // ```plain-text), and a letters-only pattern left its tail as the
-        // first line of the prompt. Fences embedded in the body and unclosed
-        // fences stay untouched.
+        // Strip a wrapper only when its first legal closing fence is the last line.
+        // A response can start and end with separate code examples; removing just
+        // those boundary lines would corrupt the prompt passed to the agent.
         String[] lines = cleaned.split("\n", -1);
-        if (lines.length >= 2 && lines[0].startsWith("```")
-                && lines[lines.length - 1].startsWith("```")
-                && lines[lines.length - 1].substring(3).trim().isEmpty()) {
-            cleaned = String.join("\n",
-                    java.util.Arrays.copyOfRange(lines, 1, lines.length - 1)).trim();
+        Matcher opening = OPENING_FENCE.matcher(lines[0]);
+        if (lines.length < 2 || !opening.matches()) {
+            return cleaned;
+        }
+        int openingLength = opening.group(1).length();
+        for (int index = 1; index < lines.length; index++) {
+            Matcher closing = CLOSING_FENCE.matcher(lines[index]);
+            if (closing.matches() && closing.group(1).length() >= openingLength) {
+                return index == lines.length - 1
+                        ? String.join("\n", java.util.Arrays.copyOfRange(lines, 1, index)).trim()
+                        : cleaned;
+            }
         }
         return cleaned;
     }
