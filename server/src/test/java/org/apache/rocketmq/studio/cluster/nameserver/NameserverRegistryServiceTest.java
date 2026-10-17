@@ -264,9 +264,10 @@ class NameserverRegistryServiceTest {
         RmqNameserver existing = new RmqNameserver();
         existing.setId(1L);
         existing.setName("rocketmq1");
+        existing.setNamesrvAddr(expected);
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
 
         NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -276,8 +277,9 @@ class NameserverRegistryServiceTest {
                 .build());
 
         assertThat(updated.getNamesrvAddr()).isEqualTo(expected);
-        verify(nameserverMapper).updateById(existing);
-        assertThat(existing.getNamesrvAddr()).isEqualTo(expected);
+        UpdateWrapper<?> replacement = captureReplacement();
+        assertThat(replacement.getSqlSet()).contains("namesrv_addr");
+        assertThat(replacement.getParamNameValuePairs()).containsValue(expected);
     }
 
     @Test
@@ -291,7 +293,7 @@ class NameserverRegistryServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("not found");
-        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+        verify(nameserverMapper, never()).update(isNull(), any(UpdateWrapper.class));
     }
 
     @Test
@@ -308,7 +310,7 @@ class NameserverRegistryServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("already exists");
-        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+        verify(nameserverMapper, never()).update(isNull(), any(UpdateWrapper.class));
     }
 
     @Test
@@ -324,7 +326,7 @@ class NameserverRegistryServiceTest {
                 .build()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("out of range");
-        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+        verify(nameserverMapper, never()).update(isNull(), any(UpdateWrapper.class));
     }
 
     @Test
@@ -334,7 +336,7 @@ class NameserverRegistryServiceTest {
         existing.setName("rocketmq1");
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
 
         service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -342,7 +344,9 @@ class NameserverRegistryServiceTest {
                 .namesrvAddr("rocketmq1-nameserver.svc:9876")
                 .build());
 
-        assertThat(existing.getName()).isEqualTo("rocketmq1");
+        UpdateWrapper<?> replacement = captureReplacement();
+        assertThat(replacement.getSqlSet()).contains("name");
+        assertThat(replacement.getParamNameValuePairs()).containsValue("rocketmq1");
     }
 
     @Test
@@ -351,7 +355,7 @@ class NameserverRegistryServiceTest {
         existing.setId(1L);
         when(nameserverMapper.selectById(1L)).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class)))
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class)))
                 .thenThrow(new DuplicateKeyException("uk_nameserver_name"));
 
         assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
@@ -369,7 +373,7 @@ class NameserverRegistryServiceTest {
         existing.setId(1L);
         when(nameserverMapper.selectById(1L)).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(0);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(0);
 
         assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -393,26 +397,19 @@ class NameserverRegistryServiceTest {
         existing.setDescription("community chart cluster");
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
         when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
 
-        NameserverRegistryVO updated = service.update(UpdateNameserverRegistryDTO.builder()
+        service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
                 .name("rocketmq1")
                 .namesrvAddr("rocketmq1-nameserver.svc:9876")
                 .build());
 
-        @SuppressWarnings("rawtypes")
-        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
-        verify(nameserverMapper).update(isNull(), captor.capture());
-        assertThat(captor.getValue().getSqlSet())
-                .contains("k8s_namespace")
-                .contains("k8s_id")
-                .contains("description");
-        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
-        assertThat(existing.getK8sNamespace()).isNull();
-        assertThat(existing.getK8sId()).isNull();
-        assertThat(updated.getDescription()).isNull();
+        UpdateWrapper<?> replacement = captureReplacement();
+        assertThat(replacement.getSqlSet())
+                .contains("name", "namesrv_addr", "k8s_namespace", "k8s_id", "description");
+        assertThat(replacement.getParamNameValuePairs().values()).containsExactlyInAnyOrder(
+                1L, "rocketmq1", "rocketmq1-nameserver.svc:9876", null, null, null);
     }
 
     @Test
@@ -424,7 +421,7 @@ class NameserverRegistryServiceTest {
         existing.setDescription("old description");
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(existing);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
 
         service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -435,10 +432,10 @@ class NameserverRegistryServiceTest {
                 .description("new description")
                 .build());
 
-        verify(nameserverMapper, never()).update(any(), any());
-        assertThat(existing.getK8sNamespace()).isEqualTo("new-namespace");
-        assertThat(existing.getK8sId()).isEqualTo("new-k8s");
-        assertThat(existing.getDescription()).isEqualTo("new description");
+        UpdateWrapper<?> replacement = captureReplacement();
+        assertThat(replacement.getSqlSet()).contains("k8s_namespace", "k8s_id", "description");
+        assertThat(replacement.getParamNameValuePairs())
+                .containsValue("new-namespace").containsValue("new-k8s").containsValue("new description");
     }
 
     @Test
@@ -447,7 +444,7 @@ class NameserverRegistryServiceTest {
         existing.setId(1L);
         when(nameserverMapper.selectById(1L)).thenReturn(existing).thenReturn(null);
         when(nameserverMapper.selectCount(any())).thenReturn(0L);
-        when(nameserverMapper.updateById(any(RmqNameserver.class))).thenReturn(1);
+        when(nameserverMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
 
         assertThatThrownBy(() -> service.update(UpdateNameserverRegistryDTO.builder()
                 .id(1L)
@@ -490,5 +487,15 @@ class NameserverRegistryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("not found");
         verify(nameserverMapper, never()).deleteById(anyLong());
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private UpdateWrapper<?> captureReplacement() {
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(nameserverMapper).update(isNull(), captor.capture());
+        verify(nameserverMapper, never()).updateById(any(RmqNameserver.class));
+        assertThat(captor.getValue().getSqlSegment()).contains("id");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(1L);
+        return captor.getValue();
     }
 }
