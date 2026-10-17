@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App, Modal } from 'antd';
+import { App, ConfigProvider, Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -129,6 +129,228 @@ describe('InstancePage', () => {
     ]);
   });
 
+  it.each([20, 21, 201])('offersEveryCloudCredentialForInventoryOf%sTest', async (count) => {
+    const user = userEvent.setup();
+    const allCredentials: CloudCredential[] = Array.from({ length: count }, (_, index) => ({
+      id: index + 1,
+      name: `cloud-account-${index + 1}`,
+      vendor: 'ALIYUN',
+      accessKey: 'LTAI-masked',
+      gmtCreate: '2026-01-01T00:00:00Z',
+    }));
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page = 1, pageSize = 20) => ({
+        items: allCredentials.slice((page - 1) * pageSize, page * pageSize),
+        total: allCredentials.length,
+        page,
+        size: pageSize,
+      }),
+    );
+    render(
+      <ConfigProvider virtual={false}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <InstancePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText(new RegExp(`cloud-account-${count}（`), {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith(count));
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(Math.ceil(count / 100));
+  });
+
+  it('discardsLaterCredentialPagesAfterTheVendorChangesTest', async () => {
+    const oldPage = deferred<CloudCredentialPage>();
+    const first = {
+      id: 1,
+      name: 'old-aliyun',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    const current = { ...first, id: 300, name: 'current-tencent', vendor: 'TENCENT' as const };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (vendor, _search, page) => {
+        if (vendor === 'TENCENT') return { items: [current], total: 1, page: 1, size: 100 };
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({
+              ...first,
+              id: index + 1,
+              name: `old-aliyun-${index + 1}`,
+            })),
+            total: 201,
+            page: 1,
+            size: 100,
+          };
+        return oldPage.promise;
+      },
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    await user.click(within(dialog).getByRole('tab', { name: /Tencent 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'TENCENT',
+        undefined,
+        1,
+        100,
+      ),
+    );
+    await act(async () =>
+      oldPage.resolve({ items: [{ ...first, id: 101 }], total: 201, page: 2, size: 100 }),
+    );
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    expect(
+      await screen.findByText(/current-tencent（/, { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/old-aliyun/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+    expect(cloudCredentialApi.listCloudCredentials).not.toHaveBeenCalledWith(
+      'ALIYUN',
+      undefined,
+      3,
+      100,
+    );
+  });
+
+  it('stopsCredentialPaginationWhenTheDialogClosesTest', async () => {
+    const oldPage = deferred<CloudCredentialPage>();
+    const credential = {
+      id: 1,
+      name: 'masked-account',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page) => {
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({ ...credential, id: index + 1 })),
+            total: 201,
+            page: 1,
+            size: 100,
+          };
+        return oldPage.promise;
+      },
+    );
+    const user = userEvent.setup();
+    // jsdom does not complete AntD's CSS leave animation; disable only the motion.
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <App>
+          <LangProvider>
+            <MemoryRouter>
+              <InstancePage />
+            </MemoryRouter>
+          </LangProvider>
+        </App>
+      </ConfigProvider>,
+    );
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /取\s*消/ }));
+    await act(async () =>
+      oldPage.resolve({ items: [{ ...credential, id: 101 }], total: 201, page: 2, size: 100 }),
+    );
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('doesNotPublishAPartialCredentialInventoryAfterALaterPageFailsTest', async () => {
+    const credential = {
+      id: 1,
+      name: 'partial-credential',
+      vendor: 'ALIYUN' as const,
+      accessKey: 'masked',
+      gmtCreate: '',
+    };
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockImplementation(
+      async (_vendor, _search, page) => {
+        if (page === 1)
+          return {
+            items: Array.from({ length: 100 }, (_, index) => ({ ...credential, id: index + 1 })),
+            total: 101,
+            page: 1,
+            size: 100,
+          };
+        throw new Error('second page unavailable');
+      },
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() =>
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledWith(
+        'ALIYUN',
+        undefined,
+        2,
+        100,
+      ),
+    );
+    expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
+    await user.click(within(dialog).getAllByRole('combobox')[0]);
+    expect(
+      screen.queryByText(/partial-credential/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('boundsCredentialPaginationBeforePublishingAnOversizedInventoryTest', async () => {
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue({
+      items: [],
+      total: 10001,
+      page: 1,
+      size: 100,
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('production-proxy');
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    expect(await screen.findByText('云凭据列表加载失败')).toBeInTheDocument();
+    expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalledTimes(1);
+  });
   it('loads server-filtered results when the search or type changes', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderPage();
@@ -644,7 +866,12 @@ describe('InstancePage', () => {
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('tab', { name: /Tencent 版/ }));
     await waitFor(() =>
-      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenLastCalledWith('TENCENT'),
+      expect(cloudCredentialApi.listCloudCredentials).toHaveBeenLastCalledWith(
+        'TENCENT',
+        undefined,
+        1,
+        100,
+      ),
     );
 
     const importButton = within(dialog).getByRole('button', { name: /一键导入/ });

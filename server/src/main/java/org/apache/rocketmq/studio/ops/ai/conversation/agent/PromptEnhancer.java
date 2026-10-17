@@ -116,8 +116,17 @@ public class PromptEnhancer {
             return null;
         }
         String cleaned = enhanced.trim();
-        if (cleaned.startsWith("```")) {
-            cleaned = cleaned.replaceAll("(?s)^```[a-zA-Z]*\\s*", "").replaceAll("(?s)```\\s*$", "").trim();
+        // Only a complete outer fence is stripped, and the whole opening fence
+        // line goes: the info string is not limited to letters (```json5,
+        // ```plain-text), and a letters-only pattern left its tail as the
+        // first line of the prompt. Fences embedded in the body and unclosed
+        // fences stay untouched.
+        String[] lines = cleaned.split("\n", -1);
+        if (lines.length >= 2 && lines[0].startsWith("```")
+                && lines[lines.length - 1].startsWith("```")
+                && lines[lines.length - 1].substring(3).trim().isEmpty()) {
+            cleaned = String.join("\n",
+                    java.util.Arrays.copyOfRange(lines, 1, lines.length - 1)).trim();
         }
         return cleaned;
     }

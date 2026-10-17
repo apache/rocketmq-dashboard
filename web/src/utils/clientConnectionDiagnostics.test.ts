@@ -205,6 +205,34 @@ describe('client connection diagnostics', () => {
     );
   });
 
+  it('does not report proxy rows for the protocol and version the Proxy response cannot carry', () => {
+    // Proxy-derived rows have no protocol/version by design (the server comments "The Proxy
+    // response has no protocol"), and the clients page even gives them a dedicated
+    // unknown-protocol filter sentinel. Scoring them as anomalies cost 18 points per row:
+    // three gRPC consumers behind a proxy flipped the panel to "high risk" while nothing
+    // was wrong.
+    const proxyRow = (clientId: string, address: string): ClientConnection =>
+      connection({
+        clientId,
+        address,
+        type: 'Consumer',
+        groupOrTopic: 'cg-order',
+        protocol: null,
+        version: null,
+      });
+
+    const diagnostics = analyzeClientConnections([
+      proxyRow('consumer-a', '10.0.2.10:49152'),
+      proxyRow('consumer-b', '10.0.2.11:49152'),
+      proxyRow('consumer-c', '10.0.2.12:49152'),
+    ]);
+
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('UNKNOWN_PROTOCOL');
+    expect(diagnostics.issues.map((item) => item.code)).not.toContain('UNKNOWN_VERSION');
+    expect(diagnostics.status).toBe('healthy');
+    expect(diagnostics.score).toBe(100);
+  });
+
   it('detects unknown fields, invalid timestamps, and address concentration', () => {
     const diagnostics = analyzeClientConnections([
       connection({

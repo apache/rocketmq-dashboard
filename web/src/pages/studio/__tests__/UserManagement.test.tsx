@@ -106,6 +106,16 @@ const sessionDetails: StudioUserSessionDetail[] = [
   },
 ];
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -293,6 +303,44 @@ describe('UserManagementPage', () => {
 
     await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
     expect(listStudioUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the query on screen when a revocation finishes after the search changes', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const pendingRevoke = deferred<{ userId: number; revokedSessionCount: number }>();
+    vi.mocked(revokeStudioUserSessions).mockReturnValueOnce(pendingRevoke.promise);
+    const narrowedPage = {
+      items: [{ ...studioUserPage.items[0], id: 8, username: 'current-user' }],
+      total: 1,
+      page: 1,
+      size: 20,
+    };
+    vi.mocked(listStudioUsers).mockImplementation(async (params) =>
+      params?.search === 'current' ? narrowedPage : studioUserPage,
+    );
+    renderPage();
+    await screen.findByText('operator');
+
+    await user.click(screen.getByRole('button', { name: '注销' }));
+    await screen.findByText('注销 operator 的活跃会话？');
+    await confirmRevokePopover(user);
+    await waitFor(() => expect(revokeStudioUserSessions).toHaveBeenCalledWith(7));
+
+    // The operator narrows the list while the revocation is still on the wire. The refresh that
+    // follows must re-query what is on screen, not the search captured when the popover was
+    // confirmed - otherwise the table snaps back to rows the search box no longer selects.
+    await user.type(screen.getByPlaceholderText('搜索用户名'), 'current');
+    await screen.findByText('current-user');
+
+    await act(async () => pendingRevoke.resolve({ userId: 7, revokedSessionCount: 2 }));
+
+    await waitFor(() =>
+      expect(vi.mocked(listStudioUsers).mock.lastCall?.[0]).toEqual(
+        expect.objectContaining({ search: 'current' }),
+      ),
+    );
+    expect(screen.getByText('current-user')).toBeInTheDocument();
+    expect(screen.queryByText('operator')).not.toBeInTheDocument();
   });
 
   it('renders session timestamps as UTC values in the viewer timezone', async () => {
