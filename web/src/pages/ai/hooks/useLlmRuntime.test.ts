@@ -181,6 +181,29 @@ describe('useLlmRuntime', () => {
     expect(modelsMock).not.toHaveBeenCalled();
   });
 
+  it('surfaces the failed load for the page and clears it on a successful reload', async () => {
+    configMock.mockRejectedValueOnce(new Error('runtime unavailable'));
+    const onError = vi.fn();
+
+    const { result } = renderHook(() => useLlmRuntime({ enabled: true, onError }));
+    await act(async () => {});
+
+    // The caller used to get the failure as a toast callback only, so nothing on the page could
+    // say why the composer was dead or offer a retry.
+    expect(result.current.error).toBe('runtime unavailable');
+    expect(result.current.llmReady).toBe(false);
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    configMock.mockResolvedValue(config);
+    modelsMock.mockResolvedValue({ status: 0, data: [{ id: 'gpt-test' }] });
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.llmReady).toBe(true);
+  });
+
   it('keeps the last request winning when reload overlaps', async () => {
     // The initial effect load, the first reload and the second reload each suspend on the
     // deferred the mock hands out at call time. Resolving the latest request first proves the

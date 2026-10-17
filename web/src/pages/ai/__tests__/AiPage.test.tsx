@@ -646,6 +646,27 @@ describe('AiPage', () => {
     expect(screen.getByTestId('ai-send-stop-button')).toBeDisabled();
   });
 
+  it.each([new Error('runtime unavailable'), {}])(
+    'offers recovery for a failed LLM runtime load: %s',
+    async (failure) => {
+      vi.mocked(getLlmConfig).mockRejectedValueOnce(failure);
+      renderPage();
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('AI 配置加载失败');
+      // The runtime never loaded, so nothing can be sent. The failure used to be a transient toast
+      // only, which left the composer looking like a page whose provider was never configured —
+      // a dead send button with nothing on the page to act on.
+      expect(screen.getByTestId('ai-send-stop-button')).toBeDisabled();
+
+      await userEvent.setup().click(within(alert).getByRole('button', { name: /重\s*试/ }));
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+      expect(getLlmConfig).toHaveBeenCalledTimes(2);
+      expect(getLlmModels).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('appliesABuiltinPromptTemplateWithItsModeAndEnhancementSettingTest', async () => {
     vi.mocked(openRunStream).mockResolvedValue(undefined);
     const user = userEvent.setup();
