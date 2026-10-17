@@ -25,17 +25,22 @@ vi.mock('../config', () => ({
 import {
   createNameServer,
   createK8sCert,
+  createNameserverRegistry,
   deleteNameServer,
   deleteK8sCert,
+  deleteNameserverRegistry,
   getCluster,
   getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
+  listNameserverRegistry,
   previewClusterConfig,
   updateClusterConfig,
   updateK8sCert,
   updateNameServer,
+  updateNameserverRegistry,
 } from './clusterService';
+import clusters from '../mock/clusters';
 
 describe('clusterService mock clusters', () => {
   it('returns defensive copies from cluster detail reads', async () => {
@@ -199,5 +204,75 @@ describe('clusterService mock clusters', () => {
     } finally {
       await deleteK8sCert(created.id);
     }
+  });
+});
+
+describe('clusterService mock NameServer registry', () => {
+  const fixtureAddresses = clusters.flatMap((cluster) =>
+    cluster.nameServers.map((nameServer) => nameServer.addr),
+  );
+
+  it('serves the registry from the mock clusters instead of the real backend', async () => {
+    const entries = await listNameserverRegistry();
+
+    // These four calls had no mock branch, so mock mode left the registry to the real backend:
+    // this assertion used to fail with a request error, and the page's loadNsRegistry catch then
+    // rendered an empty registry. The demo list is derived from the clusters the fixture declares.
+    expect(entries.map((entry) => entry.namesrvAddr).sort()).toEqual([...fixtureAddresses].sort());
+    expect(new Set(entries.map((entry) => entry.id)).size).toBe(entries.length);
+  });
+
+  it('keeps registry mutations in the mock store and applies the endpoint rules', async () => {
+    await expect(
+      createNameserverRegistry({ name: '   ', namesrvAddr: '10.200.0.4:9876' }),
+    ).rejects.toThrow('name is required');
+
+    const created = await createNameserverRegistry({
+      name: 'registry-demo',
+      namesrvAddr: '10.200.0.1:9876',
+      k8sNamespace: 'rocketmq',
+      k8sId: 'ns-demo',
+      description: 'demo entry',
+    });
+
+    try {
+      expect(created).toMatchObject({
+        name: 'registry-demo',
+        namesrvAddr: '10.200.0.1:9876',
+        k8sNamespace: 'rocketmq',
+        k8sId: 'ns-demo',
+        description: 'demo entry',
+      });
+      expect((await listNameserverRegistry()).some((entry) => entry.id === created.id)).toBe(true);
+
+      // The endpoint answers a duplicate name with 409 and an unknown id with 404; the mock must
+      // not accept either as a write.
+      await expect(
+        createNameserverRegistry({ name: ' registry-demo ', namesrvAddr: '10.200.0.2:9876' }),
+      ).rejects.toThrow('NameServer registry name already exists: registry-demo');
+      await expect(
+        updateNameserverRegistry({ id: 99999, name: 'ghost', namesrvAddr: '10.200.0.3:9876' }),
+      ).rejects.toThrow('NameServer registry entry not found: 99999');
+
+      const updated = await updateNameserverRegistry({
+        id: created.id,
+        name: 'registry-demo-2',
+        namesrvAddr: '10.200.0.9:9876',
+      });
+      expect(updated).toMatchObject({ name: 'registry-demo-2', namesrvAddr: '10.200.0.9:9876' });
+      // Omitted optional fields are cleared, the way the endpoint clears their columns.
+      expect(updated.k8sNamespace).toBeNull();
+      expect(updated.k8sId).toBeNull();
+      expect(updated.description).toBeNull();
+    } finally {
+      await deleteNameserverRegistry(created.id);
+    }
+
+    expect(await listNameserverRegistry()).not.toContainEqual(
+      expect.objectContaining({ id: created.id }),
+    );
+    await expect(deleteNameserverRegistry(created.id)).rejects.toThrow(
+      `NameServer registry entry not found: ${created.id}`,
+    );
   });
 });
