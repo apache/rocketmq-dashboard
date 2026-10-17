@@ -175,6 +175,11 @@ const ResourceOperationTimelineModal = ({
           aria-label={t('audit.timelineDateRange')}
           style={{ width: '100%', maxWidth: 320 }}
           value={dateRange}
+          // `buildTimelineFilter` sends each boundary only when it is set (`/api/audit-logs` takes
+          // `startDate` and `endDate` independently), so one date has to be enough. Ant Design
+          // otherwise holds the range until both ends are picked and the single boundary never
+          // reaches the query.
+          allowEmpty={[true, true]}
           onChange={(value) => {
             setPage(1);
             setDateRange(value as [Dayjs | null, Dayjs | null] | null);

@@ -16,6 +16,7 @@
  */
 
 import { App } from 'antd';
+import dayjs from 'dayjs';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
@@ -300,6 +301,33 @@ describe('Audit page', () => {
         endDate: undefined,
         result: undefined,
       }),
+    );
+  });
+
+  it('appliesASingleDateBoundaryToTheAuditFilterTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AuditPage />);
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalled());
+
+    // `GET /api/audit-logs` takes `startDate` and `endDate` independently and the page's filter
+    // builder already maps a single end, so the range control must be able to commit one: picking
+    // only a start date has to filter from that day on instead of leaving the feed unfiltered.
+    await user.click(screen.getByPlaceholderText('Start date'));
+    const firstOfMonth = dayjs().startOf('month');
+    const dayCell = document.querySelector(
+      `td[title="${firstOfMonth.format('YYYY-MM-DD')}"] .ant-picker-cell-inner`,
+    );
+    if (!(dayCell instanceof HTMLElement)) throw new Error('first-of-month picker cell missing');
+    await user.click(dayCell);
+    await user.click(document.body);
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          startDate: firstOfMonth.format('YYYY-MM-DD'),
+          endDate: undefined,
+        }),
+      ),
     );
   });
 

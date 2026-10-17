@@ -236,6 +236,32 @@ describe('ResourceOperationTimelineModal', () => {
     );
   });
 
+  it('appliesASingleDateBoundaryToTheTimelineQueryTest', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    expect(await screen.findByText(/ops-user/)).toBeInTheDocument();
+    const dateInputs = screen.getAllByLabelText('时间线日期范围');
+
+    // `GET /api/audit-logs` takes `startDate` and `endDate` independently, so one boundary has
+    // to be enough: the timeline must scope itself to everything after that day instead of
+    // waiting for a second date before it applies anything.
+    await user.type(dateInputs[0], '2026-08-01');
+    await user.keyboard('{Enter}');
+    // Enter moves focus to the empty end field; leaving the picker commits the single boundary.
+    await user.click(document.body);
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 20,
+        resourceType: 'TOPIC',
+        target: 'topic-a',
+        clusterId: 'prod-cn',
+        startDate: '2026-08-01',
+      }),
+    );
+  });
+
   it('ignores an older timeline response after the selected resource changes', async () => {
     const stale = deferred<Awaited<ReturnType<typeof opsService.listAuditRecords>>>();
     vi.mocked(opsService.listAuditRecords)
