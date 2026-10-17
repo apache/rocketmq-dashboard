@@ -89,6 +89,7 @@ describe('ACL page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(instanceService.listInstances).mockResolvedValue([]);
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([]);
 
     vi.mocked(aclService.listAclRules).mockResolvedValue({
       items: [
@@ -189,6 +190,65 @@ describe('ACL page', () => {
     await user.click(screen.getByText('用户管理'));
     expect(await screen.findByText('remote-admin')).toBeInTheDocument();
     expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+  });
+
+  it('offers an ACL principal outside the loaded user page and shows its admin badge', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 11,
+        username: 'remote-admin',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: false,
+        clusters: ['cluster-a'],
+      },
+      {
+        id: 21,
+        username: 'directory-only-user',
+        accessKey: 'dire****1234',
+        secretKey: 'secr****4321',
+        admin: true,
+        clusters: ['cluster-a'],
+      },
+    ]);
+    vi.mocked(aclService.listAclRules).mockResolvedValue({
+      items: [{
+        id: 21,
+        principal: 'directory-only-user',
+        resource: 'orders',
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        gmtCreate: '2026-07-23T00:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    renderWithProviders(<AclPage />);
+
+    await openRulesTab(user);
+    const row = await screen.findByRole('row', { name: /directory-only-user/ });
+    expect(within(row).getByText('管理员')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加规则/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('主体'));
+    await user.click(
+      await screen.findByText('directory-only-user', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    expect(
+      within(dialog).getByText('directory-only-user', { selector: '.ant-select-selection-item' }),
+    ).toBeInTheDocument();
+    expect(aclService.listAclUsers).toHaveBeenCalledWith({ instanceId: undefined });
+    expect(aclService.pageAclUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20 }),
+    );
   });
 
   it('reloads the server rule page after deleting one ACL rule', async () => {

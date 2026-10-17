@@ -65,6 +65,7 @@ import {
   getAclUserCredentials,
   examineBrokerClusterAclConfig,
   listAclRules,
+  listAclUsers,
   pageAclUsers,
   pushAclToBroker,
   updateAclRule,
@@ -171,6 +172,11 @@ const AclPageContent = ({
   const [activeTab, setActiveTab] = useState('users');
   const [ruleRefreshKey, setRuleRefreshKey] = useState(0);
   const [userRefreshKey, setUserRefreshKey] = useState(0);
+  const [directoryState, setDirectoryState] = useState<{
+    instanceId?: string;
+    refreshKey: number;
+    users: NormalizedAclUser[];
+  }>({ instanceId: selectedInstanceId, refreshKey: userRefreshKey, users: [] });
   const [ruleTotal, setRuleTotal] = useState(0);
   const [rulePage, setRulePage] = useState(1);
   const [rulePageSize, setRulePageSize] = useState(20);
@@ -293,9 +299,38 @@ const AclPageContent = ({
     userRefreshKey,
   ]);
 
+  useEffect(() => {
+    let mounted = true;
+    void listAclUsers({ instanceId: selectedInstanceId })
+      .then((allUsers) => {
+        if (mounted) {
+          setDirectoryState({
+            instanceId: selectedInstanceId,
+            refreshKey: userRefreshKey,
+            users: allUsers.map(normalizeUser),
+          });
+        }
+      })
+      .catch(() => {
+        if (mounted) message.error(t('common.fetchDataFailed'));
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedInstanceId, userRefreshKey, t]);
+
   /* ─── Rule helpers ─── */
+  const principalDirectory =
+    directoryState.instanceId === selectedInstanceId &&
+    directoryState.refreshKey === userRefreshKey
+      ? directoryState.users
+      : [];
+  const principalUsers = [
+    ...principalDirectory,
+    ...users.filter((user) => !principalDirectory.some((entry) => entry.username === user.username)),
+  ];
   const isAdmin = (principal: string) =>
-    users.find((u) => u.username === principal)?.admin ?? false;
+    principalUsers.find((u) => u.username === principal)?.admin ?? false;
 
   const actionTagColor: Record<string, string> = {
     PUB: 'blue',
@@ -455,6 +490,7 @@ const AclPageContent = ({
         });
         const normalized = normalizeUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
+        setUserRefreshKey((prev) => prev + 1);
         message.success(t('acl.userUpdated'));
       } else {
         await createAclUser({
@@ -504,6 +540,7 @@ const AclPageContent = ({
       });
       const normalized = normalizeUser(updated);
       setUsers((prev) => prev.map((u) => (u.id === user.id ? normalized : u)));
+      setUserRefreshKey((prev) => prev + 1);
       message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -1596,10 +1633,12 @@ const AclPageContent = ({
               disabled={tencentRoleMode && !!editingRule}
               showSearch
               optionFilterProp="label"
-              options={users.map((u) => ({
-                value: u.username,
-                label: u.username,
-              }))}
+              options={[
+                ...principalUsers.map((u) => ({ value: u.username, label: u.username })),
+                ...(editingRule && !principalUsers.some((u) => u.username === editingRule.principal)
+                  ? [{ value: editingRule.principal, label: editingRule.principal }]
+                  : []),
+              ]}
             />
           </Form.Item>
 
