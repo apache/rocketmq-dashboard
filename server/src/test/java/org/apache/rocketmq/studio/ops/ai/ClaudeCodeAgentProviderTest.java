@@ -95,6 +95,29 @@ class ClaudeCodeAgentProviderTest {
     }
 
     @Test
+    void streamRejectsARunThatNeverDeliveredAResultFrameTest() {
+        // The event channel fails a run whose stream closed without a result frame
+        // (AiRunExecutor's llm.provider.no_result). The text-only channel still handed
+        // back whatever had streamed, so a provider that went away mid-turn replaced
+        // the user's message with a truncated rewrite instead of falling back to it.
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
+                "sh", "-c", "printf eyJ0eXBlIjoic3RyZWFtX2V2ZW50Iiwic2Vzc2lvbl9pZCI6InMtMSIsImV2ZW50Ijp7"
+                        + "InR5cGUiOiJjb250ZW50X2Jsb2NrX2RlbHRhIiwiaW5kZXgiOjAsImRlbHRhIjp7InR5cGUiOiJ0ZXh0"
+                        + "X2RlbHRhIiwidGV4dCI6InBhcnRpYWwgcmV3cml0ZSJ9fX0= | base64 -d"), 30);
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> provider.stream(LlmConfigVO.builder().build(), "prompt", null, tokens::add))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.no_result");
+                    assertThat(exception.getMessage()).contains("result frame");
+                });
+        // The delta reached the consumer before the run was rejected: a stream cannot be
+        // taken back, which is why the channel has to fail instead of keeping quiet.
+        assertThat(tokens).containsExactly("partial rewrite");
+    }
+
+    @Test
     void streamShouldBoundStderrIncludedInFailuresTest() {
         TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
                 List.of("sh", "-c", "yes failure | head -c 131072 >&2; exit 1"), 5);
