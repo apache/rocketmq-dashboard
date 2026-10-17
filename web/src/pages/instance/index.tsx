@@ -62,6 +62,9 @@ import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOpt
 
 const { Text } = Typography;
 
+const CREDENTIAL_PAGE_SIZE = 100;
+const MAX_CREDENTIAL_PAGES = 100;
+
 const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
   ALIYUN: 'cn-hangzhou',
   TENCENT: 'ap-chengdu',
@@ -158,7 +161,7 @@ const InstancePage = () => {
 
     setLoading(true);
     try {
-      const nextInstances = await listInstances(query);
+      const nextInstances = await listInstances({ ...query, withCounts: true });
       if (requestId === requestIdRef.current) {
         setInstances(nextInstances);
         const availableNames = new Set(nextInstances.map((instance) => instance.name));
@@ -198,12 +201,26 @@ const InstancePage = () => {
     let active = true;
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
-      listCloudCredentials(vendor)
-        .then((result) => {
-          if (active) {
-            setCredentials(result.items);
-          }
-        })
+      setCredentials([]);
+      const loadCredentialOptions = async () => {
+        const first = await listCloudCredentials(vendor, undefined, 1, CREDENTIAL_PAGE_SIZE);
+        if (!active) return;
+        const pageCount = Math.ceil(first.total / first.size);
+        if (!Number.isFinite(pageCount) || first.size < 1 || pageCount > MAX_CREDENTIAL_PAGES) {
+          throw new Error('Cloud credential inventory exceeds the selector page limit');
+        }
+        const items = [...first.items];
+        // Follow the first response's bounded inventory size. Publish only after all pages
+        // succeed, so a later failure cannot present an incomplete selector as complete.
+        for (let page = 2; page <= pageCount; page += 1) {
+          const result = await listCloudCredentials(vendor, undefined, page, CREDENTIAL_PAGE_SIZE);
+          if (!active) return;
+          items.push(...result.items);
+          if (result.items.length === 0) break;
+        }
+        setCredentials(Array.from(new Map(items.map((item) => [item.id, item])).values()));
+      };
+      void loadCredentialOptions()
         .catch(() => {
           if (active) {
             message.error(t('instance.cloudCredentialLoadFailed'));

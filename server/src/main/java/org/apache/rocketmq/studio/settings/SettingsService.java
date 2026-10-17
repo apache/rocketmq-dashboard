@@ -50,7 +50,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.function.UnaryOperator;
 
 @Slf4j
@@ -68,8 +67,6 @@ public class SettingsService {
                 0x00, 0x00, 0x02, 0x54
             }, // AWS IMDS IPv6: fd00:ec2::254
             new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
-    private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
-            "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
     private static final String AUTH_NONE = "none";
     private static final String AUTH_BASIC = "basic auth";
@@ -317,13 +314,14 @@ public class SettingsService {
         if (request == null) {
             return failed("Data source test request is required");
         }
-        if (!isPrometheusCompatible(request.getType())) {
+        MetricsBackendType backend = resolveBackendType(request.getType());
+        if (backend == null) {
             return failed("Unsupported data source type: " + request.getType());
         }
 
         try {
             String body = restClient.get()
-                    .uri(prometheusQueryUri(request.getUrl(), request.getType()))
+                    .uri(prometheusQueryUri(request.getUrl(), backend))
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
@@ -346,10 +344,25 @@ public class SettingsService {
         }
     }
 
-    private boolean isPrometheusCompatible(String type) {
-        return StringUtils.hasText(type)
-                && PROMETHEUS_COMPATIBLE_TYPES.contains(
-                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
+    /**
+     * Normalises a client-supplied data source type to its backend. The DTO accepts aliases the
+     * raw enum spelling does not carry - victoria_metrics, victoria-metrics, victoria metrics and
+     * VictoriaMetrics all name the same backend - and unknown types must stay rejected rather than
+     * silently falling back to Prometheus. Custom is not prometheus-compatible for this probe.
+     */
+    private MetricsBackendType resolveBackendType(String type) {
+        if (!StringUtils.hasText(type)) {
+            return null;
+        }
+        return switch (type.trim().replaceAll("[\\s_-]+", "").toUpperCase(Locale.ROOT)) {
+            case "PROMETHEUS" -> MetricsBackendType.PROMETHEUS;
+            case "VICTORIAMETRICS", "VICTORIA" -> MetricsBackendType.VICTORIA_METRICS;
+            case "THANOS" -> MetricsBackendType.THANOS;
+            case "CORTEX" -> MetricsBackendType.CORTEX;
+            case "MIMIR" -> MetricsBackendType.MIMIR;
+            case "ARMS" -> MetricsBackendType.ARMS;
+            default -> null;
+        };
     }
 
     private String normalizeDataSourceKey(String key) {
@@ -388,7 +401,7 @@ public class SettingsService {
         return auth.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private URI prometheusQueryUri(String baseUrl, String providerType) throws URISyntaxException {
+    private URI prometheusQueryUri(String baseUrl, MetricsBackendType backend) throws URISyntaxException {
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("Data source URL is required");
         }
@@ -405,7 +418,7 @@ public class SettingsService {
             throw new IllegalArgumentException(
                     "Data source URL must not point to a local or private address");
         }
-        String queryPath = MetricsBackendType.fromProviderType(providerType).getInstantQueryPath();
+        String queryPath = backend.getInstantQueryPath();
         return UriComponentsBuilder.fromUriString(normalized + queryPath)
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
                 .build()

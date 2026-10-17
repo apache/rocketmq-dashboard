@@ -40,6 +40,7 @@ import {
 } from 'antd';
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
+import TagList from '../../components/TagList';
 import { useLang } from '../../i18n/LangContext';
 import type {
   AlertRule,
@@ -65,7 +66,7 @@ import {
 } from '../../services/opsService';
 import { attachThresholdUnit, normalizeDuration, normalizeMetric } from './alertRulePayload';
 import { tableScrollX } from '../../utils/table';
-import { formatUtcDateTime } from '../../utils/format';
+import { formatUtcDateTime, ratioToPercent } from '../../utils/format';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
 import { downloadBlob } from '../../utils/download';
@@ -87,6 +88,17 @@ const channelColors: Record<string, string> = {
 
 const durationOptions = ['1m', '5m', '15m', '30m'];
 const reminderIntervalOptions = ['5m', '15m', '30m', '1h', '4h'];
+/**
+ * The aggregation values the backend accepts (`AlertRuleRequestDTO` rejects anything else), named
+ * for the console: `LAST` is the newest sample in the window, which the bare code does not say.
+ */
+const aggregationLabelKeys: Record<string, string> = {
+  LAST: 'alerts.aggregation.LAST',
+  MAX: 'alerts.aggregation.MAX',
+  MIN: 'alerts.aggregation.MIN',
+  AVG: 'alerts.aggregation.AVG',
+  SUM: 'alerts.aggregation.SUM',
+};
 const notificationTemplateVariables = ALERT_NOTIFICATION_TEMPLATE_VARIABLES;
 const availabilityMetrics = new Set([
   'nameserver.availability',
@@ -130,7 +142,7 @@ export const formatThresholdCondition = (
     return unavailableLabel;
   }
   if (nativeRatioMetrics.has(rule.metric) && !rule.thresholdUnit) {
-    return `${rule.operator} ${rule.threshold * 100}%`;
+    return `${rule.operator} ${ratioToPercent(rule.threshold)}%`;
   }
   return `${rule.operator} ${rule.threshold}${rule.thresholdUnit ?? ''}`;
 };
@@ -138,7 +150,10 @@ export const formatThresholdCondition = (
 const previewValueForMetric = (metric?: string, threshold?: string | number | null): string => {
   if (metric && nativeRatioMetrics.has(metric)) {
     const value = Number(threshold);
-    return Number.isFinite(value) ? `${Math.min(100, value + 6)}%` : '91%';
+    // The server renders ${value} without a unit (the percent sign lives in
+    // ${thresholdUnit}); embedding it here produced "91%%" in previews of
+    // templates like "${value}${thresholdUnit}".
+    return Number.isFinite(value) ? `${Math.min(100, value + 6)}` : '91';
   }
   if (metric === 'consumer.delay.seconds') return '420';
   if (metric === 'consumer.lag.total' || metric === 'topic.backlog.total') return '12000';
@@ -282,7 +297,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
             ? previewDescription.trim()
             : t('alerts.notificationTemplateSampleDescription'),
         transition: 'FIRING',
-        metric: metricText,
+        // The server substitutes the raw metric key; a translated label here
+        // made the preview disagree with what delivery actually sends.
+        metric: metricKey,
         instanceId,
         value: previewValueForMetric(metricKey, threshold),
         threshold,
@@ -465,7 +482,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
         nativeRatioMetrics.has(form.getFieldValue('metric')) &&
         !form.getFieldValue('thresholdUnit')
       ) {
-        form.setFieldValue('threshold', Number(form.getFieldValue('threshold')) * 100);
+        form.setFieldValue('threshold', ratioToPercent(Number(form.getFieldValue('threshold'))));
       }
       if (metrics.length === 0) message.warning(t('alerts.metricUnavailable'));
     } catch {
@@ -675,15 +692,16 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.channels'),
-      width: 130,
+      // DingTalk + Email + SMS 三个标签并排实测需 201px（TagList 已把标签自带的 8px margin 归零）
+      width: 210,
       render: (_, record) => (
-        <Flex gap={4} wrap="wrap">
-          {(record.channels ?? []).map((ch) => (
-            <Tag key={ch} color={channelColors[ch]}>
-              {channelLabels[ch]}
-            </Tag>
-          ))}
-        </Flex>
+        <TagList
+          items={(record.channels ?? []).map((ch) => ({
+            key: ch,
+            label: channelLabels[ch],
+            color: channelColors[ch],
+          }))}
+        />
       ),
     },
     {
@@ -702,7 +720,7 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
     },
     {
       title: t('alerts.lastTriggered'),
-      width: 150,
+      width: 156,
       sorter: (a, b) => (a.lastTriggered ?? '').localeCompare(b.lastTriggered ?? ''),
       render: (_, record) =>
         record.lastTriggered ? (
@@ -1266,9 +1284,9 @@ const AlertsPageContent = ({ domain = 'CLUSTER' }: AlertsPageProps) => {
 
             <Form.Item name="aggregation" label={t('alerts.windowAggregation')} initialValue="LAST">
               <Select
-                options={['LAST', 'MAX', 'MIN', 'AVG', 'SUM'].map((value) => ({
-                  label: value,
+                options={Object.entries(aggregationLabelKeys).map(([value, labelKey]) => ({
                   value,
+                  label: t(labelKey),
                 }))}
               />
             </Form.Item>

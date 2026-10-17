@@ -216,13 +216,13 @@ public class RocketMQDLQProvider implements DLQProvider {
         }
         if (scanResult.topicMissing()) {
             // The group has no %DLQ% topic yet (never dead-lettered a message). Resending is a
-            // mutation against a non-existent target, so surface a clean NOT_FOUND (legacy
-            // dlq.resend semantics) instead of silently reporting a zero-message success.
+            // mutation against a non-existent target, so answer the legacy dlq.resend 404 (audited
+            // with the shared FAILED word) instead of silently reporting a zero-message success.
             String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
                             + "matched=0, resent=0, failed=0, dlqTopicMissing=true",
                     instanceId, groupName, dlqTopic,
                     StringUtils.hasText(targetTopic) ? targetTopic : "<original>");
-            recordAudit(groupName, detail, "NOT_FOUND");
+            recordAudit(groupName, detail, "FAILED");
             throw new BusinessException(404, "No dead-letter queue found for consumer group: " + groupName);
         }
         List<MessageExt> deadLetters = scanResult.messages();
@@ -237,7 +237,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
                 deadLetters.size(), resent, failed, scanResult.scanIncomplete(), scanResult.truncated(),
                 scanResult.failedQueueCount(), resendBatch.failures().size(), resendBatch.failuresTruncated());
-        recordAudit(groupName, detail, outcome);
+        recordAudit(groupName, detail, auditResult(outcome));
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
@@ -307,7 +307,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                         + "reportedFailures=%d, failuresTruncated=%s",
                 instanceId, groupName, selected.size(), deadLetters.size(), resent, failed,
                 resendBatch.failures().size(), resendBatch.failuresTruncated());
-        recordAudit(groupName, detail, outcome);
+        recordAudit(groupName, detail, auditResult(outcome));
         log.info("Selected DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
@@ -810,6 +810,17 @@ public class RocketMQDLQProvider implements DLQProvider {
             return "PARTIAL";
         }
         return "SUCCESS";
+    }
+
+    /**
+     * The resend outcome has its own documented vocabulary (SUCCESS / PARTIAL / FAILED /
+     * NO_MESSAGES, see the api-spec DLQ resend section), but the audit result column has one:
+     * SUCCESS / FAILED / PARTIAL. A resend that matched nothing performed no mutation and is not a
+     * failure, so it audits as SUCCESS while the response still reports NO_MESSAGES; the other
+     * three outcome words already belong to the audit vocabulary.
+     */
+    private static String auditResult(String outcome) {
+        return "NO_MESSAGES".equals(outcome) ? "SUCCESS" : outcome;
     }
 
     private void recordAudit(String groupName, String detail, String result) {

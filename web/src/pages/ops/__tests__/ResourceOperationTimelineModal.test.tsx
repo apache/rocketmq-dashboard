@@ -23,9 +23,9 @@ import { LangProvider } from '../../../i18n/LangContext';
 import type { AuditRecord } from '../../../api/ops';
 import * as opsService from '../../../services/opsService';
 import { downloadBlob } from '../../../utils/download';
-import ResourceOperationTimelineDrawer, {
+import ResourceOperationTimelineModal, {
   type AuditTimelineResource,
-} from '../ResourceOperationTimelineDrawer';
+} from '../ResourceOperationTimelineModal';
 
 vi.mock('../../../services/opsService', () => ({
   exportAuditLogs: vi.fn(),
@@ -63,16 +63,16 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
-const renderDrawer = (selectedResource: AuditTimelineResource = resource) =>
+const renderModal = (selectedResource: AuditTimelineResource = resource) =>
   render(
     <App>
       <LangProvider>
-        <ResourceOperationTimelineDrawer open resource={selectedResource} onClose={vi.fn()} />
+        <ResourceOperationTimelineModal open resource={selectedResource} onClose={vi.fn()} />
       </LangProvider>
     </App>,
   );
 
-describe('ResourceOperationTimelineDrawer', () => {
+describe('ResourceOperationTimelineModal', () => {
   beforeAll(() => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -106,7 +106,8 @@ describe('ResourceOperationTimelineDrawer', () => {
 
   it('loads and exports the exact selected resource timeline', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
+    expect(document.querySelector('.ant-drawer')).toBeNull();
 
     expect(await screen.findByText(/ops-user/)).toBeInTheDocument();
     expect(opsService.listAuditRecords).toHaveBeenCalledWith({
@@ -130,7 +131,7 @@ describe('ResourceOperationTimelineDrawer', () => {
   });
 
   it('keeps resources without a cluster in their own timeline scope', async () => {
-    renderDrawer({ resourceType: 'SETTINGS', target: 'general', clusterId: null });
+    renderModal({ resourceType: 'SETTINGS', target: 'general', clusterId: null });
 
     await waitFor(() =>
       expect(opsService.listAuditRecords).toHaveBeenCalledWith({
@@ -151,7 +152,7 @@ describe('ResourceOperationTimelineDrawer', () => {
       page: 1,
       size: 20,
     });
-    const { container } = renderDrawer();
+    const { container } = renderModal();
     expect(await screen.findByText(/ops-user/)).toBeInTheDocument();
 
     const secondPage = container.ownerDocument.querySelector('.ant-pagination-item-2');
@@ -183,7 +184,7 @@ describe('ResourceOperationTimelineDrawer', () => {
           page: 1,
           size: 20,
         });
-      renderDrawer();
+      renderModal();
       await screen.findByText(/ops-user/);
       await user.click(screen.getByTitle('2'));
       await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(3));
@@ -202,7 +203,7 @@ describe('ResourceOperationTimelineDrawer', () => {
 
   it('applies the selected date range to the resource query and export', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
     expect(await screen.findByText(/ops-user/)).toBeInTheDocument();
     const dateInputs = screen.getAllByLabelText('时间线日期范围');
 
@@ -245,12 +246,12 @@ describe('ResourceOperationTimelineDrawer', () => {
         page: 1,
         size: 20,
       });
-    const { rerender } = renderDrawer();
+    const { rerender } = renderModal();
 
     rerender(
       <App>
         <LangProvider>
-          <ResourceOperationTimelineDrawer
+          <ResourceOperationTimelineModal
             open
             resource={{ ...resource, target: 'topic-b' }}
             onClose={vi.fn()}

@@ -24,8 +24,10 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicAttributes;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageAccessor;
 import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -206,7 +208,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
             vo.setTotalLag(lagUnknown ? ConsumerLagResolver.UNKNOWN : totalLag);
             if (newestConsumedTimestamp > 0) {
-                long delaySeconds = (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
+                // An old last-message timestamp measures inactivity once every queue is caught up.
+                long delaySeconds = !lagUnknown && totalLag == 0 ? 0
+                        : (System.currentTimeMillis() - newestConsumedTimestamp) / 1000;
                 vo.setDelaySeconds((int) Math.max(delaySeconds, 0));
                 vo.setConsumptionTimestampAvailable(true);
             }
@@ -392,22 +396,29 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     throw new BusinessException(500, "No broker available to update topic");
                 }
 
-                TopicConfig topicConfig = new TopicConfig();
-                topicConfig.setTopicName(topicName);
-                topicConfig.setWriteQueueNums(writeQueues);
-                topicConfig.setReadQueueNums(readQueues);
-                topicConfig.setPerm(toRocketMQPerm(effectivePerm));
-                applyTopicType(topicConfig, topic.getType());
-
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateTopicConfig(addr, topicConfig);
+                int perm = toRocketMQPerm(effectivePerm);
+                Map<String, TopicConfig> pending = new LinkedHashMap<>();
+                // Preflight every broker before any write so a failed read cannot erase its
+                // configuration or leave earlier brokers updated. Each broker keeps its flags.
+                for (String addr : brokerAddrs.stream().sorted().toList()) {
+                    TopicConfig topicConfig = topicConfigForUpdate(admin, addr, topicName);
+                    topicConfig.setWriteQueueNums(writeQueues);
+                    topicConfig.setReadQueueNums(readQueues);
+                    topicConfig.setPerm(perm);
+                    // Broker attributes are merged separately and writes require delta keys.
+                    topicConfig.setAttributes(Map.of());
+                    applyTopicType(topicConfig, topic.getType());
+                    pending.put(addr, topicConfig);
+                }
+                for (Map.Entry<String, TopicConfig> entry : pending.entrySet()) {
+                    admin.createAndUpdateTopicConfig(entry.getKey(), entry.getValue());
                 }
 
                 // Update DB record
                 if (existing != null) {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
-                    existing.setPerm(topicConfig.getPerm());
+                    existing.setPerm(perm);
                     if (topic.getType() != null) {
                         existing.setTopicType(topic.getType().name());
                     }
@@ -448,6 +459,21 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw classifyBrokerFailure(e, "update topic");
             }
         });
+    }
+
+    private TopicConfig topicConfigForUpdate(MQAdminExt admin, String brokerAddr, String topicName)
+            throws Exception {
+        TopicConfig current;
+        try {
+            current = admin.examineTopicConfig(brokerAddr, topicName);
+        } catch (Exception failure) {
+            if (!MqResponseCodes.hasResponseCode(failure, ResponseCode.TOPIC_NOT_EXIST)) {
+                throw failure;
+            }
+            current = null;
+        }
+        // A newly added master may not hold the topic yet. Preserve update's provisioning behavior.
+        return current == null ? new TopicConfig(topicName) : new TopicConfig(current);
     }
 
     private void applyTopicType(TopicConfig topicConfig, TopicType topicType) {
@@ -494,6 +520,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        return sendMessage(request, null);
+    }
+
+    @Override
+    public SendMessageVO redeliverMessage(SendMessageDTO request, String sourceTopic) {
+        return sendMessage(request, sourceTopic);
+    }
+
+    private SendMessageVO sendMessage(SendMessageDTO request, String sourceTopic) {
         if (request == null) {
             throw new BusinessException(400, "Send message request is required");
         }
@@ -512,11 +547,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 ApacheWriteTargetResolver.requireTopicRoute(admin, target, request.getTopic());
                 return null;
             });
-            return sendOwnedMessage(request);
+            return sendOwnedMessage(request, sourceTopic);
         });
     }
 
-    private SendMessageVO sendOwnedMessage(SendMessageDTO request) {
+    private SendMessageVO sendOwnedMessage(SendMessageDTO request, String sourceTopic) {
         String topic = request.getTopic();
         String tag = request.getTag() != null ? request.getTag() : "";
         String key = request.getKey() != null ? request.getKey() : "";
@@ -543,6 +578,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     }
                     msg.putUserProperty(entry.getKey(), entry.getValue());
                 }
+            }
+
+            // Push consumers restore the business topic from this broker property before invoking
+            // the listener. Only the internal redelivery path supplies a checked source topic.
+            if (StringUtils.hasText(sourceTopic) && topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                MessageAccessor.putProperty(msg, MessageConst.PROPERTY_RETRY_TOPIC, sourceTopic);
             }
 
             // Timer delivery is a system property; it must be set through the typed API,
