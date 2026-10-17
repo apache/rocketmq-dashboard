@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import useAuthStore from '../stores/authStore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
@@ -63,6 +64,7 @@ import {
   clearMetricsQueryHistory,
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
+  metricsQueryHistoryStorageKey,
   mergeMetricsQueryHistory,
   metricSeriesFullLabel,
   metricSeriesIdentity,
@@ -406,7 +408,15 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
   return 'none';
 };
 
-const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
+const currentHistoryStorageKey = () => {
+  const { user, userId } = useAuthStore.getState();
+  return metricsQueryHistoryStorageKey(user, userId);
+};
+
+const MetricsExplorerContent = ({
+  instanceId,
+  historyStorageKey,
+}: MetricsExplorerProps & { historyStorageKey: string }) => {
   const { lang, t } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
@@ -537,7 +547,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
   const [history, setHistory] = useState<MetricsQueryHistoryEntry[]>(() =>
-    loadMetricsQueryHistory(),
+    loadMetricsQueryHistory(historyStorageKey),
   );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsPanel, setDetailsPanel] = useState<DetailsPanelState | null>(null);
@@ -660,7 +670,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         profile.metrics.map(async (metric) => {
           try {
             const execution = await runQuery(metric.promql, range);
-            if (currentRequest === panelRequestIdRef.current) {
+            if (
+              currentRequest === panelRequestIdRef.current &&
+              historyStorageKey === currentHistoryStorageKey()
+            ) {
               const summary = summarizeMetricData(execution.data);
               const query: PanelQueryMeta = {
                 profileId: profile.id,
@@ -694,14 +707,21 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 [metric.semanticMetric]: { loading: false, data: execution.data, query },
               }));
               setHistory((currentHistory) => {
-                if (historyGeneration !== historyGenerationRef.current) return currentHistory;
+                if (
+                  historyGeneration !== historyGenerationRef.current ||
+                  historyStorageKey !== currentHistoryStorageKey()
+                )
+                  return currentHistory;
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-                saveMetricsQueryHistory(nextHistory);
+                saveMetricsQueryHistory(nextHistory, historyStorageKey);
                 return nextHistory;
               });
             }
           } catch (error) {
-            if (currentRequest === panelRequestIdRef.current) {
+            if (
+              currentRequest === panelRequestIdRef.current &&
+              historyStorageKey === currentHistoryStorageKey()
+            ) {
               setPanels((previous) => ({
                 ...previous,
                 [metric.semanticMetric]: {
@@ -714,7 +734,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }),
       );
     },
-    [instanceId, runQuery],
+    [instanceId, runQuery, historyStorageKey],
   );
 
   useEffect(() => {
@@ -767,7 +787,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       setAppliedCustomPromql(trimmed);
       try {
         const execution = await runQuery(trimmed, range);
-        if (currentRequest === customRequestIdRef.current) {
+        if (
+          currentRequest === customRequestIdRef.current &&
+          historyStorageKey === currentHistoryStorageKey()
+        ) {
           const metric: MetricMapping = {
             semanticMetric: CUSTOM_HISTORY_METRIC_ID,
             name: queryLabelsRef.current.customTitle,
@@ -806,14 +829,21 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           });
           setCustomPanel({ loading: false, data: execution.data, query });
           setHistory((currentHistory) => {
-            if (historyGeneration !== historyGenerationRef.current) return currentHistory;
+            if (
+              historyGeneration !== historyGenerationRef.current ||
+              historyStorageKey !== currentHistoryStorageKey()
+            )
+              return currentHistory;
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
-            saveMetricsQueryHistory(nextHistory);
+            saveMetricsQueryHistory(nextHistory, historyStorageKey);
             return nextHistory;
           });
         }
       } catch (error) {
-        if (currentRequest === customRequestIdRef.current) {
+        if (
+          currentRequest === customRequestIdRef.current &&
+          historyStorageKey === currentHistoryStorageKey()
+        ) {
           setCustomPanel({
             loading: false,
             error: getQueryErrorMessage(error, queryLabelsRef.current.queryErrorFallback),
@@ -821,7 +851,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         }
       }
     },
-    [instanceId, runQuery],
+    [instanceId, runQuery, historyStorageKey],
   );
 
   const handleRangeChange = (nextRangeId: RangeOption['value']) => {
@@ -1127,7 +1157,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   const handleClearHistory = () => {
     historyGenerationRef.current += 1;
-    clearMetricsQueryHistory();
+    clearMetricsQueryHistory(historyStorageKey);
     setHistory([]);
   };
 
@@ -1705,6 +1735,20 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         </Form>
       </Modal>
     </section>
+  );
+};
+
+const MetricsExplorer = (props: MetricsExplorerProps) => {
+  const historyStorageKey = useAuthStore((state) =>
+    metricsQueryHistoryStorageKey(state.user, state.userId),
+  );
+  // Identity changes discard history, credentials, pending replays and query panels together.
+  return (
+    <MetricsExplorerContent
+      key={historyStorageKey}
+      {...props}
+      historyStorageKey={historyStorageKey}
+    />
   );
 };
 

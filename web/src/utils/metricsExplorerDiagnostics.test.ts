@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { MetricData, MetricMapping } from '../api/metrics';
 import {
@@ -28,6 +28,7 @@ import {
   clearMetricsQueryHistory,
   createMetricsQueryHistoryEntry,
   loadMetricsQueryHistory,
+  metricsQueryHistoryStorageKey,
   mergeMetricsQueryHistory,
   metricSeriesFullLabel,
   metricSeriesIdentity,
@@ -91,6 +92,83 @@ const createHistoryEntry = (
   });
 
 describe('metrics explorer diagnostics', () => {
+  it('isolates account history reads and clears Test', () => {
+    localStorage.clear();
+    const alice = metricsQueryHistoryStorageKey('alice', 101);
+    const bob = metricsQueryHistoryStorageKey('bob', 202);
+    const entry = createHistoryEntry({ metricName: 'Alice only' });
+    expect(saveMetricsQueryHistory([entry], alice)).toBe(true);
+    expect(loadMetricsQueryHistory(bob)).toEqual([]);
+    saveMetricsQueryHistory([createHistoryEntry({ metricName: 'Bob only' })], bob);
+    clearMetricsQueryHistory(bob);
+    expect(loadMetricsQueryHistory(bob)).toEqual([]);
+    expect(loadMetricsQueryHistory(alice)).toEqual([entry]);
+  });
+
+  it('retains a stable ID history after a username change Test', () => {
+    localStorage.clear();
+    const entry = createHistoryEntry({});
+    saveMetricsQueryHistory([entry], metricsQueryHistoryStorageKey('old-name', 101));
+    expect(loadMetricsQueryHistory(metricsQueryHistoryStorageKey('new-name', 101))).toEqual([
+      entry,
+    ]);
+  });
+
+  it('keeps username fallback identities and numeric IDs distinct Test', () => {
+    const keys = [
+      metricsQueryHistoryStorageKey('alice', null),
+      metricsQueryHistoryStorageKey('bob', null),
+      metricsQueryHistoryStorageKey('101', null),
+      metricsQueryHistoryStorageKey('alice', 101),
+      metricsQueryHistoryStorageKey(null, null),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('preserves anonymous history separately for auth-disabled deployments Test', () => {
+    localStorage.clear();
+    const entry = createHistoryEntry({});
+    saveMetricsQueryHistory([entry]);
+    expect(loadMetricsQueryHistory()).toEqual([entry]);
+    const alice = metricsQueryHistoryStorageKey('alice', 101);
+    expect(loadMetricsQueryHistory(alice)).toEqual([]);
+    clearMetricsQueryHistory(alice);
+    expect(loadMetricsQueryHistory()).toEqual([entry]);
+  });
+
+  it('leaves unowned legacy history untouched and unread Test', () => {
+    localStorage.clear();
+    const legacyKey = 'rocketmq-studio-metrics-query-history';
+    const raw = JSON.stringify([createHistoryEntry({ metricName: 'Unowned' })]);
+    localStorage.setItem(legacyKey, raw);
+    expect(loadMetricsQueryHistory()).toEqual([]);
+    expect(loadMetricsQueryHistory(metricsQueryHistoryStorageKey('alice', 101))).toEqual([]);
+    clearMetricsQueryHistory();
+    expect(localStorage.getItem(legacyKey)).toBe(raw);
+  });
+
+  it('handles unavailable scoped history storage Test', () => {
+    const key = metricsQueryHistoryStorageKey('alice', 101);
+    const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      expect(loadMetricsQueryHistory(key)).toEqual([]);
+      expect(saveMetricsQueryHistory([createHistoryEntry({})], key)).toBe(false);
+      expect(clearMetricsQueryHistory(key)).toBe(false);
+    } finally {
+      read.mockRestore();
+      write.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
   it('doesNotInventZeroMeasurementsForBlankScalarSamplesTest', () => {
     const data: MetricData = {
       resultType: 'matrix',
