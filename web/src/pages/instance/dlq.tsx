@@ -123,6 +123,7 @@ const DLQPage = () => {
   const [detailResending, setDetailResending] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestIdRef = useRef(0);
+  const detailPaginationRef = useRef({ page: 1, pageSize: 20 });
   const detailResendRequestIdRef = useRef(0);
   const retryRequestIdRef = useRef(0);
   const groupRequestIdRef = useRef(0);
@@ -391,6 +392,7 @@ const DLQPage = () => {
     if (!selectedInstanceId) return;
     const requestId = detailRequestIdRef.current + 1;
     detailRequestIdRef.current = requestId;
+    detailPaginationRef.current = { page, pageSize };
     setDetailLoading(true);
     setDetailError(null);
     try {
@@ -425,8 +427,6 @@ const DLQPage = () => {
     detailResendRequestIdRef.current = requestId;
     const instanceId = selectedInstanceId;
     const group = detailGroup;
-    const pageToReload = detailPage;
-    const pageSizeToReload = detailPageSize;
     setDetailResending(true);
     setDetailError(null);
     try {
@@ -441,8 +441,11 @@ const DLQPage = () => {
       } else {
         message.success(`重发完成：成功 ${result.resent} 条`);
       }
-      setDetailSelectedMsgIds([]);
-      await loadDetailMessages(group, pageToReload, pageSizeToReload);
+      // A resend may finish after the operator has paged elsewhere in this drawer.
+      // Refresh the current query and retain selections made since the submitted batch.
+      setDetailSelectedMsgIds((selected) => selected.filter((id) => !msgIds.includes(id)));
+      const currentPagination = detailPaginationRef.current;
+      await loadDetailMessages(group, currentPagination.page, currentPagination.pageSize);
     } catch (error) {
       if (detailResendRequestIdRef.current === requestId) {
         setDetailError(describeThrownMessage(error) || '重发死信消息失败，请稍后重试');

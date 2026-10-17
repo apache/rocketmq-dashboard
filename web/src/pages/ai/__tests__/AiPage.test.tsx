@@ -42,6 +42,7 @@ import { listInstances } from '../../../services/instanceService';
 import useAuthStore from '../../../stores/authStore';
 import { useEngineStore } from '../../../stores/engineStore';
 import AiPage from '../index';
+import { COMPOSER_DRAFT_STORAGE_KEY } from '../hooks/useComposerDraft';
 
 /**
  * The page shell, end to end: route param in, hooks wired, `ChatThread` + `Composer` out.
@@ -399,6 +400,47 @@ describe('AiPage', () => {
     );
     expect(attachRunStream).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['unchanged', 'typed', 'cleared', 'template'])(
+    'preservesNewerDraftAfterConversationCreationFailsTest: %s',
+    async (edit) => {
+      let rejectCreation!: (error: Error) => void;
+      vi.mocked(createConversation).mockReturnValueOnce(
+        new Promise<AiConversationVO>((_resolve, reject) => {
+          rejectCreation = reject;
+        }),
+      );
+      const user = userEvent.setup({ pointerEventsCheck: 0 });
+      renderPage();
+      const input = await typeAndWaitForReady('original question');
+      await user.click(screen.getByTestId('ai-send-stop-button'));
+      await waitFor(() => expect(createConversation).toHaveBeenCalledTimes(1));
+      expect(input).toHaveValue('');
+
+      let expected = 'original question';
+      if (edit === 'typed' || edit === 'cleared') {
+        await user.type(input, 'new unsent draft');
+        expected = 'new unsent draft';
+        if (edit === 'cleared') {
+          await user.clear(input);
+          expected = '';
+        }
+      } else if (edit === 'template') {
+        await user.click(screen.getByRole('button', { name: '模板' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Prompt 模板' });
+        await user.click(within(dialog).getAllByRole('button', { name: /使\s*用/ })[0]);
+        expected = (input as HTMLTextAreaElement).value;
+        expect(expected).toContain('请诊断当前 RocketMQ 实例中的消费延迟问题');
+      }
+
+      await act(async () => rejectCreation(new Error('conversation creation failed')));
+      expect(await screen.findByText('conversation creation failed')).toBeInTheDocument();
+      expect(input).toHaveValue(expected);
+      expect(sessionStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe(expected || null);
+      expect(readProbeLocation().pathname).toBe('/ai');
+      expect(openRunStream).not.toHaveBeenCalled();
+    },
+  );
 
   it('surfacesTheServerRejectionOfADoubleSendTest', async () => {
     vi.mocked(openRunStream).mockRejectedValue(

@@ -361,6 +361,7 @@ const TopicPageContent = ({
   const consumersRequestIdRef = useRef(0);
   const syncRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
+  const sendInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -1154,14 +1155,18 @@ const TopicPageContent = ({
 
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    setSending(true);
     let values: SendMessageFormValues;
     try {
       values = await sendForm.validateFields();
     } catch {
       // validation error, keep the modal open
+      sendInFlightRef.current = false;
+      setSending(false);
       return;
     }
-    setSending(true);
     try {
       const payloadPreview = analyzeMessagePayloadPreview({
         topic: values.topic,
@@ -1191,6 +1196,7 @@ const TopicPageContent = ({
     } catch (error) {
       message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
     } finally {
+      sendInFlightRef.current = false;
       setSending(false);
     }
   };

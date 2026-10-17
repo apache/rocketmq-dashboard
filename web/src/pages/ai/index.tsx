@@ -75,7 +75,7 @@ const AiPage = () => {
   const admin = useAuthStore((state) => state.admin);
   const engine = useEngineStore((state) => state.engine);
   const setEngine = useEngineStore((state) => state.setEngine);
-  const [inputValue, setInputValue] = useComposerDraft();
+  const [inputValue, setInputValue, captureDraftRestore] = useComposerDraft();
   const [selectedMode, setSelectedMode] = useState<ChatMode>('chat');
   const [enhance, setEnhance] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -125,14 +125,25 @@ const AiPage = () => {
         return;
       }
       const context = sendContextRef.current;
+      const restoreDraft = captureDraftRestore(text);
       void startRun({
         createBody: { mode: selectedMode },
         request: buildMessageRequest(text, llm.selectedModel, engine, selectedMode, enhance),
       }).then((target) => {
-        if (target === null && context === sendContextRef.current) setInputValue(text);
+        if (target === null && context === sendContextRef.current) restoreDraft();
       });
     },
-    [engine, enhance, llm.llmReady, llm.selectedModel, selectedMode, setInputValue, startRun, t],
+    [
+      captureDraftRestore,
+      engine,
+      enhance,
+      llm.llmReady,
+      llm.selectedModel,
+      selectedMode,
+      setInputValue,
+      startRun,
+      t,
+    ],
   );
 
   // Estimated context footprint of this conversation — persisted text plus whatever the run in

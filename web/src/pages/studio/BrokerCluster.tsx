@@ -190,6 +190,7 @@ const BrokerClusterPage = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | undefined>(undefined);
   const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
+  const requestedInstanceRef = useRef<string | undefined>(undefined);
   const { t } = useLang();
   const { message } = App.useApp();
 
@@ -200,6 +201,11 @@ const BrokerClusterPage = () => {
   }, []);
 
   const loadData = useCallback(async () => {
+    // A completed snapshot remains useful on refresh, but never under a different instance.
+    if (requestedInstanceRef.current !== selectedInstanceId) {
+      requestedInstanceRef.current = selectedInstanceId;
+      clearData();
+    }
     if (!selectedInstanceId && !isMockMode()) {
       clearData();
       return;

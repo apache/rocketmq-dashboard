@@ -320,8 +320,9 @@ public class NotificationOutboxService {
             // each claim so a row cannot be born with an already-expired lease.
             LocalDateTime claimStartedAt = utcNow();
             LocalDateTime claimStaleBefore = claimStartedAt.minus(claimTimeout);
+            int attemptCount = row.getAttemptCount() == null ? 0 : row.getAttemptCount();
             if (mapper.claimForDispatch(row.getId(), claimStartedAt, claimStaleBefore, claimStartedAt,
-                    claimToken) != 1) {
+                    claimToken, attemptCount) != 1) {
                 continue;
             }
             send(row, claimToken);
@@ -497,18 +498,47 @@ public class NotificationOutboxService {
 
     private static String[] parseRecipients(String raw) throws AddressException {
         List<String> recipients = new ArrayList<>();
-        for (String value : raw.split("[,;]")) {
-            String recipient = value.trim();
-            if (!recipient.isEmpty()) {
-                InternetAddress address = new InternetAddress(recipient, true);
-                address.validate();
-                recipients.add(address.getAddress());
+        // Split on the documented separators (comma, plus the legacy
+        // semicolon) only outside a quoted display name: a list like
+        // `"Doe, John" <john@example.com>, ops@example.com` is valid RFC 822
+        // input, but a plain [,;] split broke it into unbalanced fragments
+        // that failed validation and drove the notification into retry
+        // instead of sending.
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escaped) {
+                current.append(c);
+                escaped = false;
+            } else if (quoted && c == '\\') {
+                current.append(c);
+                escaped = true;
+            } else if (c == '"') {
+                current.append(c);
+                quoted = !quoted;
+            } else if (!quoted && (c == ',' || c == ';')) {
+                addRecipient(current, recipients);
+                current.setLength(0);
+            } else {
+                current.append(c);
             }
         }
+        addRecipient(current, recipients);
         if (recipients.isEmpty()) {
             throw new AddressException("No valid email recipients");
         }
         return recipients.toArray(String[]::new);
+    }
+
+    private static void addRecipient(CharSequence token, List<String> recipients) throws AddressException {
+        String recipient = token.toString().trim();
+        if (!recipient.isEmpty()) {
+            InternetAddress address = new InternetAddress(recipient, true);
+            address.validate();
+            recipients.add(address.getAddress());
+        }
     }
 
     private Map<String, Object> payload(SystemAlertVO alert, String channel, String content) {
@@ -543,10 +573,12 @@ public class NotificationOutboxService {
                 .set("last_error", abbreviate(error)).set("claim_token", null))) {
             return;
         }
-        // "FAILURE" is outside the shared audit result vocabulary (SUCCESS/FAILED/PARTIAL), so
-        // exhausted deliveries never landed in the audit summary's failed bucket.
+        // The audit result vocabulary is SUCCESS/FAILED/PARTIAL (docs/api-spec.md), and the summary
+        // buckets only those three: "RETRYING" rows were counted in its total but in no bucket.
+        // Both branches audit a failed attempt, and the operation name already tells a scheduled
+        // retry (RETRY_ALERT_NOTIFICATION) from an exhausted one (FAIL_ALERT_NOTIFICATION).
         recordDeliverySafely(row, exhausted ? "FAIL_ALERT_NOTIFICATION" : "RETRY_ALERT_NOTIFICATION",
-                exhausted ? "FAILED" : "RETRYING", abbreviate(error));
+                "FAILED", abbreviate(error));
         log.warn("Alert notification {} for event {}: {}", exhausted ? "failed" : "will retry", row.getAlertId(), error);
     }
 

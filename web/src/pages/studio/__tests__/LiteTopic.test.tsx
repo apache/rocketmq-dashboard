@@ -92,7 +92,10 @@ const createDeferred = <T,>() => {
 
 describe('LiteTopic time formatting', () => {
   it('preserves epoch timestamps and rejects invalid provider values', () => {
-    expect(formatTime(0)).toBe(new Date(0).toLocaleString());
+    // Epoch instants render as a stable `YYYY-MM-DD HH:mm:ss` in the viewer's zone, never the
+    // locale-dependent Date.toLocaleString string.
+    expect(formatTime(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(formatTime(0)).not.toBe(new Date(0).toLocaleString());
     expect(formatTime(Number.POSITIVE_INFINITY)).toBe('-');
     expect(formatTime(Number.MAX_VALUE)).toBe('-');
   });
@@ -116,7 +119,7 @@ const selectNamespace = async (name: string) => {
 describe('LiteTopic Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.queryLiteTopicCapability.mockResolvedValue({ supported: true });
+    apiMocks.queryLiteTopicCapability.mockReset().mockResolvedValue({ supported: true });
     apiMocks.queryLiteTopicQuota.mockResolvedValue(null);
     apiMocks.queryLiteTopicList.mockResolvedValue([
       {
@@ -131,6 +134,169 @@ describe('LiteTopic Page', () => {
       consumedMessages: 0,
     });
     instanceApiMocks.listInstances.mockResolvedValue([]);
+  });
+
+  it('recoversFromATemporaryCapabilityFailureWithoutEnablingControlsDuringRetryTest', async () => {
+    const retry = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    renderPage();
+    const retryButton = await screen.findByRole('button', { name: /重\s*试/ });
+    expect(
+      screen.queryByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).not.toBeInTheDocument();
+    await user.click(retryButton);
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    expect(retryButton).toBeDisabled();
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+    expect(screen.queryByText('延长 TTL')).not.toBeInTheDocument();
+    await act(async () => retry.resolve({ supported: true }));
+    expect(await screen.findByText('order-*')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2);
+  });
+
+  it('keepsARepeatedProbeFailureRetryableTest', async () => {
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('first timeout'))
+      .mockRejectedValueOnce(new Error('second timeout'))
+      .mockResolvedValueOnce({ supported: true });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: /重\s*试/ })).toBeEnabled());
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('order-*')).toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(3);
+  });
+
+  it('showsAnUnsupportedResultWhenTheRetryActuallyConfirmsNoSupportTest', async () => {
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ supported: false });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    expect(
+      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('无法确认当前集群是否支持 LiteTopic，请重试。'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+  });
+
+  it('ignoresACapabilityRetryThatCompletesAfterUnmountTest', async () => {
+    const retry = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockReturnValueOnce(retry.promise);
+    const user = userEvent.setup();
+    const view = renderPage();
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(apiMocks.queryLiteTopicCapability).toHaveBeenCalledTimes(2));
+    view.unmount();
+    await act(async () => retry.resolve({ supported: true }));
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+  });
+
+  it('restoresTheRequestedFilterAndFullNamespaceOptionsAfterCapabilityRetryTest', async () => {
+    const firstProbe = createDeferred<{ supported: boolean }>();
+    apiMocks.queryLiteTopicCapability
+      .mockReturnValueOnce(firstProbe.promise)
+      .mockResolvedValueOnce({ supported: true });
+    apiMocks.queryLiteTopicList.mockImplementation(async (pattern?: string) =>
+      pattern === 'needle'
+        ? [{ namespace: 'Filtered', topicPattern: 'filtered-result-*' }]
+        : [
+            { namespace: 'Other', topicPattern: 'other-result-*' },
+            { namespace: 'Filtered', topicPattern: 'filtered-result-*' },
+          ],
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.type(screen.getByPlaceholderText('按 Topic 模式筛选...'), 'needle');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await screen.findByText('filtered-result-*');
+    await act(async () => firstProbe.reject(new Error('late probe failure')));
+    await user.click(await screen.findByRole('button', { name: /重\s*试/ }));
+    await screen.findByText('filtered-result-*');
+    expect(screen.getByPlaceholderText('按 Topic 模式筛选...')).toHaveValue('needle');
+    expect(screen.queryByText('other-result-*')).not.toBeInTheDocument();
+    expect(
+      apiMocks.queryLiteTopicList.mock.calls.filter(([pattern]) => pattern === 'needle'),
+    ).toHaveLength(2);
+    await user.click(screen.getAllByRole('combobox')[0]);
+    expect(
+      await screen.findByText('Other', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+  });
+
+  it('explainsTheCapabilityFailureInEnglishTest', async () => {
+    localStorage.setItem('rocketmq-studio-language', 'en');
+    apiMocks.queryLiteTopicCapability.mockRejectedValueOnce(new Error('timeout'));
+    try {
+      renderPage();
+      expect(
+        await screen.findByText(
+          'Could not check whether the current cluster supports LiteTopic. Please retry.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    } finally {
+      localStorage.removeItem('rocketmq-studio-language');
+    }
+  });
+
+  it('sorts a pattern whose TTL and last-active value are unset after the measurable ones', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      {
+        namespace: 'default',
+        topicPattern: 'aaa-unmeasured-*',
+        // The provider leaves these unset when the broker reports no TTL attribute and no session
+        // ever reported an access; both cells render '-'.
+        sessionIds: [],
+      },
+      {
+        namespace: 'default',
+        topicPattern: 'zzz-measured-*',
+        averageTTL: 3_600_000,
+        lastActiveTime: Date.UTC(2026, 7, 20, 10, 0, 0),
+        sessionIds: ['session-1'],
+      },
+    ] as LiteTopicItem[]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('zzz-measured-*');
+    const rowOrder = () => screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    const indexOf = (pattern: string) => rowOrder().findIndex((text) => text.includes(pattern));
+
+    // Ascending: a value the column renders as '-' must not sort as a zero TTL, which would
+    // place that pattern as if it had expired before every measurable one.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    // The unset value stays last in the descending direction too instead of swapping to the top.
+    await user.click(screen.getByText('平均 TTL'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
+
+    await user.click(screen.getByText('最后活跃'));
+    await waitFor(() =>
+      expect(indexOf('aaa-unmeasured-*')).toBeGreaterThan(indexOf('zzz-measured-*')),
+    );
   });
 
   it('sends the owning instance id when extending TTL', async () => {
@@ -560,7 +726,7 @@ describe('LiteTopic Page', () => {
     renderPage();
 
     expect(
-      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+      await screen.findByText('无法确认当前集群是否支持 LiteTopic，请重试。'),
     ).toBeInTheDocument();
     expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
     expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();

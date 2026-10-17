@@ -115,7 +115,11 @@ services:
     container_name: rocketmq-web
     restart: unless-stopped
     ports:
-      - "6789:80"
+      # The deploy flow (deploy/deploy.sh) and README configure the public
+      # entrance through PUBLIC_PORT; the mapping must follow it, otherwise
+      # the deployment listens on 6789 while the health check and the success
+      # message point at the configured port.
+      - "${PUBLIC_PORT:-6789}:80"
     depends_on:
       rocketmq-server:
         condition: service_healthy

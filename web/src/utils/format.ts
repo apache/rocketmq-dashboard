@@ -233,3 +233,32 @@ export function formatPercent(value: number, decimals = 1): string {
 export function roundPercent(value: number): number {
   return Math.round(value * 10) / 10;
 }
+
+/**
+ * Convert a stored ratio to its percentage number the way the alert backend renders it.
+ *
+ * `AlertNotificationTemplate` scales ratio metrics with `BigDecimal.movePointRight(2)`, which
+ * moves the decimal point without changing the digits, so 0.29 renders as `29` and 0.1234 as
+ * `12.34`. Multiplying by 100 in binary floating point instead renders 0.29 as
+ * 28.999999999999996 — eight of the ninety-nine whole percents do not round-trip — and the alert
+ * pages used to print, and write back, that residue.
+ */
+export function ratioToPercent(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  // `toString()` yields the shortest decimal that round-trips, which is the same representation
+  // `BigDecimal.valueOf(double)` starts from. Exponential notation only shows up outside the
+  // range a stored ratio can take, and `toLocaleString` falls back to the plain form there.
+  const text = /[eE]/.test(value.toString())
+    ? value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 })
+    : value.toString();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return value * 100;
+  const [, sign = '', integer = '', fraction = ''] = match;
+  const digits = integer + fraction;
+  const pointIndex = integer.length + 2;
+  const scaled =
+    pointIndex < digits.length
+      ? `${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`
+      : `${digits}${'0'.repeat(pointIndex - digits.length)}`;
+  return Number(`${sign}${scaled}`);
+}

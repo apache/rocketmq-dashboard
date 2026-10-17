@@ -407,7 +407,7 @@ const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
 };
 
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
-  const { lang } = useLang();
+  const { lang, t } = useLang();
   const queryErrorFallback = lang === 'zh' ? 'Prometheus 查询失败' : 'Prometheus query failed';
   const copy =
     lang === 'zh'
@@ -547,6 +547,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   // each other's in-flight results and leave every panel stuck on its spinner.
   const panelRequestIdRef = useRef(0);
   const customRequestIdRef = useRef(0);
+  // Clearing history invalidates prior queries only for history, not their chart results.
+  const historyGenerationRef = useRef(0);
   // Keeps the latest data source readable from the stable callbacks so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
@@ -649,6 +651,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     async (profile: MetricProfile | undefined, range: RangeOption) => {
       if (!profile) return;
       const currentRequest = ++panelRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       const loadingPatch = Object.fromEntries(
         profile.metrics.map((metric) => [metric.semanticMetric, { loading: true } as PanelState]),
       );
@@ -691,6 +694,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
                 [metric.semanticMetric]: { loading: false, data: execution.data, query },
               }));
               setHistory((currentHistory) => {
+                if (historyGeneration !== historyGenerationRef.current) return currentHistory;
                 const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
                 saveMetricsQueryHistory(nextHistory);
                 return nextHistory;
@@ -758,6 +762,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       const trimmed = promql.trim();
       if (!trimmed) return;
       const currentRequest = ++customRequestIdRef.current;
+      const historyGeneration = historyGenerationRef.current;
       setCustomPanel({ loading: true });
       setAppliedCustomPromql(trimmed);
       try {
@@ -801,6 +806,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           });
           setCustomPanel({ loading: false, data: execution.data, query });
           setHistory((currentHistory) => {
+            if (historyGeneration !== historyGenerationRef.current) return currentHistory;
             const nextHistory = mergeMetricsQueryHistory(currentHistory, historyEntry);
             saveMetricsQueryHistory(nextHistory);
             return nextHistory;
@@ -1120,6 +1126,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   };
 
   const handleClearHistory = () => {
+    historyGenerationRef.current += 1;
     clearMetricsQueryHistory();
     setHistory([]);
   };
@@ -1151,6 +1158,16 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     const nextDataSource = entry.dataSourceKey
       ? availableDataSources.find((source) => source.key === entry.dataSourceKey)
       : undefined;
+    // A named history source is part of the query's identity. An unavailable source
+    // must not silently become the default backend or replace the active query.
+    if (entry.dataSourceKey && !nextDataSource) {
+      void message.warning(
+        t('metricsExplorer.unavailableHistorySource', {
+          source: entry.dataSourceName || entry.dataSourceKey,
+        }),
+      );
+      return;
+    }
     const nextDataSourceKey = nextDataSource?.key ?? '';
     // The current selection, read before the entry replaces it below, so that declining the
     // credentials prompt can put it back (see handleAuthCancel).
@@ -1480,6 +1497,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
               value={customPromql}
               onChange={(event) => setCustomPromql(event.target.value)}
               onPressEnter={(event) => {
+                // Enter may confirm an IME candidate, including WebKit's post-composition key.
+                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (!event.shiftKey) {
                   event.preventDefault();
                   void runCustomQuery(customPromql, selectedRange);

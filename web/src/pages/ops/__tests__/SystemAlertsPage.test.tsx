@@ -72,6 +72,11 @@ const renderPage = () =>
     </App>,
   );
 
+// The level filter renders as an antd Segmented: each option exposes role="radio" inside
+// its .ant-segmented-item wrapper, so the chip's own text has to be read from that wrapper.
+const levelFilterItem = (label: RegExp): HTMLElement =>
+  screen.getByRole('radio', { name: label }).closest('.ant-segmented-item') as HTMLElement;
+
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -339,6 +344,85 @@ describe('SystemAlertsPage', () => {
         page: 1,
         pageSize: 20,
       }),
+    );
+  });
+
+  it.each([
+    { placeholder: '开始时间', key: 'from', absent: 'to' },
+    { placeholder: '结束时间', key: 'to', absent: 'from' },
+  ])('applies and exports a single $key time boundary', async ({ placeholder, key, absent }) => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+    await user.click(screen.getByPlaceholderText(placeholder));
+    await user.keyboard('2026-08-01 00:00');
+    const ok = document.querySelector('.ant-picker-ok button');
+    if (!(ok instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await waitFor(() => expect(ok).toBeEnabled());
+    await user.click(ok);
+    await user.click(screen.getByLabelText('实例 ID 筛选'));
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          [key]: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+          [absent]: undefined,
+        }),
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: '导出 CSV' }));
+    await waitFor(() => expect(downloadCsv).toHaveBeenCalledTimes(1));
+    expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        [key]: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+        [absent]: undefined,
+        page: 1,
+        pageSize: 100,
+      }),
+    );
+  });
+
+  it('clears a bounded range before applying an end-only filter', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker unavailable');
+    const start = screen.getByPlaceholderText('开始时间');
+    await user.click(start);
+    await user.keyboard('2026-08-01 00:00');
+    await user.tab();
+    await user.keyboard('2026-08-02 00:00');
+    const ok = document.querySelector('.ant-picker-ok button');
+    if (!(ok instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await user.click(ok);
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: new Date('2026-08-01T00:00:00').toISOString().replace('Z', ''),
+          to: new Date('2026-08-02T00:00:00').toISOString().replace('Z', ''),
+        }),
+      ),
+    );
+    await user.hover(start);
+    const clear = document.querySelector('.ant-picker-clear');
+    if (!(clear instanceof HTMLElement)) throw new Error('range picker clear control missing');
+    await user.click(clear);
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: undefined, to: undefined }),
+      ),
+    );
+    await user.click(screen.getByPlaceholderText('结束时间'));
+    await user.keyboard('2026-08-02 00:00');
+    const endOk = document.querySelector('.ant-picker-ok button');
+    if (!(endOk instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await user.click(endOk);
+    await user.click(screen.getByLabelText('实例 ID 筛选'));
+    await waitFor(() =>
+      expect(listSystemAlertsPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: undefined,
+          to: new Date('2026-08-02T00:00:00').toISOString().replace('Z', ''),
+        }),
+      ),
     );
   });
 
@@ -744,6 +828,48 @@ describe('SystemAlertsPage', () => {
     expect(payload.labels).toBeUndefined();
   });
 
+  it.each(['brokerName=a, brokerName=b', ' =broker-a'])(
+    'rejectsSilenceLabelsWithoutDroppingConditionsTest: %s',
+    async (labels) => {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+      fireEvent.change(screen.getByLabelText('标签范围'), { target: { value: labels } });
+      fireEvent.change(screen.getByLabelText('开始时间'), {
+        target: { value: '2026-08-11T01:00' },
+      });
+      fireEvent.change(screen.getByLabelText('结束时间'), {
+        target: { value: '2026-08-11T02:00' },
+      });
+      await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+      expect(await screen.findByText('标签格式应为 key=value，并以逗号分隔')).toBeInTheDocument();
+      expect(createAlertSilence).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preservesPrototypeNamedSilenceLabelsInTheRequestTest', async () => {
+    vi.mocked(createAlertSilence).mockResolvedValue({
+      id: 10,
+      startsAt: '2026-08-11T01:00',
+      endsAt: '2026-08-11T02:00',
+      createdBy: 'admin',
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: '维护窗口' }));
+    fireEvent.change(screen.getByLabelText('标签范围'), {
+      target: { value: ' __proto__ =broker-a,constructor=rack=one,toString=orders' },
+    });
+    fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-08-11T01:00' } });
+    fireEvent.change(screen.getByLabelText('结束时间'), { target: { value: '2026-08-11T02:00' } });
+    await user.click(screen.getByRole('button', { name: /创\s*建/ }));
+    await waitFor(() => expect(createAlertSilence).toHaveBeenCalledTimes(1));
+    const labels = vi.mocked(createAlertSilence).mock.calls[0][0].labels;
+    expect(JSON.parse(JSON.stringify(labels))).toEqual(
+      JSON.parse('{"__proto__":"broker-a","constructor":"rack=one","toString":"orders"}'),
+    );
+  });
+
   it('surfaces the label validation message when the silence labels are invalid', async () => {
     vi.mocked(listAlertSilencesPage).mockResolvedValue({
       items: [],
@@ -902,5 +1028,39 @@ describe('SystemAlertsPage', () => {
 
     expect(screen.getByText(/BUSINESS.*page-three/)).toBeInTheDocument();
     expect(screen.queryByText(/page-two/)).not.toBeInTheDocument();
+  });
+
+  it('reports a failed alert read instead of an empty backlog', async () => {
+    vi.mocked(listSystemAlertsPage).mockRejectedValueOnce(new Error('alert store offline'));
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // A store that was never reached must not be reported as a page with nothing left to acknowledge.
+    expect(screen.queryByText(/本页 0 条未确认/)).not.toBeInTheDocument();
+    expect(screen.getByText(/本页 - 条未确认/)).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
+
+    await user.click(screen.getByRole('button', { name: /重试/ }));
+
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('获取数据失败')).not.toBeInTheDocument());
+    expect(screen.getByText(/本页 2 条未确认/)).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).toMatch(/1/);
+  });
+
+  it('drops the per-level counters when a later read fails', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText('Broker unavailable')).toBeInTheDocument();
+
+    vi.mocked(listSystemAlertsPage).mockRejectedValueOnce(new Error('alert store offline'));
+    await user.click(levelFilterItem(/警告/));
+
+    expect(await screen.findByText('获取数据失败')).toBeInTheDocument();
+    // The last page stays readable, but numbers derived from the failed read must not look current.
+    expect(screen.getByText('Broker unavailable')).toBeInTheDocument();
+    expect(levelFilterItem(/严重/).textContent).not.toMatch(/[0-9]/);
   });
 });

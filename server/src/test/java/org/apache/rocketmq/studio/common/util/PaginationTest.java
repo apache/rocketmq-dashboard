@@ -54,4 +54,16 @@ class PaginationTest {
         assertThat(Pagination.pageOffset(5, 0)).isEqualTo(0L);
         assertThat(Pagination.pageOffset(5, -1)).isEqualTo(0L);
     }
+    @org.junit.jupiter.api.Test
+    void incompleteProviderPagesUseKnownUnfilteredCountsTest() {
+        assertThat(Pagination.isIncompletePage(0, 0, 20, 1L)).isTrue();
+        assertThat(Pagination.isIncompletePage(20, 3, 20, 24L)).isTrue();
+        assertThat(Pagination.isIncompletePage(20, 3, 20, 23L)).isFalse();
+        assertThat(Pagination.isIncompletePage(0, 20, 20, 21L)).isFalse();
+        assertThat(Pagination.isIncompletePage(0, 0, 20, 0L)).isFalse();
+        assertThat(Pagination.isIncompletePage(0, 0, 20, null)).isFalse();
+        assertThat(Pagination.isIncompletePage(0, 0, 20, -1L)).isFalse();
+        assertThat(Pagination.isIncompletePage(Long.MAX_VALUE - 1, 2, 20, Long.MAX_VALUE)).isFalse();
+    }
+
 }
