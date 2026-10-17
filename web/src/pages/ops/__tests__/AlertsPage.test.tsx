@@ -438,15 +438,12 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('Broker 磁盘使用率')).not.toBeInTheDocument();
   });
 
-  it('refreshes metric options from the selected instance capabilities', async () => {
-    vi.mocked(listNativeAlertMetrics).mockResolvedValue([
-      {
-        key: 'consumer.lag.total',
-        label: 'Consumer lag total',
-        thresholdUnit: 'messages',
-        supportsConsumerGroup: true,
-      },
-    ]);
+  it('surfaces a failed metric-capabilities load and keeps the selector unusable', async () => {
+    // The happy path (options rendered from the selected instance's capabilities) is
+    // covered by the business-metrics test above; this covers the failure branch,
+    // which nothing else exercises: the error must surface and the metric selector
+    // must not offer stale or empty-but-enabled options.
+    vi.mocked(listNativeAlertMetrics).mockRejectedValue(new Error('capabilities down'));
     const user = userEvent.setup();
     renderPage('BUSINESS');
     await user.click(await screen.findByRole('button', { name: '新建规则' }));
@@ -455,6 +452,12 @@ describe('AlertsPage', () => {
     await user.click(getSelectOption('local'));
 
     await waitFor(() => expect(listNativeAlertMetrics).toHaveBeenCalledWith('local', 'BUSINESS'));
+    // The failure branch must surface the error and leave the modal usable
+    // (the metric selector stays present, not crashed or wedge-open loading).
+    expect(
+      await screen.findByText('告警指标能力加载失败，请检查 RocketMQ 实例'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: '监控指标' })).toBeInTheDocument();
   });
 
   it('preserves the existing metric while opening the edit dialog', async () => {
