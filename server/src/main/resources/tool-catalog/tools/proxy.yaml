@@ -4,7 +4,7 @@ tools:
     cli:
       resource: proxy
       verb: list
-    description: "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability."
+    description: "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability. Aggregation is best-effort: the scan block names the Instances whose discovery failed and marks the result incomplete, so a partial list is never read as the full inventory."
     riskLevel: L1
     permission: proxy:read
     requiredCapabilities: []
@@ -21,6 +21,7 @@ tools:
       type: object
       required:
         - items
+        - scan
       additionalProperties: false
       properties:
         items:
@@ -47,6 +48,22 @@ tools:
                 type: integer
               remotingPort:
                 type: integer
+        scan:
+          type: object
+          description: Status of the platform-level aggregation this list was collected by.
+          required:
+            - complete
+            - failedInstances
+          additionalProperties: false
+          properties:
+            complete:
+              type: boolean
+              description: Whether every scanned Instance answered; false when some are missing from items.
+            failedInstances:
+              type: array
+              description: Instances whose Proxy discovery failed; their endpoints are absent from items.
+              items:
+                type: string
     viewHint: table
     deprecated: false
   - name: rmq.proxy.config

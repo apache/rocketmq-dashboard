@@ -21,7 +21,7 @@ package catalog
 var defaultDocument = Document{
 	Version:              "2.0.0",
 	MinimumClientVersion: "2.0.0",
-	Digest:               "66ac58f23fbec620f3a0127e901a89f4bcad6c7ee08dd54cbd8f304730ed2199",
+	Digest:               "3c9095922be803b5a93823eaad64ea629bdb0d5783c1669404347a6fd426ecd3",
 	Tools: []Tool{
 		{
 			Name:                 "rmq.acl.list",
@@ -174,7 +174,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.broker.list",
 			CLI:                  CLI{Resource: "broker", Verb: "list"},
-			Description:          "List Broker replica groups across Studio, optionally filtered by physical cluster name.",
+			Description:          "List Broker replica groups across Studio, optionally filtered by physical cluster name. Aggregation is best-effort: the scan block names the Instances whose discovery failed and marks the result incomplete, so a partial list is never read as the full inventory.",
 			RiskLevel:            "L1",
 			Permission:           "broker:read",
 			RequiredCapabilities: []string{"BROKER_ADMIN"},
@@ -623,7 +623,7 @@ var defaultDocument = Document{
 		{
 			Name:                 "rmq.proxy.list",
 			CLI:                  CLI{Resource: "proxy", Verb: "list"},
-			Description:          "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability.",
+			Description:          "Discover Proxy data endpoints, optionally filtered by physical cluster name. Discovery does not establish Broker cluster membership or management capability. Aggregation is best-effort: the scan block names the Instances whose discovery failed and marks the result incomplete, so a partial list is never read as the full inventory.",
 			RiskLevel:            "L1",
 			Permission:           "proxy:read",
 			RequiredCapabilities: []string{},

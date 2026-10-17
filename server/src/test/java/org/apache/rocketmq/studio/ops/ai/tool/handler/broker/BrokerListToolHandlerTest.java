@@ -22,10 +22,11 @@ import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.broker.BrokerListInput;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedBroker;
 import org.apache.rocketmq.studio.ops.ai.tool.support.PlatformClusterResolver.ManagedCluster;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -33,6 +34,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -63,14 +65,15 @@ class BrokerListToolHandlerTest {
                         broker("broker-a", "10.0.0.1:10911"),
                         broker("broker-b", "10.0.0.2:10911")));
 
-        ListOutput<BrokerVO> result = handler.execute(
-                new BrokerListInput(null), context("instance-a"));
+        var result = handler.execute(new BrokerListInput(null), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(BrokerVO::getName, BrokerVO::getAddr)
                 .containsExactly(
                         tuple("broker-a", "10.0.0.1:10911"),
                         tuple("broker-b", "10.0.0.2:10911"));
+        assertThat(wireForm(result)).containsEntry("scan",
+                Map.of("complete", true, "failedInstances", List.of()));
     }
 
     @Test
@@ -83,8 +86,7 @@ class BrokerListToolHandlerTest {
                         broker("broker-a", "10.0.0.1:10911"),
                         broker("broker-x", "10.0.0.9:10911")));
 
-        ListOutput<BrokerVO> result = handler.execute(
-                new BrokerListInput("rmq-a"), context("instance-a"));
+        var result = handler.execute(new BrokerListInput("rmq-a"), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(BrokerVO::getName)
@@ -100,13 +102,23 @@ class BrokerListToolHandlerTest {
         when(clusterProvider.discoverBrokers("instance-up", null))
                 .thenReturn(List.of(broker("broker-u", "10.0.0.3:10911")));
 
-        ListOutput<BrokerVO> result = handler.execute(
-                new BrokerListInput(null), context("instance-a"));
+        var result = handler.execute(new BrokerListInput(null), context("instance-a"));
 
         assertThat(result.items())
                 .extracting(BrokerVO::getName)
                 .containsExactly("broker-u");
+        // The wire form is what a caller reads: an instance whose discovery failed has to be named,
+        // because a list that silently omits it is indistinguishable from one without brokers.
+        assertThat(wireForm(result)).containsEntry("scan",
+                Map.of("complete", false, "failedInstances", List.of("instance-down")));
     }
+
+    /** The serialized shape ToolSchemaValidator and every caller observe, not the Java record. */
+    private static Map<String, Object> wireForm(Object output) {
+        return OBJECT_MAPPER.convertValue(output, new TypeReference<Map<String, Object>>() { });
+    }
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static InstanceVO instance(String name) {
         return InstanceVO.builder().name(name).vendor(InstanceVendor.APACHE).build();

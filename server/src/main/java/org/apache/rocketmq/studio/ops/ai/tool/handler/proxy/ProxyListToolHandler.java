@@ -19,7 +19,7 @@ package org.apache.rocketmq.studio.ops.ai.tool.handler.proxy;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
 import org.apache.rocketmq.studio.instance.InstanceVO;
-import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ListOutput;
+import org.apache.rocketmq.studio.ops.ai.tool.contract.common.ScanOutput;
 import org.apache.rocketmq.studio.ops.ai.tool.contract.proxy.ProxyListInput;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolExecutionContext;
 import org.apache.rocketmq.studio.ops.ai.tool.core.ToolHandler;
@@ -30,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,14 +38,15 @@ import java.util.Map;
 /**
  * Platform-level Proxy data-endpoint discovery (decision 26). With {@code clusterName} the
  * resolver pins the owning instance; otherwise every Apache instance is aggregated and
- * deduplicated by address. Discovery is via the heartbeat-syncer group and does not establish
- * cluster membership or management capability. No instanceId.
+ * deduplicated by address, and an instance whose discovery fails is named in
+ * {@code failedInstances} instead of being dropped silently. Discovery is via the heartbeat-syncer
+ * group and does not establish cluster membership or management capability. No instanceId.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ProxyListToolHandler
-        implements ToolHandler<ProxyListInput, ListOutput<ProxyVO>> {
+        implements ToolHandler<ProxyListInput, ScanOutput<ProxyVO>> {
 
     private final PlatformClusterResolver clusterResolver;
     private final ClusterProvider clusterProvider;
@@ -60,8 +62,9 @@ public class ProxyListToolHandler
     }
 
     @Override
-    public ListOutput<ProxyVO> execute(ProxyListInput input, ToolExecutionContext context) {
+    public ScanOutput<ProxyVO> execute(ProxyListInput input, ToolExecutionContext context) {
         Map<String, ProxyVO> unique = new LinkedHashMap<>();
+        List<String> failedInstances = new ArrayList<>();
         if (StringUtils.hasText(input.clusterName())) {
             PlatformClusterResolver.ManagedCluster cluster = clusterResolver.require(input.clusterName());
             clusterProvider.discoverProxies(cluster.instanceId())
@@ -72,11 +75,14 @@ public class ProxyListToolHandler
                     clusterProvider.discoverProxies(instance.getName())
                             .forEach(proxy -> unique.putIfAbsent(proxy.getAddr(), proxy));
                 } catch (Exception e) {
+                    // The caller has to know which instances are missing from items, or an
+                    // unreachable instance reads as one without proxies.
+                    failedInstances.add(instance.getName());
                     log.warn("Skipping instance {} during proxy aggregation: {}",
                             instance.getName(), e.getMessage());
                 }
             }
         }
-        return new ListOutput<>(List.copyOf(unique.values()));
+        return ScanOutput.of(List.copyOf(unique.values()), failedInstances);
     }
 }
