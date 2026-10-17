@@ -72,6 +72,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -783,6 +784,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             config.setConsumeBroadcastEnable(true);
             config.setRetryQueueNums(1);
             config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
+            // The create form submits the ordered spelling of the group's delivery order type,
+            // and consumeMessageOrderly is the very flag the group settings dialog reads and
+            // writes, so an ordered create request has to reach the broker instead of being
+            // dropped on the floor.
+            boolean consumeMessageOrderly = isOrderlyDelivery(group.getDeliveryOrderType());
+            config.setConsumeMessageOrderly(consumeMessageOrderly);
 
             boolean physicalExists = importing && verifyGroupImport(admin, brokerAddrs, config);
             if (!physicalExists) {
@@ -793,7 +800,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             persistConsumerGroup(group, groupClusterName, config.getRetryMaxTimes());
             recordAudit("CREATE_GROUP", groupName,
-                    "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
+                    "retryMaxTimes=" + config.getRetryMaxTimes()
+                            + ", consumeMessageOrderly=" + consumeMessageOrderly, "SUCCESS");
             return group;
         } catch (BusinessException e) {
             recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
@@ -802,6 +810,20 @@ public class RocketMQAdminClientImpl implements AdminClient {
             recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
             throw classifyBrokerFailure(e, "create consumer group");
         }
+    }
+
+    /**
+     * Ordered-delivery spellings accepted across the console and the providers: the create form
+     * submits PARTITON_ORDER / MESSAGES_ORDER, the CSV importer also allows PARTITION_ORDER, and
+     * the cloud providers tolerate FIFO and ORDERLY. TencentInstanceProvider.isOrderly applies the
+     * same vocabulary, so "ordered" keeps meaning the same thing on every backend.
+     */
+    private static boolean isOrderlyDelivery(String deliveryOrderType) {
+        if (deliveryOrderType == null || deliveryOrderType.isBlank()) {
+            return false;
+        }
+        String normalized = deliveryOrderType.toUpperCase(Locale.ROOT);
+        return normalized.contains("FIFO") || normalized.contains("ORDER");
     }
 
     private void persistConsumerGroup(ConsumerGroupVO group, String clusterName, int retryMaxTimes) {

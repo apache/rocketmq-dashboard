@@ -29,6 +29,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageDTO;
 import org.apache.rocketmq.studio.instance.message.DirectConsumeMessageResultVO;
 import org.apache.rocketmq.studio.instance.message.MessageQueryResult;
+import org.apache.rocketmq.studio.instance.message.QueueOffsetVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -133,8 +134,13 @@ public interface InstanceProvider {
         return createConsumerGroup(instanceId, group);
     }
 
+    /**
+     * Updates an existing consumer group in place. A provider that cannot update a group must reject the
+     * request rather than fall back to creation: answering an update with the vendor's create call either
+     * fails on the group that already exists or reports success without applying the requested change.
+     */
     default ConsumerGroupVO updateConsumerGroup(String instanceId, ConsumerGroupVO group) {
-        return createConsumerGroup(instanceId, group);
+        throw new BusinessException(501, "Updating an existing consumer group is not supported by this provider");
     }
 
     void deleteConsumerGroup(String instanceId, String groupName);
@@ -204,6 +210,29 @@ public interface InstanceProvider {
     }
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
+
+    /**
+     * Lookup by the client-generated unique key (UNIQ_KEY index).
+     */
+    default List<MessageRecordVO> queryMessageByUniqueKey(String instanceId, String topic, String uniqueKey,
+                                                          Long startTime, Long endTime) {
+        throw new UnsupportedOperationException("Unique-key message lookup is not supported");
+    }
+
+    /**
+     * Lists the read queues available for the topic.
+     */
+    default List<QueueOffsetVO> getQueueOffsets(String instanceId, String topic) {
+        throw new UnsupportedOperationException("Queue browsing is not supported");
+    }
+
+    /**
+     * Pulls one message from a broker queue at an exact offset.
+     */
+    default MessageRecordVO pullMessageAtOffset(String instanceId, String topic, String brokerName,
+                                                int queueId, long offset) {
+        throw new UnsupportedOperationException("Offset message browsing is not supported");
+    }
 
     default SendMessageVO sendMessage(SendMessageDTO request) {
         throw new UnsupportedOperationException("Message sending is not supported");

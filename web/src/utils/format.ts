@@ -32,6 +32,23 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   );
 }
 
+/**
+ * Format an epoch-millisecond value or a timestamp string as 'YYYY-MM-DD HH:mm:ss.SSS'.
+ *
+ * Message store times and trace node timestamps arrive either as epoch milliseconds (Apache
+ * brokers) or as formatted strings (cloud providers), so both are accepted. Zero is a real
+ * timestamp rather than a missing one, and only an unusable value yields the placeholder - a
+ * malformed timestamp has to read as absent instead of rendering as NaN-NaN-NaN.
+ */
+export function formatTimeMs(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '-';
+  const timestamp = typeof value === 'string' ? Date.parse(value) : value;
+  if (!Number.isFinite(timestamp)) return '-';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
+  return `${formatDateTime(date)}.${pad(date.getMilliseconds(), 3)}`;
+}
+
 export interface FormatUtcDateTimeOptions {
   /**
    * Append the viewer's short zone name (`GMT+8`). Defaults to true; pass false where the zone is
@@ -105,6 +122,9 @@ export function formatRelativeTime(
   now = Date.now(),
 ): string {
   if (!Number.isFinite(timestamp) || !Number.isFinite(now)) return '-';
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  if (Number.isNaN(updatedAt.getTime()) || Number.isNaN(current.getTime())) return '-';
   if (!timestamp) return t('ai.history.justNow');
 
   const elapsed = Math.max(0, now - timestamp);
@@ -112,8 +132,6 @@ export function formatRelativeTime(
   if (minutes < 1) return t('ai.history.justNow');
   if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
 
-  const updatedAt = new Date(timestamp);
-  const current = new Date(now);
   const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
   if (updatedAt.toDateString() === current.toDateString()) {
     return new Intl.DateTimeFormat(locale, {
@@ -153,13 +171,15 @@ export function formatBytes(bytes: number, decimals = 1): string {
     value /= k;
     i += 1;
   }
-  // The unit is chosen from the unrounded value, so a value just below a boundary used to render
-  // as 1024.0 KB - a mantissa of 1024 that the loop above exists to avoid.
-  while (i < units.length - 1 && Number(value.toFixed(digits)) >= k) {
+  // A byte count has no meaningful fraction, so the base unit renders whole; every scaled unit keeps
+  // the requested precision. The promotion loop has to use the same width it renders with, or a
+  // value just below a boundary would round up to 1024 B instead of being promoted to 1.0 KB.
+  const precision = () => (i === 0 ? 0 : digits);
+  while (i < units.length - 1 && Number(value.toFixed(precision())) >= k) {
     value /= k;
     i += 1;
   }
-  return `${value.toFixed(digits)} ${units[i]}`;
+  return `${value.toFixed(precision())} ${units[i]}`;
 }
 
 /**

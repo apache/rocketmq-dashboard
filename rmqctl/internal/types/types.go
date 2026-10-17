@@ -64,6 +64,7 @@ const (
 	CodeTimeout         = "TIMEOUT"
 	CodeUnavailable     = "UNAVAILABLE"
 	CodeCommandFailed   = "COMMAND_FAILED"
+	CodeCanceled        = "CANCELED"
 )
 
 type CLIError struct {

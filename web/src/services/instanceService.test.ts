@@ -19,7 +19,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dataModeMock = vi.hoisted(() => ({ isMockMode: vi.fn(() => true) }));
 vi.mock('./dataMode', () => dataModeMock);
-const instanceApiMock = vi.hoisted(() => ({ listInstances: vi.fn() }));
+const instanceApiMock = vi.hoisted(() => ({
+  listInstances: vi.fn(),
+  createInstance: vi.fn(),
+  updateInstance: vi.fn(),
+  deleteInstance: vi.fn(),
+  deleteInstancesBatch: vi.fn(),
+}));
 vi.mock('../api/instance', () => instanceApiMock);
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
@@ -28,6 +34,7 @@ vi.mock('../config', () => ({
 import {
   createInstance,
   deleteInstance,
+  deleteInstancesBatch,
   getInstanceCapabilities,
   listInstances,
   updateInstance,
@@ -116,10 +123,43 @@ describe('instanceService mock instances', () => {
 
     const second = await getInstanceCapabilities('instance-direct-1');
 
-    expect(second.capabilities).toContain('DLQ_MANAGEMENT');
+    expect(second.capabilities).toEqual(
+      expect.arrayContaining(['MESSAGE_SEND', 'DIRECT_MESSAGE_CONSUME', 'DLQ_MANAGEMENT']),
+    );
     await expect(getInstanceCapabilities('missing-instance')).rejects.toThrow(
       'Instance not found: missing-instance',
     );
+  });
+
+  it('derives provider capabilities for newly created mock instances', async () => {
+    const apacheName = 'mock-capability-apache';
+    const tencentName = 'mock-capability-tencent';
+    try {
+      await createInstance({
+        name: apacheName,
+        type: 'DIRECT',
+        endpoint: 'apache:9876',
+        vendor: 'APACHE',
+      });
+      await createInstance({
+        name: tencentName,
+        type: 'CLOUD',
+        endpoint: 'tencent:8080',
+        vendor: 'TENCENT',
+      });
+
+      await expect(getInstanceCapabilities(apacheName)).resolves.toEqual(
+        expect.objectContaining({
+          capabilities: expect.arrayContaining(['DIRECT_MESSAGE_CONSUME', 'DLQ_MANAGEMENT']),
+        }),
+      );
+      const tencent = await getInstanceCapabilities(tencentName);
+      expect(tencent.capabilities).toContain('DIRECT_MESSAGE_CONSUME');
+      expect(tencent.capabilities).not.toContain('DLQ_MANAGEMENT');
+    } finally {
+      await deleteInstance(apacheName);
+      await deleteInstance(tencentName);
+    }
   });
 });
 
@@ -185,5 +225,105 @@ describe('instanceService list request dedupe', () => {
 
     resolveRealList([]);
     await expect(realRequest).resolves.toEqual([]);
+  });
+});
+
+describe('instanceService dedupe invalidation after mutations', () => {
+  beforeEach(() => {
+    dataModeMock.isMockMode.mockReturnValue(false);
+    instanceApiMock.listInstances.mockReset();
+  });
+
+  function instanceFixture(name: string, remark: string | null = null): Instance {
+    return {
+      id: 1,
+      name,
+      remark,
+      type: 'PROXY_CLUSTER',
+      endpoint: '10.0.0.1:8080',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      gmtCreate: '2026-01-01T00:00:00Z',
+      gmtModified: '2026-01-01T00:00:00Z',
+    };
+  }
+
+  function holdFirstListRequest(): { resolve: (value: Instance[]) => void } {
+    const holder: { resolve?: (value: Instance[]) => void } = {};
+    instanceApiMock.listInstances.mockImplementationOnce(
+      () =>
+        new Promise<Instance[]>((resolve) => {
+          holder.resolve = resolve;
+        }),
+    );
+    return holder as { resolve: (value: Instance[]) => void };
+  }
+
+  it('does not serve the pre-create snapshot to a list request issued after createInstance', async () => {
+    const before = [instanceFixture('kept')];
+    const after = [instanceFixture('kept'), instanceFixture('created')];
+    const first = holdFirstListRequest();
+    instanceApiMock.listInstances.mockResolvedValueOnce(after);
+
+    const staleRead = listInstances({});
+    await createInstance({
+      name: 'created',
+      type: 'PROXY_CLUSTER',
+      endpoint: '10.0.0.2:8080',
+    });
+    const refresh = listInstances({});
+    first.resolve(before);
+
+    await expect(staleRead).resolves.toEqual(before);
+    await expect(refresh).resolves.toEqual(after);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not serve the pre-update snapshot to a list request issued after updateInstance', async () => {
+    const before = [instanceFixture('kept', 'old')];
+    const after = [instanceFixture('kept', 'updated')];
+    const first = holdFirstListRequest();
+    instanceApiMock.listInstances.mockResolvedValueOnce(after);
+
+    const staleRead = listInstances({});
+    await updateInstance({ instanceId: 'kept', remark: 'updated' });
+    const refresh = listInstances({});
+    first.resolve(before);
+
+    await expect(staleRead).resolves.toEqual(before);
+    await expect(refresh).resolves.toEqual(after);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not serve the pre-delete snapshot to a list request issued after deleteInstance', async () => {
+    const before = [instanceFixture('removed'), instanceFixture('kept')];
+    const after = [instanceFixture('kept')];
+    const first = holdFirstListRequest();
+    instanceApiMock.listInstances.mockResolvedValueOnce(after);
+
+    const staleRead = listInstances({});
+    await deleteInstance('removed');
+    const refresh = listInstances({});
+    first.resolve(before);
+
+    await expect(staleRead).resolves.toEqual(before);
+    await expect(refresh).resolves.toEqual(after);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not serve the pre-delete snapshot to a list request issued after deleteInstancesBatch', async () => {
+    const before = [instanceFixture('removed'), instanceFixture('kept')];
+    const after = [instanceFixture('kept')];
+    const first = holdFirstListRequest();
+    instanceApiMock.listInstances.mockResolvedValueOnce(after);
+
+    const staleRead = listInstances({});
+    await deleteInstancesBatch(['removed']);
+    const refresh = listInstances({});
+    first.resolve(before);
+
+    await expect(staleRead).resolves.toEqual(before);
+    await expect(refresh).resolves.toEqual(after);
+    expect(instanceApiMock.listInstances).toHaveBeenCalledTimes(2);
   });
 });

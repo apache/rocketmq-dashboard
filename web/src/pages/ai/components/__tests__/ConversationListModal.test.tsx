@@ -470,6 +470,53 @@ describe('ConversationListModal', () => {
     expect(deleteMock).toHaveBeenCalledWith(7);
   });
 
+  it('keepsTheOpenConversationWhenItsDeleteFailsTest', async () => {
+    const user = userEvent.setup();
+    listMock
+      .mockResolvedValueOnce(page([conversation(7, '检查集群状态')], 1, 1))
+      .mockResolvedValue(page([conversation(7, '检查集群状态')], 1, 1));
+    deleteMock.mockRejectedValue(new Error('workspace is busy'));
+    const { onActiveDeleted } = renderModal({ activeConversationId: 7 });
+    await screen.findByText('当前会话');
+    const listCallsBefore = listMock.mock.calls.length;
+
+    await user.click(screen.getByTestId('ai-conversation-row-delete-7'));
+    await confirmDelete(user);
+
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledWith(7));
+    // The conversation is still on screen, so the caller must not be sent away from it.
+    expect(await screen.findByText('删除失败，请稍后重试')).toBeInTheDocument();
+    expect(onActiveDeleted).not.toHaveBeenCalled();
+    // The failed delete still refreshes the list rather than returning early.
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(listCallsBefore));
+  });
+
+  it('keepsTheOpenConversationWhenOnlyItsBatchDeleteFailsTest', async () => {
+    const user = userEvent.setup();
+    listMock
+      .mockResolvedValueOnce(
+        page([conversation(7, '检查集群状态'), conversation(8, '另一个会话')], 2, 1),
+      )
+      .mockResolvedValue(page([conversation(7, '检查集群状态')], 1, 1));
+    deleteMock.mockImplementation(async (conversationId) => {
+      if (conversationId === 7) throw new Error('workspace is busy');
+    });
+    const { onActiveDeleted } = renderModal({ activeConversationId: 7 });
+    await screen.findByText('当前会话');
+    const listCallsBefore = listMock.mock.calls.length;
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
+    await user.click(screen.getByTestId('ai-conversation-selected-delete'));
+    await confirmDelete(user);
+
+    await waitFor(() => expect(deleteMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('已删除 1 条会话，1 条删除失败')).toBeInTheDocument();
+    expect(onActiveDeleted).not.toHaveBeenCalled();
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(listCallsBefore));
+  });
+
   it('stepsBackAPageWhenTheDeleteEmptiesItTest', async () => {
     const user = userEvent.setup();
     listMock.mockImplementation(async (params) =>

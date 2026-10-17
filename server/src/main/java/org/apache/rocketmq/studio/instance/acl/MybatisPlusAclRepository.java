@@ -149,7 +149,11 @@ public class MybatisPlusAclRepository implements AclRepository {
         if (entity.getId() != null && userMapper.selectById(entity.getId()) != null) {
             userMapper.updateById(entity);
         } else {
-            userMapper.insert(entity);
+            try {
+                userMapper.insert(entity);
+            } catch (DuplicateKeyException exception) {
+                throw aclUserConflict(user.getUsername());
+            }
             user.setId(entity.getId());
         }
         return user;
@@ -164,7 +168,14 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         RmqAclUser entity = toUserEntity(user);
         entity.setGmtCreate(existing.getGmtCreate());
-        if (userMapper.updateById(entity) == 0) {
+        int updated;
+        try {
+            updated = userMapper.updateById(entity);
+        } catch (DuplicateKeyException exception) {
+            // Renaming onto an existing username hits `uk_username` just as creating one does.
+            throw aclUserConflict(user.getUsername());
+        }
+        if (updated == 0) {
             return Optional.empty();
         }
         if (user.getClusters() != null && entity.getClusters() == null) {
@@ -178,6 +189,16 @@ public class MybatisPlusAclRepository implements AclRepository {
     @Override
     public boolean deleteUser(Long id) {
         return id != null && userMapper.deleteById(id) > 0;
+    }
+
+    /**
+     * The {@code rmq_acl_user} unique keys ({@code uk_username}, {@code uk_access_key}) make a
+     * duplicate a client mistake rather than a server fault: without this the generic advice answers
+     * every one of them with 500 "Internal Server Error". Same answer as the sibling duplicate-key
+     * paths ({@code createAndUpdatePlainAccessConfig} below, {@code CloudCredentialService}).
+     */
+    private BusinessException aclUserConflict(String username) {
+        return new BusinessException(409, "ACL user already exists: " + username);
     }
 
     /**

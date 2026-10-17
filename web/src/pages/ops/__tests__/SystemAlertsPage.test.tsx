@@ -6,7 +6,7 @@
  */
 
 import { App } from 'antd';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -15,6 +15,7 @@ import { formatUtcDateTime } from '../../../utils/format';
 import { downloadCsv } from '../../../utils/download';
 import {
   acknowledgeAlert,
+  clearAcknowledgedAlerts,
   createAlertSilence,
   listAlertDeliveries,
   listRelatedSystemAlerts,
@@ -70,6 +71,14 @@ const renderPage = () =>
       </LangProvider>
     </App>,
   );
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('SystemAlertsPage', () => {
   beforeEach(() => {
@@ -199,6 +208,73 @@ describe('SystemAlertsPage', () => {
     expect(
       screen.getByText(`确认：admin · ${formatUtcDateTime('2026-08-23T10:40:00.000000')}`),
     ).toBeInTheDocument();
+  });
+
+  it('asks before deleting every acknowledged alert', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          level: 'warning',
+          title: 'Disk recovered',
+          description: 'disk usage returned to normal',
+          time: '2026-08-23T10:35:38.590731',
+          transition: 'RESOLVED',
+          acknowledged: true,
+          acknowledgedBy: 'admin',
+          acknowledgedAt: '2026-08-23T10:40:00.000000',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    // A single click used to purge every acknowledged alert and its delivery records for good.
+    await user.click(await screen.findByRole('button', { name: '清除已确认' }));
+    expect(clearAcknowledgedAlerts).not.toHaveBeenCalled();
+
+    await user.click(await screen.findByRole('button', { name: /^确\s*认$/ }));
+    await waitFor(() => expect(clearAcknowledgedAlerts).toHaveBeenCalledTimes(1));
+  });
+
+  it('scopes the header unacknowledged count to the page it counted', async () => {
+    vi.mocked(listSystemAlertsPage).mockResolvedValue({
+      items: [
+        {
+          id: 9,
+          level: 'warning',
+          title: 'Disk recovered',
+          description: 'disk usage returned to normal',
+          time: '2026-08-23T10:35:38.590731',
+          transition: 'RESOLVED',
+          acknowledged: true,
+          acknowledgedBy: 'admin',
+          acknowledgedAt: '2026-08-23T10:40:00.000000',
+        },
+        {
+          id: 10,
+          level: 'error',
+          title: 'Broker down',
+          description: 'no heartbeat',
+          time: '2026-08-23T10:36:00.000000',
+          transition: 'FIRING',
+          acknowledged: false,
+          acknowledgedBy: null,
+          acknowledgedAt: null,
+        },
+      ],
+      total: 60,
+      page: 1,
+      size: 20,
+    });
+    renderPage();
+
+    // The feed is paged, so the header can only count what this page holds: "当前 n 条未确认"
+    // reads as a feed-wide backlog that changes as the operator pages.
+    expect(await screen.findByText(/本页 1 条未确认/)).toBeInTheDocument();
   });
 
   it('filters backend alert levels case-insensitively', async () => {
@@ -427,6 +503,45 @@ describe('SystemAlertsPage', () => {
       expect(retryAlertDelivery).toHaveBeenCalledWith(9);
       expect(listAlertDeliveries).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('refreshes after each retry when two deliveries of one alert are retried', async () => {
+    type DeliveryList = Awaited<ReturnType<typeof listAlertDeliveries>>;
+    const firstRefresh = deferred<DeliveryList>();
+    const secondRefresh = deferred<DeliveryList>();
+    const failed: DeliveryList = [
+      { id: 9, channel: 'dingtalk', status: 'FAILED', attemptCount: 1 },
+      { id: 10, channel: 'email', status: 'FAILED', attemptCount: 1 },
+    ];
+    vi.mocked(listAlertDeliveries)
+      .mockResolvedValueOnce(failed)
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(secondRefresh.promise);
+    vi.mocked(retryAlertDelivery).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click((await screen.findAllByRole('button', { name: '投递记录' }))[0]);
+    await screen.findByText('email: FAILED (1)');
+    await user.click(screen.getAllByRole('button', { name: '重新投递' })[0]);
+    await waitFor(() => expect(listAlertDeliveries).toHaveBeenCalledTimes(2));
+    expect(retryAlertDelivery).toHaveBeenNthCalledWith(1, 9);
+    const emailDelivery = screen.getByText('email: FAILED (1)').parentElement;
+    expect(emailDelivery).not.toBeNull();
+    await user.click(within(emailDelivery!).getByRole('button', { name: '重新投递' }));
+    await waitFor(() => expect(retryAlertDelivery).toHaveBeenNthCalledWith(2, 10));
+    await waitFor(() => expect(listAlertDeliveries).toHaveBeenCalledTimes(3));
+
+    await act(async () =>
+      secondRefresh.resolve([
+        { id: 9, channel: 'dingtalk', status: 'RETRY_WAIT', attemptCount: 2 },
+        { id: 10, channel: 'email', status: 'RETRY_WAIT', attemptCount: 2 },
+      ]),
+    );
+    expect(await screen.findByText('email: RETRY_WAIT (2)')).toBeInTheDocument();
+
+    await act(async () => firstRefresh.resolve(failed));
+    expect(screen.getByText('email: RETRY_WAIT (2)')).toBeInTheDocument();
   });
 
   it('tracks simultaneous acknowledgements independently', async () => {
@@ -706,5 +821,79 @@ describe('SystemAlertsPage', () => {
       expect(deleteAlertSilence).toHaveBeenCalledWith(10);
       expect(listAlertSilencesPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 10 });
     });
+  });
+
+  it('keeps the newest maintenance-window page when an older request resolves later', async () => {
+    const pageTwo = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
+    const pageThree = deferred<Awaited<ReturnType<typeof listAlertSilencesPage>>>();
+    vi.mocked(listAlertSilencesPage)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 1,
+            domain: 'CLUSTER',
+            instanceId: 'page-one',
+            startsAt: '2026-08-10T01:00',
+            endsAt: '2026-08-10T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 1,
+        size: 10,
+      })
+      .mockImplementationOnce(() => pageTwo.promise)
+      .mockImplementationOnce(() => pageThree.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /维护窗口|缁存姢绐楀彛/ }));
+    await screen.findByText(/CLUSTER.*page-one/);
+    fireEvent.click(screen.getByRole('listitem', { name: '2' }));
+    fireEvent.click(screen.getByRole('listitem', { name: '3' }));
+    expect(listAlertSilencesPage).toHaveBeenNthCalledWith(2, { page: 2, pageSize: 10 });
+    expect(listAlertSilencesPage).toHaveBeenNthCalledWith(3, { page: 3, pageSize: 10 });
+
+    await act(async () => {
+      pageThree.resolve({
+        items: [
+          {
+            id: 3,
+            domain: 'BUSINESS',
+            instanceId: 'page-three',
+            startsAt: '2026-08-12T01:00',
+            endsAt: '2026-08-12T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 3,
+        size: 10,
+      });
+      await pageThree.promise;
+    });
+    expect(await screen.findByText(/BUSINESS.*page-three/)).toBeInTheDocument();
+
+    await act(async () => {
+      pageTwo.resolve({
+        items: [
+          {
+            id: 2,
+            domain: 'BUSINESS',
+            instanceId: 'page-two',
+            startsAt: '2026-08-11T01:00',
+            endsAt: '2026-08-11T02:00',
+            createdBy: 'admin',
+          },
+        ],
+        total: 30,
+        page: 2,
+        size: 10,
+      });
+      await pageTwo.promise;
+    });
+
+    expect(screen.getByText(/BUSINESS.*page-three/)).toBeInTheDocument();
+    expect(screen.queryByText(/page-two/)).not.toBeInTheDocument();
   });
 });

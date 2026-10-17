@@ -89,8 +89,14 @@ export async function queryLiteTopicSession(sessionId: string): Promise<LiteTopi
   return res.data.data;
 }
 
-export async function extendLiteTopicTTL(topicPattern: string, newTTL: number): Promise<void> {
-  await client.post('/liteTopic/extendTTL', { topicPattern, newTTL });
+export async function extendLiteTopicTTL(
+  instanceId: string,
+  topicPattern: string,
+  newTTL: number,
+): Promise<void> {
+  // The backend's LiteTopicTTLUpdateDTO requires a non-blank instanceId
+  // (the write is ownership-checked against the owning instance).
+  await client.post('/liteTopic/extendTTL', { instanceId, topicPattern, newTTL });
 }
 
 export async function queryLiteTopicQuota(namespace?: string): Promise<LiteTopicQuota> {

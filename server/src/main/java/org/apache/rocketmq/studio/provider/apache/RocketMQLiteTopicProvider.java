@@ -114,8 +114,22 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
         }
         try {
             return Boolean.TRUE.equals(adminFactory.execute(properties.getNamesrvAddr(), null, admin -> {
-                List<String> masters = masterAddresses(admin);
-                return !masters.isEmpty() && admin.getBrokerLiteInfo(masters.get(0)) != null;
+                // Probe every master and report supported when any of them answers the lite
+                // admin RPC: the iteration order of examineBrokerClusterInfo is arbitrary,
+                // so probing only the first master would disable the whole console on a
+                // mixed-version cluster (or while that one master restarts) even though
+                // the feature stays reachable through its peers.
+                for (String master : masterAddresses(admin)) {
+                    try {
+                        if (admin.getBrokerLiteInfo(master) != null) {
+                            return true;
+                        }
+                    } catch (Exception probeFailure) {
+                        log.debug("LiteTopic capability probe failed on {}: {}",
+                                master, probeFailure.getMessage());
+                    }
+                }
+                return false;
             }));
         } catch (Exception probeFailure) {
             // An older broker answers the lite RPC with an unsupported-code error; that is the
@@ -162,7 +176,16 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             throws Exception {
         Map<String, ParentTopicAccumulator> parents = new LinkedHashMap<>();
         for (String master : masters) {
-            GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+            final GetBrokerLiteInfoResponseBody info;
+            try {
+                info = admin.getBrokerLiteInfo(master);
+            } catch (Exception failure) {
+                // Every other per-master read in this provider degrades instead of failing
+                // the page; a single unreachable (or pre-lite) master must not turn the
+                // whole list into a 502 when its peers still answer.
+                log.warn("Skipping master {} for the LiteTopic list: {}", master, failure.getMessage());
+                continue;
+            }
             if (info == null || info.getTopicMeta() == null) {
                 continue;
             }
@@ -422,7 +445,15 @@ public class RocketMQLiteTopicProvider implements LiteTopicProvider {
             long currentSessions = 0;
             long maxSessions = 0;
             for (String master : masters) {
-                GetBrokerLiteInfoResponseBody info = admin.getBrokerLiteInfo(master);
+                final GetBrokerLiteInfoResponseBody info;
+                try {
+                    info = admin.getBrokerLiteInfo(master);
+                } catch (Exception failure) {
+                    // Same per-master degradation as the list path: one unreachable or
+                    // pre-lite master must not fail the whole quota page with a 502.
+                    log.warn("Skipping master {} for the LiteTopic quota: {}", master, failure.getMessage());
+                    continue;
+                }
                 if (info == null) {
                     // Skip the master entirely: adding its session cap without its current
                     // counts would build the ratio out of two different master sets.
