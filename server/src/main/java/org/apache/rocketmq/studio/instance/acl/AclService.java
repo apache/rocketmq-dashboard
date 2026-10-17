@@ -25,6 +25,7 @@ import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
@@ -57,6 +58,11 @@ import java.util.Properties;
 public class AclService {
 
     private static final SecureRandom CREDENTIAL_RANDOM = new SecureRandom();
+    /**
+     * Width of the ACL identity columns the write paths store their text in: {@code
+     * rmq_acl_user.username} and {@code rmq_acl_rule.principal} are both {@code VARCHAR(128)}.
+     */
+    static final int MAX_ACL_IDENTITY_CODE_POINTS = 128;
     private static final int DEFAULT_RULE_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     /** Broker ACL 2.0 subjects are prefixed with {@code User:}; the store uses {@code user:}. */
@@ -126,6 +132,7 @@ public class AclService {
         if (!StringUtils.hasText(rule.getPrincipal())) {
             throw new BusinessException(400, "ACL principal is required");
         }
+        requireIdentityWithinColumn(rule.getPrincipal(), "principal");
         if (!StringUtils.hasText(rule.getResource())) {
             throw new BusinessException(400, "ACL resource is required");
         }
@@ -166,6 +173,7 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateRule(instanceId, rule);
         }
+        requireIdentityWithinColumn(rule.getPrincipal(), "principal");
         if (rule.getId() == null) {
             throw new BusinessException(400, "ACL rule id is required");
         }
@@ -237,6 +245,7 @@ public class AclService {
         if (!StringUtils.hasText(user.getUsername())) {
             throw new BusinessException(400, "ACL username is required");
         }
+        requireIdentityWithinColumn(user.getUsername(), "username");
         user.setAccessKey(randomCredentialToken());
         user.setSecretKey(randomCredentialToken());
         user.setGmtCreate(LocalDateTime.now());
@@ -250,6 +259,7 @@ public class AclService {
         if (isTencentInstance(instanceId)) {
             return tencentAclService.updateUser(instanceId, user.toAclUserVO());
         }
+        requireIdentityWithinColumn(user.getUsername(), "username");
         if (!StringUtils.hasText(user.getId())) {
             throw new BusinessException(400, "ACL user id is required");
         }
@@ -629,6 +639,21 @@ public class AclService {
      * ACL rather than the Apache broker auth module). When the broker version cannot be resolved
      * the guard is permissive and lets the operation through to avoid false positives.
      */
+    /**
+     * Bounds an ACL identity to the width of the column that stores it. Letting a longer value
+     * through does not store it: MySQL rejects the write, so the caller would receive a 500 from
+     * the persistence layer instead of the validation error the surrounding paths already return.
+     * Counted in code points, the unit MySQL counts a {@code varchar} in, and applied here rather
+     * than only on the request DTOs because the tool handlers build these values in code and never
+     * pass through bean validation.
+     */
+    private static void requireIdentityWithinColumn(String value, String fieldName) {
+        if (TextBounds.codePointCount(value) > MAX_ACL_IDENTITY_CODE_POINTS) {
+            throw new BusinessException(400,
+                    fieldName + " must not exceed " + MAX_ACL_IDENTITY_CODE_POINTS + " characters");
+        }
+    }
+
     private void requireAcl2Supported(String instanceId) {
         if (isTencentInstance(instanceId)) {
             return;
