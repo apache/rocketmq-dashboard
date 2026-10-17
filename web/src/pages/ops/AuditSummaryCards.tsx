@@ -56,16 +56,8 @@ const AuditSummaryCards = ({ summary, loading }: Props) => {
   // Show the placeholder while any fetch is in flight so a filter change does
   // not keep painting a stale summary until the refreshed aggregate arrives.
   if (loading) return <Skeleton active paragraph={{ rows: 4 }} />;
-  const data = summary || {
-    total: 0,
-    successful: 0,
-    failed: 0,
-    partial: 0,
-    uniqueOperators: 0,
-    latestAt: null,
-    byOperation: [],
-    byResourceType: [],
-  };
+  if (!summary) return <Empty description={t('common.fetchDataFailed')} />;
+  const data = summary;
   const successRate = data.total ? Math.round((data.successful / data.total) * 100) : 0;
   return (
     <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>

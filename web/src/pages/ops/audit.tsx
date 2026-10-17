@@ -165,6 +165,8 @@ const AuditPage: React.FC = () => {
       })
       .catch(() => {
         if (recordsRequestRef.current === requestId) {
+          setRecords([]);
+          setTotal(0);
           message.error(t('audit.loadFailed'));
         }
       })
@@ -225,7 +227,10 @@ const AuditPage: React.FC = () => {
         if (!cancelled) setSummary(value);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('audit.summaryLoadFailed'));
+        if (!cancelled) {
+          setSummary(null);
+          message.error(t('audit.summaryLoadFailed'));
+        }
       })
       .finally(() => {
         if (!cancelled) setSummaryLoading(false);
