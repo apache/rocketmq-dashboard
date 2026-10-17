@@ -751,8 +751,12 @@ const DLQPage = () => {
             <Text type="secondary" style={{ fontSize: 14 }}>
               导出时间范围
             </Text>
+            {/* Both windows below are part of every request (the export and the resend always
+                carry their range), so a cleared picker has no state to represent - the clear
+                control only looked like it did something. */}
             <RangePicker
               showTime
+              allowClear={false}
               format="YYYY-MM-DD HH:mm:ss"
               value={exportRange}
               onChange={(vals) => {
@@ -884,6 +888,7 @@ const DLQPage = () => {
               </Text>
               <RangePicker
                 showTime
+                allowClear={false}
                 style={{ width: '100%' }}
                 value={retryRange}
                 onChange={(vals) => {

@@ -1325,4 +1325,19 @@ describe('DLQ page', () => {
     expect(await screen.findByText(/1 条无法定位/)).toBeInTheDocument();
     expect(screen.queryByText(/重发完成：成功 0 条/)).not.toBeInTheDocument();
   });
+
+  it('offers no clear control on the windows the export and the resend always send', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+    await screen.findByText('cg-order');
+
+    // The export range and the resend range are both part of every request: there is no empty
+    // state for the picker's clear control to produce, and today it silently does nothing.
+    expect(document.querySelector('.ant-picker-clear')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '重投消息' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('重投时间范围')).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button').length).toBeGreaterThan(0);
+    expect(document.querySelector('.ant-picker-clear')).toBeNull();
+  });
 });
