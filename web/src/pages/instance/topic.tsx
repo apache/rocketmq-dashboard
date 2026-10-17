@@ -525,6 +525,9 @@ const TopicPageContent = ({
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      if (routes.length === 0) {
+        throw new Error('Topic route is still missing after broker creation');
+      }
       message.success(`Topic「${topic.name}」已在 Broker 上重建`);
     } catch {
       message.error('重建 Topic 失败，请检查 Broker 状态后重试');
@@ -623,6 +626,9 @@ const TopicPageContent = ({
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      if (routes.length === 0) {
+        throw new Error('Topic route is still missing after broker creation');
+      }
       setSyncedTopics((previous) => new Set(previous).add(topic.name));
       message.success(`Topic「${topic.name}」已同步到 Broker`);
     } catch {
