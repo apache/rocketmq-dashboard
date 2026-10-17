@@ -47,13 +47,23 @@ public final class SystemTopicFilter {
         if (topicName == null || topicName.isEmpty()) {
             return true;
         }
-        if (TopicValidator.isSystemTopic(topicName)) {
-            return true;
-        }
-        for (String prefix : RETRY_AND_DLQ_PREFIXES) {
-            if (topicName.startsWith(prefix)) {
+        // Match case-insensitively: the paged SQL filter below compares
+        // under the column's collation (utf8mb4, case-insensitive on
+        // production MySQL), so a case variant like "RMQ_SYS_foo" was
+        // creatable but then silently hidden from the paged console list.
+        String lowered = topicName.toLowerCase(java.util.Locale.ROOT);
+        for (String system : TopicValidator.getSystemTopicSet()) {
+            if (system != null && lowered.equals(system.toLowerCase(java.util.Locale.ROOT))) {
                 return true;
             }
+        }
+        for (String prefix : RETRY_AND_DLQ_PREFIXES) {
+            if (lowered.startsWith(prefix.toLowerCase(java.util.Locale.ROOT))) {
+                return true;
+            }
+        }
+        if (lowered.startsWith("rmq_sys_")) {
+            return true;
         }
         return brokerNames != null && brokerNames.contains(topicName);
     }
