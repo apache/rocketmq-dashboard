@@ -339,17 +339,22 @@ const NotificationDeliveriesPage = () => {
               showTime
               format="YYYY-MM-DD HH:mm:ss"
               placeholder={[t('deliveries.startTime'), t('deliveries.endTime')]}
+              // `GET /api/system-alerts/deliveries/page` takes `from` and `to` as independent
+              // optional parameters (`SystemAlertController.listDeliveriesPage`) and the filter
+              // state below is `{from?, to?}`, so a one-sided window has to be expressible:
+              // without `allowEmpty` Ant Design keeps the OK button disabled until both ends are
+              // set, and the previous handler additionally dropped a partial range instead of
+              // applying it.
+              allowEmpty={[true, true]}
               style={{ width: 380, flex: '1 1 380px' }}
               onChange={(dates) =>
                 resetPage(() =>
-                  setTimeRange(
-                    dates?.[0] && dates[1]
-                      ? {
-                          from: dates[0].toDate().toISOString().replace('Z', ''),
-                          to: dates[1].toDate().toISOString().replace('Z', ''),
-                        }
-                      : {},
-                  ),
+                  setTimeRange({
+                    ...(dates?.[0]
+                      ? { from: dates[0].toDate().toISOString().replace('Z', '') }
+                      : {}),
+                    ...(dates?.[1] ? { to: dates[1].toDate().toISOString().replace('Z', '') } : {}),
+                  }),
                 )
               }
             />

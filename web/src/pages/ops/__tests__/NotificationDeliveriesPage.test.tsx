@@ -5,6 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0.
  */
 import { App } from 'antd';
+import dayjs from 'dayjs';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -170,6 +171,46 @@ describe('NotificationDeliveriesPage', () => {
     expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ status: 'DELIVERED' }),
     );
+  });
+
+  it('appliesASingleTimeBoundaryToTheDeliveryFilterTest', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <LangProvider>
+          <NotificationDeliveriesPage />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('Broker disk usage');
+    // `GET /api/system-alerts/deliveries/page` takes `from` and `to` as independent optional
+    // parameters (`SystemAlertController.listDeliveriesPage`) and the filter state is
+    // `{from?, to?}`, so an operator must be able to ask for everything after a timestamp
+    // without naming an end. Before the fix the picker's OK button stayed disabled for a
+    // one-sided pick and the handler dropped a partial range instead of applying it.
+    await user.click(screen.getByPlaceholderText('投递开始时间'));
+    const firstOfMonth = dayjs().startOf('month');
+    const dayCell = document.querySelector(
+      `td[title="${firstOfMonth.format('YYYY-MM-DD')}"] .ant-picker-cell-inner`,
+    );
+    if (!(dayCell instanceof HTMLElement)) throw new Error('first-of-month picker cell missing');
+    await user.click(dayCell);
+    const ok = document.querySelector('.ant-picker-ok button');
+    if (!(ok instanceof HTMLElement)) throw new Error('range picker OK missing');
+    await waitFor(() => expect(ok).toBeEnabled());
+    await user.click(ok);
+    await user.click(document.body);
+
+    const expectedFrom = firstOfMonth.startOf('day').toDate().toISOString().replace('Z', '');
+    await waitFor(() =>
+      expect(listAlertDeliveriesPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: expectedFrom, page: 1, pageSize: 20 }),
+      ),
+    );
+    // No `to` key at all: the endpoint then applies no upper bound, which is what a
+    // one-sided "everything since" filter means.
+    expect('to' in (vi.mocked(listAlertDeliveriesPage).mock.lastCall?.[0] ?? {})).toBe(false);
   });
 
   it('surfaces a failed instance-list load with a retry instead of an empty filter', async () => {
