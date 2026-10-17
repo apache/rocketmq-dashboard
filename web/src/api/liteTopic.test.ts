@@ -38,7 +38,7 @@ const sampleItem: LiteTopicItem = {
   consumerCount: 3,
   totalBacklog: 1200,
   averageTTL: 3600,
-  ttlStatus: 'active',
+  ttlStatus: 'ACTIVE',
   lastActiveTime: Date.now(),
   sessionIds: ['sess-1', 'sess-2'],
 };
@@ -66,7 +66,7 @@ const sampleSession: LiteTopicSession = {
   lastActiveTime: Date.now(),
   ttl: 3600,
   ttlRemaining: 1800,
-  status: 'active',
+  status: 'ACTIVE',
   totalMessages: 5000,
   consumedMessages: 4800,
   pendingMessages: 200,
@@ -112,15 +112,17 @@ describe('LiteTopic API', () => {
     expect(result.popProgress).toBe(96);
   });
 
-  it('extends lite topic TTL', async () => {
+  it('extends lite topic TTL with the owning instance id', async () => {
     mock.onPost('/liteTopic/extendTTL').reply((config) => {
       const body = JSON.parse(config.data);
+      // LiteTopicTTLUpdateDTO requires a non-blank instanceId (@NotBlank).
+      expect(body.instanceId).toBe('apache-main');
       expect(body.topicPattern).toBe('order-*');
       expect(body.newTTL).toBe(7200);
       return [200, { code: 200 }];
     });
 
-    await extendLiteTopicTTL('order-*', 7200);
+    await extendLiteTopicTTL('apache-main', 'order-*', 7200);
   });
 
   it('queries lite topic quota without namespace', async () => {

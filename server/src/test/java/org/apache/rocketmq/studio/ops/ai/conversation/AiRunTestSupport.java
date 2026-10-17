@@ -275,6 +275,11 @@ final class AiRunTestSupport {
         Consumer<AgentStreamOptions> beforeStream = options -> {
         };
         RuntimeException failure;
+        /**
+         * Thrown instead of any RuntimeException, so a test can reach the paths that only an {@link Error}
+         * takes — the executor has to write the terminal row for those too.
+         */
+        Error error;
         String lastPrompt;
         AgentStreamOptions lastOptions;
         int calls;
@@ -309,6 +314,9 @@ final class AiRunTestSupport {
             lastOptions = options;
             beforeStream.accept(options);
             scripted.forEach(sink);
+            if (error != null) {
+                throw error;
+            }
             if (failure != null) {
                 throw failure;
             }
@@ -342,6 +350,7 @@ final class AiRunTestSupport {
         copy.setStopReason(run.getStopReason());
         copy.setErrorCode(run.getErrorCode());
         copy.setErrorMessage(run.getErrorMessage());
+        copy.setTokensPerSecond(run.getTokensPerSecond());
         return copy;
     }
 

@@ -68,12 +68,16 @@ const OpsPage: React.FC = () => {
    */
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [reloadKey, setReloadKey] = useState(0);
-  const writeOperationEnabled = configurationAvailable && (!userId || admin === true);
+  const writeOperationEnabled =
+    loadState === 'ready' && configurationAvailable && (!userId || admin === true);
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
 
   useEffect(() => {
     let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoadState('loading');
+    });
 
     const loadOpsData = async () => {
       try {
@@ -82,7 +86,12 @@ const OpsPage: React.FC = () => {
           setNamesrvAddrList(data.namesvrAddrList);
           setUseVIPChannel(data.useVIPChannel);
           setUseTLS(data.useTLS);
-          setSelectedNamesrv(data.currentNamesrv);
+          // The effect re-runs when the display language changes (it feeds a localized error
+          // message); an unsaved selection that is still in the freshly loaded list must survive
+          // that re-run instead of snapping back to the stored current NameServer.
+          setSelectedNamesrv((current) =>
+            current && data.namesvrAddrList.includes(current) ? current : data.currentNamesrv,
+          );
           setCurrentNamesrv(data.currentNamesrv);
           setConfigurationAvailable(data.configurationAvailable);
           setUnavailableReason(data.unavailableReason || '');

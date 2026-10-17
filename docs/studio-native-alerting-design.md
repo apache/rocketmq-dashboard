@@ -198,7 +198,9 @@ FIRING -- user acknowledges --> ACKED
 PENDING/FIRING -- silence matches --> state unchanged, notification suppressed
 ```
 
-The fingerprint is `sha256(ruleId + instanceId + sorted(labels))`. A single rule therefore creates independent events for different Brokers, Topics, queues, or consumer groups.
+The fingerprint is `sha256(ruleId + instanceId + sorted(identity labels))`. Descriptive labels that change while the same incident persists — currently `cloudStatus`, the cloud control-plane instance status behind `cloud.instance.availability` — are excluded from identity but still carried on the sample and on every emitted event, so one unavailable cloud instance keeps a single incident across STOPPED → STARTING → RUNNING. A single rule therefore still creates independent events for different Brokers, Topics, queues, or consumer groups.
+
+Because existing `rmq_alert_state` rows carry fingerprints computed with `cloudStatus` included, the first collection cycle after an upgrade emits one RESOLVED + FIRING pair per active cloud-availability incident; the migration is one-shot and self-healing.
 
 Current delivery emits on `FIRING`, periodic `REMINDER` transitions controlled by the rule's `reminderInterval`, and `RESOLVED`. A separate `cooldownSeconds` policy remains future work. A value recovery always emits a `RESOLVED` event.
 
@@ -274,6 +276,8 @@ PENDING -> SENDING -> DELIVERED
 Retries use bounded exponential backoff. Channel configuration is encrypted at rest and only write-only secrets are returned by APIs. A test-send action uses the same sender implementation but does not create an alert event.
 
 Terminal delivery rows are retained for `studio.alerting.notification-retention` (`P30D` by default). The scheduled cleanup only removes `DELIVERED` and `FAILED` rows older than the retention cutoff, and it runs with bounded batches using `studio.alerting.notification-cleanup-batch-size` and `studio.alerting.notification-cleanup-max-batches`.
+
+The Notification Deliveries page can narrow the feed by channel, status, instance, alert title or delivery error, and delivery creation time. Its time picker uses the operator's local time and sends UTC bounds to `GET /api/system-alerts/deliveries/page`; `from` and `to` are inclusive. Text search is case-insensitive and treats `%` and `_` as literal characters. The same filters determine both the rows and the pagination total.
 
 Silences match `domain`, rule ID, instance ID, and optional resource labels. They suppress delivery but do not hide active state from the Alert Events page.
 

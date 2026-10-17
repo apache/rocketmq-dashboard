@@ -24,6 +24,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { DLQGroup, DLQGroupPage, DLQMessagePage, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
+import * as instanceService from '../../../services/instanceService';
+import { formatUtcDateTime } from '../../../utils/format';
 import DLQPage, { formatDateTime } from '../dlq';
 
 vi.mock('../../../services/messageService', () => ({
@@ -155,6 +157,18 @@ describe('DLQ page', () => {
     vi.clearAllMocks();
   });
 
+  it('says so when the instance list itself failed to load', async () => {
+    // Every instance-scoped request needs an instanceId, so a failed /instances request leaves the page
+    // with nothing it can show. Rendering that as an empty result tells the operator the instance has no
+    // dead-letter messages, which is the opposite of what is actually known.
+    vi.mocked(instanceService.listInstances).mockRejectedValueOnce(new Error('offline'));
+
+    renderWithProviders(<DLQPage />);
+
+    expect(await screen.findByText(/实例列表加载失败/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+  });
+
   it('renders invalid message timestamps as unavailable without throwing', () => {
     expect(formatDateTime(Number.NaN)).toBe('-');
     expect(formatDateTime(Number.POSITIVE_INFINITY)).toBe('-');
@@ -245,6 +259,25 @@ describe('DLQ page', () => {
     expect(screen.getByText('-')).toBeInTheDocument();
   });
 
+  it('renders the last enqueue time in the viewer timezone from the offset-less UTC wire format', async () => {
+    // The backend serializes LocalDateTime without an offset, so the wire value is a UTC wall
+    // clock. Parsing it as browser-local (the plain formatDateTime path) would shift the displayed
+    // time by the viewer's zone; formatUtcDateTime reads it as UTC and converts.
+    vi.stubEnv('TZ', 'Asia/Shanghai');
+    try {
+      vi.mocked(messageService.listDLQGroups).mockResolvedValue(
+        pageOf([{ ...dlqGroup, lastEnqueueTime: '2026-07-24T10:00:00' }]),
+      );
+      renderWithProviders(<DLQPage />);
+
+      const row = (await screen.findByText('cg-order')).closest('tr');
+      if (!row) throw new Error('DLQ group row not found');
+      expect(within(row).getByText('2026-07-24 18:00:00 GMT+8')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('opens a message detail drawer with the selected group metadata', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderWithProviders(<DLQPage />);
@@ -257,6 +290,102 @@ describe('DLQ page', () => {
     expect(messageService.listDLQMessages).toHaveBeenCalledWith(
       expect.objectContaining({ instanceId: 'instance-1', groupName: 'cg-order' }),
     );
+  });
+
+  it('drops the previous group messages when the next detail load fails', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'order-dead-letter-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 11,
+            storeTime: 1_700_000_000_000,
+            keys: 'order-1',
+            body: 'dead',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockRejectedValueOnce(new Error('broker unavailable'));
+
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    expect(await screen.findByText('order-dead-letter-1')).toBeInTheDocument();
+
+    const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
+    if (!paymentRow) throw new Error('second DLQ group row not found');
+    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+
+    expect(await screen.findByText('DLQ 消息明细 · -cg-"payment"')).toBeInTheDocument();
+    expect(await screen.findByText('broker unavailable')).toBeInTheDocument();
+    // the drawer now belongs to another group, so the previous group's rows, its total and
+    // the export that is enabled from that total must not survive the failed load
+    expect(screen.queryByText('order-dead-letter-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /导出全部/ })).toBeDisabled();
+  });
+
+  it('clears the previous group messages while the next detail load is in flight', async () => {
+    let resolveSecondDetail!: (page: DLQMessagePage) => void;
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup, secondDlqGroup]));
+    vi.mocked(messageService.listDLQMessages)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            msgId: 'order-dead-letter-1',
+            topic: 'orders',
+            queueId: 0,
+            offset: 11,
+            storeTime: 1_700_000_000_000,
+            keys: 'order-1',
+            body: 'dead',
+            bodyBase64: null,
+            properties: {},
+            propertiesTruncated: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<DLQMessagePage>((resolve) => {
+            resolveSecondDetail = resolve;
+          }),
+      );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    expect(await screen.findByText('order-dead-letter-1')).toBeInTheDocument();
+
+    const paymentRow = (await screen.findByText('-cg-"payment"')).closest('tr');
+    if (!paymentRow) throw new Error('second DLQ group row not found');
+    await user.click(within(paymentRow).getByRole('button', { name: /消息明细/ }));
+
+    // the drawer already belongs to the second group while its request is still open: the first
+    // group's rows and the total that enables the export must be gone before the response lands
+    expect(await screen.findByText('DLQ 消息明细 · -cg-"payment"')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /导出全部/ })).toBeDisabled());
+    expect(screen.queryByText('order-dead-letter-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('共 1 条消息')).not.toBeInTheDocument();
+
+    await act(async () => resolveSecondDetail({ items: [], total: 0, page: 1, size: 20 }));
   });
 
   it('does not let an old-instance detail resend overwrite the new instance drawer', async () => {
@@ -495,6 +624,22 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
+  it('exports the last enqueue time through the UTC formatter instead of the raw wire value', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue(pageOf([dlqGroup]));
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).toContain(formatUtcDateTime(dlqGroup.lastEnqueueTime));
+    expect(csv).not.toContain(dlqGroup.lastEnqueueTime as string);
+  });
+
   it('neutralizes formulas hidden behind a leading line feed in CSV summary exports', async () => {
     vi.mocked(messageService.listDLQGroups).mockResolvedValue(
       pageOf([
@@ -608,6 +753,85 @@ describe('DLQ page', () => {
     expect(
       await screen.findByText('重投扫描不完整：1 个队列无法扫描，已重投 3 条'),
     ).toBeInTheDocument();
+  });
+
+  it('shows per-message failure details for a partial range resend', async () => {
+    vi.mocked(messageService.resendDLQ).mockResolvedValue({
+      matched: 2,
+      resent: 1,
+      failed: 1,
+      outcome: 'PARTIAL',
+      failures: [
+        {
+          msgId: 'failed-range-msg',
+          targetTopic: 'orders-retry',
+          reason: 'Producer returned FLUSH_DISK_TIMEOUT',
+        },
+      ],
+      failuresTruncated: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    expect(await screen.findByText('failed-range-msg')).toBeInTheDocument();
+    expect(screen.getByText('orders-retry')).toBeInTheDocument();
+    expect(screen.getByText('Producer returned FLUSH_DISK_TIMEOUT')).toBeInTheDocument();
+  });
+
+  it('shows per-message failure details for selected-message resend', async () => {
+    vi.mocked(messageService.listDLQMessages).mockResolvedValue({
+      items: [
+        {
+          msgId: 'msg-1',
+          topic: '%DLQ%cg-order',
+          queueId: 0,
+          offset: 1,
+          storeTime: 2,
+          reconsumeTimes: 3,
+          keys: null,
+          body: 'payload',
+          bodyBase64: null,
+          properties: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    });
+    vi.mocked(messageService.resendDLQSelected).mockResolvedValue({
+      matched: 1,
+      resent: 0,
+      failed: 1,
+      outcome: 'FAILED',
+      failures: [
+        {
+          msgId: 'msg-1',
+          targetTopic: 'orders',
+          reason: 'Producer send failed: broker unavailable',
+        },
+      ],
+      failuresTruncated: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+    await user.click(within(orderRow).getByRole('button', { name: /消息明细/ }));
+    const messageRow = (await screen.findByText('msg-1')).closest('tr');
+    if (!messageRow) throw new Error('DLQ message row not found');
+    await user.click(within(messageRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量重发选中/ }));
+
+    expect(await screen.findByText('Producer send failed: broker unavailable')).toBeInTheDocument();
+    expect(screen.getAllByText('msg-1').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('orders')).toBeInTheDocument();
   });
 
   it('clears retry state before loading groups for a newly selected instance', async () => {

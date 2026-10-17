@@ -162,6 +162,7 @@ public record GroupDetailOutput(
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record QueueProgress(
+            String topic,
             String broker,
             int queueId,
             long brokerOffset,
@@ -170,6 +171,7 @@ public record GroupDetailOutput(
 
         static QueueProgress from(QueueProgressVO source) {
             return new QueueProgress(
+                    source.getTopic(),
                     source.getBroker(),
                     source.getQueueId(),
                     source.getBrokerOffset(),
