@@ -937,7 +937,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
         // Keep the ref in sync with the state; queries read the ref, so a stale key would
         // keep hitting the de-registered data source while the UI shows the default.
         dataSourceCredentialsRef.current = null;
@@ -949,6 +949,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           void runCustomQuery(appliedCustomPromql, selectedRange);
         }
       }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [
     availableDataSources,
