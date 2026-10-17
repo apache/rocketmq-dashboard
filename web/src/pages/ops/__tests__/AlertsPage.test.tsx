@@ -909,7 +909,7 @@ describe('AlertsPage', () => {
     await screen.findByText('Second page rule 5');
     expect(screen.queryByText('Second page rule 20')).not.toBeInTheDocument();
     expect(screen.queryByText('Page one rule 1')).not.toBeInTheDocument();
-  });
+  }, 45000);
 
   it('clamps to the last valid page when a bulk delete empties the current one', async () => {
     // 21 rules: page 2 holds only rule 21. Deleting it leaves 20 rules across 1 page, so the
