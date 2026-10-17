@@ -17,6 +17,7 @@
 package studio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,11 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		if err := json.Unmarshal(payload, &request); err != nil {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC request: %w", err)
 		}
+		// The SDK decodes numeric ids through float64, which silently corrupts
+		// integer identities above 2^53 before the request is forwarded (#6904).
+		if err := restoreRequestID(fields["id"], &request); err != nil {
+			return decodedMCPMessage{}, err
+		}
 		return decodedMCPMessage{request: &request}, nil
 	}
 	if hasMethod {
@@ -87,6 +93,7 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 		if err := json.Unmarshal(payload, &notification); err != nil {
 			return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC notification: %w", err)
 		}
+		restoreCancellationRequestID(fields["params"], &notification)
 		return decodedMCPMessage{notification: &notification}, nil
 	}
 	if hasID {
@@ -98,6 +105,62 @@ func decodeMCPMessage(payload json.RawMessage) (decodedMCPMessage, error) {
 				"this transport only forwards client-originated requests and notifications")
 	}
 	return decodedMCPMessage{}, fmt.Errorf("invalid MCP JSON-RPC message: missing method")
+}
+
+// losslessRequestID re-decodes a raw JSON-RPC id without the float64 rounding
+// the SDK's RequestId.UnmarshalJSON applies to numbers. Integer literals that
+// fit in int64 keep their exact value; every other shape (strings, decimals,
+// out-of-range numbers) keeps the SDK's decoded value so response correlation
+// stays symmetric with what the peer and the transport decode. See #6904.
+func losslessRequestID(raw json.RawMessage) (mcp.RequestId, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return mcp.RequestId{}, nil
+	}
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err == nil {
+		return mcp.NewRequestId(text), nil
+	}
+	number := json.Number(string(trimmed))
+	if integer, err := number.Int64(); err == nil {
+		return mcp.NewRequestId(integer), nil
+	}
+	value, err := number.Float64()
+	if err != nil {
+		return mcp.RequestId{}, fmt.Errorf("invalid request id: %s", string(trimmed))
+	}
+	return mcp.NewRequestId(value), nil
+}
+
+// restoreRequestID replaces the float64-rounded request id with the literal
+// from the wire frame before the request reaches the transport.
+func restoreRequestID(raw json.RawMessage, request *mcptransport.JSONRPCRequest) error {
+	id, err := losslessRequestID(raw)
+	if err != nil {
+		return err
+	}
+	request.ID = id
+	return nil
+}
+
+// restoreCancellationRequestID keeps a cancelled notification's requestId
+// literal: NotificationParams decodes unknown fields into map[string]any,
+// which rounds integer requestIds through float64. Frames whose params or
+// requestId fail to decode keep the SDK's decoded value unchanged.
+func restoreCancellationRequestID(rawParams json.RawMessage, notification *mcp.JSONRPCNotification) {
+	var params map[string]json.RawMessage
+	if err := json.Unmarshal(rawParams, &params); err != nil || params == nil {
+		return
+	}
+	raw, ok := params["requestId"]
+	if !ok {
+		return
+	}
+	id, err := losslessRequestID(raw)
+	if err != nil {
+		return
+	}
+	notification.Params.AdditionalFields["requestId"] = id.Value()
 }
 
 func (session *MCPClientSession) sendRequest(
