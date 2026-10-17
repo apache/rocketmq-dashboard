@@ -164,6 +164,13 @@ const connectionIdentity = (connection: ClientConnection): string =>
 const resourceKey = (connection: ClientConnection): string =>
   `${normalizeText(connection.type)}:${normalizeText(connection.groupOrTopic)}`;
 
+const connectionHost = (address: string | null | undefined): string => {
+  const normalized = normalizeText(address).replace(/^\//, '');
+  // Broker connections use different TCP source ports for the same client process.
+  const socket = /^(?:\[([^\]]+)\]|([^:]+)):\d+$/.exec(normalized);
+  return socket ? (socket[1] ?? socket[2]) : normalized;
+};
+
 const groupConnections = (connections: ClientConnection[]): ConnectionGroup[] => {
   const groups = new Map<string, ConnectionGroup>();
 
@@ -245,7 +252,10 @@ const addClientIdIssues = (connections: ClientConnection[], issues: ClientConnec
 
   connectionsByClient.forEach((clientConnections, clientId) => {
     const addresses = uniqueSorted(clientConnections.map((connection) => connection.address));
-    if (addresses.length > 1) {
+    const hosts = uniqueSorted(
+      clientConnections.map((connection) => connectionHost(connection.address)),
+    );
+    if (hosts.length > 1) {
       issues.push(
         issue(
           'CLIENT_ID_COLLISION',
