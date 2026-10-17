@@ -46,6 +46,26 @@ describe('message service mock data', () => {
     expect(second[0].properties).not.toBe(first[0].properties);
   });
 
+  it('carries the broker and queue fields the message detail panel renders Test', async () => {
+    const messages = await queryMessages({ topic: 'order-create' });
+
+    // The message contract requires all three as non-optional (web/src/api/message.ts:9-11) and
+    // MessagePage's detail panel prints `selectedMsg.brokerName ?? '-'` and
+    // `selectedMsg.queueOffset ?? '-'`, so a demo row without them shows a placeholder for a field
+    // the real endpoint fills.
+    expect(messages.length).toBeGreaterThan(0);
+    for (const message of messages) {
+      expect(message.brokerName).toBeTypeOf('string');
+      expect(message.queueId).toBeTypeOf('number');
+      expect(message.queueOffset).toBeTypeOf('number');
+    }
+
+    const [first] = await queryMessages({ msgId: 'AC1E0A6400002A9F0000000001A3F2B1' });
+    expect(first.brokerName).toBe('broker-a');
+    expect(first.queueId).toBe(0);
+    expect(first.queueOffset).toBe(1024);
+  });
+
   it('filters mock topic queries by the selected store-time range', async () => {
     const messages = await queryMessages({
       topic: 'order-create',

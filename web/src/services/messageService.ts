@@ -41,7 +41,7 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
     let result = [...mockMessages];
     if (params.topic) result = result.filter((m) => m.topic === params.topic);
     if (params.tag) result = result.filter((m) => m.tag === params.tag);
-    if (params.key) result = result.filter((m) => m.key.includes(params.key!));
+    if (params.key) result = result.filter((m) => (m.key ?? '').includes(params.key!));
     if (params.msgId) result = result.filter((m) => m.msgId === params.msgId);
     if (params.startTime !== undefined) {
       result = result.filter((m) => toStoreTimestamp(m.storeTime) >= params.startTime!);
@@ -49,7 +49,7 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
     if (params.endTime !== undefined) {
       result = result.filter((m) => toStoreTimestamp(m.storeTime) <= params.endTime!);
     }
-    return sortMessagesByStoreTimeDesc((result as unknown as MessageRecord[]).map(cloneMessage));
+    return sortMessagesByStoreTimeDesc(result.map(cloneMessage));
   }
   return messageApi.queryMessages(params);
 }
