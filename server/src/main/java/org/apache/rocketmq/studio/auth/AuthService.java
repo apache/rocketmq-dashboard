@@ -135,6 +135,7 @@ public class AuthService {
         this.loginRateLimiter = loginRateLimiter;
     }
 
+    @Transactional
     public LoginVO login(LoginDTO request) {
         validateLogin(request);
         loginRateLimiter.checkAllowed(request.getUsername());
@@ -382,7 +383,11 @@ public class AuthService {
 
     private LoginVO loginDatabaseUser(LoginDTO request) {
         ensureBootstrapUsers();
-        Optional<RmqStudioUser> found = findUserByUsername(request.getUsername());
+        // Hold the user row until the session is inserted. Password changes update this same
+        // row before revoking sessions, so they cannot miss an in-flight old-password login.
+        Optional<RmqStudioUser> found = Optional.ofNullable(userMapper.selectOne(new QueryWrapper<RmqStudioUser>()
+                .eq("username", request.getUsername().trim())
+                .last("FOR UPDATE")));
         if (found.isEmpty()) {
             // Burn one dummy derivation so the response timing matches the wrong-password path
             // on an existing account. Without this, an attacker could distinguish "user not
