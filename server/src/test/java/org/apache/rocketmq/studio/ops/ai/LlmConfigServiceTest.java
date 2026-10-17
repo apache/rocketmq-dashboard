@@ -624,6 +624,24 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigShouldRejectAModelLongerThanTheAiRecordColumnsTest() {
+        LlmConfigVO config = llmConfigService.getConfig();
+        config.setModel("m".repeat(129));
+
+        // rmq_ai_conversation.model and rmq_ai_run.model store the id verbatim in VARCHAR(128):
+        // accepting it here would let the conversation's first message fail on the insert instead.
+        assertThatThrownBy(() -> llmConfigService.saveConfig(config))
+                .isInstanceOfSatisfying(LlmGatewayException.class, error -> {
+                    assertThat(error.getStatusCode()).isEqualTo(400);
+                    assertThat(error.getCode()).isEqualTo("llm.config.invalid_model");
+                });
+
+        // The column width itself is storable: one character less must still be accepted.
+        config.setModel("m".repeat(128));
+        llmConfigService.saveConfig(config);
+    }
+
+    @Test
     void configShouldRejectOutOfRangeTemperatureTest() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")

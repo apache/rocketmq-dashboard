@@ -20,6 +20,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -52,6 +53,9 @@ public class GeneralSettingsUpdateDTO {
     private String apiKey;
     private boolean clearApiKey;
     @NotBlank
+    // rmq_ai_conversation.model and rmq_ai_run.model are VARCHAR(128) and store this id verbatim
+    // (AiMessageDTO bounds the per-run override to the same length).
+    @Size(max = 128, message = "model must not exceed 128 characters")
     private String model;
     @NotNull
     private String baseUrl;

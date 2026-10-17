@@ -185,6 +185,10 @@ public class AiRunService {
                     "No model is configured for the " + engine + " engine",
                     "Pick a model in the AI settings.");
         }
+        // The run row snapshots this id into a VARCHAR(128) column, and the configured model can
+        // outlive the check that bounds the request override: fail with a 400 here instead of
+        // letting the insert answer 500.
+        LlmConfigService.requireStorableModel(model);
 
         // Admission: one active run per conversation, which is what makes a single writer per timeline
         // a guarantee rather than a hope.

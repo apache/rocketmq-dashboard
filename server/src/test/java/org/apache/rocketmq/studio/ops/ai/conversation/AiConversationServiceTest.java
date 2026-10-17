@@ -137,6 +137,22 @@ class AiConversationServiceTest {
     }
 
     @Test
+    void createShouldRefuseAConfiguredModelTheConversationColumnCannotStoreTest() {
+        when(llmConfigService.getConfig()).thenReturn(LlmConfigVO.builder()
+                .engine(LlmConfigVO.ENGINE_HTTP)
+                .model("m".repeat(129))
+                .build());
+
+        // rmq_ai_conversation.model is VARCHAR(128): the insert would be rejected by the database
+        // (Data too long) and the request would end as a 500 instead of naming the field to shorten.
+        assertThatThrownBy(() -> service.create(OWNER, null, "chat"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getMessage()).contains("128"));
+
+        verify(conversationRepository, never()).insert(any(RmqAiConversation.class));
+    }
+
+    @Test
     void createShouldFallBackToChatForAnUnknownModeTest() {
         // A mode is a UI hint, not a security boundary: an unexpected value degrades instead of failing
         // the request the user just made.

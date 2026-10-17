@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.TextBounds;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
@@ -46,6 +48,15 @@ public class LlmConfigService {
     private static final int DEFAULT_MAX_TOKENS = 4096;
     private static final double DEFAULT_TEMPERATURE = 0.7;
     private static final int MAX_TOKENS_LIMIT = 200_000;
+
+    /**
+     * The model id is written verbatim into {@code rmq_ai_conversation.model} and
+     * {@code rmq_ai_run.model}, both {@code VARCHAR(128)}, and the run request's own override is
+     * bounded to the same length ({@code AiMessageDTO.model}). A longer configured id has to be
+     * refused here — and again where a record copies it — because the database would otherwise
+     * answer the first message of the conversation with a 500.
+     */
+    static final int MAX_MODEL_CHARS = 128;
     private static final Map<String, List<LlmModelItemVO>> PROVIDER_MODELS = Map.of(
             OPENAI, List.of(
                     new LlmModelItemVO("gpt-5.6-sol", "GPT-5.6 Sol"),
@@ -216,7 +227,29 @@ public class LlmConfigService {
                     "LLM model is required",
                     "Select or enter a model before testing the connection.");
         }
+        if (TextBounds.codePointCount(normalized.getModel().trim()) > MAX_MODEL_CHARS) {
+            return LlmOperationResultVO.failure(
+                    "llm.config.invalid_model",
+                    "LLM model is too long",
+                    "Use a model id of at most " + MAX_MODEL_CHARS
+                            + " characters: the conversation and run records store it verbatim.");
+        }
         return LlmOperationResultVO.success("Configuration accepted");
+    }
+
+    /**
+     * Refuses a model id the AI record columns cannot hold.
+     *
+     * @throws BusinessException 400 when {@code model} is longer than {@link #MAX_MODEL_CHARS}
+     *     code points. The callers store the value in {@code VARCHAR(128)} columns, where MySQL
+     *     rejects the row and the request would end as a 500; failing here names the field the
+     *     operator has to shorten instead.
+     */
+    public static void requireStorableModel(String model) {
+        if (TextBounds.codePointCount(model == null ? null : model.trim()) > MAX_MODEL_CHARS) {
+            throw new BusinessException(400, "The LLM model is longer than the " + MAX_MODEL_CHARS
+                    + " characters a conversation or run record stores; shorten the model id in the AI settings.");
+        }
     }
 
     public LlmModelsResultVO listModels() {
