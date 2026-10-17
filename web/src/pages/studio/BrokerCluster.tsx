@@ -31,7 +31,7 @@ import type { ClusterInfo } from '../../api/cluster';
 import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { roundPercent } from '../../utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ const BrokerClusterPage = () => {
   };
 
   function handleExport() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localExportDateStamp();
     if (activeTab === 'nameserver') {
       downloadCsv(
         `rocketmq-nameserver-topology-${today}.csv`,

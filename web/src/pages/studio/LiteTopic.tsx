@@ -61,7 +61,7 @@ import {
   type LiteTopicSession,
 } from '../../api/liteTopic';
 import { listInstances, supportsApacheRuntime, type Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const formatDuration = (ms: number | undefined | null): string => {
   if (ms == null) return '-';
@@ -427,7 +427,7 @@ const LiteTopicPage: React.FC = () => {
         ttlStatusLabel: getTTLStatusLabel(item.ttlStatus),
         sessionCount: item.sessionIds?.length ?? 0,
       }));
-      const filename = `rocketmq-lite-topics-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-lite-topics-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(LITE_TOPIC_EXPORT_COLUMNS, rows));
       message.success(t('liteTopic.exportSuccess', { total: rows.length }));
     } catch {

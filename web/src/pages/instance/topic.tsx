@@ -84,7 +84,7 @@ import {
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
 import { isLagAvailable } from '../../utils/consumerLag';
-import { downloadCsv } from '../../utils/download';
+import { downloadCsv, localExportDateStamp } from '../../utils/download';
 import { formatDateTime, formatNumber } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import {
@@ -681,7 +681,7 @@ const TopicPageContent = ({
       search: searchText.trim() || undefined,
     })
       .then((csv) => {
-        downloadCsv(`rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        downloadCsv(`rocketmq-topics-${localExportDateStamp()}.csv`, csv);
         message.success('Topic 导出完成');
       })
       .catch(() => {

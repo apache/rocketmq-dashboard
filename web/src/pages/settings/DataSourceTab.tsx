@@ -48,7 +48,7 @@ import type { DataSource } from '../../api/settings';
 import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -316,7 +316,7 @@ export const DataSourceTab = () => {
         instanceNames: formatInstanceIds(source.instanceIds),
         statusLabel: formatStatus(source.status),
       }));
-      const filename = `rocketmq-data-sources-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `rocketmq-data-sources-${localExportDateStamp()}.csv`;
       downloadCsv(filename, buildCsv(DATA_SOURCE_EXPORT_COLUMNS, rows));
       message.success(t('settings.dataSourceExported', { total: rows.length }));
     } catch {
