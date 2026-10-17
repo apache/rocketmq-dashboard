@@ -1666,7 +1666,10 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '会话已恢复到进行中',
     en: 'Conversation moved back to active',
   },
-  'ai.list.archiveFailed': { zh: '归档操作失败，请稍后重试', en: 'Archive action failed, please retry later' },
+  'ai.list.archiveFailed': {
+    zh: '归档操作失败，请稍后重试',
+    en: 'Archive action failed, please retry later',
+  },
   'ai.list.deleteConfirm': { zh: '删除这条会话？', en: 'Delete this conversation?' },
   'ai.list.deleteSelected': { zh: '删除 ({count})', en: 'Delete ({count})' },
   'ai.list.deleteSelectedConfirm': {
@@ -2140,6 +2143,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.tag': { zh: 'Tag', en: 'Tag' },
   'topic.key': { zh: 'Key', en: 'Key' },
   'topic.messageBody': { zh: '消息体', en: 'Message Body' },
+  'messagePage.bodyTruncated': {
+    zh: '消息体过长，服务端已截断展示',
+    en: 'The message body is long; the server truncated the display',
+  },
+  'messagePage.propertiesTruncated': {
+    zh: '属性过多或单值过长，服务端已截断展示',
+    en: 'Too many properties or one value is long; the server truncated the display',
+  },
   'topic.properties': { zh: '属性', en: 'Properties' },
   'topic.topicConfig': { zh: 'Topic 配置', en: 'Topic Config' },
   'topic.queueCount': { zh: '队列数', en: 'Queue Count' },

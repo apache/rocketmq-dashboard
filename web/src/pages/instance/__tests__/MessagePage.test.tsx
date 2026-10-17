@@ -300,6 +300,28 @@ describe('Message page query history', () => {
     expect(retryItems[0]).toHaveTextContent('2');
   });
 
+  it('flags a server-truncated message body and properties on the detail panel', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-BIG'), bodyTruncated: true, propertiesTruncated: true },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-BIG');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-BIG')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('消息体')).toBeInTheDocument();
+    expect(
+      screen.getByText('消息体过长，服务端已截断展示 · 属性过多或单值过长，服务端已截断展示'),
+    ).toBeInTheDocument();
+  });
+
   it('loads topic options only for the selected instance', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 1,
