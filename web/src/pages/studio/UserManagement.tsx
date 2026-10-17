@@ -60,7 +60,7 @@ import {
   type StudioUserSessionOverview,
 } from '../../api/studioUsers';
 import useAuthStore from '../../stores/authStore';
-import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
+import { buildCsv, downloadCsv, localExportDateStamp, type CsvColumn } from '../../utils/download';
 import { formatDelay, formatUtcDateTime } from '../../utils/format';
 import { tableScrollX } from '../../utils/table';
 import { useLang } from '../../i18n/LangContext';
@@ -379,7 +379,7 @@ const UserManagementPage = () => {
         admin: roleFilter === undefined ? undefined : roleFilter === 'admin',
         enabled: statusFilter === undefined ? undefined : statusFilter === 'enabled',
       });
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localExportDateStamp();
       downloadCsv(
         `rocketmq-studio-users-${today}.csv`,
         buildCsv(STUDIO_USER_EXPORT_COLUMNS, exportedUsers),
