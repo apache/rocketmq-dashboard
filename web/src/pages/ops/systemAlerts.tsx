@@ -37,7 +37,7 @@ import {
   theme,
 } from 'antd';
 import dayjs from 'dayjs';
-import { ArrowClockwise, CheckCircle, DownloadSimple, Trash } from '@phosphor-icons/react';
+import { ArrowClockwise, CheckCircle, Info, DownloadSimple, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -517,8 +517,13 @@ const SystemAlertsPage = () => {
                   background: token.colorBgContainer,
                 }}
               >
-                <CheckCircle size={14} color="#52c41a" weight="fill" />
-                <Text style={{ fontSize: 14 }}>{t('sysAlerts.nativeCollectionEnabled')}</Text>
+                <Info size={14} color={token.colorTextSecondary} aria-hidden="true" />
+                <Text style={{ fontSize: 14 }}>
+                  {t('sysAlerts.collectorImplementations', {
+                    cluster: collectorStatus.clusterCollectorCount,
+                    business: collectorStatus.businessCollectorCount,
+                  })}
+                </Text>
               </Flex>
             )}
             <Button

@@ -17,6 +17,7 @@ import {
   acknowledgeAlert,
   clearAcknowledgedAlerts,
   createAlertSilence,
+  getCollectorStatus,
   listAlertDeliveries,
   listRelatedSystemAlerts,
   retryAlertDelivery,
@@ -31,7 +32,11 @@ vi.mock('../../../services/opsService', () => ({
   acknowledgeAlert: vi.fn(),
   clearAcknowledgedAlerts: vi.fn(),
   listSystemAlertsPage: vi.fn(),
-  getCollectorStatus: vi.fn().mockResolvedValue({ collectionInterval: 'PT30S' }),
+  getCollectorStatus: vi.fn().mockResolvedValue({
+    collectionInterval: 'PT30S',
+    clusterCollectorCount: 2,
+    businessCollectorCount: 3,
+  }),
   listAlertDeliveries: vi.fn().mockResolvedValue([]),
   listRelatedSystemAlerts: vi.fn().mockResolvedValue([]),
   retryAlertDelivery: vi.fn(),
@@ -113,6 +118,23 @@ describe('SystemAlertsPage', () => {
     });
     vi.mocked(listAlertSilences).mockResolvedValue([]);
     vi.mocked(listAlertSilencesPage).mockResolvedValue({ items: [], total: 0, page: 1, size: 10 });
+  });
+
+  it.each([
+    { cluster: 0, business: 0 },
+    { cluster: 2, business: 3 },
+  ])('shows registered collector counts without asserting runtime health (%j)', async ({ cluster, business }) => {
+    vi.mocked(getCollectorStatus).mockResolvedValueOnce({
+      collectionInterval: 'PT30S',
+      clusterCollectorCount: cluster,
+      businessCollectorCount: business,
+    });
+    renderPage();
+
+    expect(
+      await screen.findByText(`采集器组件：集群 ${cluster}，业务 ${business}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('原生采集已启用')).not.toBeInTheDocument();
   });
 
   it('finishes an export when a later page is empty after the result set shrinks', async () => {
