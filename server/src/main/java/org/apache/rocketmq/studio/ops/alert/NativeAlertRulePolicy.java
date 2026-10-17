@@ -45,6 +45,7 @@ final class NativeAlertRulePolicy {
     private static final Set<String> AVAILABILITY_METRICS = Set.of(
             "nameserver.availability", "broker.availability", "proxy.availability", "cloud.instance.availability");
     private static final Set<String> NOTIFICATION_CHANNELS = Set.of("dingtalk", "sms", "email");
+    private static final Set<String> NATIVE_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=", "UNAVAILABLE");
 
     private NativeAlertRulePolicy() {
     }
@@ -68,6 +69,10 @@ final class NativeAlertRulePolicy {
         }
         if (!StringUtils.hasText(rule.getInstanceId())) {
             throw new BusinessException(400, "instanceId is required for native alert rules");
+        }
+        if (!StringUtils.hasText(rule.getOperator()) || !NATIVE_OPERATORS.contains(rule.getOperator())) {
+            throw new BusinessException(400,
+                    "operator must be one of >, >=, <, <=, ==, != or UNAVAILABLE for native alert rules");
         }
         if ("UNAVAILABLE".equals(rule.getOperator()) && !AVAILABILITY_METRICS.contains(rule.getMetric())) {
             throw new BusinessException(400, "UNAVAILABLE is only supported for native availability metrics");
