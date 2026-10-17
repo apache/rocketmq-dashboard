@@ -1479,7 +1479,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'sysAlerts.allDeliveryStatuses': { zh: '全部投递状态', en: 'All delivery statuses' },
   'sysAlerts.notificationSuppressed': { zh: '通知已抑制', en: 'Notifications suppressed' },
   'sysAlerts.notificationNotSuppressed': { zh: '未被抑制', en: 'Not suppressed' },
-  'sysAlerts.nativeCollectionEnabled': { zh: '原生采集已启用', en: 'Native collection enabled' },
+  'sysAlerts.collectorImplementations': {
+    zh: '采集器组件：集群 {cluster}，业务 {business}',
+    en: 'Collector components: {cluster} cluster, {business} business',
+  },
   'sysAlerts.domainCluster': { zh: '集群', en: 'Cluster' },
   'sysAlerts.domainBusiness': { zh: '业务', en: 'Business' },
   'sysAlerts.acknowledgedBy': { zh: '确认：{user}', en: 'Acknowledged by: {user}' },
