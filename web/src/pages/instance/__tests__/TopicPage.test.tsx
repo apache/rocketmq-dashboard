@@ -1495,6 +1495,61 @@ describe('TopicPage', () => {
     expect(groupLink.closest('a')).not.toBeNull();
   });
 
+  it.each([
+    {
+      action: 'rebuild',
+      openButton: /详情/,
+      actionName: /在 Broker 上重建/,
+      failure: '重建 Topic 失败，请检查 Broker 状态后重试',
+      success: 'Topic「topic-01」已在 Broker 上重建',
+    },
+    {
+      action: 'sync',
+      openButton: /同步/,
+      actionName: /同\s*步/,
+      failure: '同步 Topic「topic-01」失败，请检查 Broker 状态后重试',
+      success: 'Topic「topic-01」已同步到 Broker',
+    },
+  ])('keeps $action retryable until the route recheck returns a broker', async (scenario) => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    mockTopicsList(buildTopics(1));
+    topicServiceMocks.getTopicRoutes
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([healthyBrokerRoute]);
+    renderWithProviders();
+
+    await screen.findByText('topic-01');
+    await user.click(screen.getByRole('button', { name: scenario.openButton }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: scenario.actionName }));
+
+    expect(await screen.findByText(scenario.failure)).toBeInTheDocument();
+    expect(screen.queryByText(scenario.success)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('已同步')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: scenario.actionName })).toBeEnabled(),
+    );
+
+    await user.click(within(dialog).getByRole('button', { name: scenario.actionName }));
+
+    expect(await screen.findByText(scenario.success)).toBeInTheDocument();
+    expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(2);
+    expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith(
+      'topic-01',
+      'instance-proxy-1',
+    );
+    if (scenario.action === 'sync') {
+      expect(within(dialog).getByText('已同步')).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: scenario.actionName })).toBeDisabled();
+    } else {
+      expect(
+        within(dialog).queryByRole('button', { name: scenario.actionName }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
   it('keeps a reopened sync modal owned by its newest route check', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     let resolveFirst!: (routes: BrokerRoute[]) => void;
