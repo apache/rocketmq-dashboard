@@ -526,6 +526,7 @@ const AclPageContent = ({
     }
     const requestGeneration = examineRequestGenerationRef.current + 1;
     examineRequestGenerationRef.current = requestGeneration;
+    setClusterConfig(null);
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
@@ -1448,6 +1449,9 @@ const AclPageContent = ({
 
                   {clusterConfig && (
                     <div style={{ paddingBottom: 16 }}>
+                      <div style={{ marginBottom: 12, color: '#8c8c8c', fontSize: 14 }}>
+                        {t('acl.examineCluster')}: {clusterConfig.clusterId}
+                      </div>
                       {/* Summary cards */}
                       <div
                         style={{
