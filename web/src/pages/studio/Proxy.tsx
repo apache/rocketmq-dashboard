@@ -27,11 +27,9 @@ import {
   Row,
   Col,
   Statistic,
-  Progress,
   Descriptions,
   Tooltip,
   App,
-  Typography,
   Input,
   Popconfirm,
 } from 'antd';
@@ -64,8 +62,6 @@ import {
   writeLocalStorage,
 } from '../../utils/browserStorage';
 
-const { Text } = Typography;
-
 const persistProxyAddress = (address?: string) => {
   if (!address) return;
   writeLocalStorage('proxyAddr', address);
@@ -91,9 +87,7 @@ const ProxyPage: React.FC = () => {
 
   const [clusterStats, setClusterStats] = useState({
     totalNodes: 0,
-    healthyNodes: null as number | null,
-    totalConnections: null as number | null,
-    totalTPS: null as number | null,
+    healthyNodes: 0,
   });
 
   const applyProxyHome = useCallback(
@@ -102,12 +96,6 @@ const ProxyPage: React.FC = () => {
         key: addr,
         address: addr,
         status: 'unknown' as const,
-        version: null,
-        connections: null,
-        tps: null,
-        memory: null,
-        cpu: null,
-        uptime: null,
         isSelected: addr === currentProxyAddr,
       }));
       let nodes = baseNodes;
@@ -137,9 +125,7 @@ const ProxyPage: React.FC = () => {
 
       setClusterStats({
         totalNodes: nodes.length,
-        healthyNodes: null,
-        totalConnections: null,
-        totalTPS: null,
+        healthyNodes: nodes.filter((node) => node.status === 'healthy').length,
       });
 
       persistProxyAddress(currentProxyAddr || proxyAddrList?.[0]);
@@ -331,22 +317,12 @@ const ProxyPage: React.FC = () => {
         node.address,
         node.status,
         proxyStatusLabel(node.status),
-        node.version,
-        node.uptime,
         node.isSelected ? t('proxy.current') : '',
       ]
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLowerCase().includes(keyword)),
     );
   }, [nodeFilter, proxyNodes, proxyStatusLabel, t]);
-
-  const renderUnavailable = () => <Text type="secondary">{t('common.na')}</Text>;
-
-  const renderNumberMetric = (value: number | null) =>
-    value == null ? renderUnavailable() : value.toLocaleString();
-
-  const compareNullable = (left: number | null, right: number | null) =>
-    (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -367,66 +343,6 @@ const ProxyPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => renderStatus(status),
-    },
-    {
-      title: t('proxy.version'),
-      dataIndex: 'version',
-      key: 'version',
-      render: (value: string | null) => value || renderUnavailable(),
-    },
-    {
-      title: t('proxy.connections'),
-      dataIndex: 'connections',
-      key: 'connections',
-      render: renderNumberMetric,
-      sorter: (a, b) => compareNullable(a.connections, b.connections),
-    },
-    {
-      title: 'TPS',
-      dataIndex: 'tps',
-      key: 'tps',
-      render: renderNumberMetric,
-      sorter: (a, b) => compareNullable(a.tps, b.tps),
-    },
-    {
-      title: t('proxy.memory'),
-      dataIndex: 'memory',
-      key: 'memory',
-      render: (val: number | null) =>
-        val == null ? (
-          renderUnavailable()
-        ) : (
-          <Progress
-            percent={val}
-            size="small"
-            status={val > 80 ? 'exception' : 'normal'}
-            style={{ width: 100 }}
-          />
-        ),
-      sorter: (a, b) => compareNullable(a.memory, b.memory),
-    },
-    {
-      title: 'CPU',
-      dataIndex: 'cpu',
-      key: 'cpu',
-      render: (val: number | null) =>
-        val == null ? (
-          renderUnavailable()
-        ) : (
-          <Progress
-            percent={val}
-            size="small"
-            status={val > 80 ? 'exception' : 'normal'}
-            style={{ width: 100 }}
-          />
-        ),
-      sorter: (a, b) => compareNullable(a.cpu, b.cpu),
-    },
-    {
-      title: t('proxy.uptime'),
-      dataIndex: 'uptime',
-      key: 'uptime',
-      render: (value: string | null) => value || renderUnavailable(),
     },
     {
       title: t('proxy.action'),
@@ -528,29 +444,9 @@ const ProxyPage: React.FC = () => {
             <Card>
               <Statistic
                 title={t('proxy.healthyNodes')}
-                value={clusterStats.healthyNodes ?? t('common.na')}
-                suffix={
-                  clusterStats.healthyNodes == null ? undefined : `/ ${clusterStats.totalNodes}`
-                }
-                valueStyle={{ color: clusterStats.healthyNodes == null ? undefined : '#3f8600' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('proxy.totalConnections')}
-                value={clusterStats.totalConnections ?? t('common.na')}
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Card>
-              <Statistic
-                title={t('proxy.totalTps')}
-                value={clusterStats.totalTPS ?? t('common.na')}
-                valueStyle={{ color: '#1890ff' }}
+                value={clusterStats.healthyNodes}
+                suffix={`/ ${clusterStats.totalNodes}`}
+                valueStyle={{ color: '#3f8600' }}
               />
             </Card>
           </Col>
