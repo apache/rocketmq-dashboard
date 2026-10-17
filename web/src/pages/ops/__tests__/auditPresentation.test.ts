@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AuditRecord } from '../../../api/ops';
+import translations from '../../../i18n/translations';
 import {
   describeAuditRecord,
   formatAuditCode,
@@ -106,6 +107,38 @@ describe('audit presentation helpers', () => {
       color: 'default',
       category: 'other',
     });
+  });
+
+  it('namesAndLocalizesTheOperationsTheServerWritesOutsideTheToolCatalogTest', () => {
+    // Codes written by the console and the notification scheduler that had no presentation
+    // entry, so `getAuditOperationPresentation` fell back to the English-only title-cased
+    // label and the `other` color for them: AclService.java:394 (PUSH_ACL_TO_BROKER, added
+    // with the ACL push feature #6693) and NotificationOutboxService.java:265/400/580.
+    const operationCodes = [
+      'PUSH_ACL_TO_BROKER',
+      'DELIVER_ALERT_NOTIFICATION',
+      'RETRY_ALERT_NOTIFICATION',
+      'FAIL_ALERT_NOTIFICATION',
+      'RETRY_ALERT_NOTIFICATION_MANUALLY',
+    ];
+
+    operationCodes.forEach((code) => {
+      const presentation = getAuditOperationPresentation(code);
+      // A labelKey is what makes the audit page render the name in the viewer's language
+      // (`audit.tsx` `renderOperationType` and the operation-type filter options both
+      // prefer it); without one a Chinese-locale operator reads the English fallback.
+      expect(presentation.labelKey).toBe(`audit.op.${code}`);
+      expect(presentation.category).not.toBe('other');
+      expect(translations[`audit.op.${code}`]?.zh).toBeTruthy();
+      expect(translations[`audit.op.${code}`]?.en).toBeTruthy();
+    });
+
+    // Notification deliveries audited through `recordDelivery` carry their own resource
+    // type, which needs the same treatment as every other resource the page renders.
+    const notificationResource = getAuditResourcePresentation('ALERT_NOTIFICATION');
+    expect(notificationResource.labelKey).toBe('audit.res.ALERT_NOTIFICATION');
+    expect(translations['audit.res.ALERT_NOTIFICATION']?.zh).toBeTruthy();
+    expect(translations['audit.res.ALERT_NOTIFICATION']?.en).toBeTruthy();
   });
 
   it('maps resource and result codes to readable table labels', () => {

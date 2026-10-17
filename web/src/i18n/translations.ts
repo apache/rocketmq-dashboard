@@ -1607,6 +1607,7 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '更新 Plain Access 配置',
     en: 'Upsert Plain Access Config',
   },
+  'audit.op.PUSH_ACL_TO_BROKER': { zh: '下发 ACL 到 Broker', en: 'Push ACL to Broker' },
   'audit.op.UPDATE_SETTINGS': { zh: '更新设置', en: 'Update Settings' },
   'audit.op.CREATE_DATA_SOURCE': { zh: '创建数据源', en: 'Create Data Source' },
   'audit.op.UPDATE_DATA_SOURCE': { zh: '更新数据源', en: 'Update Data Source' },
@@ -1627,6 +1628,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.op.CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS': {
     zh: '清除已确认告警',
     en: 'Clear Acknowledged Alerts',
+  },
+  'audit.op.DELIVER_ALERT_NOTIFICATION': { zh: '投递告警通知', en: 'Deliver Alert Notification' },
+  'audit.op.RETRY_ALERT_NOTIFICATION': { zh: '重试告警通知', en: 'Retry Alert Notification' },
+  'audit.op.FAIL_ALERT_NOTIFICATION': {
+    zh: '告警通知发送失败',
+    en: 'Alert Notification Failed',
+  },
+  'audit.op.RETRY_ALERT_NOTIFICATION_MANUALLY': {
+    zh: '手动重试告警通知',
+    en: 'Manually Retry Alert Notification',
   },
   'audit.op.CREATE_INSTANCE': { zh: '创建实例', en: 'Create Instance' },
   'audit.op.UPDATE_INSTANCE': { zh: '更新实例', en: 'Update Instance' },
@@ -1651,6 +1662,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'audit.res.ALERT_SILENCE': { zh: '告警静默', en: 'Alert Silence' },
   'audit.res.ALERT_RULE': { zh: '告警规则', en: 'Alert Rule' },
   'audit.res.SYSTEM_ALERT': { zh: '系统告警', en: 'System Alert' },
+  'audit.res.ALERT_NOTIFICATION': { zh: '告警通知', en: 'Alert Notification' },
   'audit.res.K8S_CERTIFICATE': { zh: 'K8s 证书', en: 'K8s Certificate' },
   'audit.result.SUCCESS': { zh: '成功', en: 'Success' },
   'audit.result.PARTIAL': { zh: '部分成功', en: 'Partial' },
