@@ -433,4 +433,20 @@ describe('BrokerCluster Page', () => {
       screen.queryByRole('columnheader', { name: /连接数|[Cc]onnections/ }),
     ).not.toBeInTheDocument();
   });
+
+  it('does not render a Connections column for proxies', async () => {
+    // The discovery path hardcodes connections(0) for every real-cluster proxy
+    // (RocketMQClusterProvider) and the page masked a missing value with ?? 0,
+    // so the column (and its CSV export) showed a fabricated count - zero in
+    // production, the mock's invented number in demo mode.
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByRole('tab', { name: /Proxy/ }));
+    await screen.findAllByRole('columnheader');
+
+    expect(
+      screen.queryByRole('columnheader', { name: /连接数|[Cc]onnections/ }),
+    ).not.toBeInTheDocument();
+  });
 });
