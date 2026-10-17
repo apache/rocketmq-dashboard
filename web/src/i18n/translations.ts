@@ -2958,6 +2958,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'userMgmt.myAccount': { zh: '我的账号', en: 'My Account' },
   'userMgmt.changeMyPassword': { zh: '修改我的密码', en: 'Change My Password' },
   'userMgmt.sessionOverview': { zh: '会话概览', en: 'Session Overview' },
+  'userMgmt.sessionOverviewLoadFailed': {
+    zh: '加载会话概览失败',
+    en: 'Failed to load session overview',
+  },
   'userMgmt.activeSessions': { zh: '活跃会话', en: 'Active Sessions' },
   'userMgmt.activeUsers': { zh: '活跃用户', en: 'Active Users' },
   'userMgmt.expiringWithin': {
