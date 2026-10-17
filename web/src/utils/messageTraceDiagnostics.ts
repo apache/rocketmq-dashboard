@@ -118,7 +118,31 @@ const DEFAULT_OPTIONS: Required<TraceDiagnosticOptions> = {
 const STATUS_KEY: Record<TraceDiagnosticStatus, string> = {
   healthy: 'messagePage.traceStatusHealthy',
   warning: 'messagePage.traceStatusWarning',
-  critical: 'messagePage.traceStatusDeliveryCritical',
+  critical: 'messagePage.traceStatusCritical',
+};
+
+/** Critical findings that are actually about delivery, not about latency. */
+const DELIVERY_CRITICAL_CODES = new Set<TraceIssueCode>([
+  'FAILED_TRACE_NODE',
+  'FAILED_CONSUMER_DELIVERY',
+]);
+
+const DELIVERY_CRITICAL_KEY = 'messagePage.traceStatusDeliveryCritical';
+
+/**
+ * A critical status can come from a failed step or from a latency hotspot (a critical slow node
+ * or end-to-end span). The delivery wording only fits the first kind, so a trace whose deliveries
+ * all succeeded and whose phases all finished must not be badged "投递异常 / Delivery Critical"
+ * just because it was slow.
+ */
+const statusKeyFor = (status: TraceDiagnosticStatus, issues: TraceDiagnosticIssue[]): string => {
+  if (status !== 'critical') {
+    return STATUS_KEY[status];
+  }
+  const deliveryFailure = issues.some(
+    (issue) => issue.severity === 'critical' && DELIVERY_CRITICAL_CODES.has(issue.code),
+  );
+  return deliveryFailure ? DELIVERY_CRITICAL_KEY : STATUS_KEY.critical;
 };
 
 const STATUS_COLOR: Record<TraceDiagnosticStatus, 'success' | 'warning' | 'error'> = {
@@ -562,7 +586,7 @@ export function analyzeMessageTrace(
 
   return {
     status,
-    statusKey: STATUS_KEY[status],
+    statusKey: statusKeyFor(status, issues),
     statusColor: STATUS_COLOR[status],
     score: calculateScore(issues),
     summary,

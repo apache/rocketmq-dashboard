@@ -35,6 +35,10 @@ export function useAgentCapabilities(enabled: boolean): boolean {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    // A new probe makes the previous explicit answer stale. Until this request answers, follow the
+    // documented unknown-state fallback instead of continuing to claim the tool is unavailable.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRmqctlAvailable(true);
     getAgentCapabilities()
       .then((capabilities) => {
         if (!cancelled) setRmqctlAvailable(capabilities.rmqctlAvailable);

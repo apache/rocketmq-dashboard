@@ -22,6 +22,7 @@ import {
   getTopicRoutes,
   listAllTopics,
   listTopics,
+  sendTopicMessage,
 } from './topicService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
@@ -119,5 +120,15 @@ describe('topic service mock data', () => {
 
     const after = await listTopics({ search: existing.name });
     expect(after).toEqual(before);
+  });
+
+  it('reports the send time as epoch millis, the shape the API returns', async () => {
+    const before = Date.now();
+
+    const result = await sendTopicMessage({ topic: 'order-create', body: '{"id":1}' });
+
+    expect(typeof result.sendTime).toBe('number');
+    expect(result.sendTime).toBeGreaterThanOrEqual(before);
+    expect(result.sendTime).toBeLessThanOrEqual(Date.now());
   });
 });
