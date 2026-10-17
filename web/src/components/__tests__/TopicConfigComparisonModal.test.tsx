@@ -302,4 +302,23 @@ describe('TopicConfigComparisonModal', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('declaresAScrollBudgetThatCoversItsExpandColumnTest', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: '开始对比' }));
+    await screen.findByText('matching-topic');
+
+    // scroll.x 是这张表的预算：窄到预算以下时表在 .ant-table-body 里横向滚动，宽到预算以上时
+    // 多出的宽度归唯一没有 width 的主列。预算 = 240（Topic 主列 minWidth）+ 120（状态）+ 130
+    //（差异数）+ 48（antd 为展开图标列保留的宽度；展开列不属于 columns，见 utils/table.ts 的
+    // EXPAND_COLUMN_WIDTH）= 538。漏算展开列时预算只有 490：table-layout: fixed 下表宽取容器宽，
+    // 固定列仍占 48 + 120 + 130，Topic 列只剩「容器宽 - 298」，窄窗口下会低过它声明的 240px 下限。
+    const table = [...document.querySelectorAll<HTMLTableElement>('table')].find((element) =>
+      /px$/.test(element.style.width),
+    );
+
+    expect(table?.style.width).toBe('538px');
+  });
 });
