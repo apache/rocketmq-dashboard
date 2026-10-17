@@ -179,6 +179,18 @@ describe('ACL page', () => {
     expect(aclService.pageAclUsers).toHaveBeenCalledTimes(1);
   });
 
+  it('does not offer page-local sorting on either server-paginated ACL table', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+
+    await user.click(screen.getByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    expect(document.querySelectorAll('th.ant-table-column-has-sorters')).toHaveLength(0);
+  });
+
   it('reloads the server rule page after deleting one ACL rule', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
