@@ -19,7 +19,7 @@ import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { AiMessageRequest } from '../../../api/aiConversations';
 import { getChatDraft, shouldOpenChatHistory, shouldOpenTools, type ChatDraft } from '../chatDraft';
-import type { StartRunOptions } from './useAiSend';
+import type { StartRunOptions, StartRunResult } from './useAiSend';
 
 /**
  * The home-page handoff: consume the router-state intents (`prompt` draft, `historyIntent`,
@@ -46,7 +46,7 @@ export interface UseDraftHandoffOptions {
   /** The message request the draft auto-sends once its conversation is resolved. */
   buildDraftRequest: (draft: ChatDraft) => AiMessageRequest;
   /** `useAiSend().startRun`: create-if-needed, arm the auto-send and navigate. */
-  startRun: (start: StartRunOptions) => Promise<number | null>;
+  startRun: (start: StartRunOptions) => Promise<StartRunResult>;
   openHistory: () => void;
   openTools: () => void;
 }
@@ -107,6 +107,10 @@ export function useDraftHandoff(
         const carried = { ...draft };
         handoffStateRef.current = carried;
         const target = await startRun({ ...start, carryState: carried });
+        if (target === 'abandoned') {
+          handoffStateRef.current = null;
+          return;
+        }
         if (target === null) {
           // Creation failed (already toasted): strip the state instead of letting a reload retry,
           // and keep the draft visible so the operator can submit it again manually.
