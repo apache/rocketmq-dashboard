@@ -64,6 +64,7 @@ public class InstanceMetricsToolHandler implements ToolHandler<InstanceMetricsIn
                 .resultType(data.getResultType())
                 .series(filteredSeries)
                 .warnings(data.getWarnings() != null ? data.getWarnings() : List.of())
+                .infos(data.getInfos() != null ? data.getInfos() : List.of())
                 .build();
     }
 

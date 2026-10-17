@@ -210,6 +210,35 @@ const createDeferred = <T,>() => {
 };
 
 describe('MetricsExplorer', () => {
+  it.each([false, true])('renders info annotations with emptyResult=%s Test', async (empty) => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: empty ? [] : metricData.series,
+      warnings: ['partial response'],
+      infos: ['input to histogram_quantile needed to be fixed for monotonicity'],
+    });
+    renderWithProviders(<MetricsExplorer />);
+
+    const info = await screen.findByText(
+      'input to histogram_quantile needed to be fixed for monotonicity',
+    );
+    expect(info.closest('.ant-alert')).toHaveClass('ant-alert-info');
+    expect(screen.getByText('partial response').closest('.ant-alert')).toHaveClass(
+      'ant-alert-warning',
+    );
+    if (empty) expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(0);
+    else
+      expect(screen.getByRole('img', { name: 'Message In TPS time series' })).toBeInTheDocument();
+  });
+
+  it('renders older responses without infos Test', async () => {
+    renderWithProviders(<MetricsExplorer />);
+    expect(
+      await screen.findByRole('img', { name: 'Message In TPS time series' }),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.ant-alert-info')).toBeNull();
+  });
+
   it('loads a metric profile and renders its Prometheus series', async () => {
     renderWithProviders(<MetricsExplorer />);
 

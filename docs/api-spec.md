@@ -2995,6 +2995,7 @@ POST /api/metrics/query
 | `resultType` | `string` | Prometheus 结果类型；范围查询通常为 `matrix` |
 | `series` | `MetricSeries[]` | 查询返回的时间序列 |
 | `warnings` | `string[]` | Prometheus 返回的非致命警告，没有警告时为空数组 |
+| `infos` | `string[]` | Prometheus 返回的信息级查询注解，无注解时为空数组；即使结果为空也保留，不影响成功状态或样本值 |
 
 **MetricSeries：**
 
