@@ -259,6 +259,25 @@ describe('AlertsPage', () => {
     expect(screen.queryByText('UNAVAILABLE 0null')).not.toBeInTheDocument();
   });
 
+  it('namesEveryRuleRuntimeStateInsteadOfPrintingTheEnumTest', async () => {
+    // AlertStateStatus has five values (OK/PENDING/FIRING/RESOLVED/ACKED) and the runtime feed
+    // reports all of them; only FIRING and PENDING had a label, so the cell printed the raw
+    // enum for the other three.
+    vi.mocked(listAlertRuleRuntime).mockResolvedValue([
+      { ruleId: 1, fingerprint: 'fp-1', status: 'ACKED', consecutiveHits: 3 },
+      { ruleId: 2, fingerprint: 'fp-2', status: 'RESOLVED', consecutiveHits: 0 },
+      { ruleId: 3, fingerprint: 'fp-3', status: 'OK', consecutiveHits: 0 },
+    ]);
+    renderPage();
+
+    expect(await screen.findByText('Broker disk usage')).toBeInTheDocument();
+    expect(await screen.findByText('已确认')).toBeInTheDocument();
+    expect(screen.getByText('已恢复')).toBeInTheDocument();
+    expect(screen.getByText('正常')).toBeInTheDocument();
+    expect(screen.queryByText('ACKED')).not.toBeInTheDocument();
+    expect(screen.queryByText('RESOLVED')).not.toBeInTheDocument();
+  });
+
   it('renders rule configuration labels in English', async () => {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
     const user = userEvent.setup();

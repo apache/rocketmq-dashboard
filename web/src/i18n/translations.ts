@@ -1082,6 +1082,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.notCollected': { zh: '未采集', en: 'Not collected' },
   'alerts.firingCount': { zh: '触发 {count}', en: 'Firing {count}' },
   'alerts.pendingCount': { zh: '待定 {count}', en: 'Pending {count}' },
+  'alerts.runtimeOk': { zh: '正常', en: 'OK' },
+  'alerts.runtimeAcknowledged': { zh: '已确认', en: 'Acknowledged' },
   'alerts.duplicate': { zh: '复制', en: 'Duplicate' },
   'alerts.duplicateName': { zh: '{name} - 副本', en: '{name} - Copy' },
   'alerts.ruleLoadFailed': {
