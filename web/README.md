@@ -47,3 +47,7 @@ npx prettier --check src
 ```
 
 生产构建会由 Vite 注入构建提交和构建时间，生成产物位于 `dist/`。Docker 构建只复制受版本控制的清单、锁文件和源码；本地依赖、产物及环境覆盖文件不进入镜像上下文。
+
+### Metric query history
+
+Metric query history is stored locally per signed-in account, using the stable user ID when available and the username otherwise. Auth-disabled and mock deployments retain a separate anonymous history. Switching accounts resets the metrics explorer state, and clearing history affects only the active scope. The previous unscoped browser key has no reliable owner: its contents are left untouched but are not loaded or automatically assigned to a signed-in or anonymous scope.
